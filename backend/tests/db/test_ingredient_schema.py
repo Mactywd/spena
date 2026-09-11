@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
@@ -69,3 +69,23 @@ async def test_nutrients_roundtrip_as_json(db_session):
     await db_session.flush()
     await db_session.refresh(product)
     assert product.nutrients["protein"] == 10.3
+
+
+async def test_timestamp_columns_are_not_null_in_physical_schema(db_session):
+    """TimestampMixin dichiara created_at/updated_at non opzionali: la migrazione
+    deve rispecchiarlo con nullable=False, non solo l'ORM."""
+    result = await db_session.execute(text(
+        """
+        SELECT table_name, column_name, is_nullable
+        FROM information_schema.columns
+        WHERE table_name IN ('ingredients', 'products')
+          AND column_name IN ('created_at', 'updated_at')
+        """
+    ))
+    rows = {(row.table_name, row.column_name): row.is_nullable for row in result}
+    assert rows == {
+        ("ingredients", "created_at"): "NO",
+        ("ingredients", "updated_at"): "NO",
+        ("products", "created_at"): "NO",
+        ("products", "updated_at"): "NO",
+    }

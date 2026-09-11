@@ -21,8 +21,10 @@ def upgrade() -> None:
         sa.Column("display_name", sa.String(120), nullable=False),
         sa.Column("category", sa.String(20), nullable=False),
         sa.Column("composition_ref", sa.String(60)),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(),
+                  nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(),
+                  nullable=False),
     )
     op.create_table(
         "ingredient_aliases",
@@ -45,8 +47,10 @@ def upgrade() -> None:
         sa.Column("source_payload", postgresql.JSONB),
         sa.Column("nutrients", postgresql.JSONB),
         sa.Column("image_url", sa.String(500)),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(),
+                  nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(),
+                  nullable=False),
     )
 
     # autocomplete tollerante agli errori di battitura
