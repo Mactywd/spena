@@ -16,7 +16,9 @@ from app.db.models.recipe import CookingEvent, Recipe
 from app.db.models.shopping import ShoppingListItem, ShoppingReason, ShoppingStatus
 from app.domain.rules import PantryStatus
 
-# il motivo con cui la voce rientra in lista dipende da come l'hai lasciata
+# il motivo con cui la voce rientra in lista dipende da come l'hai lasciata.
+# Finito e basso hanno ciascuno il loro motivo di cottura; tutto il resto è
+# una richiesta manuale ordinaria.
 _RESTOCK_REASON = {
     PantryStatus.FINISHED: ShoppingReason.FINISHED_WHILE_COOKING,
     PantryStatus.LOW: ShoppingReason.LOW_WHILE_COOKING,
@@ -72,7 +74,7 @@ async def cook(
                     ingredient_id=item.ingredient_id,
                     status=ShoppingStatus.PENDING,
                     reason=_RESTOCK_REASON.get(
-                        transition.to_status, ShoppingReason.FINISHED_WHILE_COOKING
+                        transition.to_status, ShoppingReason.MANUAL
                     ),
                 )
             )

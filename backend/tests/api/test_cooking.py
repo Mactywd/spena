@@ -176,3 +176,18 @@ async def test_restock_uses_the_product_name_when_there_is_one(
     )
     items = list((await db_session.execute(select(ShoppingListItem))).scalars())
     assert items[0].raw_text == "Passata Mutti"
+
+
+async def test_restocking_an_available_item_uses_manual_reason(
+    logged_client, db_session, scenario
+):
+    """Chiedere più di un ingrediente ancora disponibile è una richiesta manuale."""
+    await logged_client.post(
+        f"/api/v1/recipes/{scenario['recipe'].id}/cook",
+        json={"transitions": [
+            {"pantry_item_id": str(scenario["pomodoro_item"].id),
+             "to_status": "available", "restock": True},
+        ]},
+    )
+    items = list((await db_session.execute(select(ShoppingListItem))).scalars())
+    assert items[0].reason == "manual"
