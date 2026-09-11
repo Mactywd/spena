@@ -49,3 +49,33 @@ async def test_logout_clears_the_cookie(client, configured_password):
 async def test_tampered_cookie_is_rejected(client, configured_password):
     client.cookies.set("spena_session", "valore-inventato")
     assert (await client.get("/api/v1/ping-protected")).status_code == 401
+
+
+async def test_login_with_malformed_hash_is_401_not_500(client, monkeypatch):
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_PASSWORD_HASH", "non-e-un-hash-argon2-valido")
+    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
+    try:
+        response = await client.post(
+            "/api/v1/auth/login", json={"password": "apriti sesamo"}
+        )
+        assert response.status_code == 401
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_login_without_configured_password_is_401(client, monkeypatch):
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_PASSWORD_HASH", "")
+    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
+    try:
+        response = await client.post(
+            "/api/v1/auth/login", json={"password": "apriti sesamo"}
+        )
+        assert response.status_code == 401
+    finally:
+        get_settings.cache_clear()

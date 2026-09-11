@@ -23,6 +23,9 @@ async def login(payload: LoginRequest, response: Response) -> Response:
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(response: Response) -> Response:
+    # Fuori dal gate di proposito: cancella solo un cookie nel browser di chi chiama,
+    # non legge né scrive dati applicativi. Metterla dietro require_session creerebbe
+    # un vicolo cieco per chi ha un cookie scaduto o manomesso.
     response.delete_cookie(SESSION_COOKIE)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response

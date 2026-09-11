@@ -1,5 +1,5 @@
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError
+from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import HTTPException, Request, Response, status
 from itsdangerous import BadSignature, TimestampSigner
 
@@ -17,7 +17,11 @@ def hash_password(plain: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     try:
         return _hasher.verify(hashed, plain)
-    except (VerifyMismatchError, VerificationError):
+    except (VerificationError, InvalidHashError):
+        # VerificationError (e VerifyMismatchError, sua sottoclasse) copre la password
+        # sbagliata; InvalidHashError arriva invece da un hash malformato (es. un
+        # APP_PASSWORD_HASH troncato da un copia-incolla sbagliato nel .env) ed eredita
+        # da ValueError, non da VerificationError, quindi va elencata a parte.
         return False
 
 
