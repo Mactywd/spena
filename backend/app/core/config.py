@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     embedding_backend: str = "local"
     embedding_model: str = "intfloat/multilingual-e5-small"
+    embedding_endpoint: str = ""
     off_base_url: str = "https://world.openfoodfacts.org"
     off_timeout_seconds: float = 3.0
 
