@@ -5,6 +5,7 @@ Il resto del codice non sa che questo servizio esiste: conosce solo
 inserimento manuale, mai in un vicolo cieco.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -60,7 +61,10 @@ class OpenFoodFactsClient:
         if response.status_code != 200:
             raise OffUnavailable(f"HTTP {response.status_code}")
 
-        payload = response.json()
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            raise OffUnavailable(f"Invalid JSON response: {exc}") from exc
         if payload.get("status") != 1 or "product" not in payload:
             return None
 

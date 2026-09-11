@@ -69,3 +69,14 @@ async def test_server_error_raises_off_unavailable():
     respx.get(f"{BASE}/api/v2/product/1.json").mock(return_value=httpx.Response(503))
     with pytest.raises(OffUnavailable):
         await OpenFoodFactsClient(base_url=BASE).fetch("1")
+
+
+@respx.mock
+async def test_malformed_json_body_raises_off_unavailable():
+    """Un 200 con body HTML è quello che torna da un captive portal o da un proxy
+    configurato male. Deve degradare all'inserimento manuale, mai diventare errore."""
+    respx.get(f"{BASE}/api/v2/product/1.json").mock(
+        return_value=httpx.Response(200, text="<html>Captive Portal</html>", headers={"content-type": "text/html"})
+    )
+    with pytest.raises(OffUnavailable):
+        await OpenFoodFactsClient(base_url=BASE).fetch("1")
