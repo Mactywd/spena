@@ -1,0 +1,26 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spena}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spena}
+      POSTGRES_DB: ${POSTGRES_DB:-spena}
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spena}"]
+      interval: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-spena}:${POSTGRES_PASSWORD:-spena}@db:5432/${POSTGRES_DB:-spena}
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["8000:8000"]
+    volumes: ["./backend:/app"]
+
+volumes:
+  pgdata:
