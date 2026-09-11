@@ -3,10 +3,12 @@ from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.db.models.base import UUIDMixin
+from app.db.models.ingredient import Ingredient
+from app.db.models.product import Product
 
 
 class PantryItem(UUIDMixin, Base):
@@ -34,3 +36,6 @@ class PantryItem(UUIDMixin, Base):
         DateTime(timezone=True), server_default=func.now()
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    ingredient: Mapped["Ingredient"] = relationship(lazy="joined")
+    product: Mapped["Product | None"] = relationship(lazy="joined")
