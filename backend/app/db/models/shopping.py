@@ -4,10 +4,11 @@ from enum import StrEnum
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.db.models.base import UUIDMixin
+from app.db.models.ingredient import Ingredient
 
 
 class ShoppingStatus(StrEnum):
@@ -45,3 +46,5 @@ class ShoppingListItem(UUIDMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    ingredient: Mapped["Ingredient | None"] = relationship(lazy="joined")
