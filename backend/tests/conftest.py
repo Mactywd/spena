@@ -57,3 +57,17 @@ async def client(db_session) -> AsyncClient:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def logged_client(client, monkeypatch):
+    """Client con sessione già valida: evita di rifare il login in ogni test."""
+    from app.core.config import get_settings
+    from app.core.security import hash_password
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_PASSWORD_HASH", hash_password("test"))
+    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
+    await client.post("/api/v1/auth/login", json={"password": "test"})
+    yield client
+    get_settings.cache_clear()
