@@ -104,15 +104,15 @@ async def test_cooking_event_keeps_a_snapshot(db_session):
     assert event.cooked_at is not None
 
 
-async def test_timestamp_columns_are_not_null_in_physical_schema(db_session):
-    """Recipe.created_at/updated_at e CookingEvent.cooked_at sono non opzionali
+async def test_not_null_columns_are_enforced_in_physical_schema(db_session):
+    """Recipe.created_at/updated_at/search_tsv e CookingEvent.cooked_at sono non opzionali
     nell'ORM: la migrazione deve rispecchiarlo con nullable=False, non solo
     dichiararlo lato modello."""
     result = await db_session.execute(text(
         """
         SELECT table_name, column_name, is_nullable
         FROM information_schema.columns
-        WHERE (table_name = 'recipes' AND column_name IN ('created_at', 'updated_at'))
+        WHERE (table_name = 'recipes' AND column_name IN ('created_at', 'updated_at', 'search_tsv'))
            OR (table_name = 'cooking_events' AND column_name = 'cooked_at')
         """
     ))
@@ -120,5 +120,6 @@ async def test_timestamp_columns_are_not_null_in_physical_schema(db_session):
     assert rows == {
         ("recipes", "created_at"): "NO",
         ("recipes", "updated_at"): "NO",
+        ("recipes", "search_tsv"): "NO",
         ("cooking_events", "cooked_at"): "NO",
     }
