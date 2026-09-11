@@ -108,13 +108,20 @@ async def draft_recipe(
             messages=[{"role": "user", "content": prompt}],
         )
         payload = json.loads(response.content[0].text)
+        if not isinstance(payload, dict):
+            raise AiUnavailable("la risposta non è un oggetto JSON")
+        raw_ingredients = payload.get("ingredients") or []
+        if not isinstance(raw_ingredients, list) or any(
+            not isinstance(entry, dict) for entry in raw_ingredients
+        ):
+            raise AiUnavailable("la lista degli ingredienti ha una forma inutilizzabile")
     except AiUnavailable:
         raise
     except Exception as exc:  # errore di rete, quota, JSON malformato
         raise AiUnavailable(str(exc)) from exc
 
     ingredients: list[DraftIngredient] = []
-    for entry in payload.get("ingredients", []):
+    for entry in raw_ingredients:
         raw_name = str(entry.get("name", "")).strip()
         if not raw_name:
             continue

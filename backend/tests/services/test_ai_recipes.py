@@ -105,6 +105,29 @@ async def test_malformed_json_raises_ai_unavailable(db_session, anagrafica):
         await draft_recipe(db_session, "x", client=Garbage({}))
 
 
+async def test_response_that_is_not_a_dict_raises_ai_unavailable(
+    db_session, anagrafica
+):
+    """La risposta al top level deve essere un oggetto JSON."""
+    with pytest.raises(AiUnavailable):
+        await draft_recipe(db_session, "x", client=FakeClaude([1, 2, 3]))
+
+
+async def test_ingredients_entries_that_are_not_dicts_raise_ai_unavailable(
+    db_session, anagrafica
+):
+    """Gli ingredienti devono essere oggetti, non stringhe."""
+    bad_draft = {
+        "title": "Ricetta rotta",
+        "description": "Descrizione",
+        "instructions": "Passi",
+        "servings": 2,
+        "ingredients": ["pasta", "pomodoro"],
+    }
+    with pytest.raises(AiUnavailable):
+        await draft_recipe(db_session, "x", client=FakeClaude(bad_draft))
+
+
 async def test_missing_api_key_raises_ai_unavailable(db_session, anagrafica, monkeypatch):
     from app.core.config import get_settings
 
