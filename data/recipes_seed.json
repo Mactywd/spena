@@ -49,7 +49,7 @@
       },
       {
         "name": "aglio",
-        "role": "secondary",
+        "role": "primary",
         "quantity_text": "2 spicchi"
       },
       {
@@ -514,12 +514,12 @@
       },
       {
         "name": "farina",
-        "role": "secondary",
+        "role": "primary",
         "quantity_text": "40 g"
       },
       {
         "name": "burro",
-        "role": "secondary",
+        "role": "primary",
         "quantity_text": "40 g"
       },
       {
