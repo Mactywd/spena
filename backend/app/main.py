@@ -1,6 +1,6 @@
 from fastapi import Depends, FastAPI
 
-from app.api import auth, ingredients, pantry, products, shopping
+from app.api import auth, ingredients, pantry, products, recipes, shopping
 from app.core.security import require_session
 
 app = FastAPI(title="Spena", docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json")
@@ -9,6 +9,7 @@ app.include_router(ingredients.router)
 app.include_router(products.router)
 app.include_router(pantry.router)
 app.include_router(shopping.router)
+app.include_router(recipes.router)
 
 
 @app.get("/api/v1/health")

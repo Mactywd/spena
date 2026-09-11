@@ -20,6 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.db.models.base import TimestampMixin, UUIDMixin
+from app.db.models.ingredient import Ingredient
 
 EMBEDDING_DIM = 384  # intfloat/multilingual-e5-small
 
@@ -80,6 +81,7 @@ class RecipeIngredient(UUIDMixin, Base):
     note: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
     recipe: Mapped[Recipe] = relationship(back_populates="ingredients")
+    ingredient: Mapped["Ingredient"] = relationship(lazy="joined")
 
 
 class CookingEvent(UUIDMixin, Base):
