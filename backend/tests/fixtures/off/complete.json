@@ -1,0 +1,19 @@
+{
+  "status": 1,
+  "code": "5201054000138",
+  "product": {
+    "product_name": "Total 0% Yogurt Greco",
+    "brands": "Fage",
+    "image_front_url": "https://images.openfoodfacts.org/fage.jpg",
+    "nutriments": {
+      "energy-kcal_100g": 57,
+      "proteins_100g": 10.3,
+      "carbohydrates_100g": 4,
+      "sugars_100g": 4,
+      "fat_100g": 0,
+      "saturated-fat_100g": 0,
+      "fiber_100g": 0,
+      "salt_100g": 0.1
+    }
+  }
+}
