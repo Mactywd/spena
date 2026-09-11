@@ -7,6 +7,7 @@ risultati peggiori, che è molto più difficile da notare.
 
 import asyncio
 import hashlib
+import json
 from typing import Protocol
 
 import httpx
@@ -78,7 +79,10 @@ class HttpEmbeddingProvider:
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             raise EmbeddingUnavailable(str(exc)) from exc
-        return response.json()["embeddings"]
+        try:
+            return response.json()["embeddings"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise EmbeddingUnavailable(f"Risposta non valida dal fornitore: {exc}") from exc
 
     async def embed_query(self, text: str) -> list[float]:
         return (await self._post([f"query: {text}"]))[0]

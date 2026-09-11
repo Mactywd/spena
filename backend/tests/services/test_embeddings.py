@@ -1,9 +1,12 @@
+import httpx
 import pytest
+import respx
 
 from app.db.models.recipe import EMBEDDING_DIM
 from app.services.embeddings import (
     EmbeddingUnavailable,
     FakeEmbeddingProvider,
+    HttpEmbeddingProvider,
     LocalEmbeddingProvider,
     get_embedding_provider,
 )
@@ -48,3 +51,20 @@ def test_factory_honours_the_configured_backend(monkeypatch):
     monkeypatch.setenv("EMBEDDING_BACKEND", "fake")
     assert isinstance(get_embedding_provider(), FakeEmbeddingProvider)
     get_settings.cache_clear()
+    monkeypatch.setenv("EMBEDDING_BACKEND", "local")
+    assert isinstance(get_embedding_provider(), LocalEmbeddingProvider)
+    get_settings.cache_clear()
+
+
+@respx.mock
+async def test_malformed_json_body_raises_embedding_unavailable():
+    """Un 200 con body non-JSON è quello che torna da un captive portal o da un proxy
+    configurato male. Deve degradare, mai diventare errore."""
+    respx.post("http://embedding-service/embed").mock(
+        return_value=httpx.Response(
+            200, text="<html>Captive Portal</html>", headers={"content-type": "text/html"}
+        )
+    )
+    provider = HttpEmbeddingProvider(endpoint="http://embedding-service/embed")
+    with pytest.raises(EmbeddingUnavailable):
+        await provider.embed_query("pasta")
