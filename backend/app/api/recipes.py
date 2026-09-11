@@ -9,7 +9,9 @@ from app.db.models.recipe import Recipe
 from app.domain.rules import Availability, IngredientRole, is_satisfied
 from app.repositories.pantry import availability_map
 from app.repositories.recipes import create_recipe, get_recipe
+from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
 from app.schemas.recipe import RecipeCreate, RecipeIngredientOut, RecipeOut, RecipeSummaryOut
+from app.services.ai_recipes import AiUnavailable, draft_recipe
 from app.services.embeddings import EmbeddingUnavailable, get_embedding_provider
 from app.services.recipe_search import search_recipes
 
@@ -94,3 +96,21 @@ async def create(
     await session.commit()
     stored = await get_recipe(session, recipe.id)
     return await _to_out(session, stored)
+
+
+@router.post("/ai-draft", response_model=DraftOut)
+async def ai_draft(
+    payload: DraftRequest, session: AsyncSession = Depends(get_session)
+) -> DraftOut:
+    """Propone, non salva. Il salvataggio passa da POST /recipes come le altre."""
+    try:
+        draft = await draft_recipe(session, payload.prompt)
+    except AiUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, f"stesura AI non disponibile: {exc}"
+        ) from exc
+    return DraftOut(
+        title=draft.title, description=draft.description, instructions=draft.instructions,
+        servings=draft.servings,
+        ingredients=[DraftIngredientOut(**vars(i)) for i in draft.ingredients],
+    )
