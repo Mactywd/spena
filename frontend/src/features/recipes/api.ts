@@ -1,5 +1,5 @@
 import { apiFetch } from "../../api/client";
-import type { RecipeDetail, RecipeSummary } from "../../domain/types";
+import type { CookResult, RecipeDetail, RecipeSummary } from "../../domain/types";
 
 export function searchRecipes(query: string, onlyCookable: boolean) {
   const params = new URLSearchParams();
@@ -23,8 +23,8 @@ export function cookRecipe(
     transitions: { pantry_item_id: string; to_status: string; restock: boolean }[];
   }
 ) {
-  return apiFetch<{ event_id: string; updated: number; restocked: number }>(
-    `/recipes/${id}/cook`,
-    { method: "POST", body: JSON.stringify(body) }
-  );
+  return apiFetch<CookResult>(`/recipes/${id}/cook`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

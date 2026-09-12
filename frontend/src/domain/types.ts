@@ -84,3 +84,12 @@ export interface RecipeDetail extends RecipeSummary {
   source_ref: string | null;
   ingredients: RecipeIngredientLine[];
 }
+
+// L'esito di una cottura, così come lo restituisce il backend: quante voci di
+// dispensa ha aggiornato e quante sono tornate in lista della spesa. Numeri da
+// mostrare, mai da ricalcolare qui.
+export interface CookResult {
+  event_id: string;
+  updated: number;
+  restocked: number;
+}
