@@ -147,3 +147,19 @@ async def test_lo_scarico_sincronizza_i_termini_e_materializza(db_session):
     ricetta = (await db_session.execute(select(Recipe))).scalars().one()
     assert ricetta.title == "Uno"
     assert ricetta.source_ref == "https://ricette.giallozafferano.it/Uno.html"
+
+
+@respx.mock
+async def test_sitemap_irraggiungibile_fermando_presto(db_session):
+    """Se la sitemap non risponde (503), il giro si ferma senza chiedere pagine."""
+    respx.get(RECIPE_SITEMAP).mock(return_value=httpx.Response(503))
+    # Nessun mock per le pagine: se ne viene richiesta una, il test fallisce
+    pagine = respx.get("https://ricette.giallozafferano.it/Uno.html")
+
+    async with build_client() as client:
+        esito = await run_import(db_session, limit=10, client=client, sleep=nessuna_pausa)
+
+    assert esito.taken == 0
+    assert esito.skipped == 0
+    assert esito.stopped_early is True
+    assert pagine.call_count == 0

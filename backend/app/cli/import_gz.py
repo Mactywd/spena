@@ -56,14 +56,21 @@ async def run_import(
     `sleep` è un parametro perché la suite non dorme e non tocca la rete: il test
     conta le pause invece di aspettarle.
     """
-    urls = await fetch_sitemap(client)
-    already = await known_urls(session, GIALLOZAFFERANO)
-    todo = [url for url in urls if url not in already][:limit]
-
     taken = 0
     skipped = 0
     consecutive_failures = 0
     stopped_early = False
+
+    try:
+        urls = await fetch_sitemap(client)
+    except SourceUnavailable as exc:
+        print(f"fonte dice di fermarsi: {exc}")
+        print("Nessuna pagina presa oggi. Rilancia più tardi: costa nulla e riprende da dove era.")
+        todo = []
+        stopped_early = True
+    else:
+        already = await known_urls(session, GIALLOZAFFERANO)
+        todo = [url for url in urls if url not in already][:limit]
 
     for url in todo:
         await sleep(DELAY_SECONDS)
