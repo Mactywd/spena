@@ -121,3 +121,35 @@ async def test_malformed_json_body_raises_embedding_unavailable():
     provider = HttpEmbeddingProvider(endpoint=ENDPOINT)
     with pytest.raises(EmbeddingUnavailable):
         await provider.embed_query("pasta")
+
+
+async def test_il_modello_locale_si_carica_una_volta_per_processo(monkeypatch):
+    """`get_embedding_provider()` restituisce un fornitore nuovo a ogni chiamata.
+
+    Senza una cache condivisa, ogni ricerca e ogni ricetta salvata ricostruirebbero
+    SentenceTransformer, cioè rileggerebbero da disco mezzo gigabyte di modello. Il
+    test finge il pacchetto invece di installarlo: conta le costruzioni, che è ciò
+    che si vuole vincolare.
+    """
+    import sys
+    import types
+
+    from app.services import embeddings
+
+    costruzioni: list[str] = []
+
+    class SentenceTransformerFinto:
+        def __init__(self, nome: str) -> None:
+            costruzioni.append(nome)
+
+        def encode(self, texts, normalize_embeddings=True):
+            return [[0.0] * EMBEDDING_DIM for _ in texts]
+
+    modulo = types.ModuleType("sentence_transformers")
+    modulo.SentenceTransformer = SentenceTransformerFinto
+    monkeypatch.setitem(sys.modules, "sentence_transformers", modulo)
+    monkeypatch.setattr(embeddings, "_LOADED_MODELS", {})
+
+    await LocalEmbeddingProvider(model_name="modello-finto").embed_query("pasta")
+    await LocalEmbeddingProvider(model_name="modello-finto").embed_query("riso")
+    assert costruzioni == ["modello-finto"]

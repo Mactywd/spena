@@ -42,6 +42,14 @@ class EmbeddingProvider(Protocol):
     async def embed_passages(self, texts: list[str]) -> list[list[float]]: ...
 
 
+# Il modello caricato vive quanto il processo, indicizzato per nome. Non è una cache
+# opportunistica: `get_embedding_provider()` costruisce un fornitore nuovo a ogni
+# chiamata e `_model` è un attributo di istanza, quindi senza questo dizionario
+# SentenceTransformer veniva ricostruito — e il modello riletto da disco — a ogni
+# ricerca e a ogni ricetta salvata.
+_LOADED_MODELS: dict[str, object] = {}
+
+
 class LocalEmbeddingProvider:
     """sentence-transformers dentro il container. Costo per query nullo."""
 
@@ -51,9 +59,13 @@ class LocalEmbeddingProvider:
 
     def _load_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
+            model = _LOADED_MODELS.get(self._model_name)
+            if model is None:
+                from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self._model_name)
+                model = SentenceTransformer(self._model_name)
+                _LOADED_MODELS[self._model_name] = model
+            self._model = model
         return self._model
 
     async def _encode(self, texts: list[str]) -> list[list[float]]:
