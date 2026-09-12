@@ -41,12 +41,13 @@ not pay for them again:
   Adding the ingredient/product guard turned one mismatched barcode into a rejected
   whole shop with an unactionable "riprova". When you close a hole, ask what the new
   refusal leaves the user able to do.
-- **Un filtro che lavora sul risultato non può stare dietro a un limite.**
-  `recipe_search.py` selezionava le 100 ricette più recenti e poi applicava
-  `only_cookable`: con 26 ricette era tutto il ricettario, con 500 è un campione, e
-  «cosa posso cucinare» avrebbe risposto guardando solo le ricette di ieri. Nessun
-  test poteva vederlo, perché nessun test aveva più ricette della piscina. Quando un
-  lavoro moltiplica i dati, cerca i limiti scritti quando i dati erano pochi.
+- **A filter that works on the result cannot sit behind a limit.**
+  `recipe_search.py` selected the 100 most recent recipes and then applied
+  `only_cookable`: with 26 recipes that was the whole recipe book, with 500 it
+  is a sample, and "what can I cook" would have answered by looking only at
+  yesterday's recipes. No test could see it, because no test had more recipes
+  than the candidate pool. When a job multiplies the data, look for the limits
+  written when the data was small.
 - **`tsc --noEmit` is not the project's type check.** `frontend/tsconfig.json` is
   solution-style — `{"files": [], "references": [...]}` — so `tsc --noEmit` reads
   it, finds zero files to compile, and exits 0 always, whatever errors sit in the
@@ -124,10 +125,11 @@ matches. It never produces nutrient values.
   anything carrying white text is above 4.5:1, because this app is read in a
   supermarket aisle in daylight.
 - Specs and plans are written in Italian, code and identifiers in English.
-- **L'import porta ricette, non ingredienti nuovi a caso.** Il catalogo della fonte è
-  più fine dell'anagrafica: `Rigatoni` diventa un alias di `pasta`, deciso una volta
-  in `import_terms` e scritto in `ingredient_aliases`. Non esiste una seconda tabella
-  di mappatura, e una decisione sbagliata si corregge dall'anagrafica. Lo spec è
+- **Import brings in recipes, not random new ingredients.** The source catalogue
+  is finer than the ingredient registry: `Rigatoni` becomes an alias of `pasta`,
+  decided once in `import_terms` and written into `ingredient_aliases`. There is
+  no second mapping table, and a wrong decision is corrected from the ingredient
+  registry. The spec is
   `docs/superpowers/specs/2026-09-12-import-ricette-design.md`.
 
 ## Roadmap beyond v1
