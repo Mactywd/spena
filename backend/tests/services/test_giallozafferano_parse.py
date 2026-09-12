@@ -27,7 +27,7 @@ def test_i_rimandi_alle_foto_non_arrivano_nel_procedimento():
     recipe = parse_recipe(fixture("semplice"))
 
     assert " 1 ." not in recipe.instructions
-    assert recipe.instructions.startswith("Riducetele a striscioline di circa 1 cm.")
+    assert recipe.instructions.startswith("Riducete lo speck a striscioline di circa 1 cm.")
     assert recipe.instructions.count("\n\n") == 2
 
 
