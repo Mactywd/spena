@@ -62,6 +62,80 @@ async def test_la_coda_porta_il_suggerimento_e_i_titoli_in_attesa(logged_client,
     assert coda[0]["waiting_titles"] == ["Spaghetti alla bottarga"]
 
 
+@pytest_asyncio.fixture
+async def termine_senza_aggancio(db_session):
+    """Un termine che resta in attesa perché, al momento della sincronizzazione,
+    l'anagrafica non ha ancora l'ingrediente corrispondente: niente auto-decide,
+    niente match certo da trovare finché non aggiungiamo l'ingrediente dopo."""
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/pomodoro.html",
+        payload=payload("Pasta al pomodoro", [
+            ("ricette-con-il-Pomodoro", "Pomodoro", "2"),
+        ]),
+    )
+    await sync_terms(db_session)
+
+
+async def test_un_nome_coincidente_con_l_anagrafica_porta_un_suggerimento_certo(
+    logged_client, db_session, termine_senza_aggancio
+):
+    """`certain` è ciò che impedisce a una somiglianza incerta di presentarsi come
+    una risposta già confermata ("Pinoli" che diventa alias di "pisello" in
+    silenzio): nessun test qui asseriva `suggestion` affatto, nemmeno nel caso
+    opposto, la vera coincidenza esatta. L'ingrediente arriva dopo che il termine è
+    già in coda, cosa che una rotta che ricalcola il suggerimento a ogni lettura (e
+    non solo alla sincronizzazione) deve comunque cogliere."""
+    pomodoro = Ingredient(
+        name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
+    )
+    db_session.add(pomodoro)
+    await db_session.flush()
+
+    response = await logged_client.get("/api/v1/imports/terms")
+
+    assert response.status_code == 200
+    coda = response.json()
+    assert coda[0]["display_name"] == "Pomodoro"
+    assert coda[0]["suggestion"] == {
+        "ingredient_id": str(pomodoro.id), "name": "pomodoro", "certain": True,
+    }
+
+
+@pytest_asyncio.fixture
+async def termine_somigliante(db_session):
+    """Un termine abbastanza simile a un ingrediente esistente da proporsi, ma non
+    identico: resta in attesa da sé, perché solo una coincidenza esatta auto-decide
+    in `sync_terms`."""
+    db_session.add(
+        Ingredient(name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA)
+    )
+    await db_session.flush()
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/pomodorini.html",
+        payload=payload("Insalata di pomodorini", [
+            ("ricette-con-i-Pomodorini", "Pomodorini", "200 g"),
+        ]),
+    )
+    await sync_terms(db_session)
+
+
+async def test_una_somiglianza_incerta_porta_un_suggerimento_non_certo(
+    logged_client, db_session, termine_somigliante
+):
+    pomodoro = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "pomodoro"))
+    ).scalars().one()
+
+    response = await logged_client.get("/api/v1/imports/terms")
+
+    assert response.status_code == 200
+    coda = response.json()
+    assert coda[0]["display_name"] == "Pomodorini"
+    assert coda[0]["suggestion"] == {
+        "ingredient_id": str(pomodoro.id), "name": "pomodoro", "certain": False,
+    }
+
+
 async def test_collegare_un_termine_sblocca_le_ricette_e_lo_dice(
     logged_client, db_session, in_attesa
 ):

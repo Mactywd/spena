@@ -101,10 +101,27 @@ def test_default_role(category, quantity, expected):
     assert default_role(category, quantity) is expected
 
 
-def test_ogni_categoria_e_decisa(category=None):
-    """Nessuna categoria dell'anagrafica resta senza risposta."""
-    for value in IngredientCategory:
-        assert default_role(value, "100 g") in tuple(IngredientRole)
+def test_ogni_categoria_e_decisa():
+    """Nessuna categoria dell'anagrafica resta senza risposta, e ognuna delle
+    dodici ha il suo ruolo atteso scritto qui — non ricalcolato dall'implementazione,
+    altrimenti il test proverebbe solo che la funzione è d'accordo con se stessa."""
+    ruoli_attesi = {
+        IngredientCategory.VERDURA: IngredientRole.PRIMARY,
+        IngredientCategory.FRUTTA: IngredientRole.PRIMARY,
+        IngredientCategory.CARNE: IngredientRole.PRIMARY,
+        IngredientCategory.PESCE: IngredientRole.PRIMARY,
+        IngredientCategory.LATTICINI: IngredientRole.PRIMARY,
+        IngredientCategory.CEREALI: IngredientRole.PRIMARY,
+        IngredientCategory.LEGUMI: IngredientRole.PRIMARY,
+        IngredientCategory.CONDIMENTI: IngredientRole.SECONDARY,
+        IngredientCategory.SPEZIE: IngredientRole.SECONDARY,
+        IngredientCategory.BEVANDE: IngredientRole.PRIMARY,
+        IngredientCategory.DOLCI: IngredientRole.PRIMARY,
+        IngredientCategory.ALTRO: IngredientRole.PRIMARY,
+    }
+    assert set(ruoli_attesi) == set(IngredientCategory)
+    for category, expected in ruoli_attesi.items():
+        assert default_role(category, "100 g") is expected
 
 
 def test_le_categorie_secondarie_esistono_in_anagrafica():
