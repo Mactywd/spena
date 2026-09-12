@@ -1,20 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
 import { searchRecipes } from "./api";
+import { useDebounced } from "../../hooks/useDebounced";
 
 const DEBOUNCE_MS = 180;
-
-/** Ritarda il valore, così la ricerca non parte a ogni tasto premuto. */
-function useDebounced(value: string, ms: number): string {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
-}
 
 export function RecipeBookScreen() {
   const [query, setQuery] = useState("");

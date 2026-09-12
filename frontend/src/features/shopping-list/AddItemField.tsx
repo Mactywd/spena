@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { searchIngredients } from "./api";
-import type { Ingredient } from "../../domain/types";
+import { useDebounced } from "../../hooks/useDebounced";
 
 const DEBOUNCE_MS = 180;
 
@@ -11,34 +12,28 @@ export function AddItemField({
   onAdd: (rawText: string, ingredientId?: string) => Promise<unknown> | void;
 }) {
   const [text, setText] = useState("");
-  const [suggestions, setSuggestions] = useState<Ingredient[]>([]);
   const [failed, setFailed] = useState(false);
+  const term = useDebounced(text, DEBOUNCE_MS).trim();
   // sotto 2 caratteri non vale la pena interrogare il backend: il testo resta libero
-  const showSuggestions = text.trim().length >= 2;
+  const enabled = term.length >= 2;
 
-  useEffect(() => {
-    if (!showSuggestions) return;
-    // `superseded` è la guardia contro le risposte fuori ordine: due ricerche possono
-    // essere in volo insieme e la più lenta può essere la più vecchia. Senza questo,
-    // i suggerimenti per "po" arrivati in ritardo sovrascrivono quelli per "pomo" e
-    // l'utente sceglie l'ingrediente sbagliato senza accorgersi di nulla.
-    let superseded = false;
-    const timer = setTimeout(() => {
-      searchIngredients(text)
-        .then((found) => {
-          if (!superseded) setSuggestions(found);
-        })
-        // una ricerca che non risponde non deve bloccare la scrittura: il campo
-        // resta usabile e il testo libero passa comunque
-        .catch(() => {
-          if (!superseded) setSuggestions([]);
-        });
-    }, DEBOUNCE_MS);
-    return () => {
-      superseded = true;
-      clearTimeout(timer);
-    };
-  }, [text, showSuggestions]);
+  // La ricerca passa da `useQuery`, come in RecipeBookScreen e in IngredientPicker.
+  // Due cose che un `.catch` locale non dà. La sicurezza sull'ordine diventa
+  // strutturale: il termine sta nella chiave, quindi una risposta superata atterra
+  // sotto la propria chiave e non può sovrascrivere suggerimenti più recenti. E un
+  // 401 arriva alla QueryCache che App.tsx aggancia al ritorno all'accesso: prima
+  // moriva qui dentro, e a sessione scaduta il campo smetteva di suggerire senza
+  // dire perché — gli altri due consumatori della stessa ricerca erano già stati
+  // corretti, questo era il terzo.
+  const { data: suggestions = [], isError } = useQuery({
+    queryKey: ["ingredients", term],
+    queryFn: () => searchIngredients(term),
+    enabled,
+  });
+
+  // sul testo corrente, non sul termine ritardato: svuotando il campo i
+  // suggerimenti devono sparire subito, non dopo l'attesa
+  const showSuggestions = text.trim().length >= 2;
 
   async function add(rawText: string, ingredientId?: string) {
     setFailed(false);
@@ -51,7 +46,6 @@ export function AddItemField({
       return;
     }
     setText("");
-    setSuggestions([]);
   }
 
   function submitFreeText(event: FormEvent) {
@@ -79,7 +73,7 @@ export function AddItemField({
         <button
           type="submit"
           disabled={text.trim().length === 0}
-          className="rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
+          className="min-h-11 rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
         >
           Aggiungi
         </button>
@@ -87,6 +81,16 @@ export function AddItemField({
       {failed && (
         <p role="alert" className="mt-2 text-sm text-red-600">
           Non sono riuscito ad aggiungere la voce. Il testo è ancora qui: riprova.
+        </p>
+      )}
+      {/* una ricerca che non risponde non deve bloccare la scrittura, e nemmeno
+          restare muta: il testo libero passa comunque, e va detto che passerà
+          senza ingrediente abbinato. `status` e non `alert`: è una rinuncia, non
+          un guasto da interrompere quel che si sta scrivendo */}
+      {showSuggestions && isError && (
+        <p role="status" className="mt-2 text-sm text-amber-700">
+          L'autocomplete non risponde. Puoi aggiungere la voce così com'è: l'ingrediente
+          si abbina dopo.
         </p>
       )}
       {showSuggestions && suggestions.length > 0 && (
@@ -98,7 +102,7 @@ export function AddItemField({
                 role="option"
                 aria-selected={false}
                 onClick={() => void add(ingredient.name, ingredient.id)}
-                className="w-full px-3 py-3 text-left"
+                className="min-h-11 w-full px-3 py-3 text-left"
               >
                 {ingredient.display_name}
                 <span className="ml-2 text-xs text-neutral-400">{ingredient.category}</span>

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { createRecipe, draftRecipe } from "../recipes/api";
 import { searchIngredients } from "../shopping-list/api";
+import { useDebounced } from "../../hooks/useDebounced";
 import type {
   DraftIngredient,
   Ingredient,
@@ -143,16 +144,6 @@ function saveProblem(error: unknown): string {
       return "Un ingrediente agganciato non esiste più. Togli la spunta a quella riga, poi salva.";
   }
   return "Non sono riuscito a salvare la ricetta. Niente è andato perso: riprova.";
-}
-
-/** Ritarda il valore, così la ricerca non parte a ogni tasto premuto. */
-function useDebounced(value: string, ms: number): string {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
 }
 
 /** L'unico modo, su questo schermo, per agganciare un ingrediente che la bozza
