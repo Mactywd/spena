@@ -10,3 +10,24 @@ export const STATUS_LABELS: Record<PantryStatus, string> = {
   low: "Quasi finito",
   finished: "Finito",
 };
+
+/** I due modi in cui una pastiglia porta il colore di uno stato. */
+export type StatusTone = {
+  /** pieno, per la scelta attiva: il colore è il messaggio */
+  fill: string;
+  /** tinta leggera, per dire solo com'è adesso senza chiedere niente */
+  tint: string;
+};
+
+// Il colore degli stati sta accanto alle loro parole, e per lo stesso motivo: la
+// dispensa e il foglio di cottura parlano degli stessi tre stati, e due mappe
+// separate divergono. Questa è l'unica sorgente di verità sul colore di uno stato.
+//
+// `low` non è una sfumatura del verde: è l'unico stato che cambia la risposta alla
+// domanda «si può cucinare?», e prima di questa mappa era verde identico a
+// `available`, cioè invisibile.
+export const STATUS_TONE: Record<PantryStatus, StatusTone> = {
+  available: { fill: "bg-brand text-white", tint: "bg-brand-tint text-brand" },
+  low: { fill: "bg-low text-white", tint: "bg-low-tint text-low" },
+  finished: { fill: "bg-ink-soft text-white", tint: "bg-page text-ink-soft" },
+};
