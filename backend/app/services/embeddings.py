@@ -20,6 +20,22 @@ class EmbeddingUnavailable(Exception):
     """Il fornitore non è utilizzabile. La ricerca degrada al solo testo."""
 
 
+# I due prefissi vivono qui e solo qui. Erano ricopiati in linea da tre fornitori su
+# tre, con un test che ne fissava uno: e il fornitore non difeso era proprio quello
+# (HTTP) che si usa quando l'extra `embeddings` resta fuori dall'immagine. Ometterli
+# non solleva nessun errore, peggiora solo i risultati.
+QUERY_PREFIX = "query: "
+PASSAGE_PREFIX = "passage: "
+
+
+def decorate_query(text: str) -> str:
+    return f"{QUERY_PREFIX}{text}"
+
+
+def decorate_passage(text: str) -> str:
+    return f"{PASSAGE_PREFIX}{text}"
+
+
 class EmbeddingProvider(Protocol):
     async def embed_query(self, text: str) -> list[float]: ...
 
@@ -32,14 +48,6 @@ class LocalEmbeddingProvider:
     def __init__(self, model_name: str | None = None) -> None:
         self._model_name = model_name or get_settings().embedding_model
         self._model = None
-
-    @staticmethod
-    def _decorate_query(text: str) -> str:
-        return f"query: {text}"
-
-    @staticmethod
-    def _decorate_passage(text: str) -> str:
-        return f"passage: {text}"
 
     def _load_model(self):
         if self._model is None:
@@ -59,10 +67,10 @@ class LocalEmbeddingProvider:
             raise EmbeddingUnavailable(str(exc)) from exc
 
     async def embed_query(self, text: str) -> list[float]:
-        return (await self._encode([self._decorate_query(text)]))[0]
+        return (await self._encode([decorate_query(text)]))[0]
 
     async def embed_passages(self, texts: list[str]) -> list[list[float]]:
-        return await self._encode([self._decorate_passage(t) for t in texts])
+        return await self._encode([decorate_passage(t) for t in texts])
 
 
 class HttpEmbeddingProvider:
@@ -85,10 +93,10 @@ class HttpEmbeddingProvider:
             raise EmbeddingUnavailable(f"Risposta non valida dal fornitore: {exc}") from exc
 
     async def embed_query(self, text: str) -> list[float]:
-        return (await self._post([f"query: {text}"]))[0]
+        return (await self._post([decorate_query(text)]))[0]
 
     async def embed_passages(self, texts: list[str]) -> list[list[float]]:
-        return await self._post([f"passage: {t}" for t in texts])
+        return await self._post([decorate_passage(t) for t in texts])
 
 
 class FakeEmbeddingProvider:
@@ -103,10 +111,10 @@ class FakeEmbeddingProvider:
         return [v / norm for v in values]
 
     async def embed_query(self, text: str) -> list[float]:
-        return self._vector(f"query: {text}")
+        return self._vector(decorate_query(text))
 
     async def embed_passages(self, texts: list[str]) -> list[list[float]]:
-        return [self._vector(f"passage: {t}") for t in texts]
+        return [self._vector(decorate_passage(t)) for t in texts]
 
 
 def get_embedding_provider() -> EmbeddingProvider:
