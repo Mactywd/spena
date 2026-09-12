@@ -63,5 +63,5 @@ def downgrade() -> None:
     op.drop_table("import_terms")
     op.drop_table("recipe_imports")
     op.drop_index("ix_recipes_category", table_name="recipes")
-    for colonna in ("category", "cook_minutes", "prep_minutes", "image_url"):
-        op.drop_column("recipes", colonna)
+    for column in ("category", "cook_minutes", "prep_minutes", "image_url"):
+        op.drop_column("recipes", column)

@@ -149,7 +149,7 @@ async def propose_decisions(
         return []
 
     api = client if client is not None else _build_client()
-    anagrafica = list(
+    registry = list(
         (
             await session.execute(
                 select(Ingredient.id, Ingredient.name, Ingredient.category).order_by(
@@ -158,15 +158,15 @@ async def propose_decisions(
             )
         ).all()
     )
-    by_name = {name: ingredient_id for ingredient_id, name, _ in anagrafica}
-    name_by_id = {ingredient_id: name for ingredient_id, name, _ in anagrafica}
+    by_name = {name: ingredient_id for ingredient_id, name, _ in registry}
+    name_by_id = {ingredient_id: name for ingredient_id, name, _ in registry}
     categories = {str(value) for value in IngredientCategory}
 
     question = json.dumps(
         {
             "termini": [term.display_name for term in batch],
             "anagrafica": [
-                {"nome": name, "categoria": category} for _, name, category in anagrafica
+                {"nome": name, "categoria": category} for _, name, category in registry
             ],
             "categorie": sorted(categories),
         },

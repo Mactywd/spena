@@ -66,14 +66,14 @@ async def main() -> None:
     """
     async with SessionLocal() as session:
         try:
-            scritti = await reindex(session)
+            written = await reindex(session)
         except EmbeddingUnavailable as exc:
             log_degradation_once(exc)
             print(SEMANTIC_OFF_HOWTO % exc)
             return
         await session.commit()
-    if scritti:
-        print(f"scritti {scritti} vettori: la ricerca semantica li vede adesso")
+    if written:
+        print(f"scritti {written} vettori: la ricerca semantica li vede adesso")
     else:
         print("nessun vettore da scrivere: tutte le ricette ne hanno già uno")
 

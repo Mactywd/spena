@@ -136,18 +136,18 @@ async def main() -> None:
 
     async with SessionLocal() as session:
         async with build_client() as client:
-            esito = await run_import(session, limit=arguments.limit, client=client)
-        numeri = await counts(session, GIALLOZAFFERANO)
+            result = await run_import(session, limit=arguments.limit, client=client)
+        totals = await counts(session, GIALLOZAFFERANO)
         await session.commit()
 
-    print(f"prese {esito.taken} pagine, scartate {esito.skipped}")
+    print(f"prese {result.taken} pagine, scartate {result.skipped}")
     print(
-        f"ricettario: {numeri.imported} importate, {numeri.pending_recipes} in attesa, "
-        f"{numeri.skipped} scartate in tutto"
+        f"ricettario: {totals.imported} importate, {totals.pending_recipes} in attesa, "
+        f"{totals.skipped} scartate in tutto"
     )
-    if numeri.pending_terms:
+    if totals.pending_terms:
         print(
-            f"{numeri.pending_terms} ingredienti da abbinare: aprili dal ricettario, "
+            f"{totals.pending_terms} ingredienti da abbinare: aprili dal ricettario, "
             "alla riga in cima. Le ricette entrano da sé mentre decidi."
         )
 
