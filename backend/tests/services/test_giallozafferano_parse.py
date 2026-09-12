@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from app.services.recipe_import.giallozafferano import UnparsablePage, parse_recipe
+from app.services.recipe_import.giallozafferano import (
+    TERM_KEY_MAX_CHARS,
+    UnparsablePage,
+    parse_recipe,
+    term_key,
+)
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "giallozafferano"
 
@@ -77,6 +82,30 @@ def test_una_riga_senza_link_ha_comunque_una_chiave():
 
 def test_le_porzioni_scritte_a_parole_si_leggono():
     assert parse_recipe(fixture("gruppi")).servings == 10
+
+
+def test_un_link_senza_niente_dentro_ricade_sul_nome():
+    """`<a href="/">` e `<a href="">` sono link senza niente dentro: `strip("/")`
+    li riduce a stringa vuota, che `sync_terms` scarta e che nessuna decisione può
+    mai sbloccare — una pagina che resta per sempre in attesa di un termine che
+    non può esistere, invisibile perché il conteggio in attesa non torna a zero.
+    Devono ricadere sul nome esattamente come una riga senza link."""
+    assert term_key("/", "Sale fino") == "testo:sale fino"
+    assert term_key("", "Sale fino") == "testo:sale fino"
+    assert term_key(None, "Sale fino") == "testo:sale fino"
+
+
+def test_un_href_piu_lungo_della_colonna_si_tronca():
+    """`term_key` è `String(200)` in `recipe_import.py`: un href più lungo
+    abortirebbe il giro con un IntegrityError invece di limitarsi a non essere
+    granulare come potrebbe."""
+    href = "/" + ("ricette-con-un-nome-lunghissimo-" * 10)
+    assert len(href.strip("/")) > TERM_KEY_MAX_CHARS
+
+    key = term_key(href, "Qualcosa")
+
+    assert len(key) == TERM_KEY_MAX_CHARS
+    assert key == href.strip("/")[:TERM_KEY_MAX_CHARS]
 
 
 def test_il_blocco_dentro_una_lista_si_trova():

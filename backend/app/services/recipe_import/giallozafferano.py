@@ -188,16 +188,26 @@ def recipe_jsonld(soup: BeautifulSoup) -> dict:
     raise UnparsablePage("nessun blocco schema.org/Recipe nella pagina")
 
 
+TERM_KEY_MAX_CHARS = 200  # la colonna `term_key` è String(200) (recipe_import.py)
+
+
 def term_key(href: str | None, name: str) -> str:
     """L'identità del termine è l'indirizzo del loro catalogo, non il nome scritto.
 
     Un refuso corretto cambia il nome e non l'indirizzo, e un dizionario costruito
     sui nomi perderebbe la decisione già presa. Le righe senza link — il catalogo
     non copre tutto — ricadono sul nome, marcate perché si veda che è un ripiego.
+
+    Un `<a href="/">` (o `href=""`) è un link senza niente dentro: `strip("/")`
+    lo riduce a stringa vuota, che `sync_terms` salta e che `materialize_ready`
+    aspetterebbe per sempre — una pagina mai sbloccabile, e invisibile perché il
+    conteggio in attesa non torna a zero. Ricade sul nome esattamente come una
+    riga senza link. Un href più lungo della colonna avrebbe l'effetto opposto,
+    un `IntegrityError` che interrompe il giro: si tronca per starci.
     """
-    if href:
-        return href.strip("/")
-    return f"testo:{name.strip().lower()}"
+    stripped = href.strip("/") if href else ""
+    key = stripped if stripped else f"testo:{name.strip().lower()}"
+    return key[:TERM_KEY_MAX_CHARS]
 
 
 def parse_ingredients(soup: BeautifulSoup) -> list[ParsedIngredient]:
