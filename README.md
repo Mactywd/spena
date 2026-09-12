@@ -84,10 +84,15 @@ Vuota invece lascia partire: è il `.env` non ancora riempito, e l'accesso rispo
 Poi:
 
 ```bash
-docker compose up -d --build
-docker compose exec backend alembic upgrade head
+docker compose up -d --build --wait
 docker compose exec backend python -m app.cli.seed   # 169 ingredienti, 26 ricette
 ```
+
+Le migrazioni non sono un passo a mano: il backend esegue `alembic upgrade head`
+all'avvio, prima di servire (spec §13), e se la migrazione fallisce il container
+muore invece di rispondere contro uno schema vecchio. Il `--wait` serve al comando
+dopo: senza, `up -d` torna appena il container è partito e la semina potrebbe
+arrivare mentre le migrazioni sono ancora in corso.
 
 L'app è su <http://localhost:5173>. Il seme è idempotente: rieseguirlo non duplica
 niente.
@@ -160,8 +165,7 @@ dispensa vera.
 
 ```bash
 E2E="docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml"
-$E2E up -d --build
-$E2E exec -T backend alembic upgrade head
+$E2E up -d --build --wait
 $E2E exec -T backend python -m app.cli.seed
 (cd frontend && E2E_BASE_URL=http://localhost:5174 npm run e2e)
 $E2E down -v
@@ -219,10 +223,13 @@ di host pubblicato e le `POSTGRES_*` (qui non hanno default: il Compose di
 produzione non ne inventa uno).
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+docker compose -f docker-compose.prod.yml up -d --build --wait
 docker compose -f docker-compose.prod.yml exec backend python -m app.cli.seed
 ```
+
+Anche qui le migrazioni girano all'avvio del backend, quindi un `git pull` con una
+migrazione nuova e un `up -d --build` bastano: non c'è un comando da ricordarsi. Il
+seme invece resta a mano, perché non è un'operazione da ripetere a ogni riavvio.
 
 Il progetto Compose, in mancanza di `-p`, si chiama `spena` anche qui, cioè come
 quello di sviluppo: sulla stessa macchina i due stack si contenderebbero gli stessi

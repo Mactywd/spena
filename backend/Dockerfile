@@ -27,4 +27,8 @@ COPY . .
 
 EXPOSE 8000
 
+# Invocato con `sh` di proposito: in sviluppo /app è un bind mount di ./backend,
+# quindi a girare è il file dell'host e il bit di esecuzione impostato qui non
+# conterebbe niente.
+ENTRYPOINT ["sh", "./docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

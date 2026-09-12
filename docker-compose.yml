@@ -31,6 +31,15 @@ services:
         format: raw
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-spena}:${POSTGRES_PASSWORD:-spena}@db:5432/${POSTGRES_DB:-spena}
+    # Il backend è "sano" quando ha finito di migrare e risponde: serve a
+    # `up -d --wait`, che è ciò che rende sicuro seminare subito dopo. Senza, `up -d`
+    # torna appena il container è partito e `exec ... app.cli.seed` può arrivare
+    # mentre `alembic upgrade head` è ancora in corso, cioè su tabelle che non ci sono.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 3s
+      retries: 20
+      start_period: 30s
     depends_on:
       db: {condition: service_healthy}
     ports: ["8000:8000"]

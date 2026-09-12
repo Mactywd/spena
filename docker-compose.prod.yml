@@ -10,6 +10,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes: ["pgdata:/var/lib/postgresql/data"]
+    # Serve da quando le migrazioni girano all'avvio del backend (spec §13): senza,
+    # il backend parte mentre initdb è ancora in corso e `alembic upgrade head` muore
+    # sulla connessione rifiutata.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 3s
+      retries: 20
     restart: unless-stopped
 
   backend:
@@ -38,8 +45,18 @@ services:
     # non lo troverebbe. Lo stesso bersaglio dello sviluppo (/data) di proposito: è
     # quello che il percorso end-to-end prova davvero, e un secondo bersaglio solo
     # per la produzione sarebbe l'unico mai verificato. Vedi app/cli/seed.py.
+    # Il backend è "sano" quando ha finito di migrare e risponde: serve a
+    # `up -d --wait`, che è ciò che rende sicuro seminare subito dopo. Senza, `up -d`
+    # torna appena il container è partito e `exec ... app.cli.seed` può arrivare
+    # mentre `alembic upgrade head` è ancora in corso, cioè su tabelle che non ci sono.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 3s
+      retries: 20
+      start_period: 30s
     volumes: ["./data:/data:ro"]
-    depends_on: [db]
+    depends_on:
+      db: {condition: service_healthy}
     restart: unless-stopped
 
   frontend:
