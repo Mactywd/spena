@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -387,6 +387,25 @@ describe("RecipeBookScreen", () => {
 
     expect(await screen.findByText("Pasta al pomodoro")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "Pasta al pomodoro" })).not.toBeInTheDocument();
+  });
+
+  // Il caso normale, non un'eccezione (spec §6.3): l'immagine viene dal server di
+  // origine e non è mai copiata, quindi un 404 dopo un rinominamento a monte, un
+  // blocco sul Referer o solo poco segnale in corridoio la fanno fallire. Senza
+  // questa gestione la scheda mostra il titolo due volte (l'alt dell'immagine
+  // rotta, e il titolo vero sotto) più un riquadro vuoto delle dimensioni della
+  // foto mancata — ~230px su 812.
+  it("una foto che non carica non lascia un buco: la scheda torna al layout senza foto", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    const foto = await screen.findByRole("img", { name: "Pasta all'aglio" });
+    fireEvent.error(foto);
+
+    expect(screen.queryByRole("img", { name: "Pasta all'aglio" })).not.toBeInTheDocument();
+    // il titolo resta una volta sola: non si duplica nell'alt di un'immagine ormai
+    // fuori pagina
+    expect(screen.getAllByText("Pasta all'aglio")).toHaveLength(1);
   });
 
   it("il filtro per categoria chiede al backend solo quella categoria", async () => {

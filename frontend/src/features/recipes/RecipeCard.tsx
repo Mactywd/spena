@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { RecipeSummary } from "../../domain/types";
 
@@ -28,16 +29,26 @@ function totalMinutes(recipe: RecipeSummary): number | null {
 }
 
 export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
+  // L'immagine arriva dal server di origine e non viene mai copiata (spec §6.3):
+  // un 404 dopo che la ricetta è stata rinominata altrove, un blocco sul
+  // Referer, o solo il segnale debole del corridoio del supermercato sono il
+  // caso normale, non l'eccezione. Una volta che il caricamento fallisce, la
+  // scheda si comporta come se `image_url` fosse null da sempre — stesso layout
+  // già pensato e già testato per quel caso, non un terzo stato da inventare.
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = recipe.image_url !== null && !imageFailed;
+
   return (
     <li>
       <Link to={`/ricette/${recipe.id}`} className="block rounded-card bg-card p-3.5">
-        {recipe.image_url && (
+        {showImage && (
           // loading="lazy" non è un dettaglio: duecento schede su un telefono sono
           // duecento immagini, e l'immagine arriva dal server di origine
           <img
-            src={recipe.image_url}
+            src={recipe.image_url!}
             alt={recipe.title}
             loading="lazy"
+            onError={() => setImageFailed(true)}
             className="mb-2.5 aspect-[3/2] w-full rounded-lg object-cover"
           />
         )}
