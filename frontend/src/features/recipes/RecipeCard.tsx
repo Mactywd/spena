@@ -7,10 +7,14 @@ const SOURCE_LABEL: Record<string, string> = {
   ai: "AI",
 };
 
-function missingLabel(missing: number): string {
-  if (missing === 0) return "Puoi cucinarla ora";
-  if (missing === 1) return "manca 1 ingrediente";
-  return `mancano ${missing} ingredienti`;
+// La frase "puoi cucinarla" risponde a `cookable`, che è il verdetto del backend,
+// e non a `missing === 0`, che è un altro campo. Dedurre il verdetto da un conteggio
+// è il frontend che rifà un calcolo di dominio: oggi i due campi concordano per
+// costruzione, ma il giorno in cui la regola cambia la scheda mentirebbe.
+function missingLabel(recipe: RecipeSummary): string {
+  if (recipe.cookable) return "Puoi cucinarla ora";
+  if (recipe.missing === 1) return "manca 1 ingrediente";
+  return `mancano ${recipe.missing} ingredienti`;
 }
 
 export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
@@ -27,7 +31,7 @@ export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
           <p className="text-sm text-neutral-500">{recipe.description}</p>
         )}
         <p className={`text-xs ${recipe.cookable ? "text-emerald-700" : "text-amber-700"}`}>
-          {missingLabel(recipe.missing)}
+          {missingLabel(recipe)}
         </p>
       </Link>
     </li>

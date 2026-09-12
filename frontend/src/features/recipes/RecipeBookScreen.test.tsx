@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { RecipeBookScreen } from "./RecipeBookScreen";
+import { UnauthorizedError } from "../../api/client";
 
 const RESULTS = [
   { id: "r1", title: "Pasta all'aglio", description: "Svelta", source: "dataset",
@@ -12,8 +13,11 @@ const RESULTS = [
     missing: 1, cookable: false },
 ];
 
-function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderScreen(queryCache?: QueryCache) {
+  const client = new QueryClient({
+    queryCache,
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -143,5 +147,46 @@ describe("RecipeBookScreen", () => {
 
     expect(screen.getByText("Risotto al pesce")).toBeDefined();
     expect(screen.queryByText("Pollo al forno")).toBeNull();
+  });
+
+  it("una sessione scaduta durante la ricerca arriva alla QueryCache", async () => {
+    // È il punto che App.tsx aggancia per riportare all'accesso. La prima versione
+    // di questo schermo catturava il 401 in un .catch locale: l'utente leggeva
+    // "ricerca fallita" e restava su uno schermo che non avrebbe mai più
+    // funzionato, perché la sessione era finita e nessuno glielo diceva.
+    const onError = vi.fn();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
+
+    renderScreen(new QueryCache({ onError }));
+
+    await waitFor(() => expect(onError).toHaveBeenCalled());
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
+  });
+
+  it("non riordina: l'ordine è quello che decide il backend", async () => {
+    // L'ordinamento nasce da `recipe_search.py`, che mette davanti ciò a cui manca
+    // meno. Una ricetta non cucinabile prima di una cucinabile è quindi un ordine
+    // legittimo, e il frontend non deve "aggiustarlo": la logica di dominio sta nel
+    // backend, ed è quella separazione che rende la porta a Capacitor un involucro.
+    // Dati scelti perché *qualunque* riordino lato client cambi l'ordine: per
+    // titolo crescente, per mancanti crescenti o per cucinabili prima, Agnello
+    // finirebbe davanti. I primi dati che avevo scelto si ordinavano già così da
+    // soli, e il test passava anche con un .sort() aggiunto: non aveva denti.
+    const backendOrder = [
+      { id: "z", title: "Zuppa", description: null, source: "dataset",
+        missing: 2, cookable: false },
+      { id: "a", title: "Agnello", description: null, source: "dataset",
+        missing: 0, cookable: true },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(backendOrder), { status: 200 })
+    ));
+    renderScreen();
+
+    await screen.findByText("Zuppa");
+    const titles = screen
+      .getAllByRole("listitem")
+      .map((li) => li.querySelector("span")?.textContent);
+    expect(titles).toEqual(["Zuppa", "Agnello"]);
   });
 });

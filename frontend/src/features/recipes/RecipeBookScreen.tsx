@@ -1,49 +1,37 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
 import { searchRecipes } from "./api";
-import type { RecipeSummary } from "../../domain/types";
 
 const DEBOUNCE_MS = 180;
+
+/** Ritarda il valore, così la ricerca non parte a ogni tasto premuto. */
+function useDebounced(value: string, ms: number): string {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
+}
 
 export function RecipeBookScreen() {
   const [query, setQuery] = useState("");
   const [onlyCookable, setOnlyCookable] = useState(false);
-  const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isError, setIsError] = useState(false);
+  const debouncedQuery = useDebounced(query, DEBOUNCE_MS);
 
-  useEffect(() => {
-    // `superseded` è la guardia contro le risposte fuori ordine: digitare in
-    // fretta, o toccare il filtro subito dopo, può lasciare in volo una ricerca
-    // vecchia insieme a una nuova, e la più lenta può arrivare dopo. Senza
-    // questo una ricerca superata che risponde in ritardo sovrascriverebbe
-    // risultati già più recenti sullo schermo — lo stesso difetto costato un
-    // MAJOR nel campo di aggiunta della lista della spesa (AddItemField).
-    let superseded = false;
-    const timer = setTimeout(() => {
-      setIsLoading(true);
-      searchRecipes(query, onlyCookable)
-        .then((found) => {
-          if (superseded) return;
-          setRecipes(found);
-          setIsLoading(false);
-          setIsError(false);
-        })
-        // una ricerca rotta non è un ricettario vuoto: dirlo sarebbe una bugia,
-        // e qui la differenza conta più che altrove perché una ricerca
-        // semantica senza risultati ha lo stesso aspetto di una ricerca rotta
-        .catch(() => {
-          if (superseded) return;
-          setIsLoading(false);
-          setIsError(true);
-        });
-    }, DEBOUNCE_MS);
-    return () => {
-      superseded = true;
-      clearTimeout(timer);
-    };
-  }, [query, onlyCookable]);
+  // Il termine sta dentro la chiave, e questo fa due cose che una ricerca scritta
+  // a mano non fa. La sicurezza sull'ordine diventa strutturale: una risposta
+  // superata atterra sotto la propria chiave e non può sovrascrivere risultati più
+  // recenti, senza bisogno di guardarla. E l'errore passa dalla QueryCache che
+  // App.tsx aggancia al 401: una sessione scaduta riporta all'accesso, invece di
+  // diventare un "ricerca fallita" permanente su uno schermo che non funzionerà
+  // mai più. La prima versione di questo schermo sbagliava esattamente lì.
+  const { data: recipes = [], isLoading, isError } = useQuery({
+    queryKey: ["recipes", debouncedQuery, onlyCookable],
+    queryFn: () => searchRecipes(debouncedQuery, onlyCookable),
+  });
 
   return (
     <div className="p-4">
