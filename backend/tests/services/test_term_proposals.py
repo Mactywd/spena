@@ -1,4 +1,5 @@
 import json
+import uuid
 
 import pytest
 import pytest_asyncio
@@ -102,9 +103,77 @@ async def test_un_termine_che_non_avevo_chiesto_si_scarta(db_session, termini):
     assert proposte == []
 
 
+async def test_una_voce_non_a_dizionario_si_scarta(db_session, termini):
+    """Una voce che non è nemmeno un oggetto non si può verificare: si scarta, e non
+    deve costare le proposte buone dello stesso lotto."""
+    risposta = {
+        "proposals": [
+            "Rigatoni",
+            {"term": "Speck", "action": "ignore"},
+        ]
+    }
+
+    proposte = await propose_decisions(db_session, termini, client=FakeClaude(risposta))
+
+    per_termine = {p.term_id: p for p in proposte}
+    assert termini[0].id not in per_termine
+    assert per_termine[termini[1].id].action == "ignore"
+
+
+async def test_un_azione_non_riconosciuta_si_scarta(db_session, termini):
+    """Un'azione fuori dalle tre previste non produce niente per quel termine, ma
+    non deve bloccare le proposte buone dello stesso lotto."""
+    risposta = {
+        "proposals": [
+            {"term": "Rigatoni", "action": "boh"},
+            {"term": "Speck", "action": "ignore"},
+        ]
+    }
+
+    proposte = await propose_decisions(db_session, termini, client=FakeClaude(risposta))
+
+    per_termine = {p.term_id: p for p in proposte}
+    assert termini[0].id not in per_termine
+    assert per_termine[termini[1].id].action == "ignore"
+
+
+async def test_un_nome_vuoto_in_create_non_e_una_proposta(db_session, termini):
+    """Un nome vuoto non è un nome canonico: la create si scarta, ma le altre
+    proposte dello stesso lotto restano."""
+    risposta = {
+        "proposals": [
+            {"term": "Speck", "action": "create", "name": "", "display_name": "Speck",
+             "category": "carne"},
+            {"term": "Acqua", "action": "ignore"},
+        ]
+    }
+
+    proposte = await propose_decisions(db_session, termini, client=FakeClaude(risposta))
+
+    per_termine = {p.term_id: p for p in proposte}
+    assert termini[1].id not in per_termine
+    assert per_termine[termini[2].id].action == "ignore"
+
+
 async def test_una_risposta_che_non_e_json_si_dichiara(db_session, termini):
     with pytest.raises(AiUnavailable):
         await propose_decisions(db_session, termini, client=FakeClaude("mi dispiace, ecco:"))
+
+
+async def test_un_json_valido_senza_proposals_si_dichiara(db_session, termini):
+    """Un JSON ben formato ma senza 'proposals' è altrettanto inverificabile di un
+    JSON rotto: si dichiara, non si interpreta alla meglio."""
+    with pytest.raises(AiUnavailable):
+        await propose_decisions(db_session, termini, client=FakeClaude({"termini": []}))
+
+
+async def test_un_proposals_che_non_e_una_lista_si_dichiara(db_session, termini):
+    """Anche quando 'proposals' c'è ma non è una lista, la forma è sbagliata allo
+    stesso modo: si dichiara, non si interpreta alla meglio."""
+    with pytest.raises(AiUnavailable):
+        await propose_decisions(
+            db_session, termini, client=FakeClaude({"proposals": "non è una lista"})
+        )
 
 
 async def test_senza_chiave_configurata_si_dichiara(db_session, termini, monkeypatch):
@@ -119,16 +188,30 @@ async def test_senza_chiave_configurata_si_dichiara(db_session, termini, monkeyp
         get_settings.cache_clear()
 
 
-async def test_si_chiedono_al_massimo_quaranta_termini_per_chiamata(db_session, termini):
+async def test_si_chiedono_al_massimo_quaranta_termini_per_chiamata(db_session):
     """Il prompt porta l'anagrafica intera: un lotto senza tetto la farebbe crescere
-    fino a una chiamata che costa e che il modello tronca."""
+    fino a una chiamata che costa e che il modello tronca.
+
+    Il tetto va misurato sul numero di termini effettivamente inviati, non su
+    quante volte ricorre un nome: con nomi tutti diversi un lotto senza tetto (90)
+    supera chiaramente il tetto (40), mentre un lotto tagliato non lo supera mai —
+    l'asserzione distingue davvero i due casi.
+    """
     from app.services.recipe_import.terms import MAX_TERMS_PER_CALL
 
-    finto = FakeClaude({"proposals": []})
-    await propose_decisions(db_session, termini * 30, client=finto)
+    lotto = [
+        ImportTerm(
+            id=uuid.uuid4(), source=GIALLOZAFFERANO, term_key=f"ricetta-{i}",
+            display_name=f"Ingrediente{i}", occurrences=1, decision=TermDecision.PENDING,
+        )
+        for i in range(90)
+    ]
 
-    inviati = finto.last_kwargs["messages"][0]["content"]
-    assert inviati.count("Rigatoni") <= MAX_TERMS_PER_CALL
+    finto = FakeClaude({"proposals": []})
+    await propose_decisions(db_session, lotto, client=finto)
+
+    inviati = json.loads(finto.last_kwargs["messages"][0]["content"])["termini"]
+    assert len(inviati) <= MAX_TERMS_PER_CALL
 
 
 async def test_l_anagrafica_arriva_nel_prompt(db_session, termini):
