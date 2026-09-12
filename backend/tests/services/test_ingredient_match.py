@@ -37,6 +37,28 @@ async def test_una_somiglianza_si_propone_ma_resta_incerta(db_session, anagrafic
     assert match.certain is False
 
 
+async def test_il_nome_canonico_vince_su_un_alias_omonimo(db_session, anagrafica):
+    """Se l'anagrafica arriva ad avere un ingrediente il cui nome coincide con
+    l'alias di un altro (il duplicato lo permette: controlla solo
+    `ingredients.name`, non gli alias esistenti), l'OR con `.limit(1)` e senza
+    `ORDER BY` lascerebbe Postgres scegliere a caso fra i due. Qui «pomodori
+    pelati» è insieme un alias di «pomodoro» (dalla fixture) e, dopo questa
+    riga, il nome canonico di un secondo ingrediente: il nome canonico deve
+    vincere sempre, non a caso una volta su due."""
+    db_session.add(
+        Ingredient(
+            name="pomodori pelati", display_name="Pomodori pelati",
+            category=IngredientCategory.VERDURA,
+        )
+    )
+    await db_session.flush()
+
+    match = await match_name(db_session, "Pomodori pelati")
+
+    assert match.name == "pomodori pelati"
+    assert match.certain is True
+
+
 async def test_niente_di_somigliante_non_e_un_aggancio(db_session, anagrafica):
     match = await match_name(db_session, "bottarga di muggine")
     assert match.ingredient_id is None

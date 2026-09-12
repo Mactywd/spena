@@ -36,18 +36,32 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
     if not normalized:
         return NameMatch(None, None, False)
 
-    # prima la coincidenza esatta, che non dipende dalla somiglianza trigram e non
-    # può essere scavalcata da un candidato più "frequente"
-    exact = (
+    # Prima la coincidenza esatta sul nome canonico, in una query sua e non in un
+    # OR con gli alias: se l'anagrafica arrivasse mai ad avere un ingrediente il
+    # cui nome coincide con l'alias di un altro — il duplicato controlla solo
+    # `ingredients.name`, non gli alias esistenti, quindi è raggiungibile — l'OR
+    # con `.limit(1)` e senza `ORDER BY` lascerebbe Postgres scegliere a caso fra i
+    # due, marcando «certo» un aggancio arbitrario che `sync_terms` applica da
+    # solo, senza nessuno che lo rilegga.
+    canonical = (
+        await session.execute(select(Ingredient).where(Ingredient.name == normalized).limit(1))
+    ).scalar_one_or_none()
+    if canonical is not None:
+        return NameMatch(canonical.id, canonical.name, True)
+
+    # Poi l'alias, solo se il nome canonico non ha già deciso. Stesso principio:
+    # niente ambiguità silenziosa, un ordine esplicito anche qui.
+    via_alias = (
         await session.execute(
             select(Ingredient)
-            .outerjoin(IngredientAlias, IngredientAlias.ingredient_id == Ingredient.id)
-            .where((Ingredient.name == normalized) | (IngredientAlias.alias == normalized))
+            .join(IngredientAlias, IngredientAlias.ingredient_id == Ingredient.id)
+            .where(IngredientAlias.alias == normalized)
+            .order_by(Ingredient.id)
             .limit(1)
         )
-    ).unique().scalar_one_or_none()
-    if exact is not None:
-        return NameMatch(exact.id, exact.name, True)
+    ).scalar_one_or_none()
+    if via_alias is not None:
+        return NameMatch(via_alias.id, via_alias.name, True)
 
     candidates = await search_ingredients(session, raw_name, limit=1)
     if not candidates:
