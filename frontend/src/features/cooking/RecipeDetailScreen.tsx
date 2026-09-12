@@ -4,6 +4,10 @@ import { useParams } from "react-router-dom";
 import { fetchRecipe } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { CookSheet } from "./CookSheet";
+import { Alert } from "../../components/ui/Alert";
+import { Card } from "../../components/ui/Card";
+import { SectionHeading } from "../../components/ui/SectionHeading";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { CookResult, RecipeIngredientLine } from "../../domain/types";
 
 function statusNote(line: RecipeIngredientLine): string {
@@ -50,20 +54,18 @@ export function RecipeDetailScreen() {
     refetch: refetchPantry,
   } = useQuery({ queryKey: ["pantry"], queryFn: fetchPantry });
 
-  if (isRecipeLoading) return <p className="p-4 text-neutral-500">Carico…</p>;
+  if (isRecipeLoading) return <p className="p-4 text-ink-soft">Carico…</p>;
 
   // un caricamento fallito non è una ricetta vuota: dirlo sarebbe una bugia su
   // cosa serve e cosa si ha
   if (isRecipeError || !recipe) {
     return (
-      <div className="flex flex-col items-start gap-2 p-4">
-        <p role="alert" className="text-sm text-red-600">
-          Non sono riuscito a caricare questa ricetta. Riprova.
-        </p>
+      <div className="flex flex-col items-start gap-3 p-4">
+        <Alert>Non sono riuscito a caricare questa ricetta. Riprova.</Alert>
         <button
           type="button"
           onClick={() => void refetchRecipe()}
-          className="rounded-lg border px-4 py-3 text-sm"
+          className={buttonClasses("secondary")}
         >
           Riprova
         </button>
@@ -79,9 +81,9 @@ export function RecipeDetailScreen() {
   ];
 
   return (
-    <div className="p-4">
-      <h1 className="text-xl font-semibold">{recipe.title}</h1>
-      {recipe.description && <p className="text-neutral-500">{recipe.description}</p>}
+    <div className="px-4 pt-5 pb-4">
+      <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
+      {recipe.description && <p className="pt-1 text-ink-soft">{recipe.description}</p>}
 
       {cooking && pantry ? (
         <div className="pt-4">
@@ -97,53 +99,68 @@ export function RecipeDetailScreen() {
       ) : (
         <>
           {lastCook && (
-            <p role="status" className="pt-2 text-sm text-emerald-700">
+            <p
+              role="status"
+              className="mt-3 rounded-card bg-brand-tint px-3 py-2.5 text-sm text-brand"
+            >
               {cookNote(lastCook)}
             </p>
           )}
 
           {groups.map(({ label, lines }) => (
-            <section key={label} className="pt-4">
-              <h2 className="text-xs uppercase tracking-wide text-neutral-400">{label}</h2>
-              <ul className="divide-y divide-neutral-100">
-                {lines.map((line) => (
-                  <li key={line.ingredient_id} className="flex justify-between gap-2 py-2">
-                    <span>
-                      {line.ingredient_name}
-                      {line.quantity_text && (
-                        <span className="ml-2 text-sm text-neutral-400">{line.quantity_text}</span>
-                      )}
-                    </span>
-                    <span
-                      className={`shrink-0 text-xs ${
-                        line.satisfied ? "text-emerald-700" : "text-amber-700"
-                      }`}
+            <section key={label}>
+              <SectionHeading>{label}</SectionHeading>
+              <Card pad={false}>
+                <ul className="divide-y divide-line">
+                  {lines.map((line) => (
+                    <li
+                      key={line.ingredient_id}
+                      className="flex items-baseline justify-between gap-2 px-3 py-2.5"
                     >
-                      {statusNote(line)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                      <span>
+                        {line.ingredient_name}
+                        {line.quantity_text && (
+                          <span className="ml-2 text-sm text-ink-faint">{line.quantity_text}</span>
+                        )}
+                      </span>
+                      {/* gli stessi due colori della dispensa: il verdetto per riga è
+                          la stessa regola primario/secondario vista ingrediente per
+                          ingrediente */}
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                          line.satisfied ? "bg-brand-tint text-brand" : "bg-low-tint text-low"
+                        }`}
+                      >
+                        {statusNote(line)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             </section>
           ))}
 
-          <section className="pt-4">
-            <h2 className="text-xs uppercase tracking-wide text-neutral-400">Procedimento</h2>
-            <p className="whitespace-pre-line pt-1">{recipe.instructions}</p>
+          <section>
+            <SectionHeading>Procedimento</SectionHeading>
+            {/* leggere mentre si cucina: interlinea larga, perché si torna a cercare
+                il punto in cui si era con le mani sporche e lo sguardo di sbieco */}
+            <Card>
+              <p className="leading-relaxed whitespace-pre-line">{recipe.instructions}</p>
+            </Card>
           </section>
 
           {/* "Cucina" apre il foglio di cottura, che ha bisogno della dispensa per
               elencare i vasetti concreti: senza quella, il pulsante dice perché non
               si può procedere invece di aprire un foglio vuoto e muto */}
           {isPantryError ? (
-            <div className="mt-6 flex flex-col items-start gap-2">
-              <p role="alert" className="text-sm text-red-600">
+            <div className="mt-6 flex flex-col items-start gap-3">
+              <Alert>
                 Non sono riuscito a caricare la dispensa: non posso avviare la cottura.
-              </p>
+              </Alert>
               <button
                 type="button"
                 onClick={() => void refetchPantry()}
-                className="rounded-lg border px-4 py-3 text-sm"
+                className={buttonClasses("secondary")}
               >
                 Riprova
               </button>
@@ -158,14 +175,14 @@ export function RecipeDetailScreen() {
                   setCooking(true);
                 }}
                 disabled={isPantryLoading}
-                className="mt-6 min-h-11 w-full rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
+                className={`${buttonClasses("primary", "block")} mt-6`}
               >
                 Cucina
               </button>
               {/* un pulsante grigio e muto non si spiega da sé: dire che manca la
                   dispensa costa una riga e toglie l'unico dubbio */}
               {isPantryLoading && (
-                <p className="pt-2 text-xs text-neutral-500">Carico la dispensa…</p>
+                <p className="pt-2 text-xs text-ink-soft">Carico la dispensa…</p>
               )}
             </>
           )}

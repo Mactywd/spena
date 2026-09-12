@@ -10,6 +10,7 @@ import { lookupBarcode, stockItems } from "./api";
 import { OTHER_INGREDIENT } from "./wording";
 import { ApiError } from "../../api/client";
 import type { Ingredient, Product, ShoppingItem } from "../../domain/types";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 
 type Resolution =
   | { kind: "loose" }
@@ -79,8 +80,8 @@ function MatchIngredientField({
   const trimmed = query.trim();
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
-      <p className="text-sm text-amber-800">
+    <div className="flex flex-col gap-2 rounded-card border border-low/30 bg-low-tint p-3">
+      <p className="text-sm text-low">
         «{rawText}» non è abbinata a un ingrediente: scegline uno per poterla sistemare.
       </p>
       <label className="text-sm">
@@ -92,11 +93,11 @@ function MatchIngredientField({
             setQuery(e.target.value);
             setOutcome("searching");
           }}
-          className="mt-1 w-full rounded border px-3 py-3 text-base"
+          className="mt-1.5"
         />
       </label>
       {showSuggestions && suggestions.length > 0 && (
-        <ul role="listbox" className="overflow-hidden rounded-lg border border-neutral-200">
+        <ul role="listbox" className="divide-y divide-line overflow-hidden rounded-card bg-card">
           {suggestions.map((ingredient) => (
             <li key={ingredient.id}>
               <button
@@ -107,7 +108,7 @@ function MatchIngredientField({
                 className="w-full px-3 py-3 text-left text-sm"
               >
                 {ingredient.display_name}
-                <span className="ml-2 text-xs text-neutral-400">{ingredient.category}</span>
+                <span className="ml-2 text-xs text-ink-faint">{ingredient.category}</span>
               </button>
             </li>
           ))}
@@ -118,13 +119,13 @@ function MatchIngredientField({
           nulla, e senza una via d'uscita quella voce resterebbe in lista per
           sempre. Crearlo è l'unica uscita, e nessun task successivo la prevede. */}
       {showSuggestions && outcome === "searched" && suggestions.length === 0 && (
-        <p className="text-sm text-amber-800">
+        <p className="text-sm text-low">
           Nessun ingrediente corrisponde. Puoi crearlo adesso: finisce nel reparto «
           {UNKNOWN_CATEGORY}» e la voce diventa sistemabile.
         </p>
       )}
       {showSuggestions && outcome === "failed" && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           La ricerca degli ingredienti non risponde. Riprova a scrivere, oppure crealo.
         </p>
       )}
@@ -133,13 +134,13 @@ function MatchIngredientField({
           type="button"
           onClick={() => create.mutate(trimmed)}
           disabled={create.isPending}
-          className="rounded-lg bg-amber-700 px-4 py-3 text-sm text-white disabled:opacity-40"
+          className={buttonClasses("warn")}
         >
           Crea l'ingrediente «{trimmed}»
         </button>
       )}
       {create.isError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           Non sono riuscito a creare l'ingrediente. Forse esiste già con un altro nome: cercalo
           qui sopra, oppure riprova.
         </p>
@@ -326,47 +327,47 @@ export function StockingScreen() {
     <div className="p-4">
       <h1 className="pb-3 text-xl font-semibold">Sistema la spesa</h1>
 
-      {isLoading && <p className="text-neutral-500">Carico…</p>}
+      {isLoading && <p className="text-ink-soft">Carico…</p>}
       {/* un caricamento fallito non è una lista vuota: dire "non hai spuntato
           niente" a chi è tornato dalla spesa con le borse in mano è una bugia,
           e senza riprova non gli resta niente da fare */}
       {isError && (
         <div className="flex flex-col items-start gap-2">
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-danger">
             Non sono riuscito a caricare la spesa da sistemare. La lista non è vuota: non l'ho
             letta.
           </p>
           <button
             type="button"
             onClick={() => void refetch()}
-            className="rounded-lg border px-4 py-3 text-sm"
+            className={buttonClasses("secondary")}
           >
             Riprova
           </button>
         </div>
       )}
       {!isLoading && !isError && items.length === 0 && (
-        <p className="text-neutral-500">Niente da sistemare. Spunta prima qualcosa in lista.</p>
+        <p className="text-ink-soft">Niente da sistemare. Spunta prima qualcosa in lista.</p>
       )}
 
-      <ul className="divide-y divide-neutral-100">
+      <ul className="divide-y divide-line">
         {items.map((item) => {
           const resolution = resolved[item.id];
           const ingredientId = effectiveIngredientId(item);
           return (
             <li key={item.id} className="flex flex-col gap-2 py-3">
               <div className="flex items-center justify-between gap-2">
-                <span className={resolution ? "font-medium text-emerald-700" : ""}>
+                <span className={resolution ? "font-medium text-brand" : ""}>
                   {item.raw_text}
                 </span>
                 {resolution?.kind === "product" && (
-                  <span className="text-sm text-neutral-500">{resolution.product.name}</span>
+                  <span className="text-sm text-ink-soft">{resolution.product.name}</span>
                 )}
                 {resolution && (
                   <button
                     type="button"
                     onClick={() => changeResolution(item)}
-                    className="shrink-0 rounded border px-3 py-2 text-sm"
+                    className={`${buttonClasses("secondary")} shrink-0`}
                   >
                     Cambia<span className="sr-only"> la scelta per {item.raw_text}</span>
                   </button>
@@ -389,7 +390,7 @@ export function StockingScreen() {
                   <button
                     type="button"
                     onClick={() => openScanner(item)}
-                    className="rounded border px-4 py-3 text-sm"
+                    className={buttonClasses("secondary")}
                   >
                     {/* il nome della voce serve al nome accessibile, non all'occhio:
                         letto da uno screen reader distingue i pulsanti, visibile
@@ -399,7 +400,7 @@ export function StockingScreen() {
                   <button
                     type="button"
                     onClick={() => openCatalog(item)}
-                    className="rounded border px-4 py-3 text-sm"
+                    className={buttonClasses("secondary")}
                   >
                     Cerca a catalogo<span className="sr-only"> per {item.raw_text}</span>
                   </button>
@@ -408,7 +409,7 @@ export function StockingScreen() {
                     onClick={() =>
                       setResolved((prev) => ({ ...prev, [item.id]: { kind: "loose" } }))
                     }
-                    className="rounded border px-4 py-3 text-sm"
+                    className={buttonClasses("secondary")}
                   >
                     Sfuso, senza marca<span className="sr-only">: {item.raw_text}</span>
                   </button>
@@ -420,7 +421,7 @@ export function StockingScreen() {
       </ul>
 
       {scanningFor && (
-        <div className="mt-4 flex flex-col gap-3 rounded-lg border p-4">
+        <div className="mt-4 flex flex-col gap-3 rounded-card bg-card p-4">
           <BarcodeScanner
             onDetected={handleDetected}
             onCancel={() => setScanningFor(null)}
@@ -434,17 +435,17 @@ export function StockingScreen() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") lookupCode({ item: scanningFor, code: manualCode });
               }}
-              className="mt-1 w-full rounded border px-3 py-3 text-base"
+              className="mt-1.5"
             />
           </label>
-          {lookup.isPending && <p className="text-sm text-neutral-500">Cerco il codice…</p>}
+          {lookup.isPending && <p className="text-sm text-ink-soft">Cerco il codice…</p>}
           {/* il codice esiste in catalogo, ma sotto un altro ingrediente: la stessa
               frase del pannello del catalogo, perché è lo stesso fatto. Non si
               scrive nessuna risoluzione, quindi i tre pulsanti della voce sono
               ancora là sopra: leggere un altro codice, cercare a catalogo o
               confermare sfuso restano tutte aperte. */}
           {mismatch && mismatch.item.id === scanningFor.id && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-sm text-danger">
               «{mismatch.product.name}» {OTHER_INGREDIENT.one}. Leggi un altro codice, cercalo a
               catalogo, oppure conferma «{mismatch.item.raw_text}» come sfuso.
             </p>
@@ -453,13 +454,13 @@ export function StockingScreen() {
               era il muro più silenzioso dello schermo */}
           {failedLookup && (
             <div className="flex flex-col items-start gap-2">
-              <p role="alert" className="text-sm text-red-600">
+              <p role="alert" className="text-sm text-danger">
                 Non sono riuscito a leggere il codice. Riprova, oppure crea il prodotto a mano.
               </p>
               <button
                 type="button"
                 onClick={() => createByHand(failedLookup.item, failedLookup.code)}
-                className="rounded-lg border px-4 py-3 text-sm"
+                className={buttonClasses("secondary")}
               >
                 Crea il prodotto a mano
               </button>
@@ -510,7 +511,7 @@ export function StockingScreen() {
 
       {stock.isError && (
         <div className="mt-4 flex flex-col items-start gap-2">
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-danger">
             {stockFailureMessage(stock.error)}
           </p>
           {/* un 404 è l'unico caso in cui riprovare così com'è non può riuscire: la
@@ -527,7 +528,7 @@ export function StockingScreen() {
                 stock.reset();
                 void refetch();
               }}
-              className="rounded-lg border px-4 py-3 text-sm"
+              className={buttonClasses("secondary")}
             >
               Rileggi la spesa da sistemare
             </button>
@@ -539,7 +540,7 @@ export function StockingScreen() {
         type="button"
         onClick={() => stock.mutate()}
         disabled={Object.keys(resolved).length === 0 || stock.isPending}
-        className="mt-6 w-full rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
+        className={`${buttonClasses("primary", "block")} mt-6`}
       >
         Metti in dispensa
       </button>

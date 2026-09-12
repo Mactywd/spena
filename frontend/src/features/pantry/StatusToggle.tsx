@@ -1,4 +1,4 @@
-import { STATUS_LABELS } from "./statusLabels";
+import { STATUS_LABELS, STATUS_TONE } from "./statusLabels";
 import type { PantryStatus } from "../../domain/types";
 
 const OPTIONS: [PantryStatus, string][] = [
@@ -11,6 +11,10 @@ const OPTIONS: [PantryStatus, string][] = [
 // "low" è quello che fa funzionare la regola primario/secondario delle ricette.
 // Tre posizioni sempre visibili, bersagli da pollice: niente menu nascosto, niente
 // tooltip — da telefono il passaggio del mouse non esiste.
+//
+// Il colore arriva da STATUS_TONE e non da qui: il foglio di cottura mostra gli
+// stessi tre stati, e due schermi che se li colorano da soli prima o poi si
+// contraddicono su quale sia il giallo di «quasi finito».
 export function StatusToggle({
   value,
   onChange,
@@ -21,7 +25,7 @@ export function StatusToggle({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex gap-1" role="group">
+    <div className="flex gap-1.5" role="group">
       {OPTIONS.map(([status, label]) => (
         <button
           key={status}
@@ -31,8 +35,10 @@ export function StatusToggle({
           disabled={disabled}
           onClick={() => onChange(status)}
           aria-pressed={value === status}
-          className={`min-h-11 flex-1 rounded-full px-3 py-2 text-xs font-medium disabled:opacity-50 ${
-            value === status ? "bg-emerald-700 text-white" : "bg-neutral-100 text-neutral-600"
+          className={`min-h-11 flex-1 rounded-full px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 ${
+            value === status
+              ? STATUS_TONE[status].fill
+              : "bg-page text-ink-soft ring-1 ring-line ring-inset"
           }`}
         >
           {label}

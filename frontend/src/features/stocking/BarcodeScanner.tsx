@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 
 export function BarcodeScanner({
   onDetected,
@@ -102,9 +103,9 @@ export function BarcodeScanner({
   return (
     <div className="flex flex-col gap-3">
       {error ? (
-        <p role="alert" className="text-sm text-amber-700">{error}</p>
+        <p role="alert" className="text-sm text-low">{error}</p>
       ) : (
-        <video ref={videoRef} className="w-full rounded-lg bg-black" muted playsInline />
+        <video ref={videoRef} className="w-full rounded-card bg-black" muted playsInline />
       )}
       <button
         type="button"
@@ -112,7 +113,7 @@ export function BarcodeScanner({
           releaseRef.current();
           onCancel();
         }}
-        className="px-4 py-3 text-sm text-neutral-500"
+        className={buttonClasses("ghost")}
       >
         Annulla
       </button>

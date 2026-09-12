@@ -3,6 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { AddItemField } from "./AddItemField";
 import { addShoppingItem, fetchShoppingList, patchShoppingItem } from "./api";
+import { Alert } from "../../components/ui/Alert";
+import { Card } from "../../components/ui/Card";
+import { SectionHeading } from "../../components/ui/SectionHeading";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { ShoppingItem } from "../../domain/types";
 
 // Parziale e tipizzato sull'unione: "manual" non ha nota perché non c'è niente da
@@ -79,81 +83,96 @@ export function ShoppingListScreen() {
 
   return (
     <div>
+      <div className="px-4 pt-5">
+        <h1 className="text-2xl font-semibold tracking-tight">Lista</h1>
+      </div>
+
       <AddItemField onAdd={(text, id) => add.mutateAsync({ text, id })} />
 
       {checkedCount > 0 && (
         <div className="px-4 pb-2">
-          <Link
-            to="/sistema"
-            className="block rounded-lg bg-emerald-700 px-4 py-3 text-center text-white"
-          >
+          <Link to="/sistema" className={buttonClasses("primary", "block")}>
             Sistema la spesa
+            {/* il numero sta nel bersaglio e non accanto: è la ragione per cui si
+                tocca, e da telefono quel che sta accanto si legge dopo. `aria-hidden`
+                perché il nome del link deve restare ciò che il link fa, e il conteggio
+                a uno screen reader arriva già dalle caselle spuntate della lista */}
+            <span
+              aria-hidden="true"
+              className="rounded-full bg-white/20 px-2 py-0.5 text-sm"
+            >
+              {checkedCount}
+            </span>
           </Link>
         </div>
       )}
 
-      {isLoading && <p className="p-4 text-neutral-500">Carico…</p>}
+      {isLoading && <p className="px-4 py-3 text-ink-soft">Carico…</p>}
       {/* un caricamento fallito non è una lista vuota: dirlo sarebbe una bugia su
           quello che c'è da comprare. Scrivere resta possibile in entrambi i casi */}
       {isError && (
-        <p role="alert" className="p-4 text-sm text-red-600">
+        <Alert className="px-4 py-3">
           Non sono riuscito a caricare la lista. Puoi comunque aggiungere voci.
-        </p>
+        </Alert>
       )}
       {!isLoading && !isError && items.length === 0 && (
-        <p className="p-4 text-neutral-500">Lista vuota. Scrivi cosa ti serve.</p>
+        <p className="px-4 py-3 text-ink-soft">Lista vuota. Scrivi cosa ti serve.</p>
       )}
 
       {groupByCategory(items).map(([category, group]) => (
-        <section key={category} className="px-4 pb-4">
-          <h2 className="py-2 text-xs uppercase tracking-wide text-neutral-400">{category}</h2>
-          <ul className="divide-y divide-neutral-100">
-            {group.map((item) => (
-              <li key={item.id} className="flex flex-col py-1">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    aria-label={item.ingredient_name ?? item.raw_text}
-                    checked={item.status === "checked"}
-                    disabled={busyId === item.id}
-                    onChange={() => toggle.mutate(item)}
-                    className="size-5 shrink-0"
-                  />
-                  <span
-                    className={`flex-1 ${
-                      item.status === "checked" ? "text-neutral-400 line-through" : ""
-                    }`}
-                  >
-                    {item.raw_text}
-                  </span>
-                  {/* visibile, non un tooltip: da telefono non esiste il passaggio del
-                      mouse, e il motivo per cui una voce è rientrata va letto */}
-                  {REASON_HINT[item.reason] && (
-                    <span className="shrink-0 text-xs text-neutral-400">
-                      {REASON_HINT[item.reason]}
+        <section key={category} className="px-4">
+          <SectionHeading>{category}</SectionHeading>
+          {/* una scheda per reparto, righe divise da una linea: trenta schede
+              separate su uno schermo da 375px sono tutto bordo e niente lista */}
+          <Card pad={false}>
+            <ul className="divide-y divide-line">
+              {group.map((item) => (
+                <li key={item.id} className="flex flex-col">
+                  <div className="flex items-center gap-3 pl-3">
+                    <input
+                      type="checkbox"
+                      aria-label={item.ingredient_name ?? item.raw_text}
+                      checked={item.status === "checked"}
+                      disabled={busyId === item.id}
+                      onChange={() => toggle.mutate(item)}
+                      className="size-5 shrink-0"
+                    />
+                    <span
+                      className={`flex-1 py-3 ${
+                        item.status === "checked" ? "text-ink-faint line-through" : ""
+                      }`}
+                    >
+                      {item.raw_text}
                     </span>
+                    {/* visibile, non un tooltip: da telefono non esiste il passaggio del
+                        mouse, e il motivo per cui una voce è rientrata va letto */}
+                    {REASON_HINT[item.reason] && (
+                      <span className="shrink-0 text-xs text-low">
+                        {REASON_HINT[item.reason]}
+                      </span>
+                    )}
+                    {/* il nome sta nell'etichetta accessibile e non sullo schermo: su
+                        375px una riga per voce è quel che rende la lista leggibile
+                        camminando, e un bersaglio da pollice ci sta comunque */}
+                    <button
+                      type="button"
+                      aria-label={`Togli ${item.raw_text} dalla lista`}
+                      disabled={busyId === item.id}
+                      onClick={() => archive.mutate(item.id)}
+                      className="min-h-11 shrink-0 px-3 text-lg leading-none text-ink-faint disabled:opacity-40"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {failedId === item.id && (
+                    <Alert className="px-3 pb-2">
+                      Non sono riuscito a salvare la modifica. La voce è ancora qui: riprova.
+                    </Alert>
                   )}
-                  {/* il nome sta nell'etichetta accessibile e non sullo schermo: su
-                      375px una riga per voce è quel che rende la lista leggibile
-                      camminando, e un bersaglio da pollice ci sta comunque */}
-                  <button
-                    type="button"
-                    aria-label={`Togli ${item.raw_text} dalla lista`}
-                    disabled={busyId === item.id}
-                    onClick={() => archive.mutate(item.id)}
-                    className="min-h-11 shrink-0 px-2 text-lg leading-none text-neutral-400 disabled:opacity-40"
-                  >
-                    ✕
-                  </button>
-                </div>
-                {failedId === item.id && (
-                  <p role="alert" className="pb-2 text-sm text-red-600">
-                    Non sono riuscito a salvare la modifica. La voce è ancora qui: riprova.
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </Card>
         </section>
       ))}
     </div>

@@ -4,6 +4,7 @@ import { searchProducts } from "./api";
 import { OTHER_INGREDIENT } from "./wording";
 import { useDebounced } from "../../hooks/useDebounced";
 import type { Product } from "../../domain/types";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 
 const DEBOUNCE_MS = 180;
 
@@ -61,7 +62,7 @@ export function CatalogSearchPanel({
   const nothingToPick = isSuccess && mine.length === 0;
 
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-lg border p-4">
+    <div className="mt-4 flex flex-col gap-3 rounded-card bg-card p-4">
       <h3 className="font-semibold">Cerca a catalogo per «{itemLabel}»</h3>
       <label className="text-sm">
         Nome del prodotto
@@ -69,15 +70,15 @@ export function CatalogSearchPanel({
           aria-label="Cerca a catalogo"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
-          className="mt-1 w-full rounded border px-3 py-3 text-base"
+          className="mt-1.5"
         />
       </label>
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-ink-soft">
         Aggiungi parole per restringere: «yogurt greco», poi «yogurt greco pesca».
       </p>
 
       {mine.length > 0 && (
-        <ul role="listbox" className="overflow-hidden rounded-lg border border-neutral-200">
+        <ul role="listbox" className="divide-y divide-line overflow-hidden rounded-card bg-card">
           {mine.map((product) => (
             <li key={product.id}>
               <button
@@ -91,7 +92,7 @@ export function CatalogSearchPanel({
                     "Total 0%Fage", che è quello che legge uno screen reader */}
                 {product.name}{" "}
                 {product.brand && (
-                  <span className="text-xs text-neutral-500">{product.brand}</span>
+                  <span className="text-xs text-ink-soft">{product.brand}</span>
                 )}
               </button>
             </li>
@@ -102,7 +103,7 @@ export function CatalogSearchPanel({
       {/* perché un prodotto che esiste può non comparire: senza questa riga
           sembrerebbe che il catalogo non lo conosca */}
       {elsewhere > 0 && (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-ink-soft">
           {elsewhere === 1
             ? `Un altro prodotto corrisponde, ma ${OTHER_INGREDIENT.one}.`
             : `Altri ${elsewhere} prodotti corrispondono, ma ${OTHER_INGREDIENT.many}.`}
@@ -115,7 +116,7 @@ export function CatalogSearchPanel({
           non contiene «yogurt greco». Dire che il catalogo è vuoto sarebbe un
           verdetto sbagliato sulla prima schermata del pannello. */}
       {nothingToPick && (
-        <p className="text-sm text-neutral-600">
+        <p className="text-sm text-ink-soft">
           Nessun prodotto con queste parole: la ricerca guarda nome e marca, prova con la
           marca. Oppure crealo adesso, leggi il codice a barre, o conferma la voce come sfusa.
         </p>
@@ -124,7 +125,7 @@ export function CatalogSearchPanel({
       {/* anche qui la rete può essere giù, e il catalogo è solo una delle tre
           strade: dirlo senza togliere le altre */}
       {isError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           La ricerca a catalogo non risponde. Riprova, oppure crea il prodotto a mano.
         </p>
       )}
@@ -133,7 +134,7 @@ export function CatalogSearchPanel({
         <button
           type="button"
           onClick={onCreateByHand}
-          className="min-h-11 self-start rounded-lg border px-4 py-3 text-sm"
+          className={`${buttonClasses("secondary")} self-start`}
         >
           Crea il prodotto a mano
         </button>
@@ -142,7 +143,7 @@ export function CatalogSearchPanel({
       <button
         type="button"
         onClick={onCancel}
-        className="min-h-11 self-start px-4 py-3 text-sm text-neutral-500"
+        className={`${buttonClasses("ghost")} self-start`}
       >
         Annulla
       </button>

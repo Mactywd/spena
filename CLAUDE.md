@@ -30,6 +30,13 @@ not pay for them again:
   97 characters arrive as 62) and login then fails always. Both compose files use
   the long form with `format: raw`, which needs Compose 2.30 or newer, and a test
   parses them to keep it that way. Do not "simplify" it.
+- **A CSS selector is not a test surface, and no unit test will tell you.** The
+  base-layer rule that styles every text field was first written
+  `input[type="text"]`, which matches nothing when the element has no `type`
+  attribute — half this app's fields. They rendered transparent and borderless on a
+  grey page while all 157 jsdom tests passed, because Tailwind builds the CSS and
+  jsdom does not compute it. Visual work is verified in a real browser;
+  `frontend/e2e/style.spec.ts` now holds that ground.
 - **"Never a dead end" is violated most often by a fix, not by an omission.**
   Adding the ingredient/product guard turned one mismatched barcode into a rejected
   whole shop with an unactionable "riprova". When you close a hole, ask what the new
@@ -93,6 +100,13 @@ matches. It never produces nutrient values.
   documents. Omitting them raises no error and silently degrades result quality.
 - **Missing nutrients stay missing.** Never default an unknown nutrient to zero:
   zero is a claim, absence is the truth.
+- **All colour lives in one `@theme` block** in `frontend/src/index.css`, as design
+  tokens Tailwind turns into classes (`--color-brand` → `bg-brand`). No screen names
+  a raw colour: grepping `src/` for `emerald` or `neutral-` must keep returning
+  nothing. Shared primitives are in `frontend/src/components/ui/`; look there before
+  writing a fourth button variant. Contrast is a constraint, not a preference —
+  anything carrying white text is above 4.5:1, because this app is read in a
+  supermarket aisle in daylight.
 - Specs and plans are written in Italian, code and identifiers in English.
 
 ## Roadmap beyond v1

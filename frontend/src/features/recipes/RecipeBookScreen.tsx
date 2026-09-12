@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
 import { fetchSearchMode, searchRecipes } from "./api";
 import { useDebounced } from "../../hooks/useDebounced";
+import { Alert } from "../../components/ui/Alert";
+import { Screen } from "../../components/ui/Screen";
 
 const DEBOUNCE_MS = 180;
 
@@ -65,14 +67,17 @@ export function RecipeBookScreen() {
   });
 
   return (
-    <div className="p-4">
-      <div className="flex items-baseline justify-between pb-3">
-        <h1 className="text-xl font-semibold">Ricette</h1>
-        <Link to="/ricette/nuova-ai" className="text-sm text-emerald-700">
+    <Screen
+      title="Ricette"
+      action={
+        <Link
+          to="/ricette/nuova-ai"
+          className="min-h-11 shrink-0 content-center text-sm font-medium text-brand"
+        >
           Scrivi con l'AI
         </Link>
-      </div>
-
+      }
+    >
       <label htmlFor="recipe-search" className="sr-only">Cerca nel ricettario</label>
       <input
         id="recipe-search"
@@ -80,50 +85,47 @@ export function RecipeBookScreen() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Cerca un piatto o un ingrediente"
-        className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base"
       />
 
       {/* una constatazione, non un guasto: niente `role`, niente colore d'allarme.
           `=== false` e non `!searchMode?.semantic`, perché "non lo so ancora" e
           "non risponde" non sono "è degradata" */}
       {searchMode?.semantic === false && (
-        <p className="pt-2 text-xs text-neutral-400">
+        <p className="pt-2 text-xs text-ink-faint">
           Ricerca solo testuale: trova le parole che scrivi, non i piatti simili.
         </p>
       )}
 
-      <label className="mt-3 flex items-center gap-2 text-sm text-neutral-600">
+      <label className="flex min-h-11 items-center gap-2.5 text-sm text-ink-soft">
         <input
           type="checkbox"
           aria-label="Solo quelle che posso cucinare"
           checked={onlyCookable}
           onChange={(e) => setOnlyCookable(e.target.checked)}
-          className="size-4"
+          className="size-5"
         />
         Solo quelle che posso cucinare
       </label>
 
-      {isLoading && <p className="pt-4 text-neutral-500">Cerco…</p>}
+      {isLoading && <p className="pt-4 text-ink-soft">Cerco…</p>}
 
       {!isLoading && isError && (
-        <p role="alert" className="pt-4 text-sm text-red-600">
+        <Alert className="pt-4">
           Non sono riuscito a cercare nel ricettario. Riprova, o scrivine una con l'AI.
-        </p>
+        </Alert>
       )}
 
       {!isLoading && !isError && recipes.length === 0 && (
-        <p className="pt-4 text-neutral-500">
-          {emptyMessage(debouncedQuery, onlyCookable)}
-        </p>
+        <p className="pt-4 text-ink-soft">{emptyMessage(debouncedQuery, onlyCookable)}</p>
       )}
 
       {!isLoading && !isError && recipes.length > 0 && (
-        <ul className="divide-y divide-neutral-100 pt-2">
+        <ul className="flex flex-col gap-2 pt-2">
           {recipes.map((recipe) => (
             <RecipeCard key={recipe.id} recipe={recipe} />
           ))}
         </ul>
       )}
-    </div>
+    </Screen>
   );
 }

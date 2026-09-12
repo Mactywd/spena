@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { cookRecipe } from "../recipes/api";
-import { STATUS_LABELS } from "../pantry/statusLabels";
+import { STATUS_LABELS, STATUS_TONE } from "../pantry/statusLabels";
+import { Alert } from "../../components/ui/Alert";
+import { Card } from "../../components/ui/Card";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { CookResult, PantryItem, PantryStatus, RecipeDetail } from "../../domain/types";
 
 type Choice = { status: PantryStatus | "unchanged"; restock: boolean };
@@ -124,51 +127,58 @@ export function CookSheet({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-neutral-500">
+      <p className="text-sm text-ink-soft">
         Tocca solo ciò che è cambiato. Ogni confezione si dichiara da sé.
       </p>
 
       {/* un foglio vuoto in silenzio si legge come un guasto: dire perché è vuoto
           costa una riga. Cucinare resta possibile: la cottura si registra comunque */}
       {used.length === 0 ? (
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-ink-soft">
           Niente di questa ricetta è in dispensa: non c'è nulla da aggiornare.
         </p>
       ) : (
-        <ul className="divide-y divide-neutral-100">
+        <ul className="flex flex-col gap-2">
           {used.map((item) => {
             const choice = choices[item.id] ?? UNCHANGED;
             const label = itemLabel(item);
             return (
-              <li key={item.id} className="flex flex-col gap-2 py-3">
+              <Card as="li" key={item.id} className="flex flex-col gap-2">
                 <div>
                   {/* la marca che hai comprato è più utile del nome generico */}
                   <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
                   {item.product_brand && (
-                    <span className="ml-2 text-sm text-neutral-500">{item.product_brand}</span>
+                    <span className="ml-2 text-sm text-ink-faint">{item.product_brand}</span>
                   )}
                 </div>
-                {item.note && <p className="text-xs text-neutral-500">{item.note}</p>}
+                {item.note && <p className="text-xs text-ink-soft">{item.note}</p>}
                 {/* lo stato attuale dà un referente a "Invariato", e la data separa
                     il sacco di ieri da quello di stamattina */}
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-ink-soft">
                   {STATUS_LABELS[item.status]} · in dispensa dal {addedOn(item)}
                 </p>
                 {/* bersagli da pollice e un gruppo con nome, come in dispensa: da
                     telefono tre pulsanti da 26px senza nome sono tre bersagli
                     mancabili e, per chi legge con lo screen reader, tre "Finito"
                     senza indicazione di quale confezione */}
-                <div className="flex gap-1" role="group" aria-label={label}>
+                <div className="flex gap-1.5" role="group" aria-label={label}>
                   {OPTIONS.map(([status, optionLabel]) => (
                     <button
                       key={status}
                       type="button"
                       onClick={() => choose(item.id, status)}
                       aria-pressed={choice.status === status}
-                      className={`min-h-11 flex-1 rounded-full px-3 py-2 text-xs font-medium ${
-                        choice.status === status
-                          ? "bg-emerald-700 text-white"
-                          : "bg-neutral-100 text-neutral-600"
+                      // i colori degli stati vengono dalla stessa mappa della
+                      // dispensa: è lo stesso giudizio, e due schermi che se lo
+                      // colorano da soli prima o poi si contraddicono. «Invariato»
+                      // non è uno stato, quindi quando è scelto resta contornato e
+                      // non pieno — il pieno vuol dire «qui hai dichiarato qualcosa»
+                      className={`min-h-11 flex-1 rounded-full px-3 py-2 text-xs font-medium transition-colors ${
+                        choice.status !== status
+                          ? "bg-page text-ink-soft ring-1 ring-line ring-inset"
+                          : status === "unchanged"
+                            ? "bg-card text-ink ring-2 ring-ink ring-inset"
+                            : STATUS_TONE[status].fill
                       }`}
                     >
                       {optionLabel}
@@ -176,7 +186,7 @@ export function CookSheet({
                   ))}
                 </div>
                 {choice.status !== "unchanged" && (
-                  <label className="flex min-h-11 items-center gap-2 text-sm text-neutral-600">
+                  <label className="flex min-h-11 items-center gap-2.5 text-sm text-ink-soft">
                     <input
                       type="checkbox"
                       aria-label={`Rimetti in lista ${label}`}
@@ -187,7 +197,7 @@ export function CookSheet({
                     Rimetti in lista della spesa
                   </label>
                 )}
-              </li>
+              </Card>
             );
           })}
         </ul>
@@ -197,10 +207,10 @@ export function CookSheet({
           l'ha causato, non in cima a uno schermo che scorre. Le scelte fatte
           restano intatte: niente si svuota finché non arriva un successo. */}
       {cook.isError && (
-        <p role="alert" className="text-sm text-red-600">
+        <Alert>
           Non sono riuscito a registrare la cottura. Le scelte qui sopra sono ancora le tue:
           riprova.
-        </p>
+        </Alert>
       )}
 
       <div className="flex gap-2">
@@ -210,7 +220,7 @@ export function CookSheet({
           type="button"
           onClick={() => onDone()}
           disabled={cook.isPending}
-          className="min-h-11 flex-1 rounded-lg border px-4 py-3 disabled:opacity-40"
+          className={`${buttonClasses("secondary", "block")} flex-1`}
         >
           Annulla
         </button>
@@ -218,7 +228,7 @@ export function CookSheet({
           type="button"
           onClick={() => cook.mutate()}
           disabled={cook.isPending}
-          className="min-h-11 flex-[2] rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
+          className={`${buttonClasses("primary", "block")} flex-[2]`}
         >
           Ho cucinato
         </button>

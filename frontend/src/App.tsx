@@ -52,7 +52,10 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <main className="min-h-dvh pb-20">
+        {/* max-w-md: l'app è pensata per un telefono, e su uno schermo largo una
+            lista che attraversa 1400px non si legge. pb-24 tiene l'ultima riga
+            sopra la barra delle schede, che è fissa e coprirebbe un bersaglio. */}
+        <main className="mx-auto min-h-dvh max-w-md pb-24">
           <Routes>
             <Route path="/" element={<Navigate to="/lista" replace />} />
             <Route path="/lista" element={<ShoppingListScreen />} />

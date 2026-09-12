@@ -3,6 +3,9 @@ import type { FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchIngredients } from "./api";
 import { useDebounced } from "../../hooks/useDebounced";
+import { Alert } from "../../components/ui/Alert";
+import { OptionList } from "../../components/ui/OptionList";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 
 const DEBOUNCE_MS = 180;
 
@@ -57,7 +60,10 @@ export function AddItemField({
   }
 
   return (
-    <form onSubmit={submitFreeText} className="sticky top-0 bg-white p-4">
+    // appiccicato in alto, col fondo della pagina dietro: scorrendo i reparti il
+    // campo per scrivere non deve andarsene. Il titolo invece scorre via — è
+    // orientamento, e serve una volta
+    <form onSubmit={submitFreeText} className="sticky top-0 z-10 bg-page px-4 pt-1 pb-3">
       <label htmlFor="add-item" className="sr-only">Aggiungi alla lista</label>
       <div className="flex gap-2">
         <input
@@ -66,50 +72,42 @@ export function AddItemField({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Cosa serve?"
-          className="min-w-0 flex-1 rounded-lg border border-neutral-300 px-3 py-3 text-base"
+          className="min-w-0 flex-1"
         />
         {/* un bersaglio visibile: da telefono il tasto invio della tastiera non si
             vede, e il testo libero è il percorso che non deve mai essere nascosto */}
         <button
           type="submit"
           disabled={text.trim().length === 0}
-          className="min-h-11 rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
+          className={`${buttonClasses("primary")} shrink-0`}
         >
           Aggiungi
         </button>
       </div>
       {failed && (
-        <p role="alert" className="mt-2 text-sm text-red-600">
+        <Alert className="pt-2">
           Non sono riuscito ad aggiungere la voce. Il testo è ancora qui: riprova.
-        </p>
+        </Alert>
       )}
       {/* una ricerca che non risponde non deve bloccare la scrittura, e nemmeno
           restare muta: il testo libero passa comunque, e va detto che passerà
           senza ingrediente abbinato. `status` e non `alert`: è una rinuncia, non
-          un guasto da interrompere quel che si sta scrivendo */}
+          un guasto da interrompere quel che si sta scrivendo.
+          Il colore è quello di «quasi finito», e di proposito: nell'app l'ambra
+          vuol dire sempre «funziona, ma non del tutto». */}
       {showSuggestions && isError && (
-        <p role="status" className="mt-2 text-sm text-amber-700">
+        <p role="status" className="pt-2 text-sm text-low">
           L'autocomplete non risponde. Puoi aggiungere la voce così com'è: l'ingrediente
           si abbina dopo.
         </p>
       )}
       {showSuggestions && suggestions.length > 0 && (
-        <ul role="listbox" className="mt-1 overflow-hidden rounded-lg border border-neutral-200">
-          {suggestions.map((ingredient) => (
-            <li key={ingredient.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={false}
-                onClick={() => void add(ingredient.name, ingredient.id)}
-                className="min-h-11 w-full px-3 py-3 text-left"
-              >
-                {ingredient.display_name}
-                <span className="ml-2 text-xs text-neutral-400">{ingredient.category}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="pt-2">
+          <OptionList
+            options={suggestions}
+            onPick={(ingredient) => void add(ingredient.name, ingredient.id)}
+          />
+        </div>
       )}
     </form>
   );

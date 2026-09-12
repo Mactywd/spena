@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { createProduct } from "./api";
 import type { BarcodeLookup, Product } from "../../domain/types";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 
 const EMPTY_NUTRIENTS: Record<string, string> = { kcal: "", protein: "", carbs: "", fat: "" };
 
@@ -97,17 +98,17 @@ export function CustomProductForm({
   );
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3 rounded-lg border p-4">
+    <form onSubmit={submit} className="flex flex-col gap-3 rounded-card bg-card p-4">
       <h3 className="font-semibold">Nuovo prodotto per «{itemLabel}»</h3>
       <label className="text-sm">
         Nome
         <input value={name} onChange={(e) => setName(e.target.value)} required
-               className="mt-1 w-full rounded border px-3 py-2" />
+               className="mt-1.5" />
       </label>
       <label className="text-sm">
         Marca
         <input value={brand} onChange={(e) => setBrand(e.target.value)}
-               className="mt-1 w-full rounded border px-3 py-2" />
+               className="mt-1.5" />
       </label>
       <div className="grid grid-cols-2 gap-2">
         {FIELDS.map(([key, label]) => (
@@ -116,32 +117,32 @@ export function CustomProductForm({
             <input
               type="number" inputMode="decimal" step="0.1" value={nutrients[key] ?? ""}
               onChange={(e) => setNutrients((prev) => ({ ...prev, [key]: e.target.value }))}
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1.5"
             />
           </label>
         ))}
       </div>
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-ink-soft">
         I valori sono facoltativi. Lasciarli vuoti è meglio che inventarli.
       </p>
       {carried.length > 0 && (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-ink-soft">
           Da Open Food Facts vengono salvati anche{" "}
           {carried.map(([key]) => EXTRA_LABELS[key] ?? key).join(", ")}.
         </p>
       )}
       {create.isError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-danger">
           Non sono riuscito a salvare il prodotto. I dati sono ancora qui: riprova.
         </p>
       )}
       <button type="submit" disabled={create.isPending}
-              className="rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40">
+              className={buttonClasses("primary", "block")}>
         Salva prodotto
       </button>
       {/* un 409 persistente non deve incollare il riquadro allo schermo: si esce
           sempre, e la voce resta sistemabile come sfusa */}
-      <button type="button" onClick={onCancel} className="px-4 py-3 text-sm text-neutral-500">
+      <button type="button" onClick={onCancel} className={`${buttonClasses("ghost")} self-start`}>
         Annulla
       </button>
     </form>

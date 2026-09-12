@@ -157,7 +157,11 @@ cd frontend && npx vitest run
 ### Percorso end-to-end
 
 Attraversa lista, dispensa, ricettario, cottura e rientro in lista con un browser
-vero, contro l'app costruita e servita da Nginx. Gira su uno stack Compose a parte,
+vero, contro l'app costruita e servita da Nginx. Nello stesso stack girano anche i
+controlli di `e2e/style.spec.ts`, che sono lì per un motivo preciso: Tailwind genera
+il CSS al momento della costruzione e jsdom non lo calcola, quindi lo stile è l'unica
+parte dell'app che i test di Vitest non possono vedere. Quelli non scrivono niente e
+non vogliono uno stack pulito. Gira su uno stack Compose a parte,
 `spena-e2e`, per due motivi: la password serve conosciuta (`.env.e2e` contiene
 l'hash della parola `test`, e non protegge niente) e lo stack va distrutto con i
 volumi alla fine, cosa che non si può fare sul progetto di sviluppo senza perdere la
@@ -176,6 +180,29 @@ Il `-p spena-e2e` e il `-f docker-compose.e2e.yml` vanno ripetuti in ogni comand
 
 Il percorso scrive in lista e in dispensa, quindi **vuole uno stack appena creato**:
 rieseguirlo senza `down -v` lo fa fallire dicendo che lo stack non è pulito.
+
+## Lo stile, e dove abita il colore
+
+Tutti i colori, il raggio delle schede e il tipo di carattere stanno in un blocco
+`@theme` in `frontend/src/index.css`. Tailwind ne fa delle classi (`--color-brand`
+diventa `bg-brand`, `text-brand`, `border-brand`), e nessun file di schermata nomina
+un colore grezzo: cercare `emerald` o `neutral-400` in `src/` non trova niente, ed è
+così che va tenuto. Cambiare il verde dell'app è un lavoro da una riga, e il tema
+scuro — che non c'è — sarebbe un lavoro da questo solo file.
+
+I valori non sono scelti a occhio. Ogni colore che porta testo bianco sopra di sé sta
+sopra 4.5:1 di contrasto, e `ink-faint` è il più chiaro che regge 4.5:1 sul fondo
+della pagina: schiarirli è esattamente ciò che rende la lista illeggibile al sole,
+cioè in corsia.
+
+I campi di testo si vestono una volta sola, nel livello base dello stesso file, e non
+schermata per schermata: sono otto moduli in sei cartelle e a mano si scollano. Il
+selettore esclude i tipi che *non* sono campi di testo invece di elencare quelli che
+lo sono, e non è pignoleria: `input[type="text"]` non seleziona un `<input>` senza
+attributo `type`, che è come è scritta metà dei campi di quest'app.
+
+Le primitive condivise stanno in `frontend/src/components/ui/`. Prima di scrivere la
+quarta variante di un bottone, guarda lì.
 
 ## Provare la fotocamera dal telefono
 

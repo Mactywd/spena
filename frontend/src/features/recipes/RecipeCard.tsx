@@ -19,20 +19,29 @@ function missingLabel(recipe: RecipeSummary): string {
 
 export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
   return (
-    <li className="py-3">
-      <Link to={`/ricette/${recipe.id}`} className="block">
+    <li>
+      <Link to={`/ricette/${recipe.id}`} className="block rounded-card bg-card p-3.5">
         <div className="flex items-baseline justify-between gap-2">
           <span className="font-medium">{recipe.title}</span>
-          <span className="shrink-0 text-xs text-neutral-400">
+          <span className="shrink-0 text-xs text-ink-faint">
             {SOURCE_LABEL[recipe.source] ?? recipe.source}
           </span>
         </div>
         {recipe.description && (
-          <p className="text-sm text-neutral-500">{recipe.description}</p>
+          <p className="pt-0.5 text-sm text-ink-soft">{recipe.description}</p>
         )}
-        <p className={`text-xs ${recipe.cookable ? "text-emerald-700" : "text-amber-700"}`}>
-          {missingLabel(recipe)}
-        </p>
+        {/* verde o ambra, gli stessi due colori della dispensa: «puoi cucinarla» e
+            «ti manca qualcosa» sono la stessa distinzione di «disponibile» e «quasi
+            finito», vista dall'altro capo della stessa regola */}
+        <div className="pt-2">
+          <span
+            className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
+              recipe.cookable ? "bg-brand-tint text-brand" : "bg-low-tint text-low"
+            }`}
+          >
+            {missingLabel(recipe)}
+          </span>
+        </div>
       </Link>
     </li>
   );

@@ -1,6 +1,93 @@
 @import "tailwindcss";
 
+/* Il vocabolario visivo dell'app, in un posto solo. Ogni token qui dentro diventa
+   una classe di Tailwind (`--color-brand` → `bg-brand`, `text-brand`, `border-brand`;
+   `--radius-card` → `rounded-card`), quindi nessuna schermata nomina più un colore
+   grezzo come `emerald-700`. Cambiare il verde dell'app è un lavoro da una riga, e
+   il giorno in cui si vuole il tema scuro questo è il solo file da toccare.
+
+   I valori non sono scelti a occhio. Ogni colore che porta testo bianco sopra di sé
+   sta sopra 4.5:1 di contrasto, che è il minimo AA per il testo piccolo delle
+   pastiglie di stato, e `ink-faint` è il più chiaro che regge 4.5:1 sul fondo della
+   pagina. Schiarirli è esattamente ciò che rende la lista illeggibile al sole, cioè
+   in corsia, che è dove questa app si usa davvero. */
+@theme {
+  --color-page: #eef1ee;
+  --color-card: #ffffff;
+
+  --color-ink: #16281f;
+  --color-ink-soft: #4e5a52;
+  --color-ink-faint: #636e66;
+
+  --color-line: #dce1dc;
+
+  --color-brand: #14804f;
+  --color-brand-tint: #e4efe8;
+
+  /* `low` ha un colore suo e non una sfumatura del verde: è l'unico stato che
+     cambia la risposta alla domanda «questa ricetta si può cucinare?» (la regola
+     primario/secondario in backend/app/domain/rules.py), e due stati che si
+     somigliano rendono invisibile la sola regola che fa guadagnare qualcosa al
+     tenere aggiornata la dispensa. */
+  --color-low: #9a5f0c;
+  --color-low-tint: #fbefdc;
+
+  --color-danger: #b3261e;
+
+  --radius-card: 14px;
+}
+
 /* la barra delle schede non deve finire sotto la tacca del telefono */
 :root {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-page);
+    color: var(--color-ink);
+    /* il lampo grigio al tocco su Android fa sembrare rotto un bersaglio che invece
+       ha risposto: lo stato premuto lo danno i controlli, uno per uno */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* I campi si vestono una volta qui, non schermata per schermata: sono otto moduli
+     sparsi in sei cartelle e mantenerli uguali a mano non funziona. Il `text-base`
+     non è estetica — sotto i 16px iOS ingrandisce la pagina da solo quando il campo
+     prende fuoco, e si resta con l'app storta in mano.
+
+     Il selettore esclude i tipi che non sono campi di testo invece di elencare
+     quelli che lo sono: `input[type="text"]` non seleziona un `<input>` senza
+     attributo `type`, che è come sono scritti metà dei campi di quest'app — il
+     tipo predefinito è "text" per il browser, non per il foglio di stile, e la
+     prima stesura di questa regola lasciava il campo della lista trasparente. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="submit"], [type="button"], [type="reset"]),
+  textarea,
+  select {
+    background-color: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    padding: 0.7rem 0.75rem;
+    font-size: 1rem;
+    color: var(--color-ink);
+    width: 100%;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-ink-faint);
+  }
+
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  input[type="checkbox"] {
+    accent-color: var(--color-brand);
+  }
 }

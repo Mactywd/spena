@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { apiFetch, UnauthorizedError } from "../../api/client";
+import { Alert } from "../../components/ui/Alert";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 
 export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("");
@@ -31,25 +33,45 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <form onSubmit={submit} className="mx-auto flex max-w-sm flex-col gap-4 p-6 pt-24">
-      <h1 className="text-2xl font-semibold">Spena</h1>
-      <label htmlFor="password" className="text-sm text-neutral-600">Password</label>
-      <input
-        id="password"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="rounded-lg border border-neutral-300 px-3 py-3 text-base"
-        autoComplete="current-password"
-      />
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <button
-        type="submit"
-        disabled={busy || password.length === 0}
-        className="rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
-      >
-        Entra
-      </button>
-    </form>
+    <div className="flex min-h-dvh items-center justify-center p-6">
+      <form onSubmit={submit} className="w-full max-w-sm">
+        {/* il marchio prima del campo: è l'unica schermata dove l'app si presenta,
+            e quella in cui si arriva senza sapere se si è nel posto giusto */}
+        <div className="pb-6 text-center">
+          {/* lo stesso cesto dell'icona sul telefono: chi apre l'app installata
+              deve ritrovare qui il segno che ha toccato sulla schermata iniziale */}
+          <svg viewBox="0 0 512 512" aria-hidden="true" className="inline-block size-16">
+            <rect width="512" height="512" rx="112" fill="var(--color-brand)" />
+            <g fill="none" stroke="#fff" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M148 218h216l-42 142H190z" strokeWidth="26" />
+              <path d="M194 218a62 62 0 0 1 124 0" strokeWidth="26" />
+              <path d="M219 254l9 76M293 254l-9 76" strokeWidth="22" />
+            </g>
+          </svg>
+          <h1 className="pt-3 text-2xl font-semibold tracking-tight">Spena</h1>
+        </div>
+        <div className="flex flex-col gap-4 rounded-card bg-card p-5">
+          <label htmlFor="password" className="text-sm font-medium text-ink-soft">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="-mt-2"
+            autoComplete="current-password"
+          />
+          {error && <Alert>{error}</Alert>}
+          <button
+            type="submit"
+            disabled={busy || password.length === 0}
+            className={buttonClasses("primary", "block")}
+          >
+            Entra
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
