@@ -33,6 +33,17 @@ describe("apiFetch", () => {
     });
   });
 
+  it("degrada a un messaggio generico quando il corpo d'errore non è JSON", async () => {
+    // una pagina d'errore di nginx, non un {detail}: il client non deve esplodere
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response("<html>502 Bad Gateway</html>", { status: 502 })
+    ));
+    await expect(apiFetch("/pantry")).rejects.toMatchObject({
+      status: 502,
+      message: "errore 502",
+    });
+  });
+
   it("gestisce una risposta 204 senza corpo", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     await expect(apiFetch("/auth/logout", { method: "POST" })).resolves.toBeNull();

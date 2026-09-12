@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { apiFetch } from "../../api/client";
+import { apiFetch, UnauthorizedError } from "../../api/client";
 
 export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("");
@@ -17,8 +17,14 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
         body: JSON.stringify({ password }),
       });
       onSuccess();
-    } catch {
-      setError("Password errata");
+    } catch (failure) {
+      // solo un 401 dice qualcosa sulla password: chiamare "errata" un server
+      // spento manda a riprovare il tasto giusto convinti che sia sbagliato
+      setError(
+        failure instanceof UnauthorizedError
+          ? "Password errata"
+          : "Impossibile contattare il server. Riprova."
+      );
     } finally {
       setBusy(false);
     }
