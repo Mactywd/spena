@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session, is_missing_reference
+from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.db.models.recipe import Recipe
 from app.domain.rules import Availability, IngredientRole, is_satisfied
@@ -100,6 +100,10 @@ async def create(
         await session.rollback()
         if is_missing_reference(exc):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
+        # solo un duplicato è un "ripetuto": qualunque altra violazione è un difetto
+        # nostro e deve restare visibile come 500, come in shopping.py e pantry.py
+        if not is_unique_violation(exc):
+            raise
         raise HTTPException(
             status.HTTP_409_CONFLICT, "ingrediente ripetuto nella ricetta"
         ) from exc

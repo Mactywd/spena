@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session, is_missing_reference
+from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.repositories.products import create_product, find_by_barcode, search_products
 from app.schemas.product import (
@@ -78,5 +78,7 @@ async def create(
         # un codice a barre duplicato
         if is_missing_reference(exc):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
+        if not is_unique_violation(exc):
+            raise
         raise HTTPException(status.HTTP_409_CONFLICT, "codice a barre già in catalogo") from exc
     return ProductOut.model_validate(product)

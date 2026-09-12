@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session, is_missing_reference
+from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.repositories.ingredients import add_alias, create_ingredient, search_ingredients
 from app.schemas.ingredient import AliasCreate, IngredientCreate, IngredientOut
@@ -34,6 +34,10 @@ async def create(
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
+        # solo un duplicato è un "già presente": qualunque altra violazione è un
+        # difetto nostro e deve restare visibile come 500
+        if not is_unique_violation(exc):
+            raise
         raise HTTPException(status.HTTP_409_CONFLICT, "ingrediente già presente") from exc
     return IngredientOut.model_validate(ingredient)
 
@@ -52,5 +56,7 @@ async def create_alias(
         # l'utente a cercare un doppione che non c'è
         if is_missing_reference(exc):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
+        if not is_unique_violation(exc):
+            raise
         raise HTTPException(status.HTTP_409_CONFLICT, "alias già presente") from exc
     return {"status": "created"}
