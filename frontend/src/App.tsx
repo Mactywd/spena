@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { LoginScreen } from "./features/auth/LoginScreen";
+import { RecipeDetailScreen } from "./features/cooking/RecipeDetailScreen";
 import { PantryScreen } from "./features/pantry/PantryScreen";
 import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
@@ -49,6 +50,9 @@ export default function App() {
             <Route path="/sistema" element={<StockingScreen />} />
             <Route path="/dispensa" element={<PantryScreen />} />
             <Route path="/ricette" element={<RecipeBookScreen />} />
+            {/* Task 23 aggiungerà /ricette/nuova-ai: va dichiarata SOPRA questa,
+                perché "nuova-ai" non deve mai essere letto come un :id. */}
+            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
           </Routes>
         </main>
         <TabBar />
