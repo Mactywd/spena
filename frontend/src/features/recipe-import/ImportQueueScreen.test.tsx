@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { UnauthorizedError } from "../../api/client";
+import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { ImportQueueScreen } from "./ImportQueueScreen";
 
 const TERMINI = [
@@ -325,17 +325,17 @@ describe("coda di revisione dell'import", () => {
     // `renderScreen()` qui sopra usa un client con `retry: false` globale, che
     // nasconderebbe proprio il difetto che questo test copre (una query che
     // prova a ritentare perché non ha il suo `retry: false`): il client qui
-    // imita invece il default vero di App.tsx (retry finché count < 2, salvo
-    // 401), per esercitare la stessa forma del problema. Il 503 di questa rotta
-    // quando manca ANTHROPIC_API_KEY è un degrado dichiarato e permanente per
-    // tutta la vita del processo, non un intoppo passeggero: senza `retry: false`
+    // usa il default vero di App.tsx (retry finché count < 2, salvo 401), per
+    // esercitare la stessa forma del problema. Il 503 di questa rotta quando
+    // manca ANTHROPIC_API_KEY è un degrado dichiarato e permanente per tutta
+    // la vita del processo, non un intoppo passeggero: senza `retry: false`
     // sulla query delle proposte, un client con questo default la ritenterebbe
-    // due volte in più, per tre giri di rete a vuoto prima che compaia "decidi a
-    // mano".
+    // due volte in più, per tre giri di rete a vuoto prima che compaia "decidi
+    // a mano".
     const client = new QueryClient({
       defaultOptions: {
         queries: {
-          retry: (count: number, error: unknown) => count < 2 && !(error instanceof UnauthorizedError),
+          retry: defaultQueryRetryPredicate,
         },
       },
     });
