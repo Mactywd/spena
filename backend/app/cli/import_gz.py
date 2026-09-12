@@ -70,7 +70,11 @@ async def run_import(
         stopped_early = True
     else:
         already = await known_urls(session, GIALLOZAFFERANO)
-        todo = [url for url in urls if url not in already][:limit]
+        # `dict.fromkeys` scarta i duplicati mantenendo l'ordine di arrivo: una
+        # sitemap con lo stesso `<loc>` due volte non deve far fallire `store_page`
+        # con un `IntegrityError` che abortirebbe tutto il giro per un solo
+        # indirizzo ripetuto.
+        todo = list(dict.fromkeys(url for url in urls if url not in already))[:limit]
 
     for url in todo:
         await sleep(DELAY_SECONDS)
@@ -92,6 +96,12 @@ async def run_import(
             await store_unparsable(
                 session, source=GIALLOZAFFERANO, url=url, reason=exc.reason
             )
+            # committiamo a ogni pagina, non solo alla fine del lotto: un Ctrl-C, un
+            # intoppo del database o qualunque eccezione imprevista a metà giro non
+            # deve buttare via le pagine già scaricate con pazienza — sarebbero
+            # ririchieste alla fonte al prossimo lancio, la cosa che la cortesia di
+            # questo comando esiste per evitare.
+            await session.commit()
             skipped += 1
             continue
 
@@ -102,12 +112,14 @@ async def run_import(
             await store_unparsable(
                 session, source=GIALLOZAFFERANO, url=url, reason=exc.reason
             )
+            await session.commit()
             skipped += 1
             continue
 
         await store_page(
             session, source=GIALLOZAFFERANO, url=url, payload=recipe.as_payload()
         )
+        await session.commit()
         taken += 1
 
     # i termini si allineano sempre, anche dopo un giro fermato a metà: le pagine

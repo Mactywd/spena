@@ -1,7 +1,9 @@
 import httpx
+import pytest
 import respx
 from sqlalchemy import select
 
+import app.cli.import_gz as import_gz
 from app.cli.import_gz import run_import
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe_import import ImportState, RecipeImport
@@ -147,6 +149,68 @@ async def test_lo_scarico_sincronizza_i_termini_e_materializza(db_session):
     ricetta = (await db_session.execute(select(Recipe))).scalars().one()
     assert ricetta.title == "Uno"
     assert ricetta.source_ref == "https://ricette.giallozafferano.it/Uno.html"
+
+
+@respx.mock
+async def test_un_eccezione_a_meta_lotto_non_perde_le_pagine_gia_prese(db_session, monkeypatch):
+    """Un'eccezione che non è `SourceUnavailable` né `UnparsablePage` - un guasto
+    imprevisto, o un Ctrl-C - non deve buttare via le pagine già scaricate. Nella
+    vita vera il chiamante (`main`) chiude la sessione sull'eccezione e SQLAlchemy
+    annulla tutto quel che non è stato committato: lo riproduciamo qui con un
+    rollback esplicito dopo l'eccezione, sulla stessa sessione."""
+    respx.get(RECIPE_SITEMAP).mock(return_value=httpx.Response(200, text=SITEMAP))
+    for nome in ("Uno", "Due", "Tre"):
+        respx.get(f"https://ricette.giallozafferano.it/{nome}.html").mock(
+            return_value=httpx.Response(200, text=PAGINA.replace("TITOLO", nome))
+        )
+
+    originale = import_gz.parse_recipe
+    chiamate = {"n": 0}
+
+    def rotto(html):
+        chiamate["n"] += 1
+        if chiamate["n"] == 2:
+            raise RuntimeError("guasto a metà lotto")
+        return originale(html)
+
+    monkeypatch.setattr(import_gz, "parse_recipe", rotto)
+
+    async with build_client() as client:
+        with pytest.raises(RuntimeError):
+            await run_import(db_session, limit=3, client=client, sleep=nessuna_pausa)
+
+    await db_session.rollback()
+
+    pagine = (await db_session.execute(select(RecipeImport))).scalars().all()
+    assert [p.url for p in pagine] == ["https://ricette.giallozafferano.it/Uno.html"]
+
+
+@respx.mock
+async def test_un_indirizzo_doppio_nella_sitemap_non_abortisce_il_giro(db_session):
+    """Un `<loc>` ripetuto nella sitemap non deve far fallire `store_page` con un
+    `IntegrityError` che abortirebbe tutto il giro per un solo indirizzo doppio."""
+    sitemap_doppia = """<?xml version="1.0"?><urlset>
+ <url><loc>https://ricette.giallozafferano.it/Uno.html</loc></url>
+ <url><loc>https://ricette.giallozafferano.it/Uno.html</loc></url>
+ <url><loc>https://ricette.giallozafferano.it/Due.html</loc></url>
+</urlset>"""
+    respx.get(RECIPE_SITEMAP).mock(return_value=httpx.Response(200, text=sitemap_doppia))
+    respx.get("https://ricette.giallozafferano.it/Uno.html").mock(
+        return_value=httpx.Response(200, text=PAGINA.replace("TITOLO", "Uno"))
+    )
+    respx.get("https://ricette.giallozafferano.it/Due.html").mock(
+        return_value=httpx.Response(200, text=PAGINA.replace("TITOLO", "Due"))
+    )
+
+    async with build_client() as client:
+        esito = await run_import(db_session, limit=10, client=client, sleep=nessuna_pausa)
+
+    assert esito.taken == 2
+    pagine = (await db_session.execute(select(RecipeImport))).scalars().all()
+    assert {p.url for p in pagine} == {
+        "https://ricette.giallozafferano.it/Uno.html",
+        "https://ricette.giallozafferano.it/Due.html",
+    }
 
 
 @respx.mock
