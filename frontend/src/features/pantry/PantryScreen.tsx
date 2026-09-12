@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { StatusToggle } from "./StatusToggle";
 import { fetchPantry, patchPantryItem } from "./api";
@@ -18,11 +19,37 @@ export function PantryScreen() {
     queryFn: fetchPantry,
   });
 
+  // quale voce ha rifiutato l'ultima modifica. Il messaggio va accanto a quella
+  // voce e non in cima: la dispensa è lunga e si scorre, un avviso fuori schermo
+  // non è un avviso
+  const [failedId, setFailedId] = useState<string | null>(null);
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["pantry"] });
+
   const change = useMutation({
     mutationFn: ({ id, status }: { id: string; status: PantryStatus }) =>
       patchPantryItem(id, { status }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pantry"] }),
+    onMutate: () => setFailedId(null),
+    onSuccess: invalidate,
+    // senza questo una PATCH fallita non dice niente: il controllo torna da sé al
+    // valore del server e l'utente resta convinto di aver cambiato stato
+    onError: (_error, { id }) => setFailedId(id),
   });
+
+  // Archiviare è l'unico modo di togliere qualcosa dalla dispensa: il backend
+  // esclude le voci finite dalla disponibilità ma non dall'elenco, quindi senza
+  // questo controllo lo schermo può soltanto crescere.
+  const archive = useMutation({
+    mutationFn: (id: string) => patchPantryItem(id, { archived: true }),
+    onMutate: () => setFailedId(null),
+    onSuccess: invalidate,
+    onError: (_error, id) => setFailedId(id),
+  });
+
+  const busyId = change.isPending
+    ? change.variables.id
+    : archive.isPending
+      ? archive.variables
+      : null;
 
   return (
     <div className="p-4">
@@ -60,8 +87,22 @@ export function PantryScreen() {
                   </div>
                   <StatusToggle
                     value={item.status}
+                    disabled={busyId === item.id}
                     onChange={(status) => change.mutate({ id: item.id, status })}
                   />
+                  <button
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => archive.mutate(item.id)}
+                    className="self-start py-2 text-xs text-neutral-500 underline disabled:opacity-40"
+                  >
+                    Togli dalla dispensa
+                  </button>
+                  {failedId === item.id && (
+                    <p role="alert" className="text-sm text-red-600">
+                      Non sono riuscito a salvare la modifica. Riprova.
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>

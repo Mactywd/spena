@@ -13,9 +13,11 @@ const OPTIONS: [PantryStatus, string][] = [
 export function StatusToggle({
   value,
   onChange,
+  disabled = false,
 }: {
   value: PantryStatus;
   onChange: (status: PantryStatus) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex gap-1" role="group">
@@ -23,9 +25,12 @@ export function StatusToggle({
         <button
           key={status}
           type="button"
+          // finché la modifica precedente è in volo: due PATCH sulla stessa voce
+          // arrivano in ordine ignoto e l'ultima a rispondere vince
+          disabled={disabled}
           onClick={() => onChange(status)}
           aria-pressed={value === status}
-          className={`min-h-11 flex-1 rounded-full px-3 py-2 text-xs font-medium ${
+          className={`min-h-11 flex-1 rounded-full px-3 py-2 text-xs font-medium disabled:opacity-50 ${
             value === status ? "bg-emerald-700 text-white" : "bg-neutral-100 text-neutral-600"
           }`}
         >

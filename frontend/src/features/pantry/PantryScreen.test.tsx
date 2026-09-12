@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PantryScreen } from "./PantryScreen";
@@ -52,11 +52,20 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Pesca")).toBeDefined();
   });
 
-  it("cambiare stato manda una PATCH con il nuovo valore", async () => {
-    const spy = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(ITEMS), { status: 200 }))
-      .mockResolvedValue(new Response(JSON.stringify({ ...ITEMS[0], status: "low" }),
-        { status: 200 }));
+  it("cambiare stato manda una PATCH con il nuovo valore e lo schermo lo rispecchia", async () => {
+    // la PATCH risponde con la riga, la GET successiva con la lista aggiornata:
+    // distinguerle è ciò che rende il test una copertura del ri-render e non solo
+    // della chiamata
+    const changed = [{ ...ITEMS[0], status: "low" }, ITEMS[1], ITEMS[2]];
+    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ ...ITEMS[0], status: "low" }), { status: 200 })
+        );
+      }
+      const body = spy.mock.calls.some(([, i]) => i?.method === "PATCH") ? changed : ITEMS;
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    });
     vi.stubGlobal("fetch", spy);
 
     renderScreen();
@@ -66,6 +75,68 @@ describe("PantryScreen", () => {
     const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
     expect(patch?.[0]).toContain("/pantry/p1");
     expect(JSON.parse(patch?.[1].body)).toEqual({ status: "low" });
+
+    await waitFor(() => {
+      const updated = screen.getByText("Total 0%").closest("li")!;
+      expect(within(updated).getByRole("button", { name: "Quasi finito" }))
+        .toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  it("una modifica rifiutata lo dice, accanto alla voce giusta", async () => {
+    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
+      init?.method === "PATCH"
+        ? Promise.resolve(new Response(JSON.stringify({ detail: "no" }), { status: 500 }))
+        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
+    );
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    const row = (await screen.findByText("Total 0%")).closest("li")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Quasi finito" }));
+
+    expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
+    const other = screen.getByText("Pesca").closest("li")!;
+    expect(within(other).queryByRole("alert")).toBeNull();
+  });
+
+  it("si può togliere una voce dalla dispensa", async () => {
+    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
+      init?.method === "PATCH"
+        ? Promise.resolve(new Response(JSON.stringify(ITEMS[0]), { status: 200 }))
+        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
+    );
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    const row = (await screen.findByText("Total 0%")).closest("li")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Togli dalla dispensa" }));
+
+    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(patch?.[0]).toContain("/pantry/p1");
+    expect(JSON.parse(patch?.[1].body)).toEqual({ archived: true });
+  });
+
+  it("mentre una modifica è in volo i controlli di quella voce sono bloccati", async () => {
+    // due PATCH sulla stessa voce arrivano in ordine ignoto e l'ultima a rispondere
+    // vince: la seconda non deve nemmeno poter partire
+    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
+      init?.method === "PATCH"
+        ? new Promise<Response>(() => {})
+        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
+    );
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    const row = (await screen.findByText("Total 0%")).closest("li")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Quasi finito" }));
+
+    await waitFor(() =>
+      expect(within(row).getByRole("button", { name: "Finito" })).toBeDisabled()
+    );
+    expect(within(row).getByRole("button", { name: "Togli dalla dispensa" })).toBeDisabled();
+    const other = screen.getByText("Pesca").closest("li")!;
+    expect(within(other).getByRole("button", { name: "Finito" })).not.toBeDisabled();
   });
 
   it("dice cosa fare quando la dispensa è vuota", async () => {
