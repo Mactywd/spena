@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.cli.import_gz import run_import
 from app.db.models.ingredient import Ingredient, IngredientCategory
-from app.db.models.recipe_import import GIALLOZAFFERANO, ImportState, RecipeImport
+from app.db.models.recipe_import import ImportState, RecipeImport
 from app.services.recipe_import.giallozafferano import RECIPE_SITEMAP, build_client
 
 PAGINA = """<html><head>

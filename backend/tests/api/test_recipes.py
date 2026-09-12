@@ -284,10 +284,7 @@ async def test_una_query_lontana_da_tutto_non_restituisce_niente(
 
 
 async def test_la_scheda_porta_foto_tempo_e_categoria(logged_client, db_session):
-    from sqlalchemy import select
-
     from app.db.models.ingredient import Ingredient, IngredientCategory
-    from app.db.models.recipe import Recipe
     from app.repositories.recipes import create_recipe
 
     ingrediente = Ingredient(
