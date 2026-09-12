@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 import app.db.models  # noqa: F401  popola Base.metadata
 from app.core.db import Base
+from app.db.models.pantry import PantryItem
 
 MIGRATED_INDEXES = {
     "ix_aliases_alias_trgm",
@@ -51,3 +52,35 @@ async def test_every_migrated_index_is_declared_on_a_model(db_session):
         text("SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()")
     )
     assert MIGRATED_INDEXES <= {row.indexname for row in rows}
+
+
+async def test_the_partial_index_predicate_is_more_than_a_name(db_session):
+    """Alembic non confronta `postgresql_where`.
+
+    Modello e database possono quindi divergere nel predicato senza che
+    `compare_metadata` veda nulla, ed è il predicato a decidere quali voci della
+    dispensa contano per la disponibilità: sbagliarlo fa sparire o ricomparire righe
+    in silenzio. Confrontare le due stringhe a mano non funziona, perché Postgres
+    riscrive la propria. Quindi si fa riscrivere anche quella del modello, creando un
+    indice usa-e-getta con lo stesso predicato e rileggendo come il database lo
+    normalizza. L'indice sparisce con il rollback del test.
+    """
+    declared = next(
+        index for index in PantryItem.__table__.indexes if index.name == "ix_pantry_active"
+    )
+    predicate = declared.dialect_options["postgresql"]["where"]
+
+    await db_session.execute(
+        text(
+            "CREATE INDEX ix_pantry_active_probe ON pantry_items (ingredient_id) "
+            f"WHERE {predicate}"
+        )
+    )
+    rows = await db_session.execute(
+        text(
+            "SELECT indexname, indexdef FROM pg_indexes "
+            "WHERE indexname IN ('ix_pantry_active', 'ix_pantry_active_probe')"
+        )
+    )
+    clauses = {name: definition.split(" WHERE ", 1)[1] for name, definition in rows}
+    assert clauses["ix_pantry_active_probe"] == clauses["ix_pantry_active"]

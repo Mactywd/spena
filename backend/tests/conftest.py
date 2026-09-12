@@ -8,6 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 os.environ.setdefault("EMBEDDING_BACKEND", "fake")
 
+# La suite non legge il .env dello sviluppatore. Da quando `env_file` è un percorso
+# assoluto (app/core/config.py) quel file viene trovato anche sotto pytest, e un test
+# che dimostra il comportamento "variabile non configurata" ricadrebbe in silenzio sul
+# valore reale: con ANTHROPIC_API_KEY valorizzata,
+# test_missing_api_key_raises_ai_unavailable costruirebbe un client vero e farebbe una
+# chiamata a pagamento, contro la regola di CLAUDE.md per cui la suite non tocca la
+# rete. Neutralizzarlo qui, prima che Settings venga istanziata la prima volta, vale
+# per tutti i test presenti e futuri: ciò che un test vuole configurato lo imposta come
+# variabile d'ambiente, esplicitamente.
+from app.core.config import Settings  # noqa: E402
+
+Settings.model_config["env_file"] = None
+
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://spena:spena@localhost:5433/spena_test"
 )

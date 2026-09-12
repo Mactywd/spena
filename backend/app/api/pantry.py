@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
+from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.db.models.pantry import PantryItem
 from app.domain.rules import Availability
@@ -61,8 +61,12 @@ async def create(
         await session.commit()
     except IntegrityError as exc:
         # un id pendente (tipico di una PWA con la cache vecchia) non deve essere
-        # un muro: 404, come già fa POST /shopping-list/stock
+        # un muro: 404, come già fa POST /shopping-list/stock. Qualunque altra
+        # violazione è un difetto nostro e deve restare visibile come 500, non
+        # travestirsi da "inesistente"
         await session.rollback()
+        if not is_missing_reference(exc):
+            raise
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "ingrediente o prodotto inesistente"
         ) from exc

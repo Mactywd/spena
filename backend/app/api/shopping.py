@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
+from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.db.models.shopping import ShoppingListItem
 from app.repositories.shopping import StockEntry, add_item, list_items, patch_item, stock_items
@@ -50,6 +50,10 @@ async def create(
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
+        # solo un riferimento pendente è un "inesistente": qualunque altra
+        # violazione è un difetto nostro e deve restare visibile come 500
+        if not is_missing_reference(exc):
+            raise
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
     await session.refresh(item, ["ingredient"])
     return _to_out(item)
@@ -69,6 +73,10 @@ async def patch(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "voce inesistente") from exc
     except IntegrityError as exc:
         await session.rollback()
+        # solo un riferimento pendente è un "inesistente": qualunque altra
+        # violazione è un difetto nostro e deve restare visibile come 500
+        if not is_missing_reference(exc):
+            raise
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
     return _to_out(item)
 
@@ -93,6 +101,10 @@ async def stock(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "voce di lista inesistente") from exc
     except IntegrityError as exc:
         await session.rollback()
+        # solo un riferimento pendente è un "inesistente": qualunque altra
+        # violazione è un difetto nostro e deve restare visibile come 500
+        if not is_missing_reference(exc):
+            raise
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "ingrediente o prodotto inesistente"
         ) from exc

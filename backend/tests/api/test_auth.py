@@ -135,11 +135,30 @@ async def test_an_unconfigured_secret_cannot_issue_a_session(client, monkeypatch
 
 
 def test_the_env_file_is_resolved_absolutely(tmp_path, monkeypatch):
-    """Il .env sta nella radice del repository: la CWD del processo non deve contare."""
-    from app.core.config import ENV_FILE, REPO_ROOT, Settings
+    """Il .env sta nella radice del repository: la CWD del processo non deve contare.
 
+    La terza asserzione del primo giro è stata rimossa perché non aveva denti: una
+    variabile d'ambiente vince comunque sul file, quindi passava anche con un percorso
+    relativo. Ciò che il percorso assoluto garantisce è qui sotto.
+    """
+    from app.core.config import ENV_FILE, REPO_ROOT
+
+    monkeypatch.chdir(tmp_path)
     assert ENV_FILE.is_absolute()
     assert (REPO_ROOT / "docker-compose.yml").exists(), "REPO_ROOT non è la radice del repo"
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
-    assert Settings().session_secret == "segreto-di-test"
+
+
+def test_the_suite_does_not_read_the_developers_env_file(monkeypatch):
+    """Senza questa garanzia, un test che dimostra «variabile non configurata» legge il
+    .env reale e il prossimo fa una chiamata a pagamento. Vedi il commento in conftest.
+    """
+    from app.core.config import Settings
+
+    monkeypatch.delenv("APP_PASSWORD_HASH", raising=False)
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    settings = Settings()
+    assert settings.app_password_hash == ""
+    assert settings.session_secret == ""
+    assert not settings.anthropic_api_key
