@@ -8,7 +8,11 @@
 #
 # e2e/ e playwright.config.ts invece NON vanno esclusi: `npm run build` esegue
 # `tsc -b`, e tsconfig.node.json li include — senza di loro l'immagine non compila.
-node_modules/
+# `**/`: un pattern nudo `node_modules/` esclude solo quello di radice, e su questa
+# macchina esistono src/features/recipes/node_modules e
+# src/features/shopping-list/node_modules — cache di Vitest lanciato da una
+# sottodirectory, cioè l'errore contro cui mette in guardia il README.
+**/node_modules/
 dist/
 test-results/
 playwright-report/
