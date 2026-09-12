@@ -7,6 +7,34 @@ import { useDebounced } from "../../hooks/useDebounced";
 
 const DEBOUNCE_MS = 180;
 
+/** Perché non c'è niente da mostrare: parole cercate e filtro, quattro casi.
+ *
+ * «Nessuna ricetta» è un verdetto sul ricettario, e il ricettario del seme ne ha 26:
+ * con la soglia semantica di `recipe_search.py` una risposta vuota è diventata
+ * raggiungibile per la prima volta, e quasi sempre riguarda le parole cercate o il
+ * filtro, non il ricettario. È lo stesso errore che b6ed1d9 ha corretto nel pannello
+ * del catalogo («con queste parole», non «in catalogo»), dall'altro lato dell'app.
+ */
+function emptyMessage(query: string, onlyCookable: boolean): string {
+  const searched = query.trim() !== "";
+  if (searched && onlyCookable) {
+    return (
+      "Nessuna ricetta con queste parole fra quelle che puoi cucinare adesso: " +
+      "togli il filtro, o prova con altre parole."
+    );
+  }
+  if (searched) {
+    return "Nessuna ricetta con queste parole: provane altre, o scrivine una con l'AI.";
+  }
+  if (onlyCookable) {
+    return (
+      "Niente che puoi cucinare con quel che hai in dispensa: togli il filtro per " +
+      "vedere tutto il ricettario."
+    );
+  }
+  return "Nessuna ricetta. Provane una scritta con l'AI.";
+}
+
 export function RecipeBookScreen() {
   const [query, setQuery] = useState("");
   const [onlyCookable, setOnlyCookable] = useState(false);
@@ -84,7 +112,9 @@ export function RecipeBookScreen() {
       )}
 
       {!isLoading && !isError && recipes.length === 0 && (
-        <p className="pt-4 text-neutral-500">Nessuna ricetta. Provane una scritta con l'AI.</p>
+        <p className="pt-4 text-neutral-500">
+          {emptyMessage(debouncedQuery, onlyCookable)}
+        </p>
       )}
 
       {!isLoading && !isError && recipes.length > 0 && (

@@ -133,6 +133,59 @@ describe("RecipeBookScreen", () => {
     expect(screen.queryByText(/solo testuale/i)).toBeNull();
   });
 
+  // R2. Prima della soglia di `recipe_search.py` la graduatoria semantica conteneva
+  // tutto il ricettario per qualunque query, quindi una ricerca non tornava mai
+  // vuota e questa frase non si vedeva mai. Adesso può: e «Nessuna ricetta» è un
+  // verdetto sul ricettario mentre il fatto riguarda le parole scritte.
+  it("una ricerca senza riscontri parla delle parole, non del ricettario", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.type(await screen.findByLabelText("Cerca nel ricettario"), "bulloni");
+
+    expect(await screen.findByText(/Nessuna ricetta con queste parole/)).toBeDefined();
+  });
+
+  it("con il filtro acceso dice anche del filtro, che è l'altra cosa da togliere", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
+    await userEvent.type(screen.getByLabelText("Cerca nel ricettario"), "bulloni");
+
+    // «fra quelle che puoi cucinare» appartiene solo al caso con entrambi: cercare
+    // «togli il filtro» passerebbe anche sulla frase del solo filtro, che è quella
+    // mostrata per i 180 ms del debounce, quando la query è ancora vuota
+    expect(await screen.findByText(/fra quelle che puoi cucinare/)).toBeDefined();
+  });
+
+  it("col solo filtro acceso il vuoto parla della dispensa, non del ricettario", async () => {
+    // dispensa vuota e filtro acceso: il ricettario è pieno, non c'è niente di
+    // cucinabile. Senza questa frase il vuoto sembrerebbe colpa del ricettario, e
+    // l'unica cosa da fare — togliere il filtro — non sarebbe nominata.
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
+
+    expect(await screen.findByText(/Niente che puoi cucinare con quel che hai in dispensa/))
+      .toBeDefined();
+  });
+
+  it("senza parole cercate il verdetto sul ricettario è quello giusto", async () => {
+    // l'unico caso in cui «Nessuna ricetta» è vero: nessuna query, nessun filtro
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+
+    expect(await screen.findByText("Nessuna ricetta. Provane una scritta con l'AI."))
+      .toBeDefined();
+  });
+
   // Pattern 2 delle istruzioni: una ricerca fallita deve dirlo, non sembrare un
   // ricettario vuoto. Una ricerca semantica senza risultati ha esattamente lo
   // stesso aspetto di una ricerca rotta, quindi qui la distinzione conta di più.
