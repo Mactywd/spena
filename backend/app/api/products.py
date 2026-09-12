@@ -26,6 +26,12 @@ async def lookup_barcode(
 
     Non restituisce mai un errore: un codice ignoto o un servizio giù devono
     portare alla creazione manuale, che è sempre possibile.
+
+    `find_by_barcode` cerca sul solo codice, quindi la referenza restituita può
+    appartenere a un ingrediente diverso da quello della voce su cui il codice è
+    stato letto. Qui è giusto così — il codice a barre identifica il prodotto, non
+    l'uso che se ne fa — e sta al chiamante confrontare `ingredient_id` prima di
+    agganciarla: `add_pantry_item` respinge la coppia incoerente con 409.
     """
     existing = await find_by_barcode(session, barcode)
     if existing is not None:

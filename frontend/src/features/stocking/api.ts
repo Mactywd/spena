@@ -1,13 +1,20 @@
 import { apiFetch } from "../../api/client";
 import type { BarcodeLookup, Product } from "../../domain/types";
 
+// Cerca per codice e basta: `find_by_barcode` non filtra per ingrediente, quindi la
+// referenza che torna può essere di un altro ingrediente. Confrontarla con
+// l'ingrediente della voce è compito del chiamante — la dispensa respinge quella
+// coppia con 409, e la sistemazione è tutto-o-niente (vedi lookup.onSuccess in
+// StockingScreen).
 export function lookupBarcode(code: string) {
   return apiFetch<BarcodeLookup>(`/products/barcode/${encodeURIComponent(code)}`);
 }
 
-// Richiesta dall'interfaccia del brief e non ancora consumata: la ricerca per
-// nome del catalogo è la strada di Task 20 (dispensa), dove si aggancia un
-// prodotto già noto senza passare dal codice a barre.
+// La seconda delle tre strade della spec §8.2: la usa CatalogSearchPanel per
+// riagganciare un prodotto già in catalogo senza passare dal codice a barre, che non
+// si legge se la confezione è aperta, il codice è rovinato o la fotocamera non c'è.
+// Cerca su nome e marca (app/repositories/products.py) e non filtra per ingrediente:
+// è il chiamante a doverlo fare, e il perché sta nel JSDoc di `ingredientId`.
 export function searchProducts(query: string) {
   return apiFetch<Product[]>(`/products/search?q=${encodeURIComponent(query)}`);
 }
