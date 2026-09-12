@@ -1,0 +1,67 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spena}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spena}
+      POSTGRES_DB: ${POSTGRES_DB:-spena}
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spena}"]
+      interval: 3s
+      retries: 20
+
+  backend:
+    # INSTALL_EMBEDDINGS=1 in .env aggiunge sentence-transformers all'immagine e
+    # accende così la ricerca semantica. A 0 l'immagine resta leggera (misurato:
+    # 233 MB, contro i GB che torch porta con sé) e la ricerca è solo testuale su
+    # pg_trgm, cioè la degradazione prevista dalla spec §11. È l'unico posto da
+    # cambiare: lo leggono entrambi i file Compose.
+    build:
+      context: ./backend
+      args:
+        INSTALL_EMBEDDINGS: ${INSTALL_EMBEDDINGS:-0}
+    # `format: raw` non è decorativo: l'hash argon2 di APP_PASSWORD_HASH contiene
+    # dei `$` e Compose, nella forma breve, li interpreta come riferimenti a
+    # variabili. Misurato: 97 caratteri arrivano al container come 62, e l'accesso
+    # fallisce sempre. Richiede Compose 2.30 o successivo.
+    env_file:
+      - path: .env
+        format: raw
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-spena}:${POSTGRES_PASSWORD:-spena}@db:5432/${POSTGRES_DB:-spena}
+    # Il backend è "sano" quando ha finito di migrare e risponde: serve a
+    # `up -d --wait`, che è ciò che rende sicuro seminare subito dopo. Senza, `up -d`
+    # torna appena il container è partito e `exec ... app.cli.seed` può arrivare
+    # mentre `alembic upgrade head` è ancora in corso, cioè su tabelle che non ci sono.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 3s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["8000:8000"]
+    # data/ sta nella radice del repository, fuori dal contesto di build
+    # dell'immagine (./backend): senza questo montaggio `python -m app.cli.seed`
+    # dentro il container non trova il seme. Vedi app/cli/seed.py.
+    # Il bersaglio è /data e non /app/data perché qui /app è a sua volta un bind di
+    # ./backend: un montaggio annidato fa creare a Docker il punto di innesto sul
+    # filesystem dell'host, cioè un backend/data vuoto e di proprietà di root che
+    # poi non si cancella senza sudo.
+    # hfcache tiene la cache di Hugging Face fuori dallo strato scrivibile del
+    # container: senza, con INSTALL_EMBEDDINGS=1 i ~500 MB del modello si
+    # riscaricano a ogni `up -d --build`, cioè dopo ogni `git pull`, e non «al primo
+    # uso» come dice la tabella del README. Con INSTALL_EMBEDDINGS=0 il volume resta
+    # vuoto e non costa niente.
+    volumes: ["./backend:/app", "./data:/data:ro", "hfcache:/root/.cache/huggingface"]
+
+  frontend:
+    build: ./frontend
+    ports: ["5173:80"]
+    depends_on: [backend]
+
+volumes:
+  pgdata:
+  hfcache:

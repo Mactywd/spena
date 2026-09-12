@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* la barra delle schede non deve finire sotto la tacca del telefono */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}

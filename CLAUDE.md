@@ -11,9 +11,29 @@ cook a recipe → whatever ran out goes back on the list.
 - `docs/superpowers/plans/2026-09-11-spena-v1.md` — the 24-task implementation
   plan, in Italian, test-first with exact file paths and code per step.
 
-**Status: the plan has not been executed yet.** The repository holds only the spec
-and the plan. When implementing, follow the plan task by task rather than
-improvising a structure.
+**Status: v1 is implemented.** All 24 tasks of the plan are done on branch
+`v1-foundations`. The plan stays as the record of why the code looks the way it
+does; the code is now the authority on what it does. `README.md` covers running,
+testing and deploying.
+
+Three things reviews here kept rediscovering, written down so the next person does
+not pay for them again:
+
+- **A test that builds its own object is not testing the one production uses.**
+  Three separate defects survived this way: a react-query client that retried
+  forever (every screen test built its own with `retry: false`), two domain
+  functions whose table-driven test guarded a copy nobody called, and an image
+  missing `anthropic` while every AI test injected a fake client. Ask of any
+  guarantee: is the thing under test the thing that runs?
+- **Compose interpolates `$` in `env_file` values in the short form.** An argon2
+  hash is full of `$`, so `env_file: .env` truncates `APP_PASSWORD_HASH` (measured:
+  97 characters arrive as 62) and login then fails always. Both compose files use
+  the long form with `format: raw`, which needs Compose 2.30 or newer, and a test
+  parses them to keep it that way. Do not "simplify" it.
+- **"Never a dead end" is violated most often by a fix, not by an omission.**
+  Adding the ingredient/product guard turned one mismatched barcode into a rejected
+  whole shop with an unactionable "riprova". When you close a hole, ask what the new
+  refusal leaves the user able to do.
 
 ## The two decisions everything else follows from
 

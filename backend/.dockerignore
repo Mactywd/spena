@@ -1,0 +1,10 @@
+# `COPY . .` porta dentro l'immagine tutto ciò che sta in questa cartella, e il
+# README fa creare qui un virtualenv: misurato, senza questo file l'immagine del
+# backend pesava 311 MB di cui 92 MB erano il .venv dello sviluppatore, più la cache
+# di pytest e l'egg-info. Peso inutile, e un ambiente Python dell'host dentro a
+# un'immagine che ne ha già uno suo.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/

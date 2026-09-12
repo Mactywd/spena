@@ -1,0 +1,30 @@
+# Sovrascrittura per il percorso end-to-end. Va sempre usata con un nome di
+# progetto suo, perché deve poter essere distrutta con i volumi senza toccare la
+# dispensa vera:
+#
+#   docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+#   docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml down -v
+#
+# Fa due cose. Aggiunge un secondo env_file: per le chiavi ripetute vince l'ultimo,
+# quindi APP_PASSWORD_HASH diventa quello della parola «test» e il percorso può fare
+# l'accesso senza conoscere la password dello sviluppatore. E sposta le porte, perché
+# lo stack di sviluppo può tenere occupate 5433, 8000 e 5173: `!override` serve perché
+# le liste di `ports` altrimenti si concatenano e le due pubblicazioni litigherebbero
+# sulla stessa porta dell'host.
+services:
+  db:
+    # nessuna porta pubblicata: migrazioni e semina passano da `compose exec`
+    ports: !override []
+
+  backend:
+    env_file:
+      - path: .env
+        format: raw
+      - path: .env.e2e
+        format: raw
+    ports: !override []
+
+  frontend:
+    # l'unica porta che serve: Playwright parla con Nginx, che inoltra /api/ al
+    # backend dentro la rete del progetto
+    ports: !override ["5174:80"]

@@ -1,0 +1,1002 @@
+[
+  {
+    "title": "Pasta al pomodoro",
+    "description": "Il piatto di sempre, in venti minuti",
+    "instructions": "1. Scalda l'olio con l'aglio.\n2. Aggiungi i pomodori e cuoci 15 minuti.\n3. Lessa la pasta e uniscila al sugo.\n4. Completa con basilico.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "pasta",
+        "role": "primary",
+        "quantity_text": "180 g"
+      },
+      {
+        "name": "pomodoro",
+        "role": "primary",
+        "quantity_text": "400 g"
+      },
+      {
+        "name": "aglio",
+        "role": "secondary",
+        "quantity_text": "1 spicchio"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "2 cucchiai"
+      },
+      {
+        "name": "basilico",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Spaghetti aglio, olio e peperoncino",
+    "description": "Tre ingredienti, nessuna scusa per non farla",
+    "instructions": "1. Lessa gli spaghetti in acqua salata.\n2. Scalda l'olio con aglio e peperoncino a fuoco basso.\n3. Scola la pasta e saltala nella padella con il condimento.\n4. Finisci con prezzemolo tritato.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "pasta",
+        "role": "primary",
+        "quantity_text": "180 g"
+      },
+      {
+        "name": "aglio",
+        "role": "primary",
+        "quantity_text": "2 spicchi"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "primary",
+        "quantity_text": "4 cucchiai"
+      },
+      {
+        "name": "peperoncino",
+        "role": "secondary",
+        "quantity_text": "1 pezzo"
+      },
+      {
+        "name": "prezzemolo",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Risotto alla parmigiana",
+    "description": "Il risotto in bianco di base, pronto per qualsiasi aggiunta",
+    "instructions": "1. Tosta il riso a secco per due minuti.\n2. Bagna con vino bianco e lascialo evaporare.\n3. Aggiungi il dado vegetale sciolto in acqua calda, un mestolo alla volta, mescolando per 18 minuti.\n4. Spegni e manteca con burro e parmigiano.",
+    "servings": 3,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "riso",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "dado vegetale",
+        "role": "primary",
+        "quantity_text": "1 litro di brodo"
+      },
+      {
+        "name": "cipolla",
+        "role": "secondary",
+        "quantity_text": "1/2"
+      },
+      {
+        "name": "vino bianco",
+        "role": "secondary",
+        "quantity_text": "1/2 bicchiere"
+      },
+      {
+        "name": "burro",
+        "role": "secondary",
+        "quantity_text": "30 g"
+      },
+      {
+        "name": "parmigiano",
+        "role": "primary",
+        "quantity_text": "60 g"
+      }
+    ]
+  },
+  {
+    "title": "Pollo al limone",
+    "description": "Petto di pollo veloce, buono anche freddo il giorno dopo",
+    "instructions": "1. Taglia il petto di pollo a fettine e infarinalo leggermente.\n2. Rosolalo in padella con olio da entrambi i lati.\n3. Sfuma con succo di limone e un goccio d'acqua, cuoci altri 5 minuti.\n4. Sala e servi con il fondo di cottura.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "petto di pollo",
+        "role": "primary",
+        "quantity_text": "400 g"
+      },
+      {
+        "name": "limone",
+        "role": "primary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "farina",
+        "role": "secondary",
+        "quantity_text": "2 cucchiai"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "3 cucchiai"
+      },
+      {
+        "name": "sale",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Frittata di patate",
+    "description": "La frittata che salva la cena quando il frigo è vuoto",
+    "instructions": "1. Affetta le patate sottili e cuocile in padella con olio finché sono morbide.\n2. Sbatti le uova con sale e pepe.\n3. Versa le uova sulle patate e cuoci a fuoco medio coperto per 8 minuti.\n4. Gira la frittata e cuoci altri 3 minuti sull'altro lato.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "uova",
+        "role": "primary",
+        "quantity_text": "4"
+      },
+      {
+        "name": "patata",
+        "role": "primary",
+        "quantity_text": "2 medie"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "3 cucchiai"
+      },
+      {
+        "name": "sale",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      },
+      {
+        "name": "pepe nero",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Minestrone di verdure",
+    "description": "Quello che svuota il cassetto delle verdure",
+    "instructions": "1. Soffriggi cipolla, sedano e carota in olio per 5 minuti.\n2. Aggiungi patate, zucchine, fagioli borlotti e pomodoro, copri d'acqua.\n3. Cuoci a fuoco basso per 40 minuti.\n4. Sala e servi con un filo d'olio a crudo.",
+    "servings": 4,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "patata",
+        "role": "primary",
+        "quantity_text": "2"
+      },
+      {
+        "name": "zucchina",
+        "role": "primary",
+        "quantity_text": "2"
+      },
+      {
+        "name": "fagioli borlotti",
+        "role": "primary",
+        "quantity_text": "1 scatola"
+      },
+      {
+        "name": "pomodoro",
+        "role": "secondary",
+        "quantity_text": "200 g"
+      },
+      {
+        "name": "cipolla",
+        "role": "secondary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "sedano",
+        "role": "secondary",
+        "quantity_text": "1 costa"
+      },
+      {
+        "name": "carota",
+        "role": "secondary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Pasta e ceci",
+    "description": "Piatto povero e completo, da credenza della dispensa",
+    "instructions": "1. Soffriggi aglio e rosmarino nell'olio.\n2. Aggiungi i ceci e un mestolo del loro liquido, schiacciane una parte.\n3. Versa acqua o brodo e porta a bollore.\n4. Cala la pasta direttamente nel tegame e cuoci mescolando.",
+    "servings": 3,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "ceci",
+        "role": "primary",
+        "quantity_text": "2 scatole"
+      },
+      {
+        "name": "pasta",
+        "role": "primary",
+        "quantity_text": "150 g"
+      },
+      {
+        "name": "aglio",
+        "role": "secondary",
+        "quantity_text": "1 spicchio"
+      },
+      {
+        "name": "rosmarino",
+        "role": "secondary",
+        "quantity_text": "1 rametto"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "3 cucchiai"
+      }
+    ]
+  },
+  {
+    "title": "Parmigiana di melanzane",
+    "description": "Il classico della domenica, lunga ma non difficile",
+    "instructions": "1. Affetta le melanzane e grigliale o friggile.\n2. Prepara un sugo semplice con pomodoro, aglio e basilico.\n3. Alterna strati di melanzane, sugo, mozzarella e parmigiano in una pirofila.\n4. Cuoci in forno a 190°C per 30 minuti.",
+    "servings": 4,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "melanzana",
+        "role": "primary",
+        "quantity_text": "3"
+      },
+      {
+        "name": "pomodoro",
+        "role": "primary",
+        "quantity_text": "500 g"
+      },
+      {
+        "name": "mozzarella",
+        "role": "primary",
+        "quantity_text": "250 g"
+      },
+      {
+        "name": "parmigiano",
+        "role": "secondary",
+        "quantity_text": "50 g"
+      },
+      {
+        "name": "aglio",
+        "role": "secondary",
+        "quantity_text": "1 spicchio"
+      },
+      {
+        "name": "basilico",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Insalata di riso",
+    "description": "L'estate in una ciotola, va bene anche il giorno dopo",
+    "instructions": "1. Lessa il riso, scolalo e lascialo raffreddare.\n2. Taglia a cubetti prosciutto cotto e formaggio.\n3. Aggiungi mais, olive e pomodorini.\n4. Condisci con olio e un pizzico di sale.",
+    "servings": 3,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "riso",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "prosciutto cotto",
+        "role": "secondary",
+        "quantity_text": "100 g"
+      },
+      {
+        "name": "mais",
+        "role": "secondary",
+        "quantity_text": "1 scatola piccola"
+      },
+      {
+        "name": "olive",
+        "role": "secondary",
+        "quantity_text": "50 g"
+      },
+      {
+        "name": "pomodorino",
+        "role": "secondary",
+        "quantity_text": "10"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Spaghetti alle vongole",
+    "description": "Il mare a tavola, pronto in mezz'ora",
+    "instructions": "1. Fai aprire le vongole in padella con aglio e un filo d'olio, coperte.\n2. Filtra il liquido di cottura e tienilo da parte.\n3. Lessa gli spaghetti e scolali al dente.\n4. Termina la cottura in padella con le vongole, il loro liquido e prezzemolo.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "pasta",
+        "role": "primary",
+        "quantity_text": "180 g"
+      },
+      {
+        "name": "vongola",
+        "role": "primary",
+        "quantity_text": "1 kg"
+      },
+      {
+        "name": "aglio",
+        "role": "secondary",
+        "quantity_text": "2 spicchi"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "4 cucchiai"
+      },
+      {
+        "name": "prezzemolo",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      },
+      {
+        "name": "peperoncino",
+        "role": "secondary",
+        "quantity_text": "facoltativo"
+      }
+    ]
+  },
+  {
+    "title": "Polpette al sugo",
+    "description": "Polpette morbide, buone anche fredde nel panino",
+    "instructions": "1. Impasta il macinato con pangrattato, un uovo, parmigiano e prezzemolo.\n2. Forma le polpette e rosolale in padella.\n3. Aggiungi il pomodoro e cuoci a fuoco basso per 25 minuti.\n4. Servi con il sugo di cottura.",
+    "servings": 4,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "macinato di manzo",
+        "role": "primary",
+        "quantity_text": "500 g"
+      },
+      {
+        "name": "pomodoro",
+        "role": "primary",
+        "quantity_text": "500 g"
+      },
+      {
+        "name": "uova",
+        "role": "secondary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "pangrattato",
+        "role": "secondary",
+        "quantity_text": "3 cucchiai"
+      },
+      {
+        "name": "parmigiano",
+        "role": "secondary",
+        "quantity_text": "2 cucchiai"
+      },
+      {
+        "name": "prezzemolo",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Carbonara",
+    "description": "La vera carbonara non ha panna",
+    "instructions": "1. Rosola la pancetta in padella senza aggiungere olio.\n2. Sbatti le uova con abbondante pecorino e pepe.\n3. Lessa la pasta e scolala tenendo da parte l'acqua di cottura.\n4. Fuori dal fuoco unisci pasta, pancetta e uova, mescolando con l'acqua di cottura.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "pasta",
+        "role": "primary",
+        "quantity_text": "180 g"
+      },
+      {
+        "name": "pancetta",
+        "role": "primary",
+        "quantity_text": "120 g"
+      },
+      {
+        "name": "uova",
+        "role": "primary",
+        "quantity_text": "3"
+      },
+      {
+        "name": "pecorino",
+        "role": "primary",
+        "quantity_text": "60 g"
+      },
+      {
+        "name": "pepe nero",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Cacio e pepe",
+    "description": "Due ingredienti, tecnica che vale la pratica",
+    "instructions": "1. Lessa la pasta in poca acqua salata, tenendo da parte l'acqua di cottura.\n2. Prepara una crema sbattendo il pecorino con acqua di cottura tiepida.\n3. Scola la pasta al dente e saltala con abbondante pepe macinato.\n4. Fuori dal fuoco unisci la crema di pecorino mescolando velocemente.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "pasta",
+        "role": "primary",
+        "quantity_text": "180 g"
+      },
+      {
+        "name": "pecorino",
+        "role": "primary",
+        "quantity_text": "100 g"
+      },
+      {
+        "name": "pepe nero",
+        "role": "primary",
+        "quantity_text": "abbondante"
+      }
+    ]
+  },
+  {
+    "title": "Lasagne alla bolognese",
+    "description": "Il piatto delle feste, ottimo anche surgelato in porzioni",
+    "instructions": "1. Prepara un ragù con macinato, pomodoro, carota, sedano e cipolla, cuoci un'ora.\n2. Prepara una besciamella con burro, farina e latte.\n3. Alterna sfoglie di lasagne, ragù, besciamella e parmigiano in una pirofila.\n4. Cuoci in forno a 180°C per 35 minuti.",
+    "servings": 6,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "pasta sfoglia",
+        "role": "primary",
+        "quantity_text": "1 confezione di sfoglie per lasagne"
+      },
+      {
+        "name": "macinato di manzo",
+        "role": "primary",
+        "quantity_text": "400 g"
+      },
+      {
+        "name": "pomodoro",
+        "role": "primary",
+        "quantity_text": "400 g"
+      },
+      {
+        "name": "latte",
+        "role": "primary",
+        "quantity_text": "500 ml per la besciamella"
+      },
+      {
+        "name": "farina",
+        "role": "primary",
+        "quantity_text": "40 g"
+      },
+      {
+        "name": "burro",
+        "role": "primary",
+        "quantity_text": "40 g"
+      },
+      {
+        "name": "carota",
+        "role": "secondary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "sedano",
+        "role": "secondary",
+        "quantity_text": "1 costa"
+      },
+      {
+        "name": "cipolla",
+        "role": "secondary",
+        "quantity_text": "1/2"
+      },
+      {
+        "name": "parmigiano",
+        "role": "secondary",
+        "quantity_text": "80 g"
+      }
+    ]
+  },
+  {
+    "title": "Salmone al forno con patate",
+    "description": "Piatto unico senza troppi pensieri",
+    "instructions": "1. Taglia le patate a spicchi e condiscile con olio, sale e rosmarino.\n2. Disponile in una teglia e cuoci a 200°C per 20 minuti.\n3. Aggiungi il salmone sopra le patate.\n4. Cuoci altri 15 minuti, fino a quando il salmone è cotto.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "salmone",
+        "role": "primary",
+        "quantity_text": "2 filetti"
+      },
+      {
+        "name": "patata",
+        "role": "primary",
+        "quantity_text": "4"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "3 cucchiai"
+      },
+      {
+        "name": "rosmarino",
+        "role": "secondary",
+        "quantity_text": "1 rametto"
+      },
+      {
+        "name": "sale",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Zuppa di lenticchie",
+    "description": "Confortante, buona anche riscaldata il giorno dopo",
+    "instructions": "1. Soffriggi cipolla, carota e sedano in olio.\n2. Aggiungi le lenticchie e copri con acqua o brodo.\n3. Cuoci a fuoco basso per 30 minuti, aggiungendo acqua se serve.\n4. Sala e finisci con un filo d'olio.",
+    "servings": 4,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "lenticchie",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "cipolla",
+        "role": "secondary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "carota",
+        "role": "secondary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "sedano",
+        "role": "secondary",
+        "quantity_text": "1 costa"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      },
+      {
+        "name": "sale",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Involtini di bresaola e rucola",
+    "description": "Antipasto o secondo leggero, senza cottura",
+    "instructions": "1. Disponi le fette di bresaola su un piano.\n2. Farcisci ciascuna con rucola e scaglie di grana.\n3. Chiudi a involtino.\n4. Condisci con olio e succo di limone.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "bresaola",
+        "role": "primary",
+        "quantity_text": "150 g"
+      },
+      {
+        "name": "rucola",
+        "role": "secondary",
+        "quantity_text": "1 manciata"
+      },
+      {
+        "name": "grana padano",
+        "role": "secondary",
+        "quantity_text": "30 g"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "2 cucchiai"
+      },
+      {
+        "name": "limone",
+        "role": "secondary",
+        "quantity_text": "1/2"
+      }
+    ]
+  },
+  {
+    "title": "Tiramisù",
+    "description": "Il dolce al cucchiaio della domenica",
+    "instructions": "1. Monta i tuorli con lo zucchero fino a renderli chiari.\n2. Incorpora il mascarpone mescolando con delicatezza.\n3. Inzuppa i savoiardi nel caffè e disponili in una pirofila.\n4. Alterna strati di savoiardi e crema, finisci con cacao amaro e riponi in frigo.",
+    "servings": 6,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "mascarpone",
+        "role": "primary",
+        "quantity_text": "500 g"
+      },
+      {
+        "name": "savoiardi",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "caffè",
+        "role": "primary",
+        "quantity_text": "3 tazzine"
+      },
+      {
+        "name": "uova",
+        "role": "primary",
+        "quantity_text": "4"
+      },
+      {
+        "name": "zucchero",
+        "role": "secondary",
+        "quantity_text": "100 g"
+      },
+      {
+        "name": "cacao amaro",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Torta allo yogurt",
+    "description": "La torta da credenza, pronta in poco più di mezz'ora",
+    "instructions": "1. Sbatti le uova con lo zucchero fino a renderle spumose.\n2. Aggiungi lo yogurt e l'olio di semi, mescolando.\n3. Incorpora farina e lievito setacciati.\n4. Versa in uno stampo e cuoci a 180°C per 35 minuti.",
+    "servings": 6,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "yogurt bianco",
+        "role": "primary",
+        "quantity_text": "1 vasetto"
+      },
+      {
+        "name": "farina",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "uova",
+        "role": "primary",
+        "quantity_text": "3"
+      },
+      {
+        "name": "zucchero",
+        "role": "primary",
+        "quantity_text": "150 g"
+      },
+      {
+        "name": "olio di semi",
+        "role": "secondary",
+        "quantity_text": "80 ml"
+      },
+      {
+        "name": "lievito per dolci",
+        "role": "secondary",
+        "quantity_text": "1 bustina"
+      }
+    ]
+  },
+  {
+    "title": "Macedonia di frutta",
+    "description": "Usa quello che c'è in frutta, non ne va sprecata",
+    "instructions": "1. Taglia a pezzi mela, pera, banana e arancia.\n2. Aggiungi fragole o altra frutta di stagione a disposizione.\n3. Condisci con succo di limone per non farla scurire.\n4. Lascia riposare in frigo almeno 20 minuti prima di servire.",
+    "servings": 4,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "mela",
+        "role": "primary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "pera",
+        "role": "primary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "banana",
+        "role": "primary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "arancia",
+        "role": "secondary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "fragola",
+        "role": "secondary",
+        "quantity_text": "facoltative"
+      },
+      {
+        "name": "limone",
+        "role": "secondary",
+        "quantity_text": "1/2"
+      }
+    ]
+  },
+  {
+    "title": "Gamberi in padella con zucchine",
+    "description": "Secondo veloce e leggero",
+    "instructions": "1. Taglia le zucchine a rondelle e saltale in padella con olio.\n2. Aggiungi i gamberi e cuoci pochi minuti, finché diventano rosa.\n3. Sfuma con vino bianco e lascia evaporare.\n4. Finisci con prezzemolo tritato.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "gambero",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "zucchina",
+        "role": "primary",
+        "quantity_text": "2"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "3 cucchiai"
+      },
+      {
+        "name": "vino bianco",
+        "role": "secondary",
+        "quantity_text": "1/2 bicchiere"
+      },
+      {
+        "name": "aglio",
+        "role": "secondary",
+        "quantity_text": "1 spicchio"
+      },
+      {
+        "name": "prezzemolo",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Cous cous alle verdure",
+    "description": "Piatto unico freddo o tiepido, comodo da portare",
+    "instructions": "1. Versa il cous cous in una ciotola, copri con acqua bollente salata e lascia gonfiare.\n2. Taglia a cubetti zucchina, peperone e pomodoro.\n3. Scola le verdure crude o saltale brevemente in padella.\n4. Unisci tutto al cous cous e condisci con olio e limone.",
+    "servings": 3,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "cous cous",
+        "role": "primary",
+        "quantity_text": "250 g"
+      },
+      {
+        "name": "zucchina",
+        "role": "primary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "peperone",
+        "role": "primary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "pomodoro",
+        "role": "secondary",
+        "quantity_text": "2"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "3 cucchiai"
+      },
+      {
+        "name": "limone",
+        "role": "secondary",
+        "quantity_text": "1/2"
+      }
+    ]
+  },
+  {
+    "title": "Zuppa di ceci e pancetta",
+    "description": "Piatto unico invernale, pronto in 40 minuti",
+    "instructions": "1. Rosola la pancetta con rosmarino in una pentola.\n2. Aggiungi i ceci e un mestolo del loro liquido.\n3. Copri con acqua o brodo e cuoci 25 minuti.\n4. Frulla parzialmente per addensare e servi con un filo d'olio.",
+    "servings": 3,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "ceci",
+        "role": "primary",
+        "quantity_text": "2 scatole"
+      },
+      {
+        "name": "pancetta",
+        "role": "secondary",
+        "quantity_text": "80 g"
+      },
+      {
+        "name": "rosmarino",
+        "role": "secondary",
+        "quantity_text": "1 rametto"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      },
+      {
+        "name": "dado vegetale",
+        "role": "secondary",
+        "quantity_text": "1"
+      }
+    ]
+  },
+  {
+    "title": "Hamburger di manzo con insalata",
+    "description": "Il classico da griglia o padella",
+    "instructions": "1. Forma gli hamburger con il macinato, sale e pepe, senza lavorarlo troppo.\n2. Cuoci in padella o alla griglia 3-4 minuti per lato.\n3. Scalda il pane per hamburger.\n4. Componi con lattuga, pomodoro e l'hamburger.",
+    "servings": 2,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "macinato di manzo",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "pane per hamburger",
+        "role": "primary",
+        "quantity_text": "2"
+      },
+      {
+        "name": "lattuga",
+        "role": "secondary",
+        "quantity_text": "alcune foglie"
+      },
+      {
+        "name": "pomodoro",
+        "role": "secondary",
+        "quantity_text": "1"
+      },
+      {
+        "name": "sale",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      },
+      {
+        "name": "pepe nero",
+        "role": "secondary",
+        "quantity_text": "q.b."
+      }
+    ]
+  },
+  {
+    "title": "Orzotto ai funghi",
+    "description": "Risotto d'orzo, più rustico e più perdonante",
+    "instructions": "1. Soffriggi cipolla e funghi champignon in olio.\n2. Aggiungi l'orzo e tostalo un paio di minuti.\n3. Bagna con brodo vegetale caldo, un mestolo alla volta, per 20 minuti.\n4. Manteca con burro e parmigiano fuori dal fuoco.",
+    "servings": 3,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "orzo",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "funghi champignon",
+        "role": "primary",
+        "quantity_text": "300 g"
+      },
+      {
+        "name": "dado vegetale",
+        "role": "primary",
+        "quantity_text": "1 litro di brodo"
+      },
+      {
+        "name": "cipolla",
+        "role": "secondary",
+        "quantity_text": "1/2"
+      },
+      {
+        "name": "burro",
+        "role": "secondary",
+        "quantity_text": "20 g"
+      },
+      {
+        "name": "parmigiano",
+        "role": "secondary",
+        "quantity_text": "50 g"
+      }
+    ]
+  },
+  {
+    "title": "Crostini con acciughe e capperi",
+    "description": "Antipasto rapido, sapore deciso",
+    "instructions": "1. Tosta le fette di pane.\n2. Trita acciughe e capperi con un filo d'olio.\n3. Spalma il composto sui crostini.\n4. Servi subito, finché il pane è ancora caldo.",
+    "servings": 4,
+    "source": "dataset",
+    "source_ref": "seme iniziale",
+    "ingredients": [
+      {
+        "name": "pane",
+        "role": "primary",
+        "quantity_text": "8 fette"
+      },
+      {
+        "name": "acciuga",
+        "role": "primary",
+        "quantity_text": "8 filetti"
+      },
+      {
+        "name": "capperi",
+        "role": "secondary",
+        "quantity_text": "1 cucchiaio"
+      },
+      {
+        "name": "olio di oliva",
+        "role": "secondary",
+        "quantity_text": "2 cucchiai"
+      }
+    ]
+  }
+]

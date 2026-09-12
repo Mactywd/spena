@@ -1,0 +1,86 @@
+# Deploy di produzione. Il frontend è l'unico servizio esposto: Nginx inoltra
+# /api/ al backend, quindi il backend non pubblica porte. HTTPS è necessario e non
+# opzionale: senza, la fotocamera non parte (getUserMedia vuole un contesto sicuro)
+# e il cookie marcato `Secure` non viaggia.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    # Serve da quando le migrazioni girano all'avvio del backend (spec §13): senza,
+    # il backend parte mentre initdb è ancora in corso e `alembic upgrade head` muore
+    # sulla connessione rifiutata.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 3s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    # INSTALL_EMBEDDINGS=1 in .env aggiunge sentence-transformers all'immagine e
+    # accende così la ricerca semantica. A 0 l'immagine resta leggera (misurato:
+    # 233 MB, contro i GB che torch porta con sé) e la ricerca è solo testuale su
+    # pg_trgm, cioè la degradazione prevista dalla spec §11. È l'unico posto da
+    # cambiare: lo leggono entrambi i file Compose.
+    build:
+      context: ./backend
+      args:
+        INSTALL_EMBEDDINGS: ${INSTALL_EMBEDDINGS:-0}
+    # `format: raw` non è decorativo, ed è lo stesso motivo di docker-compose.yml:
+    # l'hash argon2 di APP_PASSWORD_HASH contiene dei `$` e Compose, nella forma
+    # breve `env_file: .env`, li interpreta come riferimenti a variabili. Misurato:
+    # 97 caratteri arrivano al container come 62, e l'accesso fallisce sempre.
+    # Non semplificare alla forma breve. Richiede Compose 2.30 o successivo.
+    env_file:
+      - path: .env
+        format: raw
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      COOKIE_SECURE: "true"
+    # solo lettura, e solo per il seme: data/ vive nella radice del repository,
+    # fuori dal contesto di build dell'immagine, quindi `python -m app.cli.seed`
+    # non lo troverebbe. Lo stesso bersaglio dello sviluppo (/data) di proposito: è
+    # quello che il percorso end-to-end prova davvero, e un secondo bersaglio solo
+    # per la produzione sarebbe l'unico mai verificato. Vedi app/cli/seed.py.
+    # Il backend è "sano" quando ha finito di migrare e risponde: serve a
+    # `up -d --wait`, che è ciò che rende sicuro seminare subito dopo. Senza, `up -d`
+    # torna appena il container è partito e `exec ... app.cli.seed` può arrivare
+    # mentre `alembic upgrade head` è ancora in corso, cioè su tabelle che non ci sono.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 3s
+      retries: 20
+      start_period: 30s
+    # hfcache tiene la cache di Hugging Face fuori dallo strato scrivibile del
+    # container: senza, con INSTALL_EMBEDDINGS=1 i ~500 MB del modello si
+    # riscaricano a ogni `up -d --build`, cioè dopo ogni `git pull`, e non «al primo
+    # uso» come dice la tabella del README. Con INSTALL_EMBEDDINGS=0 il volume resta
+    # vuoto e non costa niente.
+    volumes: ["./data:/data:ro", "hfcache:/root/.cache/huggingface"]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+    restart: unless-stopped
+    networks: [default, traefik-public]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.spena.rule=Host(`${SPENA_HOST}`)
+      - traefik.http.routers.spena.entrypoints=websecure
+      - traefik.http.routers.spena.tls.certresolver=letsencrypt
+      - traefik.http.services.spena.loadbalancer.server.port=80
+
+volumes:
+  pgdata:
+  hfcache:
+
+networks:
+  traefik-public:
+    external: true

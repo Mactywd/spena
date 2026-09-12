@@ -1,0 +1,1452 @@
+[
+  {
+    "name": "pomodoro",
+    "display_name": "Pomodoro",
+    "category": "verdura",
+    "aliases": [
+      "pomodori",
+      "pomodori pelati",
+      "passata di pomodoro",
+      "pelati",
+      "polpa di pomodoro"
+    ]
+  },
+  {
+    "name": "pomodorino",
+    "display_name": "Pomodorino",
+    "category": "verdura",
+    "aliases": [
+      "pomodorini",
+      "datterini",
+      "pachino"
+    ]
+  },
+  {
+    "name": "aglio",
+    "display_name": "Aglio",
+    "category": "verdura",
+    "aliases": [
+      "spicchio d'aglio",
+      "spicchi d'aglio"
+    ]
+  },
+  {
+    "name": "cipolla",
+    "display_name": "Cipolla",
+    "category": "verdura",
+    "aliases": [
+      "cipolle",
+      "cipolla bianca",
+      "cipolla dorata"
+    ]
+  },
+  {
+    "name": "cipollotto",
+    "display_name": "Cipollotto",
+    "category": "verdura",
+    "aliases": [
+      "cipollotti",
+      "cipolline"
+    ]
+  },
+  {
+    "name": "patata",
+    "display_name": "Patata",
+    "category": "verdura",
+    "aliases": [
+      "patate",
+      "patate a pasta gialla"
+    ]
+  },
+  {
+    "name": "carota",
+    "display_name": "Carota",
+    "category": "verdura",
+    "aliases": [
+      "carote"
+    ]
+  },
+  {
+    "name": "zucchina",
+    "display_name": "Zucchina",
+    "category": "verdura",
+    "aliases": [
+      "zucchine"
+    ]
+  },
+  {
+    "name": "melanzana",
+    "display_name": "Melanzana",
+    "category": "verdura",
+    "aliases": [
+      "melanzane"
+    ]
+  },
+  {
+    "name": "peperone",
+    "display_name": "Peperone",
+    "category": "verdura",
+    "aliases": [
+      "peperoni",
+      "peperoni rossi",
+      "peperoni gialli"
+    ]
+  },
+  {
+    "name": "spinaci",
+    "display_name": "Spinaci",
+    "category": "verdura",
+    "aliases": [
+      "spinaci freschi",
+      "spinaci surgelati"
+    ]
+  },
+  {
+    "name": "lattuga",
+    "display_name": "Lattuga",
+    "category": "verdura",
+    "aliases": [
+      "insalata",
+      "lattuga romana",
+      "insalatina"
+    ]
+  },
+  {
+    "name": "rucola",
+    "display_name": "Rucola",
+    "category": "verdura",
+    "aliases": [
+      "rughetta"
+    ]
+  },
+  {
+    "name": "sedano",
+    "display_name": "Sedano",
+    "category": "verdura",
+    "aliases": [
+      "costa di sedano",
+      "gambo di sedano"
+    ]
+  },
+  {
+    "name": "finocchio",
+    "display_name": "Finocchio",
+    "category": "verdura",
+    "aliases": [
+      "finocchi"
+    ]
+  },
+  {
+    "name": "broccolo",
+    "display_name": "Broccolo",
+    "category": "verdura",
+    "aliases": [
+      "broccoli",
+      "broccoletti"
+    ]
+  },
+  {
+    "name": "cavolfiore",
+    "display_name": "Cavolfiore",
+    "category": "verdura",
+    "aliases": [
+      "cavolfiori"
+    ]
+  },
+  {
+    "name": "zucca",
+    "display_name": "Zucca",
+    "category": "verdura",
+    "aliases": [
+      "zucca gialla"
+    ]
+  },
+  {
+    "name": "funghi champignon",
+    "display_name": "Funghi champignon",
+    "category": "verdura",
+    "aliases": [
+      "funghi",
+      "champignon"
+    ]
+  },
+  {
+    "name": "porro",
+    "display_name": "Porro",
+    "category": "verdura",
+    "aliases": [
+      "porri"
+    ]
+  },
+  {
+    "name": "bietola",
+    "display_name": "Bietola",
+    "category": "verdura",
+    "aliases": [
+      "bietole",
+      "biete"
+    ]
+  },
+  {
+    "name": "radicchio",
+    "display_name": "Radicchio",
+    "category": "verdura",
+    "aliases": [
+      "radicchio rosso"
+    ]
+  },
+  {
+    "name": "cetriolo",
+    "display_name": "Cetriolo",
+    "category": "verdura",
+    "aliases": [
+      "cetrioli"
+    ]
+  },
+  {
+    "name": "asparago",
+    "display_name": "Asparago",
+    "category": "verdura",
+    "aliases": [
+      "asparagi"
+    ]
+  },
+  {
+    "name": "carciofo",
+    "display_name": "Carciofo",
+    "category": "verdura",
+    "aliases": [
+      "carciofi"
+    ]
+  },
+  {
+    "name": "fagiolino",
+    "display_name": "Fagiolino",
+    "category": "verdura",
+    "aliases": [
+      "fagiolini",
+      "cornetti"
+    ]
+  },
+  {
+    "name": "pisello",
+    "display_name": "Pisello",
+    "category": "verdura",
+    "aliases": [
+      "piselli",
+      "piselli surgelati"
+    ]
+  },
+  {
+    "name": "mais",
+    "display_name": "Mais",
+    "category": "verdura",
+    "aliases": [
+      "mais in scatola",
+      "granella di mais"
+    ]
+  },
+  {
+    "name": "patata dolce",
+    "display_name": "Patata dolce",
+    "category": "verdura",
+    "aliases": [
+      "patate dolci",
+      "patata americana"
+    ]
+  },
+  {
+    "name": "mela",
+    "display_name": "Mela",
+    "category": "frutta",
+    "aliases": [
+      "mele",
+      "mela golden",
+      "mela renetta"
+    ]
+  },
+  {
+    "name": "pera",
+    "display_name": "Pera",
+    "category": "frutta",
+    "aliases": [
+      "pere",
+      "pera abate"
+    ]
+  },
+  {
+    "name": "banana",
+    "display_name": "Banana",
+    "category": "frutta",
+    "aliases": [
+      "banane"
+    ]
+  },
+  {
+    "name": "arancia",
+    "display_name": "Arancia",
+    "category": "frutta",
+    "aliases": [
+      "arance",
+      "arance tarocco"
+    ]
+  },
+  {
+    "name": "limone",
+    "display_name": "Limone",
+    "category": "frutta",
+    "aliases": [
+      "limoni",
+      "succo di limone"
+    ]
+  },
+  {
+    "name": "mandarino",
+    "display_name": "Mandarino",
+    "category": "frutta",
+    "aliases": [
+      "mandarini",
+      "clementine"
+    ]
+  },
+  {
+    "name": "fragola",
+    "display_name": "Fragola",
+    "category": "frutta",
+    "aliases": [
+      "fragole"
+    ]
+  },
+  {
+    "name": "uva",
+    "display_name": "Uva",
+    "category": "frutta",
+    "aliases": [
+      "uva bianca",
+      "uva nera"
+    ]
+  },
+  {
+    "name": "pesca",
+    "display_name": "Pesca",
+    "category": "frutta",
+    "aliases": [
+      "pesche"
+    ]
+  },
+  {
+    "name": "albicocca",
+    "display_name": "Albicocca",
+    "category": "frutta",
+    "aliases": [
+      "albicocche"
+    ]
+  },
+  {
+    "name": "kiwi",
+    "display_name": "Kiwi",
+    "category": "frutta",
+    "aliases": [
+      "kiwi fresco"
+    ]
+  },
+  {
+    "name": "ananas",
+    "display_name": "Ananas",
+    "category": "frutta",
+    "aliases": [
+      "ananas fresco",
+      "ananas in scatola"
+    ]
+  },
+  {
+    "name": "anguria",
+    "display_name": "Anguria",
+    "category": "frutta",
+    "aliases": [
+      "cocomero"
+    ]
+  },
+  {
+    "name": "melone",
+    "display_name": "Melone",
+    "category": "frutta",
+    "aliases": [
+      "meloni"
+    ]
+  },
+  {
+    "name": "pompelmo",
+    "display_name": "Pompelmo",
+    "category": "frutta",
+    "aliases": [
+      "pompelmi"
+    ]
+  },
+  {
+    "name": "mirtillo",
+    "display_name": "Mirtillo",
+    "category": "frutta",
+    "aliases": [
+      "mirtilli"
+    ]
+  },
+  {
+    "name": "ciliegia",
+    "display_name": "Ciliegia",
+    "category": "frutta",
+    "aliases": [
+      "ciliegie"
+    ]
+  },
+  {
+    "name": "avocado",
+    "display_name": "Avocado",
+    "category": "frutta",
+    "aliases": [
+      "avocado maturo"
+    ]
+  },
+  {
+    "name": "petto di pollo",
+    "display_name": "Petto di pollo",
+    "category": "carne",
+    "aliases": [
+      "pollo",
+      "fesa di pollo",
+      "petto di pollo a fette"
+    ]
+  },
+  {
+    "name": "coscia di pollo",
+    "display_name": "Coscia di pollo",
+    "category": "carne",
+    "aliases": [
+      "cosce di pollo",
+      "sovracoscia di pollo"
+    ]
+  },
+  {
+    "name": "macinato di manzo",
+    "display_name": "Macinato di manzo",
+    "category": "carne",
+    "aliases": [
+      "carne macinata",
+      "macinata",
+      "macinato"
+    ]
+  },
+  {
+    "name": "macinato misto",
+    "display_name": "Macinato misto",
+    "category": "carne",
+    "aliases": [
+      "macinato di vitello e maiale"
+    ]
+  },
+  {
+    "name": "fettina di manzo",
+    "display_name": "Fettina di manzo",
+    "category": "carne",
+    "aliases": [
+      "fettine di manzo",
+      "scaloppine di manzo"
+    ]
+  },
+  {
+    "name": "salsiccia",
+    "display_name": "Salsiccia",
+    "category": "carne",
+    "aliases": [
+      "salsicce",
+      "salsiccia di maiale"
+    ]
+  },
+  {
+    "name": "pancetta",
+    "display_name": "Pancetta",
+    "category": "carne",
+    "aliases": [
+      "pancetta affumicata",
+      "pancetta a cubetti",
+      "guanciale"
+    ]
+  },
+  {
+    "name": "prosciutto crudo",
+    "display_name": "Prosciutto crudo",
+    "category": "carne",
+    "aliases": [
+      "prosciutto di parma",
+      "crudo"
+    ]
+  },
+  {
+    "name": "prosciutto cotto",
+    "display_name": "Prosciutto cotto",
+    "category": "carne",
+    "aliases": [
+      "cotto"
+    ]
+  },
+  {
+    "name": "bresaola",
+    "display_name": "Bresaola",
+    "category": "carne",
+    "aliases": [
+      "bresaola della valtellina"
+    ]
+  },
+  {
+    "name": "tacchino",
+    "display_name": "Tacchino",
+    "category": "carne",
+    "aliases": [
+      "fesa di tacchino",
+      "petto di tacchino"
+    ]
+  },
+  {
+    "name": "lonza di maiale",
+    "display_name": "Lonza di maiale",
+    "category": "carne",
+    "aliases": [
+      "lombo di maiale",
+      "arista"
+    ]
+  },
+  {
+    "name": "wurstel",
+    "display_name": "Wurstel",
+    "category": "carne",
+    "aliases": [
+      "wurstel di pollo"
+    ]
+  },
+  {
+    "name": "speck",
+    "display_name": "Speck",
+    "category": "carne",
+    "aliases": [
+      "speck alto adige"
+    ]
+  },
+  {
+    "name": "costine di maiale",
+    "display_name": "Costine di maiale",
+    "category": "carne",
+    "aliases": [
+      "costine",
+      "puntine di maiale"
+    ]
+  },
+  {
+    "name": "tonno in scatola",
+    "display_name": "Tonno in scatola",
+    "category": "pesce",
+    "aliases": [
+      "tonno",
+      "tonno sott'olio",
+      "tonno al naturale"
+    ]
+  },
+  {
+    "name": "salmone",
+    "display_name": "Salmone",
+    "category": "pesce",
+    "aliases": [
+      "filetto di salmone",
+      "salmone fresco",
+      "salmone affumicato"
+    ]
+  },
+  {
+    "name": "merluzzo",
+    "display_name": "Merluzzo",
+    "category": "pesce",
+    "aliases": [
+      "filetto di merluzzo",
+      "nasello"
+    ]
+  },
+  {
+    "name": "gambero",
+    "display_name": "Gambero",
+    "category": "pesce",
+    "aliases": [
+      "gamberi",
+      "gamberetti"
+    ]
+  },
+  {
+    "name": "vongola",
+    "display_name": "Vongola",
+    "category": "pesce",
+    "aliases": [
+      "vongole"
+    ]
+  },
+  {
+    "name": "cozza",
+    "display_name": "Cozza",
+    "category": "pesce",
+    "aliases": [
+      "cozze"
+    ]
+  },
+  {
+    "name": "acciuga",
+    "display_name": "Acciuga",
+    "category": "pesce",
+    "aliases": [
+      "acciughe",
+      "alici"
+    ]
+  },
+  {
+    "name": "branzino",
+    "display_name": "Branzino",
+    "category": "pesce",
+    "aliases": [
+      "spigola"
+    ]
+  },
+  {
+    "name": "orata",
+    "display_name": "Orata",
+    "category": "pesce",
+    "aliases": [
+      "orate"
+    ]
+  },
+  {
+    "name": "calamaro",
+    "display_name": "Calamaro",
+    "category": "pesce",
+    "aliases": [
+      "calamari",
+      "totani"
+    ]
+  },
+  {
+    "name": "sgombro",
+    "display_name": "Sgombro",
+    "category": "pesce",
+    "aliases": [
+      "sgombro sott'olio"
+    ]
+  },
+  {
+    "name": "uova",
+    "display_name": "Uova",
+    "category": "latticini",
+    "aliases": [
+      "uovo",
+      "uova fresche"
+    ]
+  },
+  {
+    "name": "latte",
+    "display_name": "Latte",
+    "category": "latticini",
+    "aliases": [
+      "latte intero",
+      "latte parzialmente scremato"
+    ]
+  },
+  {
+    "name": "yogurt greco",
+    "display_name": "Yogurt greco",
+    "category": "latticini",
+    "aliases": [
+      "yoghurt greco",
+      "yogurt colato"
+    ]
+  },
+  {
+    "name": "yogurt bianco",
+    "display_name": "Yogurt bianco",
+    "category": "latticini",
+    "aliases": [
+      "yoghurt bianco",
+      "yogurt intero"
+    ]
+  },
+  {
+    "name": "burro",
+    "display_name": "Burro",
+    "category": "latticini",
+    "aliases": [
+      "burro fresco"
+    ]
+  },
+  {
+    "name": "mozzarella",
+    "display_name": "Mozzarella",
+    "category": "latticini",
+    "aliases": [
+      "mozzarella fior di latte",
+      "fiordilatte"
+    ]
+  },
+  {
+    "name": "parmigiano",
+    "display_name": "Parmigiano",
+    "category": "latticini",
+    "aliases": [
+      "parmigiano reggiano",
+      "grana",
+      "formaggio grattugiato"
+    ]
+  },
+  {
+    "name": "grana padano",
+    "display_name": "Grana padano",
+    "category": "latticini",
+    "aliases": [
+      "grana"
+    ]
+  },
+  {
+    "name": "ricotta",
+    "display_name": "Ricotta",
+    "category": "latticini",
+    "aliases": [
+      "ricotta fresca",
+      "ricotta vaccina"
+    ]
+  },
+  {
+    "name": "mascarpone",
+    "display_name": "Mascarpone",
+    "category": "latticini",
+    "aliases": []
+  },
+  {
+    "name": "panna fresca",
+    "display_name": "Panna fresca",
+    "category": "latticini",
+    "aliases": [
+      "panna da cucina",
+      "panna liquida"
+    ]
+  },
+  {
+    "name": "formaggio spalmabile",
+    "display_name": "Formaggio spalmabile",
+    "category": "latticini",
+    "aliases": [
+      "philadelphia",
+      "formaggio cremoso"
+    ]
+  },
+  {
+    "name": "provola",
+    "display_name": "Provola",
+    "category": "latticini",
+    "aliases": [
+      "provola affumicata",
+      "provolone"
+    ]
+  },
+  {
+    "name": "stracchino",
+    "display_name": "Stracchino",
+    "category": "latticini",
+    "aliases": [
+      "crescenza"
+    ]
+  },
+  {
+    "name": "pecorino",
+    "display_name": "Pecorino",
+    "category": "latticini",
+    "aliases": [
+      "pecorino romano"
+    ]
+  },
+  {
+    "name": "scamorza",
+    "display_name": "Scamorza",
+    "category": "latticini",
+    "aliases": [
+      "scamorza affumicata"
+    ]
+  },
+  {
+    "name": "pasta",
+    "display_name": "Pasta",
+    "category": "cereali",
+    "aliases": [
+      "spaghetti",
+      "penne",
+      "rigatoni",
+      "fusilli",
+      "maccheroni"
+    ]
+  },
+  {
+    "name": "riso",
+    "display_name": "Riso",
+    "category": "cereali",
+    "aliases": [
+      "riso carnaroli",
+      "riso arborio",
+      "riso basmati"
+    ]
+  },
+  {
+    "name": "farina",
+    "display_name": "Farina",
+    "category": "cereali",
+    "aliases": [
+      "farina 00",
+      "farina bianca"
+    ]
+  },
+  {
+    "name": "pane",
+    "display_name": "Pane",
+    "category": "cereali",
+    "aliases": [
+      "pane fresco",
+      "filone",
+      "pane casereccio"
+    ]
+  },
+  {
+    "name": "pangrattato",
+    "display_name": "Pangrattato",
+    "category": "cereali",
+    "aliases": [
+      "pane grattugiato"
+    ]
+  },
+  {
+    "name": "cous cous",
+    "display_name": "Cous cous",
+    "category": "cereali",
+    "aliases": [
+      "couscous"
+    ]
+  },
+  {
+    "name": "orzo",
+    "display_name": "Orzo",
+    "category": "cereali",
+    "aliases": [
+      "orzo perlato"
+    ]
+  },
+  {
+    "name": "farro",
+    "display_name": "Farro",
+    "category": "cereali",
+    "aliases": [
+      "farro perlato"
+    ]
+  },
+  {
+    "name": "fette biscottate",
+    "display_name": "Fette biscottate",
+    "category": "cereali",
+    "aliases": [
+      "fette biscottate integrali"
+    ]
+  },
+  {
+    "name": "cereali da colazione",
+    "display_name": "Cereali da colazione",
+    "category": "cereali",
+    "aliases": [
+      "corn flakes",
+      "fiocchi d'avena"
+    ]
+  },
+  {
+    "name": "polenta",
+    "display_name": "Polenta",
+    "category": "cereali",
+    "aliases": [
+      "farina di mais",
+      "farina per polenta"
+    ]
+  },
+  {
+    "name": "grissini",
+    "display_name": "Grissini",
+    "category": "cereali",
+    "aliases": []
+  },
+  {
+    "name": "gnocchi di patate",
+    "display_name": "Gnocchi di patate",
+    "category": "cereali",
+    "aliases": [
+      "gnocchi"
+    ]
+  },
+  {
+    "name": "pasta sfoglia",
+    "display_name": "Pasta sfoglia",
+    "category": "cereali",
+    "aliases": [
+      "sfoglia"
+    ]
+  },
+  {
+    "name": "tortilla",
+    "display_name": "Tortilla",
+    "category": "cereali",
+    "aliases": [
+      "tortillas",
+      "piadina"
+    ]
+  },
+  {
+    "name": "fagioli borlotti",
+    "display_name": "Fagioli borlotti",
+    "category": "legumi",
+    "aliases": [
+      "borlotti",
+      "fagioli borlotti in scatola"
+    ]
+  },
+  {
+    "name": "fagioli cannellini",
+    "display_name": "Fagioli cannellini",
+    "category": "legumi",
+    "aliases": [
+      "cannellini"
+    ]
+  },
+  {
+    "name": "ceci",
+    "display_name": "Ceci",
+    "category": "legumi",
+    "aliases": [
+      "ceci in scatola",
+      "ceci secchi"
+    ]
+  },
+  {
+    "name": "lenticchie",
+    "display_name": "Lenticchie",
+    "category": "legumi",
+    "aliases": [
+      "lenticchie secche",
+      "lenticchie in scatola"
+    ]
+  },
+  {
+    "name": "fave",
+    "display_name": "Fave",
+    "category": "legumi",
+    "aliases": [
+      "fave secche",
+      "fave fresche"
+    ]
+  },
+  {
+    "name": "piselli secchi",
+    "display_name": "Piselli secchi",
+    "category": "legumi",
+    "aliases": [
+      "piselli spezzati"
+    ]
+  },
+  {
+    "name": "farina di ceci",
+    "display_name": "Farina di ceci",
+    "category": "legumi",
+    "aliases": []
+  },
+  {
+    "name": "soia",
+    "display_name": "Soia",
+    "category": "legumi",
+    "aliases": [
+      "germogli di soia",
+      "edamame"
+    ]
+  },
+  {
+    "name": "olio di oliva",
+    "display_name": "Olio di oliva",
+    "category": "condimenti",
+    "aliases": [
+      "olio",
+      "olio extravergine",
+      "evo",
+      "olio extravergine di oliva"
+    ]
+  },
+  {
+    "name": "olio di semi",
+    "display_name": "Olio di semi",
+    "category": "condimenti",
+    "aliases": [
+      "olio di semi di girasole",
+      "olio di arachidi"
+    ]
+  },
+  {
+    "name": "aceto di vino",
+    "display_name": "Aceto di vino",
+    "category": "condimenti",
+    "aliases": [
+      "aceto",
+      "aceto bianco"
+    ]
+  },
+  {
+    "name": "aceto balsamico",
+    "display_name": "Aceto balsamico",
+    "category": "condimenti",
+    "aliases": [
+      "balsamico"
+    ]
+  },
+  {
+    "name": "sale",
+    "display_name": "Sale",
+    "category": "condimenti",
+    "aliases": [
+      "sale fino",
+      "sale grosso"
+    ]
+  },
+  {
+    "name": "pepe nero",
+    "display_name": "Pepe nero",
+    "category": "condimenti",
+    "aliases": [
+      "pepe",
+      "pepe macinato"
+    ]
+  },
+  {
+    "name": "senape",
+    "display_name": "Senape",
+    "category": "condimenti",
+    "aliases": [
+      "mostarda"
+    ]
+  },
+  {
+    "name": "maionese",
+    "display_name": "Maionese",
+    "category": "condimenti",
+    "aliases": []
+  },
+  {
+    "name": "ketchup",
+    "display_name": "Ketchup",
+    "category": "condimenti",
+    "aliases": [
+      "salsa rubra"
+    ]
+  },
+  {
+    "name": "salsa di soia",
+    "display_name": "Salsa di soia",
+    "category": "condimenti",
+    "aliases": [
+      "soy sauce"
+    ]
+  },
+  {
+    "name": "dado vegetale",
+    "display_name": "Dado vegetale",
+    "category": "condimenti",
+    "aliases": [
+      "dado",
+      "brodo vegetale"
+    ]
+  },
+  {
+    "name": "dado di carne",
+    "display_name": "Dado di carne",
+    "category": "condimenti",
+    "aliases": [
+      "brodo di carne"
+    ]
+  },
+  {
+    "name": "capperi",
+    "display_name": "Capperi",
+    "category": "condimenti",
+    "aliases": [
+      "capperi sotto sale",
+      "capperi in salamoia"
+    ]
+  },
+  {
+    "name": "olive",
+    "display_name": "Olive",
+    "category": "condimenti",
+    "aliases": [
+      "olive nere",
+      "olive verdi",
+      "olive taggiasche"
+    ]
+  },
+  {
+    "name": "basilico",
+    "display_name": "Basilico",
+    "category": "spezie",
+    "aliases": [
+      "basilico fresco"
+    ]
+  },
+  {
+    "name": "prezzemolo",
+    "display_name": "Prezzemolo",
+    "category": "spezie",
+    "aliases": [
+      "prezzemolo fresco",
+      "petrosemolo"
+    ]
+  },
+  {
+    "name": "rosmarino",
+    "display_name": "Rosmarino",
+    "category": "spezie",
+    "aliases": [
+      "rosmarino fresco"
+    ]
+  },
+  {
+    "name": "origano",
+    "display_name": "Origano",
+    "category": "spezie",
+    "aliases": [
+      "origano secco"
+    ]
+  },
+  {
+    "name": "timo",
+    "display_name": "Timo",
+    "category": "spezie",
+    "aliases": [
+      "timo fresco"
+    ]
+  },
+  {
+    "name": "salvia",
+    "display_name": "Salvia",
+    "category": "spezie",
+    "aliases": [
+      "salvia fresca"
+    ]
+  },
+  {
+    "name": "alloro",
+    "display_name": "Alloro",
+    "category": "spezie",
+    "aliases": [
+      "foglie di alloro"
+    ]
+  },
+  {
+    "name": "peperoncino",
+    "display_name": "Peperoncino",
+    "category": "spezie",
+    "aliases": [
+      "peperoncino piccante",
+      "peperoncino in polvere"
+    ]
+  },
+  {
+    "name": "paprika",
+    "display_name": "Paprika",
+    "category": "spezie",
+    "aliases": [
+      "paprica"
+    ]
+  },
+  {
+    "name": "curcuma",
+    "display_name": "Curcuma",
+    "category": "spezie",
+    "aliases": []
+  },
+  {
+    "name": "cannella",
+    "display_name": "Cannella",
+    "category": "spezie",
+    "aliases": [
+      "cannella in polvere",
+      "stecca di cannella"
+    ]
+  },
+  {
+    "name": "noce moscata",
+    "display_name": "Noce moscata",
+    "category": "spezie",
+    "aliases": []
+  },
+  {
+    "name": "zenzero",
+    "display_name": "Zenzero",
+    "category": "spezie",
+    "aliases": [
+      "ginger",
+      "zenzero fresco"
+    ]
+  },
+  {
+    "name": "cumino",
+    "display_name": "Cumino",
+    "category": "spezie",
+    "aliases": []
+  },
+  {
+    "name": "curry",
+    "display_name": "Curry",
+    "category": "spezie",
+    "aliases": [
+      "curry in polvere"
+    ]
+  },
+  {
+    "name": "vaniglia",
+    "display_name": "Vaniglia",
+    "category": "spezie",
+    "aliases": [
+      "bacca di vaniglia",
+      "estratto di vaniglia"
+    ]
+  },
+  {
+    "name": "acqua",
+    "display_name": "Acqua",
+    "category": "bevande",
+    "aliases": [
+      "acqua minerale",
+      "acqua frizzante",
+      "acqua naturale"
+    ]
+  },
+  {
+    "name": "vino bianco",
+    "display_name": "Vino bianco",
+    "category": "bevande",
+    "aliases": [
+      "vino bianco secco"
+    ]
+  },
+  {
+    "name": "vino rosso",
+    "display_name": "Vino rosso",
+    "category": "bevande",
+    "aliases": []
+  },
+  {
+    "name": "birra",
+    "display_name": "Birra",
+    "category": "bevande",
+    "aliases": [
+      "birra chiara"
+    ]
+  },
+  {
+    "name": "caffè",
+    "display_name": "Caffè",
+    "category": "bevande",
+    "aliases": [
+      "caffè in polvere",
+      "caffè macinato",
+      "moka"
+    ]
+  },
+  {
+    "name": "tè",
+    "display_name": "Tè",
+    "category": "bevande",
+    "aliases": [
+      "the",
+      "tè nero",
+      "tè verde"
+    ]
+  },
+  {
+    "name": "succo d'arancia",
+    "display_name": "Succo d'arancia",
+    "category": "bevande",
+    "aliases": [
+      "spremuta d'arancia"
+    ]
+  },
+  {
+    "name": "latte di soia",
+    "display_name": "Latte di soia",
+    "category": "bevande",
+    "aliases": [
+      "bevanda di soia",
+      "latte vegetale"
+    ]
+  },
+  {
+    "name": "bibita gassata",
+    "display_name": "Bibita gassata",
+    "category": "bevande",
+    "aliases": [
+      "cola",
+      "aranciata"
+    ]
+  },
+  {
+    "name": "camomilla",
+    "display_name": "Camomilla",
+    "category": "bevande",
+    "aliases": [
+      "tisana alla camomilla"
+    ]
+  },
+  {
+    "name": "zucchero",
+    "display_name": "Zucchero",
+    "category": "dolci",
+    "aliases": [
+      "zucchero bianco",
+      "zucchero semolato"
+    ]
+  },
+  {
+    "name": "zucchero a velo",
+    "display_name": "Zucchero a velo",
+    "category": "dolci",
+    "aliases": ["zucchero impalpabile"]
+  },
+  {
+    "name": "miele",
+    "display_name": "Miele",
+    "category": "dolci",
+    "aliases": [
+      "miele di acacia",
+      "miele millefiori"
+    ]
+  },
+  {
+    "name": "cioccolato fondente",
+    "display_name": "Cioccolato fondente",
+    "category": "dolci",
+    "aliases": [
+      "cioccolato nero",
+      "tavoletta di cioccolato"
+    ]
+  },
+  {
+    "name": "cacao amaro",
+    "display_name": "Cacao amaro",
+    "category": "dolci",
+    "aliases": [
+      "cacao in polvere"
+    ]
+  },
+  {
+    "name": "nutella",
+    "display_name": "Nutella",
+    "category": "dolci",
+    "aliases": [
+      "crema alle nocciole",
+      "crema spalmabile al cacao"
+    ]
+  },
+  {
+    "name": "biscotti",
+    "display_name": "Biscotti",
+    "category": "dolci",
+    "aliases": [
+      "biscotti secchi",
+      "frollini"
+    ]
+  },
+  {
+    "name": "marmellata",
+    "display_name": "Marmellata",
+    "category": "dolci",
+    "aliases": [
+      "confettura",
+      "marmellata di albicocche"
+    ]
+  },
+  {
+    "name": "panna da montare",
+    "display_name": "Panna da montare",
+    "category": "dolci",
+    "aliases": [
+      "panna montata",
+      "panna fresca da montare"
+    ]
+  },
+  {
+    "name": "lievito per dolci",
+    "display_name": "Lievito per dolci",
+    "category": "dolci",
+    "aliases": [
+      "lievito vanigliato",
+      "baking powder"
+    ]
+  },
+  {
+    "name": "savoiardi",
+    "display_name": "Savoiardi",
+    "category": "dolci",
+    "aliases": []
+  },
+  {
+    "name": "gelato",
+    "display_name": "Gelato",
+    "category": "dolci",
+    "aliases": [
+      "gelato alla vaniglia",
+      "gelato artigianale"
+    ]
+  },
+  {
+    "name": "lievito di birra",
+    "display_name": "Lievito di birra",
+    "category": "altro",
+    "aliases": [
+      "lievito fresco",
+      "lievito madre"
+    ]
+  },
+  {
+    "name": "amido di mais",
+    "display_name": "Amido di mais",
+    "category": "altro",
+    "aliases": [
+      "maizena"
+    ]
+  },
+  {
+    "name": "gelatina",
+    "display_name": "Gelatina",
+    "category": "altro",
+    "aliases": [
+      "colla di pesce",
+      "gelatina in fogli"
+    ]
+  },
+  {
+    "name": "pane per hamburger",
+    "display_name": "Pane per hamburger",
+    "category": "altro",
+    "aliases": [
+      "panini per hamburger"
+    ]
+  },
+  {
+    "name": "semi misti",
+    "display_name": "Semi misti",
+    "category": "altro",
+    "aliases": [
+      "semi di zucca",
+      "semi di girasole",
+      "semi di chia"
+    ]
+  }
+]
