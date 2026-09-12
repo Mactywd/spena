@@ -223,9 +223,24 @@ di host pubblicato e le `POSTGRES_*` (qui non hanno default: il Compose di
 produzione non ne inventa uno).
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build --wait
+docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 120
 docker compose -f docker-compose.prod.yml exec backend python -m app.cli.seed
 ```
+
+Il `--wait-timeout` serve al caso in cui una migrazione futura fallisca. Qui il
+backend ha `restart: unless-stopped`: il container muore sulla migrazione, Docker lo
+rianima, non diventa mai `healthy` e `--wait` senza scadenza aspetta per sempre senza
+dire niente. Con la scadenza il comando torna con un errore dopo due minuti (oggi
+l'avvio ne impiega pochi secondi: la 0003 è l'ultima migrazione e il database è
+vuoto), e la causa vera si legge in un posto solo:
+
+```bash
+docker compose -f docker-compose.prod.yml logs backend
+```
+
+L'errore di Alembic è lì, ripetuto a ogni riavvio. Lo schema non resta a metà:
+`alembic/env.py` avvolge tutte le revisioni in una sola transazione e Postgres ha DDL
+transazionale, quindi la migrazione fallita è come se non fosse mai partita.
 
 Anche qui le migrazioni girano all'avvio del backend, quindi un `git pull` con una
 migrazione nuova e un `up -d --build` bastano: non c'è un comando da ricordarsi. Il
@@ -253,7 +268,7 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `ANTHROPIC_API_KEY` | vuoto | stesura ricette con l'AI e abbinamenti incerti |
 | `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
 | `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
-| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale |
+| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale; cambiandolo va rimisurata `SEMANTIC_MAX_DISTANCE` (vedi sotto) |
 | `EMBEDDING_ENDPOINT` | vuoto | solo con `EMBEDDING_BACKEND=http` |
 | `OFF_BASE_URL` | api ufficiale di Open Food Facts | sovrascrivibile nei test |
 | `OFF_TIMEOUT_SECONDS` | `3` | oltre il quale si degrada all'inserimento manuale |
@@ -274,7 +289,7 @@ un posto solo.
 | | `INSTALL_EMBEDDINGS=0` (default) | `INSTALL_EMBEDDINGS=1` |
 |---|---|---|
 | immagine del backend | 233 MB | qualche GB: sentence-transformers trascina torch |
-| prima ricerca | immediata | il modello (circa 500 MB) si scarica al primo uso |
+| prima ricerca | immediata | il modello (circa 500 MB) si scarica al primo uso, una volta sola: sta nel volume `hfcache` e sopravvive a `up -d --build` |
 | ricerca nel ricettario | solo testuale, su `pg_trgm` e `search_tsv` | ibrida, vettoriale più testuale come nella spec §8.5 |
 | ricette salvate | `embedding` a NULL | con il vettore |
 
@@ -292,7 +307,24 @@ Per accenderla: INSTALL_EMBEDDINGS=1 in .env e `docker compose up -d --build`.
 Se accendi `1` *dopo* aver seminato, le 26 ricette del seme restano senza vettore:
 il seme è idempotente e non le riscrive. Per rifarle, cancella il volume del
 database e risemina — oppure accetta che solo le ricette nuove siano cercabili
-anche per somiglianza.
+anche per somiglianza. Nel frattempo il ricettario continua a mostrare la riga
+«Ricerca solo testuale»: `/recipes/search-mode` risponde `semantic: true` solo se
+esiste almeno una ricetta con il vettore, quindi l'avviso dice quel che cercare fa
+davvero e non quel che il fornitore saprebbe fare.
+
+**Il primo ingresso in Ricette dopo una ricostruzione.** È quello che fa partire il
+download: lo schermo interroga `/recipes/search-mode`, che calcola un vettore di
+prova. Finché il modello non è scaricato la ricerca resta testuale — il backend
+risponde entro cinque secondi invece di far aspettare — e lo dice con la riga grigia;
+qualche minuto dopo, ricaricando, la ricerca è ibrida. Non è un guasto e non serve
+fare niente.
+
+**Se cambi `EMBEDDING_MODEL`** va rimisurata `SEMANTIC_MAX_DISTANCE` in
+`backend/app/services/recipe_search.py`: la scala delle distanze è una proprietà del
+modello, e quella soglia è misurata su `intfloat/multilingual-e5-small`. Finché non è
+rimisurata il backend rinuncia alla metà semantica invece di applicare a un modello
+nuovo un numero che vale per un altro — lo scrive nei log, una volta per processo, e
+`/recipes/search-mode` risponde `semantic: false`, cioè il ricettario te lo dice.
 
 Con `INSTALL_EMBEDDINGS=0` tieni `EMBEDDING_BACKEND=local` così com'è: è la
 configurazione che si accende da sola il giorno in cui ricostruisci con `1`.

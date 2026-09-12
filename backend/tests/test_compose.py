@@ -192,3 +192,18 @@ def test_il_backend_dichiara_quando_e_pronto(nome_file):
         f"{nome_file}: l'healthcheck del backend non interroga /api/v1/health: "
         f"{backend['healthcheck']['test']!r}"
     )
+@pytest.mark.parametrize("nome_file", COMPOSE_FILES)
+def test_la_cache_del_modello_vive_in_un_volume(nome_file):
+    """Con INSTALL_EMBEDDINGS=1 il modello non deve riscaricarsi a ogni ricostruzione.
+
+    Senza un volume la cache di Hugging Face sta nello strato scrivibile del
+    container, che `up -d --build` butta via: ~500 MB riscaricati dopo ogni `git
+    pull`, e il README che promette «al primo uso». Il bersaglio è /root/.cache perché
+    l'immagine non dichiara USER, quindi il processo gira come root e HOME è /root.
+    """
+    backend = yaml.safe_load((REPO_ROOT / nome_file).read_text())["services"]["backend"]
+    bersagli = [voce.split(":")[1] for voce in backend["volumes"] if ":" in voce]
+    assert any(b.startswith("/root/.cache") for b in bersagli), (
+        f"{nome_file}: nessun volume sulla cache del modello; montaggi {bersagli!r}. "
+        "Con INSTALL_EMBEDDINGS=1 il modello si riscarica a ogni `up -d --build`."
+    )

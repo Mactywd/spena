@@ -50,7 +50,12 @@ services:
     # ./backend: un montaggio annidato fa creare a Docker il punto di innesto sul
     # filesystem dell'host, cioè un backend/data vuoto e di proprietà di root che
     # poi non si cancella senza sudo.
-    volumes: ["./backend:/app", "./data:/data:ro"]
+    # hfcache tiene la cache di Hugging Face fuori dallo strato scrivibile del
+    # container: senza, con INSTALL_EMBEDDINGS=1 i ~500 MB del modello si
+    # riscaricano a ogni `up -d --build`, cioè dopo ogni `git pull`, e non «al primo
+    # uso» come dice la tabella del README. Con INSTALL_EMBEDDINGS=0 il volume resta
+    # vuoto e non costa niente.
+    volumes: ["./backend:/app", "./data:/data:ro", "hfcache:/root/.cache/huggingface"]
 
   frontend:
     build: ./frontend
@@ -59,3 +64,4 @@ services:
 
 volumes:
   pgdata:
+  hfcache:

@@ -54,7 +54,12 @@ services:
       interval: 3s
       retries: 20
       start_period: 30s
-    volumes: ["./data:/data:ro"]
+    # hfcache tiene la cache di Hugging Face fuori dallo strato scrivibile del
+    # container: senza, con INSTALL_EMBEDDINGS=1 i ~500 MB del modello si
+    # riscaricano a ogni `up -d --build`, cioè dopo ogni `git pull`, e non «al primo
+    # uso» come dice la tabella del README. Con INSTALL_EMBEDDINGS=0 il volume resta
+    # vuoto e non costa niente.
+    volumes: ["./data:/data:ro", "hfcache:/root/.cache/huggingface"]
     depends_on:
       db: {condition: service_healthy}
     restart: unless-stopped
@@ -74,6 +79,7 @@ services:
 
 volumes:
   pgdata:
+  hfcache:
 
 networks:
   traefik-public:
