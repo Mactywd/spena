@@ -212,10 +212,14 @@ backend deve girare in parallelo (`docker compose up -d`), il proxy di Vite inol
 
 `docker-compose.prod.yml` pubblica un solo servizio, il frontend: Nginx inoltra
 `/api/` al backend, che quindi non ha porte esposte. Davanti c'è Traefik, su una
-rete esterna che deve esistere già:
+rete esterna che deve esistere già. Il file la chiama `web`, che è il nome usato
+dal server dove Spena gira; il nome giusto è quello che il *tuo* Traefik dichiara
+in `providers.docker.network`, e sbagliarlo non produce nessun errore nei log del
+sito — il dominio risponde 404 e basta, perché Traefik non vede il container.
 
 ```bash
-docker network create traefik-public   # solo la prima volta
+docker network ls | grep web          # esiste già? allora non creare niente
+docker network create web             # solo se manca
 ```
 
 In `.env` servono, oltre alle variabili dell'avvio locale, `SPENA_HOST` con il nome

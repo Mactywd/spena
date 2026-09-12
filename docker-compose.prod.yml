@@ -2,6 +2,17 @@
 # /api/ al backend, quindi il backend non pubblica porte. HTTPS è necessario e non
 # opzionale: senza, la fotocamera non parte (getUserMedia vuole un contesto sicuro)
 # e il cookie marcato `Secure` non viaggia.
+#
+# `web` è la rete esterna su cui ascolta Traefik. Il nome non è una convenzione
+# universale: è quello che il Traefik di destinazione dichiara come
+# `providers.docker.network`, e un nome diverso qui significa che Traefik non vede
+# il container e il dominio risponde 404 senza nessun errore nei log del sito.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -10,6 +21,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes: ["pgdata:/var/lib/postgresql/data"]
+    logging: *default-logging
     # Serve da quando le migrazioni girano all'avvio del backend (spec §13): senza,
     # il backend parte mentre initdb è ancora in corso e `alembic upgrade head` muore
     # sulla connessione rifiutata.
@@ -63,15 +75,17 @@ services:
     depends_on:
       db: {condition: service_healthy}
     restart: unless-stopped
+    logging: *default-logging
 
   frontend:
     build: ./frontend
     depends_on: [backend]
     restart: unless-stopped
-    networks: [default, traefik-public]
+    logging: *default-logging
+    networks: [default, web]
     labels:
       - traefik.enable=true
-      - traefik.docker.network=traefik-public
+      - traefik.docker.network=web
       - traefik.http.routers.spena.rule=Host(`${SPENA_HOST}`)
       - traefik.http.routers.spena.entrypoints=websecure
       - traefik.http.routers.spena.tls.certresolver=letsencrypt
@@ -82,5 +96,5 @@ volumes:
   hfcache:
 
 networks:
-  traefik-public:
+  web:
     external: true
