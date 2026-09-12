@@ -66,6 +66,10 @@ export interface RecipeSummary {
   source: RecipeSource;
   missing: number;
   cookable: boolean;
+  image_url: string | null;
+  prep_minutes: number | null;
+  cook_minutes: number | null;
+  category: string | null;
 }
 
 export interface RecipeIngredientLine {
@@ -114,4 +118,43 @@ export interface RecipeDraft {
   instructions: string;
   servings: number | null;
   ingredients: DraftIngredient[];
+}
+
+export interface ImportStatus {
+  fetched: number;
+  pending_recipes: number;
+  imported: number;
+  skipped: number;
+  pending_terms: number;
+}
+
+export interface TermSuggestion {
+  ingredient_id: string;
+  name: string;
+  certain: boolean;
+}
+
+export interface ImportTerm {
+  id: string;
+  display_name: string;
+  /** Quante ricette scaricate aspettano questa decisione. Ordina la coda. */
+  occurrences: number;
+  suggestion: TermSuggestion | null;
+  waiting_titles: string[];
+}
+
+export type TermAction = "map" | "create" | "ignore";
+
+export interface TermProposal {
+  term_id: string;
+  action: TermAction;
+  ingredient_id: string | null;
+  name: string | null;
+  display_name: string | null;
+  category: string | null;
+}
+
+export interface TermDecisionResult {
+  unlocked: number;
+  remaining_terms: number;
 }

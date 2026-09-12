@@ -10,6 +10,7 @@ import { AiDraftScreen } from "./features/ai-draft/AiDraftScreen";
 import { LoginScreen } from "./features/auth/LoginScreen";
 import { RecipeDetailScreen } from "./features/cooking/RecipeDetailScreen";
 import { PantryScreen } from "./features/pantry/PantryScreen";
+import { ImportQueueScreen } from "./features/recipe-import/ImportQueueScreen";
 import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
@@ -65,6 +66,9 @@ export default function App() {
             {/* dichiarata SOPRA /ricette/:id: "nuova-ai" non deve mai essere
                 letto come un id di ricetta. */}
             <Route path="/ricette/nuova-ai" element={<AiDraftScreen />} />
+            {/* dichiarata SOPRA /ricette/:id, per lo stesso motivo: "importa" non
+                deve mai essere letto come un id di ricetta. */}
+            <Route path="/ricette/importa" element={<ImportQueueScreen />} />
             <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
           </Routes>
         </main>

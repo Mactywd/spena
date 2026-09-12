@@ -27,12 +27,21 @@ function renderScreen(queryCache?: QueryCache) {
   );
 }
 
-/** Un fetch che risponde in base al percorso: lo schermo fa due chiamate — la
- * ricerca e il modo di ricerca — e ognuna deve ricevere una Response nuova, perché
- * il corpo di una Response si legge una volta sola. */
+// Nessun ingrediente in attesa: la riga d'ingresso verso la coda non deve
+// comparire nei test che non la riguardano.
+const NESSUN_IMPORT_IN_CORSO = {
+  fetched: 0, pending_recipes: 0, imported: 0, skipped: 0, pending_terms: 0,
+};
+
+/** Un fetch che risponde in base al percorso: lo schermo fa tre chiamate — la
+ * ricerca, il modo di ricerca e lo stato dell'import — e ognuna deve ricevere una
+ * Response nuova, perché il corpo di una Response si legge una volta sola. */
 function stubRoutedFetch(route: (path: string) => [unknown, number]) {
   const spy = vi.fn((url: unknown) => {
-    const [body, status] = route(String(url));
+    const path = String(url);
+    const [body, status] = path.includes("/imports/status")
+      ? [NESSUN_IMPORT_IN_CORSO, 200]
+      : route(path);
     return Promise.resolve(new Response(JSON.stringify(body), { status }));
   });
   vi.stubGlobal("fetch", spy);
@@ -45,34 +54,27 @@ afterEach(() => {
 
 describe("RecipeBookScreen", () => {
   it("mostra la provenienza di ogni ricetta", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(RESULTS), { status: 200 })
-    ));
+    stubRoutedFetch(() => [RESULTS, 200]);
     renderScreen();
     expect(await screen.findByText("dataset")).toBeDefined();
     expect(screen.getByText("AI")).toBeDefined();
   });
 
   it("dice quanto manca, senza nascondere la ricetta", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(RESULTS), { status: 200 })
-    ));
+    stubRoutedFetch(() => [RESULTS, 200]);
     renderScreen();
     expect(await screen.findByText("Pasta al pomodoro")).toBeDefined();
     expect(screen.getByText("manca 1 ingrediente")).toBeDefined();
   });
 
   it("segnala le ricette che puoi cucinare adesso", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(RESULTS), { status: 200 })
-    ));
+    stubRoutedFetch(() => [RESULTS, 200]);
     renderScreen();
     expect(await screen.findByText("Puoi cucinarla ora")).toBeDefined();
   });
 
   it("la ricerca passa la query al backend", async () => {
-    const spy = vi.fn().mockResolvedValue(new Response(JSON.stringify(RESULTS), { status: 200 }));
-    vi.stubGlobal("fetch", spy);
+    const spy = stubRoutedFetch(() => [RESULTS, 200]);
 
     renderScreen();
     await userEvent.type(await screen.findByLabelText("Cerca nel ricettario"), "pomodoro");
@@ -83,8 +85,7 @@ describe("RecipeBookScreen", () => {
   });
 
   it("il filtro restringe alle sole ricette cucinabili", async () => {
-    const spy = vi.fn().mockResolvedValue(new Response(JSON.stringify(RESULTS), { status: 200 }));
-    vi.stubGlobal("fetch", spy);
+    const spy = stubRoutedFetch(() => [RESULTS, 200]);
 
     renderScreen();
     await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
@@ -267,6 +268,40 @@ describe("RecipeBookScreen", () => {
     expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
   });
 
+  // Task 14: il ricettario apre la porta verso la coda di revisione, ma solo
+  // quando c'è davvero qualcosa da decidere: una riga che compare sempre sarebbe
+  // rumore, una che non compare mai nasconderebbe ricette scaricate e mai entrate.
+  it("quando ci sono ingredienti da abbinare, apre la porta verso la coda", async () => {
+    const spy = vi.fn((url: unknown) => {
+      const path = String(url);
+      if (path.includes("/imports/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              { fetched: 20, pending_recipes: 3, imported: 17, skipped: 0, pending_terms: 5 }
+            ),
+            { status: 200 }
+          )
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(RESULTS), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    const link = await screen.findByRole("link", { name: /5 ingredienti da abbinare/ });
+    expect(link).toHaveTextContent(/3 ricette in attesa/);
+    expect(link).toHaveAttribute("href", "/ricette/importa");
+  });
+
+  it("senza ingredienti in attesa non mostra la porta verso la coda", async () => {
+    stubRoutedFetch(() => [RESULTS, 200]);
+    renderScreen();
+
+    await screen.findByText("Pasta al pomodoro");
+    expect(screen.queryByRole("link", { name: /da abbinare/ })).toBeNull();
+  });
+
   it("non riordina: l'ordine è quello che decide il backend", async () => {
     // L'ordinamento nasce da `recipe_search.py`, che mette davanti ciò a cui manca
     // meno. Una ricetta non cucinabile prima di una cucinabile è quindi un ordine
@@ -282,9 +317,7 @@ describe("RecipeBookScreen", () => {
       { id: "a", title: "Agnello", description: null, source: "dataset",
         missing: 0, cookable: true },
     ];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(backendOrder), { status: 200 })
-    ));
+    stubRoutedFetch(() => [backendOrder, 200]);
     renderScreen();
 
     await screen.findByText("Zuppa");

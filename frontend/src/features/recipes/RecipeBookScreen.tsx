@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
 import { fetchSearchMode, searchRecipes } from "./api";
+import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
@@ -66,6 +67,14 @@ export function RecipeBookScreen() {
     staleTime: Infinity,
   });
 
+  // Fuori dalla chiave ["recipes"]: questa non cambia cercando, cambia quando si
+  // decide un termine o si scarica un lotto. Se la rotta non risponde non si mostra
+  // niente: una riga rotta su una cosa che forse funziona è peggio del silenzio.
+  const { data: importStatus } = useQuery({
+    queryKey: ["import-status"],
+    queryFn: fetchImportStatus,
+  });
+
   return (
     <Screen
       title="Ricette"
@@ -78,6 +87,19 @@ export function RecipeBookScreen() {
         </Link>
       }
     >
+      {importStatus && importStatus.pending_terms > 0 && (
+        <Link
+          to="/ricette/importa"
+          className="mb-3 flex min-h-11 items-center justify-between rounded-card bg-low-tint px-3.5 py-3 text-sm text-low"
+        >
+          <span>
+            {importStatus.pending_terms} ingredienti da abbinare,{" "}
+            {importStatus.pending_recipes} ricette in attesa
+          </span>
+          <span aria-hidden="true">›</span>
+        </Link>
+      )}
+
       <label htmlFor="recipe-search" className="sr-only">Cerca nel ricettario</label>
       <input
         id="recipe-search"
