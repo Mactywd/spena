@@ -145,6 +145,30 @@ describe("coda di revisione dell'import", () => {
     });
   });
 
+  // "Sbloccate 1 ricette." era il testo con una sola ricetta sbloccata: il
+  // plurale sbagliato in numero e genere, lo stesso difetto che TermCard.tsx
+  // già tratta correttamente.
+  it("sbloccare una sola ricetta lo dice al singolare", async () => {
+    stubFetch((path, method) => {
+      if (path.includes("/imports/terms/proposals")) return [PROPOSTE, 200];
+      if (path.includes("/imports/terms") && method === "POST")
+        return [{ unlocked: 1, remaining_terms: 1 }, 200];
+      if (path.includes("/imports/terms")) return [TERMINI, 200];
+      if (path.includes("/imports/status"))
+        return [
+          { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 },
+          200,
+        ];
+      return [{}, 404];
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: /Collega a pasta/i }));
+
+    await waitFor(() => expect(screen.getByText("Sbloccata 1 ricetta.")).toBeInTheDocument());
+    expect(screen.queryByText(/Sbloccate 1 ricette/)).not.toBeInTheDocument();
+  });
+
   it("ignorare un termine lo manda come tale", async () => {
     const spy = stubFetch(CODA_NORMALE);
     renderScreen();
@@ -305,6 +329,47 @@ describe("coda di revisione dell'import", () => {
     const pulsante = await screen.findByRole("button", { name: /^Collega a pinolo$/i });
     expect(pulsante.className).toContain("bg-brand");
     expect(screen.queryByRole("button", { name: /Forse «pinolo»/i })).not.toBeInTheDocument();
+  });
+
+  // "1 ricette scaricate aspettano, 1 sono già dentro" era il testo con
+  // entrambi i conteggi a 1: ogni conteggio governa la propria frase (nome,
+  // verbo e participio), e qui concordano al singolare entrambi insieme.
+  it("la riga di stato è al singolare quando entrambi i conteggi sono 1", async () => {
+    stubFetch((path) => {
+      if (path.includes("/imports/terms/proposals")) return [{ proposals: [] }, 200];
+      if (path.includes("/imports/terms")) return [[], 200];
+      if (path.includes("/imports/status"))
+        return [
+          { fetched: 2, pending_recipes: 1, imported: 1, skipped: 0, pending_terms: 0 },
+          200,
+        ];
+      return [{}, 404];
+    });
+    renderScreen();
+
+    expect(
+      await screen.findByText("1 ricetta scaricata aspetta, 1 è già dentro.")
+    ).toBeInTheDocument();
+  });
+
+  // Il caso che una frase condivisa tra i due conteggi sbaglierebbe: uno dei
+  // due è 1 e l'altro no, quindi un solo ramo non può concordare entrambi.
+  it("la riga di stato tratta i due conteggi indipendentemente quando solo uno è 1", async () => {
+    stubFetch((path) => {
+      if (path.includes("/imports/terms/proposals")) return [{ proposals: [] }, 200];
+      if (path.includes("/imports/terms")) return [[], 200];
+      if (path.includes("/imports/status"))
+        return [
+          { fetched: 6, pending_recipes: 1, imported: 5, skipped: 0, pending_terms: 0 },
+          200,
+        ];
+      return [{}, 404];
+    });
+    renderScreen();
+
+    expect(
+      await screen.findByText("1 ricetta scaricata aspetta, 5 sono già dentro.")
+    ).toBeInTheDocument();
   });
 
   it("a coda vuota dice che non c'è niente da fare", async () => {

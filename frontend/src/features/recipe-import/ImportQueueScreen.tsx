@@ -100,7 +100,11 @@ export function ImportQueueScreen() {
 
       {status && status.pending_recipes > 0 && (
         <p className="pt-1 text-xs text-ink-faint">
-          {status.pending_recipes} ricette scaricate aspettano, {status.imported} sono già dentro.
+          {status.pending_recipes === 1
+            ? "1 ricetta scaricata aspetta"
+            : `${status.pending_recipes} ricette scaricate aspettano`}
+          ,{" "}
+          {status.imported === 1 ? "1 è già dentro" : `${status.imported} sono già dentro`}.
         </p>
       )}
 
@@ -108,7 +112,9 @@ export function ImportQueueScreen() {
         <p className="pt-2 text-sm font-medium text-brand">
           {lastUnlocked === 0
             ? "Decisione registrata: nessuna ricetta era in attesa solo di questa."
-            : `Sbloccate ${lastUnlocked} ricette.`}
+            : lastUnlocked === 1
+              ? "Sbloccata 1 ricetta."
+              : `Sbloccate ${lastUnlocked} ricette.`}
         </p>
       )}
 
