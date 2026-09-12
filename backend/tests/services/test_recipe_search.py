@@ -108,8 +108,14 @@ async def test_senza_parole_la_piscina_dei_candidati_e_stabile(db_session):
     """Un import in blocco scrive centinaia di righe nella stessa transazione, con lo
     stesso `created_at` (il `server_default=func.now()` è costante per tutta la
     transazione). Senza una chiave di spareggio, quali cento righe entrano nella
-    piscina — e in quale ordine — non è definito: due richieste identiche potrebbero
-    vedere ricettari diversi. `Recipe.id.desc()` come secondo criterio lo impedisce.
+    piscina — e in quale ordine — non è definito. `Recipe.id.desc()` come secondo
+    criterio lo impedisce: a `created_at` pari, la piscina è sempre le cento righe
+    con l'id più grande, in ordine decrescente di id.
+
+    L'attesa è calcolata qui dagli id delle ricette appena creati, non da una
+    seconda chiamata a `search_recipes`: confrontare due letture della stessa
+    tabella immutata, nella stessa transazione, non dimostra nulla — passerebbe
+    comunque, spareggio o non spareggio, perché niente cambia fra le due letture.
     """
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
@@ -121,18 +127,31 @@ async def test_senza_parole_la_piscina_dei_candidati_e_stabile(db_session):
     db_session.add(ingrediente)
     await db_session.flush()
 
+    # stesso titolo per tutte: il riordinamento finale di search_recipes è per
+    # (missing, -score, title), e qui missing e score pareggiano già (nessuna ha
+    # "farina" in dispensa, il punteggio RRF è 0.0 per tutte senza parole cercate).
+    # Con anche il titolo in parità non resta nulla su cui il sort possa rimescolare
+    # l'ordine arrivato dalla query: il sort di Python è stabile, quindi l'ordine dei
+    # risultati è l'ordine della query, ed è proprio quell'ordine che il test vuole
+    # verificare.
+    #
     # nessun `created_at` assegnato a mano: tutte restano sul server_default, che
     # dentro questa stessa transazione è lo stesso istante per ogni riga.
-    for numero in range(CANDIDATE_POOL + 5):
+    creati = [
         await create_recipe(
-            db_session, title=f"Impasto {numero:03d}", description="Pane",
+            db_session, title="Impasto", description="Pane",
             instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
             ingredients=[(ingrediente.id, "primary", "500 g", None)], embedding=None,
         )
+        for _ in range(CANDIDATE_POOL + 5)
+    ]
     await db_session.flush()
 
-    prima = await search_recipes(db_session)
-    seconda = await search_recipes(db_session)
+    # calcolato dagli id creati, non dalla funzione sotto test: con `created_at`
+    # tutti pari, le cento righe che la piscina deve contenere sono per definizione
+    # le cento con l'id più grande, in ordine decrescente.
+    attesi = sorted((recipe.id for recipe in creati), reverse=True)[:CANDIDATE_POOL]
 
-    assert len(prima) > 0
-    assert [r.recipe.id for r in prima] == [r.recipe.id for r in seconda]
+    risultati = await search_recipes(db_session, limit=CANDIDATE_POOL)
+
+    assert [r.recipe.id for r in risultati] == attesi
