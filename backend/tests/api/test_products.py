@@ -100,18 +100,42 @@ async def test_create_custom_product(logged_client, yogurt):
 
 
 async def test_catalog_search_refines_progressively(logged_client, db_session, yogurt):
+    """Aggiungere parole deve restringere, e va provato su due insiemi diversi.
+
+    La versione precedente di questo test asseriva `len(broad.json()) >= 1`, che è
+    vero per costruzione: passava anche mentre la query allargava (`or_`) invece di
+    restringere. Qui le due risposte sono confrontate fra loro, e la stretta deve
+    essere un sottoinsieme proprio della larga.
+    """
     db_session.add_all([
-        Product(ingredient_id=yogurt.id, name="Total 0%", brand="Fage", source="openfoodfacts"),
+        Product(ingredient_id=yogurt.id, name="Yogurt greco naturale", brand="Fage",
+                source="openfoodfacts"),
         Product(ingredient_id=yogurt.id, name="Yogurt greco pesca", brand="Carrefour",
+                source="custom"),
+        Product(ingredient_id=yogurt.id, name="Latte intero", brand="Granarolo",
                 source="custom"),
     ])
     await db_session.flush()
 
-    broad = await logged_client.get("/api/v1/products/search?q=yogurt greco")
-    assert len(broad.json()) >= 1
+    async def nomi(q: str) -> list[str]:
+        response = await logged_client.get("/api/v1/products/search", params={"q": q})
+        assert response.status_code == 200
+        return [p["name"] for p in response.json()]
 
-    narrow = await logged_client.get("/api/v1/products/search?q=carrefour pesca")
-    assert narrow.json()[0]["brand"] == "Carrefour"
+    larga = await nomi("yogurt greco")
+    assert sorted(larga) == ["Yogurt greco naturale", "Yogurt greco pesca"]
+
+    stretta = await nomi("yogurt greco carrefour")
+    assert stretta == ["Yogurt greco pesca"]
+    assert set(stretta) < set(larga), "affinare deve restringere, non allargare"
+
+    # restringere non è azzerare: la somiglianza trigram regge l'errore di battitura
+    assert sorted(await nomi("yogurtt greco")) == [
+        "Yogurt greco naturale", "Yogurt greco pesca"
+    ]
+
+    # e una query che non somiglia a niente resta vuota, non ripesca il catalogo
+    assert await nomi("bulloni") == []
 
 
 async def test_confirming_a_suggestion_keeps_its_provenance(logged_client, db_session, yogurt):

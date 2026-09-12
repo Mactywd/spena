@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.product import Product
@@ -17,8 +17,17 @@ async def find_by_barcode(session: AsyncSession, barcode: str) -> Product | None
 async def search_products(session: AsyncSession, query: str, limit: int = 20) -> list[Product]:
     """Ricerca per affinamento progressivo: da "yogurt greco" a "carrefour pesca".
 
-    Ogni parola della query viene cercata su nome e marca insieme, così
-    aggiungere termini restringe invece di azzerare i risultati.
+    Ogni parola deve comparire (`and_`), ma cercata su nome e marca insieme e con la
+    somiglianza trigram come riserva: è questo che fa restringere senza azzerare —
+    aggiungere la marca non pretende che esista un campo in cui tutta la frase
+    compaia, e un errore di battitura non cancella il risultato.
+
+    Misurato sul catalogo di prova (Yogurt greco pesca/Carrefour, Yogurt greco
+    naturale/Fage): «yogurt greco» → 2 referenze, «yogurt greco carrefour» → la sola
+    Carrefour, «yogurtt greco» → ancora 2. Con `or_` al posto di `and_` la seconda
+    query ne restituiva 2, cioè allargava dove il nome della funzione dice il
+    contrario; l'ordinamento per somiglianza complessiva lo mascherava portando in
+    cima la referenza giusta.
     """
     words = [w for w in query.strip().lower().split() if w]
     if not words:
@@ -33,7 +42,7 @@ async def search_products(session: AsyncSession, query: str, limit: int = 20) ->
 
     statement = (
         select(Product)
-        .where(or_(*word_matches))
+        .where(and_(*word_matches))
         .order_by(overall_similarity.desc(), Product.name.asc())
         .limit(limit)
     )
