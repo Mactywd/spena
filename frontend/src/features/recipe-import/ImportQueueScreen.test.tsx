@@ -424,6 +424,48 @@ describe("coda di revisione dell'import", () => {
     expect(chiamateProposte).toHaveLength(1);
   });
 
+  it("un 409 sulla decisione mostra il motivo del backend, non la frase generica", async () => {
+    // Il caso che conta: "Sale fino" rinominato nel generico "sale" mentre un
+    // ingrediente "sale" esiste già. Il backend risponde 409 con un `detail`
+    // che dice la via d'uscita (collegare invece di creare); la frase generica
+    // "riprova" nasconderebbe esattamente quella via.
+    stubFetch((path, method) => {
+      if (path.includes("/imports/terms/proposals")) return [PROPOSTE, 200];
+      if (path.includes("/imports/terms") && method === "POST")
+        return [
+          { detail: "«sale» è già in anagrafica: collega il termine invece di creare un doppione." },
+          409,
+        ];
+      return CODA_NORMALE(path, method);
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: /Collega a pasta/i }));
+
+    expect(
+      await screen.findByText(/«sale» è già in anagrafica: collega il termine/)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Non sono riuscito a registrare la decisione/)
+    ).not.toBeInTheDocument();
+  });
+
+  it("un 500 sulla decisione resta sulla frase generica, con la rassicurazione", async () => {
+    stubFetch((path, method) => {
+      if (path.includes("/imports/terms/proposals")) return [PROPOSTE, 200];
+      if (path.includes("/imports/terms") && method === "POST")
+        return [{ detail: "rotto" }, 500];
+      return CODA_NORMALE(path, method);
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: /Collega a pasta/i }));
+
+    expect(
+      await screen.findByText(/Non sono riuscito a registrare la decisione\. Niente è andato perso: riprova\./)
+    ).toBeInTheDocument();
+  });
+
   it("se la coda non risponde lo dice insieme a cosa resta possibile", async () => {
     stubFetch((path) => {
       if (path.includes("/imports/terms")) return [{ detail: "rotto" }, 500];

@@ -1,10 +1,28 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
 import { decideTerm, fetchImportStatus, fetchImportTerms, fetchTermProposals } from "./api";
 import { TermCard, type Decision } from "./TermCard";
 import type { TermProposal } from "../../domain/types";
+
+/** Il messaggio da mostrare quando una decisione fallisce.
+ *
+ * Un 4xx porta nel suo `detail` (già in `ApiError.message` grazie ad
+ * `apiFetch`) il motivo vero — per esempio un 409 che dice "collega il termine
+ * invece di creare un duplicato" quando l'utente rinomina "Sale fino" nel
+ * generico "sale". Mostrarlo è l'unica cosa che gli dice dov'è l'uscita: la
+ * frase generica ("riprova") lo rimanda a riprovare la stessa azione che ha
+ * già fallito. Un 5xx o una rete caduta non hanno un `detail` utile, quindi
+ * restano sulla frase generica — che lì è vera.
+ */
+function decisionErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    return error.message;
+  }
+  return "Non sono riuscito a registrare la decisione. Niente è andato perso: riprova.";
+}
 
 /** La revisione dei termini dell'import.
  *
@@ -127,9 +145,7 @@ export function ImportQueueScreen() {
       )}
 
       {decide.isError && (
-        <Alert className="pt-2">
-          Non sono riuscito a registrare la decisione. Niente è andato perso: riprova.
-        </Alert>
+        <Alert className="pt-2">{decisionErrorMessage(decide.error)}</Alert>
       )}
 
       {isLoading && <p className="pt-4 text-ink-soft">Carico la coda…</p>}
