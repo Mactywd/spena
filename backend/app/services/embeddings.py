@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import threading
 from typing import Protocol
 
 import httpx
@@ -77,6 +78,18 @@ class EmbeddingProvider(Protocol):
 # ricerca e a ogni ricetta salvata.
 _LOADED_MODELS: dict[str, object] = {}
 
+# Un solo caricamento alla volta, e chi arriva secondo non si mette in coda: degrada.
+#
+# Il primo caricamento scarica il modello (~500 MB) e dura minuti. Senza questo
+# lucchetto due richieste vicine — il preriscaldamento all'ingresso nella scheda
+# Ricette e la prima ricerca — ne fanno partire due in parallelo, ognuna con il suo
+# download. Con un lucchetto bloccante, invece, ogni richiesta successiva terrebbe
+# occupato un thread dell'esecutore per tutta la durata del download, e l'esecutore ha
+# un numero di thread finito che serve anche ad altro. `blocking=False` è quindi la
+# forma giusta: uno scarica, gli altri rispondono subito con la degradazione prevista
+# dalla spec §11 e riprovano alla richiesta dopo.
+_LOADING = threading.Lock()
+
 
 class LocalEmbeddingProvider:
     """sentence-transformers dentro il container. Costo per query nullo."""
@@ -89,10 +102,18 @@ class LocalEmbeddingProvider:
         if self._model is None:
             model = _LOADED_MODELS.get(self._model_name)
             if model is None:
-                from sentence_transformers import SentenceTransformer
+                if not _LOADING.acquire(blocking=False):
+                    raise EmbeddingUnavailable(
+                        f"il modello {self._model_name} è in caricamento (al primo uso "
+                        "viene scaricato): fino ad allora la ricerca resta testuale"
+                    )
+                try:
+                    from sentence_transformers import SentenceTransformer
 
-                model = SentenceTransformer(self._model_name)
-                _LOADED_MODELS[self._model_name] = model
+                    model = SentenceTransformer(self._model_name)
+                    _LOADED_MODELS[self._model_name] = model
+                finally:
+                    _LOADING.release()
             self._model = model
         return self._model
 

@@ -6,12 +6,15 @@ riordinamento: non nasconde nulla, perché una ricetta a cui manca una sola cosa
 è un'informazione che vuoi vedere.
 """
 
+import asyncio
+import logging
 import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.models.recipe import Recipe, RecipeIngredient
 from app.domain.rules import Availability, IngredientRole, is_cookable, missing_count
 from app.repositories.pantry import availability_map
@@ -20,6 +23,8 @@ from app.services.embeddings import (
     get_embedding_provider,
     log_degradation_once,
 )
+
+logger = logging.getLogger(__name__)
 
 RRF_K = 60
 CANDIDATE_POOL = 100
@@ -46,6 +51,47 @@ CANDIDATE_POOL = 100
 # stretta e la metà semantica si svuota, cioè la degradazione che la spec §11
 # descrive già; troppo larga e si torna al catalogo intero, cioè a prima di questa riga.
 SEMANTIC_MAX_DISTANCE = 0.17
+
+# Il modello su cui la misurazione qui sopra è stata fatta. La coppia
+# (soglia, modello) è una cosa sola, e finora stava insieme solo in un commento:
+# chi cambia EMBEDDING_MODEL lo fa in `.env`, dove la soglia non è nominata.
+SEMANTIC_DISTANCE_MEASURED_ON = "intfloat/multilingual-e5-small"
+
+# La scelta, quando il modello configurato non è quello misurato: si rinuncia alla
+# metà semantica invece di applicarle la soglia comunque.
+#
+# Applicarla sarebbe una supposizione, e sbaglia in silenzio in entrambi i versi. Su
+# un modello a scala più larga `_semantic_ranking` restituisce sempre `[]`: la
+# ricerca è solo testuale mentre `/recipes/search-mode` continua a dire
+# `semantic: true`, perché il vettore si calcola benissimo — cioè esattamente il
+# degrado invisibile che la spec §11 vuole visibile. Su un modello a scala più
+# stretta torna il ricettario intero per qualunque sciocchezza, cioè il difetto che
+# la soglia esiste per chiudere. Rinunciare, invece, è la degradazione già prevista:
+# si vede nei log, si vede nella riga grigia del ricettario, e nessuna delle due
+# risposte è una bugia. Il costo per tornare indietro è una costante rimisurata, ed
+# è un lavoro che solo una misurazione può fare.
+SEMANTIC_OFF_MODEL = (
+    "ricerca semantica non disponibile: EMBEDDING_MODEL è %r, ma SEMANTIC_MAX_DISTANCE "
+    "(%s) è misurata su %r e la scala delle distanze è una proprietà del modello. Il "
+    "ricettario resta sulla sola ricerca testuale. Per riaccenderla: rimisura la soglia "
+    "in app/services/recipe_search.py per il modello nuovo, oppure rimetti %r in .env."
+)
+
+# Una volta per processo, per la stessa ragione di log_degradation_once: un avviso a
+# ogni ricerca è rumore, e il rumore non lo legge nessuno.
+_model_mismatch_logged = False
+
+# Quanto si aspetta un vettore prima di considerare la ricerca semantica non pronta.
+# Con il fornitore locale il primo calcolo scarica il modello (~500 MB) e solo dopo
+# risponde, mentre Nginx davanti al backend chiude a 60 s (frontend/nginx.conf non
+# imposta proxy_read_timeout, quindi vale il default): senza questo limite il primo
+# ingresso nella scheda Ricette — che interroga /recipes/search-mode, cioè fa partire
+# il download — resta appeso e finisce in «Non sono riuscito a cercare nel
+# ricettario», che è un guasto apparente mentre dietro va tutto bene. Con il limite
+# la prima visita degrada alla ricerca testuale e quella dopo il download trova il
+# modello caricato: il thread che sta scaricando non viene fermato da questa scadenza
+# (asyncio.wait_for annulla l'attesa, non il lavoro dentro asyncio.to_thread).
+EMBED_TIMEOUT_SECONDS = 5.0
 
 
 @dataclass
@@ -76,28 +122,83 @@ async def _embed_query(query: str) -> list[float]:
     return await get_embedding_provider().embed_query(query)
 
 
+async def _embed_query_in_time(query: str) -> list[float]:
+    """Il vettore, o EmbeddingUnavailable entro EMBED_TIMEOUT_SECONDS."""
+    try:
+        return await asyncio.wait_for(_embed_query(query), EMBED_TIMEOUT_SECONDS)
+    except TimeoutError as exc:
+        raise EmbeddingUnavailable(
+            f"nessun vettore entro {EMBED_TIMEOUT_SECONDS:g} s: il modello "
+            "probabilmente si sta ancora scaricando o caricando"
+        ) from exc
+
+
+def _wrong_model_for_the_threshold() -> str | None:
+    """Il modello configurato, se non è quello su cui la soglia è misurata.
+
+    Logga una volta per processo: chi cambia EMBEDDING_MODEL non ha nessun altro
+    posto in cui scoprire che la soglia non vale più per lui.
+    """
+    global _model_mismatch_logged
+    configured = get_settings().embedding_model
+    if configured == SEMANTIC_DISTANCE_MEASURED_ON:
+        return None
+    if not _model_mismatch_logged:
+        _model_mismatch_logged = True
+        logger.warning(
+            SEMANTIC_OFF_MODEL,
+            configured,
+            SEMANTIC_MAX_DISTANCE,
+            SEMANTIC_DISTANCE_MEASURED_ON,
+            SEMANTIC_DISTANCE_MEASURED_ON,
+        )
+    return configured
+
+
 SEMANTIC_PROBE = "prova"
 
 
-async def semantic_search_available() -> bool:
-    """Se un vettore si riesce davvero a calcolare, adesso, con questa configurazione.
+async def semantic_search_usable(session: AsyncSession) -> bool:
+    """Se la ricerca semantica serve davvero a qualcosa, adesso, su questo ricettario.
 
-    Passa dalla stessa funzione che usa la ricerca, quindi la risposta riguarda il
-    percorso vero e non la configurazione dichiarata. Con il fornitore locale la
-    prima chiamata carica il modello, che resta caricato (vedi embeddings.py): è un
-    preriscaldamento, non uno spreco.
+    Tre condizioni, e tutte e tre devono valere perché la risposta descriva ciò che
+    l'utente sperimenta cercando:
+
+    1. la soglia vale per il modello configurato (vedi SEMANTIC_OFF_MODEL);
+    2. un vettore si riesce a calcolare, passando dalla stessa funzione che usa la
+       ricerca — quindi è il percorso vero e non la configurazione dichiarata. Con il
+       fornitore locale la prima chiamata carica il modello, che resta caricato (vedi
+       embeddings.py): è un preriscaldamento, non uno spreco;
+    3. esiste almeno una ricetta con un vettore. Senza questa terza condizione la
+       rotta descriveva il fornitore e non il ricettario, e le due cose divergono
+       proprio sul percorso che il README racconta: accendere INSTALL_EMBEDDINGS=1
+       dopo aver seminato lascia le 26 ricette del seme con `embedding` a NULL (il
+       seme è idempotente e non le riscrive). L'avviso spariva dallo schermo mentre
+       la metà semantica restava vuota su tutto il ricettario tranne le ricette
+       scritte dopo.
     """
+    if _wrong_model_for_the_threshold() is not None:
+        return False
     try:
-        await _embed_query(SEMANTIC_PROBE)
+        await _embed_query_in_time(SEMANTIC_PROBE)
     except EmbeddingUnavailable as exc:
         log_degradation_once(exc)
         return False
-    return True
+    return await _any_recipe_has_a_vector(session)
+
+
+async def _any_recipe_has_a_vector(session: AsyncSession) -> bool:
+    statement = select(Recipe.id).where(Recipe.embedding.is_not(None)).limit(1)
+    return await session.scalar(statement) is not None
 
 
 async def _semantic_ranking(session: AsyncSession, query: str) -> list[uuid.UUID]:
+    if _wrong_model_for_the_threshold() is not None:
+        # la soglia non vale per questo modello: filtrare con un numero misurato su
+        # un altro è una supposizione, e qui si preferisce la sola ricerca testuale
+        return []
     try:
-        vector = await _embed_query(query)
+        vector = await _embed_query_in_time(query)
     except EmbeddingUnavailable as exc:
         # degradazione: resta la sola ricerca testuale, ma si deve sapere
         log_degradation_once(exc)

@@ -30,7 +30,7 @@ from app.services.embeddings import (
     get_embedding_provider,
     log_degradation_once,
 )
-from app.services.recipe_search import search_recipes, semantic_search_available
+from app.services.recipe_search import search_recipes, semantic_search_usable
 
 router = APIRouter(
     prefix="/api/v1/recipes", tags=["recipes"], dependencies=[Depends(require_session)]
@@ -87,9 +87,13 @@ async def search(
 
 
 @router.get("/search-mode", response_model=SearchModeOut)
-async def search_mode() -> SearchModeOut:
-    """Dichiarata prima di `/{recipe_id}`, altrimenti la rotta col parametro la mangia."""
-    return SearchModeOut(semantic=await semantic_search_available())
+async def search_mode(session: AsyncSession = Depends(get_session)) -> SearchModeOut:
+    """Dichiarata prima di `/{recipe_id}`, altrimenti la rotta col parametro la mangia.
+
+    La sessione serve dalla terza condizione di `semantic_search_usable`: la risposta
+    parla anche del ricettario, non solo del fornitore di vettori.
+    """
+    return SearchModeOut(semantic=await semantic_search_usable(session))
 
 
 @router.get("/{recipe_id}", response_model=RecipeOut)
