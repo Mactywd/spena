@@ -44,7 +44,7 @@ CANDIDATE_POOL = 100
 # Da rimisurare se cambia EMBEDDING_MODEL: la scala delle distanze è una proprietà
 # del modello. L'errore è asimmetrico e mite in entrambe le direzioni: troppo
 # stretta e la metà semantica si svuota, cioè la degradazione che la spec §11
-# descrive già; troppo larga e si torna a qui.
+# descrive già; troppo larga e si torna al catalogo intero, cioè a prima di questa riga.
 SEMANTIC_MAX_DISTANCE = 0.17
 
 
