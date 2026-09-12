@@ -1,5 +1,5 @@
 // defineConfig viene da vitest/config: quello di Vite non conosce la chiave `test`
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
@@ -35,5 +35,10 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     globals: true,
+    // e2e/ è di Playwright: i suoi file finiscono in `*.spec.ts` e rientrerebbero
+    // nel pattern di default di Vitest, che li caricherebbe fuori dal loro runner.
+    // Si parte dalle esclusioni di default perché assegnare `exclude` le sostituisce
+    // tutte, node_modules compreso.
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });

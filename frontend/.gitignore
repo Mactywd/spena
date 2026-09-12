@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright: tracce, screenshot e relazioni di una esecuzione, non sorgenti
+test-results/
+playwright-report/

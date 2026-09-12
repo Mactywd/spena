@@ -1,0 +1,53 @@
+# Deploy di produzione. Il frontend è l'unico servizio esposto: Nginx inoltra
+# /api/ al backend, quindi il backend non pubblica porte. HTTPS è necessario e non
+# opzionale: senza, la fotocamera non parte (getUserMedia vuole un contesto sicuro)
+# e il cookie marcato `Secure` non viaggia.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    # `format: raw` non è decorativo, ed è lo stesso motivo di docker-compose.yml:
+    # l'hash argon2 di APP_PASSWORD_HASH contiene dei `$` e Compose, nella forma
+    # breve `env_file: .env`, li interpreta come riferimenti a variabili. Misurato:
+    # 97 caratteri arrivano al container come 62, e l'accesso fallisce sempre.
+    # Non semplificare alla forma breve. Richiede Compose 2.30 o successivo.
+    env_file:
+      - path: .env
+        format: raw
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      COOKIE_SECURE: "true"
+    # solo lettura, e solo per il seme: data/ vive nella radice del repository,
+    # fuori dal contesto di build dell'immagine, quindi `python -m app.cli.seed`
+    # non lo troverebbe. Vedi app/cli/seed.py.
+    volumes: ["./data:/app/data:ro"]
+    depends_on: [db]
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+    restart: unless-stopped
+    networks: [default, traefik-public]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.spena.rule=Host(`${SPENA_HOST}`)
+      - traefik.http.routers.spena.entrypoints=websecure
+      - traefik.http.routers.spena.tls.certresolver=letsencrypt
+      - traefik.http.services.spena.loadbalancer.server.port=80
+
+volumes:
+  pgdata:
+
+networks:
+  traefik-public:
+    external: true

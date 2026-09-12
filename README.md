@@ -1,0 +1,234 @@
+# Spena
+
+Lista della spesa, dispensa e ricettario per una persona sola. La v1 chiude un
+cerchio e uno solo:
+
+> scrivi la lista → torni dalla spesa e la sistemi in dispensa → cucini una
+> ricetta → ciò che è finito torna in lista da sé
+
+Tutto il resto — diario dei pasti, nutrienti, suggerimenti — si innesta su questo
+ciclo nelle fasi successive e non c'è dentro.
+
+## La decisione da cui dipende tutto: niente quantità
+
+La dispensa non conosce quantità, unità di misura né scadenze. Un ingrediente sta
+in uno di tre stati: `available`, `low`, `finished`. Non è una mancanza, è una
+scelta: toglie le conversioni di unità e la manutenzione quotidiana che fa
+abbandonare le app di questo tipo. Il prezzo è che i valori nutrizionali non si
+possono dedurre dalle scorte, ed è il motivo per cui la nutrizione è in fase 3 su
+un binario suo.
+
+Il `low` serve a qualcosa grazie a una seconda regola: ogni ingrediente di una
+ricetta è `primary` o `secondary`. Un primario vuole `available`, un secondario si
+accontenta di `low`. Un barattolo di pelati quasi vuoto non fa una pasta al
+pomodoro ma fa un soffritto.
+
+Le due decisioni, per esteso e con le loro conseguenze, sono in
+[`docs/superpowers/specs/2026-09-11-spena-design.md`](docs/superpowers/specs/2026-09-11-spena-design.md),
+che resta l'autorità su scopo e perimetro.
+
+## Cosa serve
+
+- **Docker con Compose 2.30 o successivo.** Non è una preferenza: i file Compose
+  usano la forma lunga di `env_file` con `format: raw`, introdotta in 2.30. Con una
+  versione precedente l'hash argon2 della password viene interpretato da Compose —
+  i `$` diventano riferimenti a variabili — e arriva al container troncato: misurato,
+  97 caratteri su 62, e l'accesso non funziona mai. Verifica con
+  `docker compose version`.
+- **Node 22 o successivo**, solo per far girare i test del frontend da fuori Docker.
+
+## Avvio locale
+
+```bash
+cp .env.example .env
+```
+
+Poi riempi le due variabili obbligatorie. Il segreto di sessione:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+E l'hash della password di accesso, generato con lo stesso argon2 che l'applicazione
+usa per verificarlo:
+
+```bash
+docker compose run --rm --build backend \
+  python -c "from app.core.security import hash_password; print(hash_password('la-tua-password'))"
+```
+
+Incolla i due valori in `.env` **senza apici**. L'hash contiene dei `$` e sembra
+naturale proteggerlo con degli apici singoli: non farlo. `format: raw` non li
+toglie, quindi arriverebbero dentro il container come parte dell'hash e la verifica
+fallirebbe sempre.
+
+Se `SESSION_SECRET` resta vuota — o al valore di esempio — il backend **rifiuta di
+partire**, e lo dice nei log con il comando per generarne una. È deliberato: un
+server che firma i cookie con un segreto pubblicato su git non deve sembrare sano.
+
+Poi:
+
+```bash
+docker compose up -d --build
+docker compose exec backend alembic upgrade head
+docker compose exec backend python -m app.cli.seed   # 169 ingredienti, 26 ricette
+```
+
+L'app è su <http://localhost:5173>. Il seme è idempotente: rieseguirlo non duplica
+niente.
+
+**Rumore previsto.** Ogni comando `docker compose` stampa avvisi come
+`The "argon2id" variable is not set. Defaulting to a blank string.` Sono cosmetici:
+vengono dalla lettura del `.env` che Compose fa per sostituire i `${...}` dentro al
+file Compose stesso, che è una cosa diversa da `env_file:` e non accetta
+`format: raw`. Verificato: dentro al container `APP_PASSWORD_HASH` è lungo 97
+caratteri, cioè intero.
+
+## Test
+
+Tre suite separate. Ognuna va lanciata dalla sua directory.
+
+### Backend
+
+Gira su Postgres vero, non su SQLite: lo schema ha bisogno di `vector` e di
+`pg_trgm`. Il database di test va creato una volta sola:
+
+```bash
+docker compose up -d db
+docker compose exec -T db psql -U spena -c "CREATE DATABASE spena_test"
+```
+
+Poi, **da `backend/`**:
+
+```bash
+cd backend && pytest
+```
+
+La suite non tocca la rete: Open Food Facts e Claude girano su fixture registrate, e
+non legge il tuo `.env` (vedi il commento in `backend/tests/conftest.py`).
+
+### Frontend
+
+**Da `frontend/`**, e l'avvertenza non è pedanteria: lanciato da una
+sottodirectory, Vitest riporta «No test files found» e passa, cioè dà un verde
+falso.
+
+```bash
+cd frontend && npx vitest run
+```
+
+### Percorso end-to-end
+
+Attraversa lista, dispensa, ricettario, cottura e rientro in lista con un browser
+vero, contro l'app costruita e servita da Nginx. Gira su uno stack Compose a parte,
+`spena-e2e`, per due motivi: la password serve conosciuta (`.env.e2e` contiene
+l'hash della parola `test`, e non protegge niente) e lo stack va distrutto con i
+volumi alla fine, cosa che non si può fare sul progetto di sviluppo senza perdere la
+dispensa vera.
+
+```bash
+E2E="docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml"
+$E2E up -d --build
+$E2E exec -T backend alembic upgrade head
+$E2E exec -T backend python -m app.cli.seed
+(cd frontend && E2E_BASE_URL=http://localhost:5174 npm run e2e)
+$E2E down -v
+```
+
+Il `-p spena-e2e` e il `-f docker-compose.e2e.yml` vanno ripetuti in ogni comando:
+`down -v` sul progetto di default cancellerebbe il volume della dispensa vera.
+
+Il percorso scrive in lista e in dispensa, quindi **vuole uno stack appena creato**:
+rieseguirlo senza `down -v` lo fa fallire dicendo che lo stack non è pulito.
+
+## Provare la fotocamera dal telefono
+
+Lo scanner di codici a barre ha bisogno di `getUserMedia`, che il browser concede
+solo in un contesto sicuro: HTTPS o `localhost`. Da telefono serve quindi HTTPS, ed
+è per questo che il server di sviluppo ha un certificato autofirmato.
+
+```bash
+cd frontend && npm run dev -- --host
+```
+
+Vite stampa l'indirizzo sulla rete locale (`https://192.168.x.x:5173`). Aprilo dal
+telefono e accetta il certificato: è autofirmato, il browser avvisa, è normale. Il
+backend deve girare in parallelo (`docker compose up -d`), il proxy di Vite inoltra
+`/api` a <http://localhost:8000>.
+
+> **Questo percorso non è mai stato eseguito.** Non c'era un telefono durante lo
+> sviluppo: `getUserMedia`, la lettura di un codice a barre reale e il permesso della
+> fotocamera su un dispositivo vero non sono stati provati nemmeno una volta. I test
+> coprono il componente dello scanner in jsdom, con la fotocamera finta, e il
+> percorso end-to-end usa l'inserimento manuale del codice. La verifica resta da
+> fare, e sono questi quattro passaggi:
+>
+> 1. Scrivi tre cose in lista, una con un errore di battitura, e controlla che
+>    l'autocomplete la riconosca.
+> 2. Spunta tutto e sistema la spesa scansionando almeno un codice a barre reale.
+> 3. Apri una ricetta e controlla che gli stati degli ingredienti corrispondano a
+>    ciò che hai in casa.
+> 4. Cucina, dichiara finita una cosa, e verifica che sia tornata in lista da sé.
+>
+> Se questi quattro passaggi filano, la v1 è completa.
+
+## Deploy in produzione
+
+`docker-compose.prod.yml` pubblica un solo servizio, il frontend: Nginx inoltra
+`/api/` al backend, che quindi non ha porte esposte. Davanti c'è Traefik, su una
+rete esterna che deve esistere già:
+
+```bash
+docker network create traefik-public   # solo la prima volta
+```
+
+In `.env` servono, oltre alle variabili dell'avvio locale, `SPENA_HOST` con il nome
+di host pubblicato e le `POSTGRES_*` (qui non hanno default: il Compose di
+produzione non ne inventa uno).
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+docker compose -f docker-compose.prod.yml exec backend python -m app.cli.seed
+```
+
+Il progetto Compose, in mancanza di `-p`, si chiama `spena` anche qui, cioè come
+quello di sviluppo: sulla stessa macchina i due stack si contenderebbero gli stessi
+nomi di container e lo stesso volume `spena_pgdata`. Su un server dedicato non
+succede; se devi provare il Compose di produzione dove sviluppi, dagli un nome suo
+con `-p spena-prod`.
+
+HTTPS è necessario e non opzionale, per due motivi che si sommano: senza di esso la
+fotocamera non parte, e il cookie di sessione viaggia con `Secure` — il Compose di
+produzione impone `COOKIE_SECURE=true` al servizio backend — quindi su `http` il
+browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
+
+## Variabili d'ambiente
+
+| Variabile | Default | Scopo |
+|---|---|---|
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | vedi `.env.example` | connessione al database |
+| `SESSION_SECRET` | nessuno, obbligatorio | firma del cookie di sessione; vuota, il backend non parte |
+| `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso |
+| `COOKIE_SECURE` | `false` | `true` in produzione: il cookie solo su HTTPS |
+| `ANTHROPIC_API_KEY` | vuoto | stesura ricette con l'AI e abbinamenti incerti |
+| `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake` |
+| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale |
+| `EMBEDDING_ENDPOINT` | vuoto | solo con `EMBEDDING_BACKEND=http` |
+| `OFF_BASE_URL` | api ufficiale di Open Food Facts | sovrascrivibile nei test |
+| `OFF_TIMEOUT_SECONDS` | `3` | oltre il quale si degrada all'inserimento manuale |
+| `SPENA_HOST` | nessuno | solo in produzione: host pubblicato da Traefik |
+
+Nessuna di queste, mancando, porta a un vicolo cieco nell'interfaccia: senza chiave
+Anthropic la ricetta si scrive a mano, senza modello di embedding la ricerca resta
+quella testuale, con Open Food Facts irraggiungibile il prodotto si crea a mano. È
+una regola di casa, non un caso fortunato.
+
+## Oltre la v1
+
+Le fasi 2 (scontrino, nutrienti da foto dell'etichetta, import massivo di ricette),
+3 (diario dei pasti e micronutrienti) e 4 (motore di suggerimenti) sono descritte
+nel §4 della
+[spec di design](docs/superpowers/specs/2026-09-11-spena-design.md). La tabella
+`cooking_events` esiste già in v1 senza nessun consumatore proprio perché la fase 3
+abbia una storia su cui appoggiarsi.

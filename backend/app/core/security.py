@@ -43,15 +43,28 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+def is_insecure_session_secret(secret: str) -> bool:
+    """Il giudizio su un segreto, in un posto solo.
+
+    Lo usano due controlli distinti: `_signer()`, che blocca la singola richiesta,
+    e l'avvio dell'applicazione (app/main.py), che rifiuta di partire. Duplicare
+    l'elenco dei segnaposto li farebbe divergere, e il controllo all'avvio
+    diventerebbe più permissivo di quello che conta davvero.
+    """
+    return not secret or secret in PLACEHOLDER_SECRETS
+
+
 def _signer() -> TimestampSigner:
     """Unico punto che tocca il segreto, quindi unico punto dove va controllato.
 
     Sta qui e non nella rotta di login perché così il rifiuto copre sia l'emissione
     sia la verifica del cookie: un server mal configurato deve rompersi in modo
     rumoroso (500) invece di accettare cookie firmati con un segreto pubblico.
+    Resta anche con il controllo all'avvio: le impostazioni si possono cambiare a
+    processo vivo (i test lo fanno), e questo è l'ultimo cancello prima della firma.
     """
     secret = get_settings().session_secret
-    if not secret or secret in PLACEHOLDER_SECRETS:
+    if is_insecure_session_secret(secret):
         raise InsecureSessionSecret(SECRET_HOWTO)
     return TimestampSigner(secret)
 
@@ -60,7 +73,7 @@ def issue_session_cookie(response: Response) -> None:
     token = _signer().sign(b"spena").decode()
     response.set_cookie(
         SESSION_COOKIE, token, max_age=SESSION_MAX_AGE,
-        httponly=True, samesite="lax", secure=False,
+        httponly=True, samesite="lax", secure=get_settings().cookie_secure,
     )
 
 

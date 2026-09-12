@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # app/core/security.py, che rifiuta i valori segnaposto)
     session_secret: str = ""
     app_password_hash: str = ""
+    # Il cookie di sessione viaggia con `Secure` solo dove esiste HTTPS. Il default
+    # è False perché in sviluppo si serve anche su http://localhost, e un cookie
+    # `Secure` lì non verrebbe mai mandato: l'accesso riuscirebbe e ogni chiamata
+    # successiva risponderebbe 401, senza dire perché. In produzione vale true
+    # (docker-compose.prod.yml lo impone al servizio).
+    cookie_secure: bool = False
     anthropic_api_key: str | None = None
     embedding_backend: str = "local"
     embedding_model: str = "intfloat/multilingual-e5-small"

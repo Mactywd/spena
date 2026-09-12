@@ -7,6 +7,7 @@ from app.core.security import (
     SESSION_COOKIE,
     InsecureSessionSecret,
     hash_password,
+    is_insecure_session_secret,
     verify_password,
 )
 
@@ -162,3 +163,51 @@ def test_the_suite_does_not_read_the_developers_env_file(monkeypatch):
     assert settings.app_password_hash == ""
     assert settings.session_secret == ""
     assert not settings.anthropic_api_key
+
+
+def test_il_predicato_boccia_solo_i_segreti_inutilizzabili():
+    """Il giudizio condiviso fra `_signer()` e il controllo all'avvio.
+
+    Elencato qui perché è l'unico punto in cui i due controlli possono divergere: se
+    qualcuno aggiunge un segnaposto a .env.example senza metterlo in
+    PLACEHOLDER_SECRETS, questa lista resta la documentazione di cosa viene bocciato.
+    """
+    assert is_insecure_session_secret("") is True
+    for placeholder in PLACEHOLDER_SECRETS:
+        assert is_insecure_session_secret(placeholder) is True
+    assert is_insecure_session_secret("segreto-di-test") is False
+
+
+async def test_cookie_is_marked_secure_when_configured(client, monkeypatch):
+    """In produzione il cookie viaggia solo su HTTPS: COOKIE_SECURE=true lo impone."""
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_PASSWORD_HASH", hash_password("test"))
+    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    try:
+        response = await client.post("/api/v1/auth/login", json={"password": "test"})
+        assert "secure" in response.headers["set-cookie"].lower()
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_cookie_is_not_secure_by_default(client, monkeypatch):
+    """L'altra metà, che dà denti alla variabile.
+
+    Un `secure=True` scritto fisso passerebbe il test di sopra e romperebbe lo
+    sviluppo su http://localhost: il browser non manderebbe mai il cookie e ogni
+    chiamata dopo l'accesso risponderebbe 401 senza spiegazione.
+    """
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_PASSWORD_HASH", hash_password("test"))
+    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
+    monkeypatch.delenv("COOKIE_SECURE", raising=False)
+    try:
+        response = await client.post("/api/v1/auth/login", json={"password": "test"})
+        assert "secure" not in response.headers["set-cookie"].lower()
+    finally:
+        get_settings.cache_clear()
