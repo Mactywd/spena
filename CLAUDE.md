@@ -41,6 +41,12 @@ not pay for them again:
   Adding the ingredient/product guard turned one mismatched barcode into a rejected
   whole shop with an unactionable "riprova". When you close a hole, ask what the new
   refusal leaves the user able to do.
+- **Un filtro che lavora sul risultato non può stare dietro a un limite.**
+  `recipe_search.py` selezionava le 100 ricette più recenti e poi applicava
+  `only_cookable`: con 26 ricette era tutto il ricettario, con 500 è un campione, e
+  «cosa posso cucinare» avrebbe risposto guardando solo le ricette di ieri. Nessun
+  test poteva vederlo, perché nessun test aveva più ricette della piscina. Quando un
+  lavoro moltiplica i dati, cerca i limiti scritti quando i dati erano pochi.
 
 ## The two decisions everything else follows from
 
@@ -108,6 +114,11 @@ matches. It never produces nutrient values.
   anything carrying white text is above 4.5:1, because this app is read in a
   supermarket aisle in daylight.
 - Specs and plans are written in Italian, code and identifiers in English.
+- **L'import porta ricette, non ingredienti nuovi a caso.** Il catalogo della fonte è
+  più fine dell'anagrafica: `Rigatoni` diventa un alias di `pasta`, deciso una volta
+  in `import_terms` e scritto in `ingredient_aliases`. Non esiste una seconda tabella
+  di mappatura, e una decisione sbagliata si corregge dall'anagrafica. Lo spec è
+  `docs/superpowers/specs/2026-09-12-import-ricette-design.md`.
 
 ## Roadmap beyond v1
 
