@@ -8,6 +8,14 @@ export function searchRecipes(query: string, onlyCookable: boolean) {
   return apiFetch<RecipeSummary[]>(`/recipes/search?${params.toString()}`);
 }
 
+/** Se la ricerca del ricettario è ibrida o solo testuale, in questo momento. Il
+ * backend la dichiara in una rotta sua (spec §11: «il modello di embedding non
+ * caricato → la ricerca degrada a sola ricerca testuale, con avviso discreto»), e
+ * non manda nessun testo da mostrare: la frase è nostra. */
+export function fetchSearchMode() {
+  return apiFetch<{ semantic: boolean }>("/recipes/search-mode");
+}
+
 export function fetchRecipe(id: string) {
   return apiFetch<RecipeDetail>(`/recipes/${id}`);
 }

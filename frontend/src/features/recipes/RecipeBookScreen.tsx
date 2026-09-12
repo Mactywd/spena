@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
-import { searchRecipes } from "./api";
+import { fetchSearchMode, searchRecipes } from "./api";
 import { useDebounced } from "../../hooks/useDebounced";
 
 const DEBOUNCE_MS = 180;
@@ -24,6 +24,18 @@ export function RecipeBookScreen() {
     queryFn: () => searchRecipes(debouncedQuery, onlyCookable),
   });
 
+  // Spec §11: quando il modello di embedding non si carica la ricerca resta solo
+  // testuale, e va detto con un avviso discreto. Fuori dalla chiave ["recipes"],
+  // che il salvataggio di una ricetta invalida: questo non cambia salvando una
+  // ricetta, cambia solo quando il backend riparte. Se la rotta non risponde non si
+  // mostra niente: un avviso rotto su una cosa che forse funziona è peggio del
+  // silenzio.
+  const { data: searchMode } = useQuery({
+    queryKey: ["search-mode"],
+    queryFn: fetchSearchMode,
+    staleTime: Infinity,
+  });
+
   return (
     <div className="p-4">
       <div className="flex items-baseline justify-between pb-3">
@@ -42,6 +54,15 @@ export function RecipeBookScreen() {
         placeholder="Cerca un piatto o un ingrediente"
         className="w-full rounded-lg border border-neutral-300 px-3 py-3 text-base"
       />
+
+      {/* una constatazione, non un guasto: niente `role`, niente colore d'allarme.
+          `=== false` e non `!searchMode?.semantic`, perché "non lo so ancora" e
+          "non risponde" non sono "è degradata" */}
+      {searchMode?.semantic === false && (
+        <p className="pt-2 text-xs text-neutral-400">
+          Ricerca solo testuale: trova le parole che scrivi, non i piatti simili.
+        </p>
+      )}
 
       <label className="mt-3 flex items-center gap-2 text-sm text-neutral-600">
         <input

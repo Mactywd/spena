@@ -27,6 +27,18 @@ function renderScreen(queryCache?: QueryCache) {
   );
 }
 
+/** Un fetch che risponde in base al percorso: lo schermo fa due chiamate — la
+ * ricerca e il modo di ricerca — e ognuna deve ricevere una Response nuova, perché
+ * il corpo di una Response si legge una volta sola. */
+function stubRoutedFetch(route: (path: string) => [unknown, number]) {
+  const spy = vi.fn((url: unknown) => {
+    const [body, status] = route(String(url));
+    return Promise.resolve(new Response(JSON.stringify(body), { status }));
+  });
+  vi.stubGlobal("fetch", spy);
+  return spy;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -80,6 +92,45 @@ describe("RecipeBookScreen", () => {
     await vi.waitFor(() =>
       expect(spy.mock.calls.some(([url]) => String(url).includes("only_cookable=true"))).toBe(true)
     );
+  });
+
+  // Spec §11: «modello di embedding non caricato → la ricerca degrada a sola
+  // ricerca testuale, con avviso discreto». Prima il degrado era invisibile: una
+  // ricerca che trova solo le parole esatte ha lo stesso aspetto di una che capisce
+  // il senso, e il difetto del Dockerfile che lo causava (C1) è stato invisibile
+  // per tutto il branch proprio per questo.
+  it("quando la ricerca è solo testuale lo dice, e non sembra un errore", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: false }, 200] : [RESULTS, 200]
+    );
+    renderScreen();
+
+    expect(await screen.findByText(/solo testuale/i)).toBeDefined();
+    // una constatazione, non un guasto: nessun ruolo d'allarme, e le ricette ci sono
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("Pasta al pomodoro")).toBeDefined();
+  });
+
+  it("quando la ricerca è ibrida non dice niente", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [RESULTS, 200]
+    );
+    renderScreen();
+
+    await screen.findByText("Pasta al pomodoro");
+    expect(screen.queryByText(/solo testuale/i)).toBeNull();
+  });
+
+  it("se il modo di ricerca non risponde non mostra un avviso rotto", async () => {
+    // un avviso su una cosa che forse funziona è peggio del silenzio, e il
+    // ricettario deve restare utilizzabile
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ detail: "giù" }, 500] : [RESULTS, 200]
+    );
+    renderScreen();
+
+    await screen.findByText("Pasta al pomodoro");
+    expect(screen.queryByText(/solo testuale/i)).toBeNull();
   });
 
   // Pattern 2 delle istruzioni: una ricerca fallita deve dirlo, non sembrare un
