@@ -2,6 +2,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.api import auth, cooking, ingredients, pantry, products, recipes, shopping
 from app.core.config import get_settings
@@ -43,10 +45,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# Documentazione spenta qui e riaccesa sotto, dietro al gate. La spec §9 ammette
+# fuori dalla sessione solo /health e /auth/login, e questa app esiste «solo per non
+# tenere l'app aperta in chiaro su internet» (spec §13): Swagger e lo schema OpenAPI
+# non espongono dati — ogni rotta che descrivono risponde 401 — ma pubblicherebbero
+# l'intera superficie a chiunque trovi l'host. Si tengono perché al proprietario
+# servono per leggere un contratto mentre ha un dubbio, e nel browser il cookie di
+# sessione ce l'ha già: gratis per lui, niente per gli altri.
 app = FastAPI(
     title="Spena",
-    docs_url="/api/v1/docs",
-    openapi_url="/api/v1/openapi.json",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
     lifespan=lifespan,
 )
 app.include_router(auth.router)
@@ -63,7 +73,13 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/v1/ping-protected", dependencies=[Depends(require_session)])
-async def ping_protected() -> dict[str, bool]:
-    """Esiste per provare il gate. Resta, costa nulla e documenta il contratto."""
-    return {"ok": True}
+@app.get(
+    "/api/v1/openapi.json", include_in_schema=False, dependencies=[Depends(require_session)]
+)
+async def openapi_schema() -> JSONResponse:
+    return JSONResponse(app.openapi())
+
+
+@app.get("/api/v1/docs", include_in_schema=False, dependencies=[Depends(require_session)])
+async def swagger_ui() -> HTMLResponse:
+    return get_swagger_ui_html(openapi_url="/api/v1/openapi.json", title="Spena")

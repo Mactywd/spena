@@ -12,6 +12,14 @@ from app.core.security import (
 )
 
 
+# Una rotta vera dell'applicazione, non una sonda scritta per i test: la
+# `/api/v1/ping-protected` di prima esisteva solo per questi test e arrivava in
+# produzione. Provare il gate su una rotta che il proprietario usa davvero dimostra
+# una cosa in più — che quella rotta è dietro la sessione — e non lascia niente in
+# giro. `/pantry/availability` non prende parametri e risponde con la mappa vuota.
+ROTTA_PROTETTA = "/api/v1/pantry/availability"
+
+
 def test_password_hash_roundtrip():
     hashed = hash_password("apriti sesamo")
     assert hashed != "apriti sesamo"
@@ -35,7 +43,30 @@ async def test_health_needs_no_session(client):
 
 
 async def test_protected_route_rejects_without_cookie(client):
-    assert (await client.get("/api/v1/ping-protected")).status_code == 401
+    assert (await client.get(ROTTA_PROTETTA)).status_code == 401
+
+
+async def test_la_documentazione_non_e_raggiungibile_senza_sessione(client):
+    """Spec §9: fuori dal gate stanno solo /health e /auth/login.
+
+    Swagger e lo schema non espongono dati, ma pubblicherebbero l'intera superficie
+    dell'app a chiunque trovi l'host.
+    """
+    assert (await client.get("/api/v1/docs")).status_code == 401
+    assert (await client.get("/api/v1/openapi.json")).status_code == 401
+
+
+async def test_la_documentazione_resta_raggiungibile_con_la_sessione(
+    client, configured_password
+):
+    """L'altra metà: spegnerla del tutto sarebbe stato più facile e meno utile."""
+    await client.post("/api/v1/auth/login", json={"password": "apriti sesamo"})
+
+    assert (await client.get("/api/v1/docs")).status_code == 200
+    schema = await client.get("/api/v1/openapi.json")
+    assert schema.status_code == 200
+    # lo schema è quello vero dell'app, non una pagina vuota
+    assert "/api/v1/recipes/search" in schema.json()["paths"]
 
 
 async def test_login_sets_cookie_and_unlocks(client, configured_password):
@@ -46,18 +77,18 @@ async def test_login_sets_cookie_and_unlocks(client, configured_password):
     assert good.status_code == 204
     assert "spena_session" in good.cookies
 
-    assert (await client.get("/api/v1/ping-protected")).status_code == 200
+    assert (await client.get(ROTTA_PROTETTA)).status_code == 200
 
 
 async def test_logout_clears_the_cookie(client, configured_password):
     await client.post("/api/v1/auth/login", json={"password": "apriti sesamo"})
     await client.post("/api/v1/auth/logout")
-    assert (await client.get("/api/v1/ping-protected")).status_code == 401
+    assert (await client.get(ROTTA_PROTETTA)).status_code == 401
 
 
 async def test_tampered_cookie_is_rejected(client, configured_password):
     client.cookies.set("spena_session", "valore-inventato")
-    assert (await client.get("/api/v1/ping-protected")).status_code == 401
+    assert (await client.get(ROTTA_PROTETTA)).status_code == 401
 
 
 async def test_login_with_malformed_hash_is_401_not_500(client, monkeypatch):
@@ -105,7 +136,7 @@ async def test_a_placeholder_session_secret_opens_nothing(client, monkeypatch, p
         forged = TimestampSigner(placeholder).sign(b"spena").decode()
         client.cookies.set(SESSION_COOKIE, forged)
         with pytest.raises(InsecureSessionSecret):
-            await client.get("/api/v1/ping-protected")
+            await client.get(ROTTA_PROTETTA)
     finally:
         get_settings.cache_clear()
 
@@ -117,7 +148,7 @@ async def test_a_forged_cookie_is_rejected_by_a_configured_server(
     """Con un segreto vero il cookie forgiato sul segnaposto è solo una firma sbagliata."""
     forged = TimestampSigner(placeholder).sign(b"spena").decode()
     client.cookies.set(SESSION_COOKIE, forged)
-    assert (await client.get("/api/v1/ping-protected")).status_code == 401
+    assert (await client.get(ROTTA_PROTETTA)).status_code == 401
 
 
 async def test_an_unconfigured_secret_cannot_issue_a_session(client, monkeypatch):
