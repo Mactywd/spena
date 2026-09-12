@@ -84,6 +84,35 @@ describe("AiDraftScreen", () => {
     expect(await screen.findByDisplayValue("Pasta al pomodoro")).toBeDefined();
   });
 
+  // m13: il modello può proporre due volte lo stesso nome — il prompt non lo vieta
+  // e `draft_recipe` non deduplica. Con la chiave costruita sul solo `raw_name` le
+  // due righe erano la stessa riga per React e per `updateLine`: spuntarne una
+  // spuntava l'altra, e chi guardava vedeva due caselle muoversi insieme.
+  it("due righe di bozza con lo stesso nome restano due righe indipendenti", async () => {
+    const duplicated = {
+      ...DRAFT,
+      ingredients: [
+        { raw_name: "pomodoro", role: "primary", quantity_text: "400 g",
+          ingredient_id: "i1", matched_name: "pomodoro", confident: true },
+        { raw_name: "pomodoro", role: "secondary", quantity_text: "2 cucchiai",
+          ingredient_id: "i1", matched_name: "pomodoro", confident: true },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(duplicated), { status: 200 })
+    ));
+    renderScreen();
+    await proposeDraft();
+    await draftLanded();
+
+    const boxes = screen.getAllByRole("checkbox", { name: "Includi pomodoro" });
+    expect(boxes).toHaveLength(2);
+
+    await userEvent.click(boxes[0]);
+    expect(boxes[0]).not.toBeChecked();
+    expect(boxes[1]).toBeChecked();
+  });
+
   // Il requisito fondante: "mai un vicolo cieco". Il modulo non è una conseguenza
   // di una richiesta riuscita né di una fallita — c'è e basta, perché
   // `createRecipe` non ha nessun altro punto di chiamata in tutta l'app.

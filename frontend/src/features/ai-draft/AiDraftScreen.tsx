@@ -44,11 +44,15 @@ interface FormLine {
   included: boolean;
 }
 
-function lineFromDraft(line: DraftIngredient): FormLine {
+function lineFromDraft(line: DraftIngredient, index: number): FormLine {
   const attached = line.ingredient_id !== null;
   const uncertain = attached && !line.confident;
   return {
-    key: `draft:${line.raw_name}`,
+    // l'indice, non il solo nome: niente vieta al modello di proporre due volte
+    // lo stesso `raw_name` (il prompt non lo vieta e `draft_recipe` non deduplica),
+    // e due righe con la stessa chiave fanno muovere insieme spunta e quantità
+    // delle due — oltre a far scartare una riga a React senza dire niente
+    key: `draft:${index}:${line.raw_name}`,
     label: line.raw_name,
     ingredientId: line.ingredient_id,
     matchedName: line.matched_name,
