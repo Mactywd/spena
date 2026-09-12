@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchProducts } from "./api";
+import { OTHER_INGREDIENT } from "./wording";
 import { useDebounced } from "../../hooks/useDebounced";
 import type { Product } from "../../domain/types";
 
@@ -27,10 +28,11 @@ export function CatalogSearchPanel({
 }: {
   itemLabel: string;
   /** L'ingrediente della voce di lista. Filtra i risultati, e non per estetica:
-   * `stock_items` (app/repositories/shopping.py) scrive la coppia
-   * (ingrediente, prodotto) così come arriva, senza controllare che il prodotto
-   * appartenga a quell'ingrediente. Una voce di dispensa con un prodotto di un
-   * altro ingrediente è silenziosa e per sempre. */
+   * `add_pantry_item` (app/repositories/pantry.py) respinge con 409 la coppia
+   * (ingrediente, prodotto) incoerente, e la sistemazione è tutto-o-niente —
+   * quindi una scelta sbagliata accettata qui farebbe fallire l'intero giro di
+   * spesa, comprese le voci risolte bene. Rifiutare dopo aver confermato è
+   * peggio che non offrire una scelta che non si può accettare. */
   ingredientId: string;
   onPicked: (product: Product) => void;
   onCreateByHand: () => void;
@@ -102,8 +104,8 @@ export function CatalogSearchPanel({
       {elsewhere > 0 && (
         <p className="text-xs text-neutral-500">
           {elsewhere === 1
-            ? "Un altro prodotto corrisponde, ma è di un altro ingrediente: non si può agganciare qui."
-            : `Altri ${elsewhere} prodotti corrispondono, ma sono di un altro ingrediente: non si possono agganciare qui.`}
+            ? `Un altro prodotto corrisponde, ma ${OTHER_INGREDIENT.one}.`
+            : `Altri ${elsewhere} prodotti corrispondono, ma ${OTHER_INGREDIENT.many}.`}
         </p>
       )}
 

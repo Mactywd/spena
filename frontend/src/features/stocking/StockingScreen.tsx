@@ -7,6 +7,8 @@ import { CatalogSearchPanel } from "./CatalogSearchPanel";
 import { CustomProductForm } from "./CustomProductForm";
 import type { ProductSuggestion } from "./CustomProductForm";
 import { lookupBarcode, stockItems } from "./api";
+import { OTHER_INGREDIENT } from "./wording";
+import { ApiError } from "../../api/client";
 import type { Ingredient, Product, ShoppingItem } from "../../domain/types";
 
 type Resolution =
@@ -146,6 +148,38 @@ function MatchIngredientField({
   );
 }
 
+/** Perché la sistemazione è fallita, in una frase che dice cosa fare.
+ *
+ * «Riprova» da solo era un vicolo cieco su due delle tre cause: la sistemazione è
+ * tutto-o-niente, quindi lo stesso corpo rimandato dà lo stesso errore per sempre.
+ * Riprovare è l'azione giusta solo quando la causa è passeggera (rete, backend
+ * giù); le altre due si risolvono cambiando una scelta o rileggendo la lista, e
+ * vanno nominate. Il 409 non dovrebbe più essere raggiungibile dall'interfaccia
+ * (vedi lookup.onSuccess e il filtro di CatalogSearchPanel): se arriva, la via
+ * d'uscita è «Cambia» sulla voce sbagliata.
+ */
+function stockFailureMessage(error: unknown): string {
+  const status = error instanceof ApiError ? error.status : null;
+  const nothingWritten =
+    "Non ho messo in dispensa niente, e quel che hai confermato è ancora qui";
+  if (status === 409) {
+    return (
+      `${nothingWritten}: un prodotto scelto è di un altro ingrediente. ` +
+      "Premi «Cambia» su quella voce e scegline un altro, o confermala come sfusa."
+    );
+  }
+  if (status === 404) {
+    return (
+      `${nothingWritten}: una voce o un prodotto non esiste più. ` +
+      "Rileggi la spesa da sistemare qui sotto, poi riprova."
+    );
+  }
+  return (
+    `${nothingWritten}: riprova. ` +
+    "Se insiste, è il backend che non risponde: le conferme restano su questo schermo."
+  );
+}
+
 export function StockingScreen() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -165,6 +199,11 @@ export function StockingScreen() {
   const [creatingFor, setCreatingFor] = useState<
     { item: ShoppingItem; barcode: string; suggestion: ProductSuggestion | null } | null
   >(null);
+  // un codice letto che porta al prodotto di un altro ingrediente: non è una
+  // risoluzione, è la ragione per cui non c'è (vedi lookup.onSuccess)
+  const [mismatch, setMismatch] = useState<{ item: ShoppingItem; product: Product } | null>(
+    null
+  );
 
   function effectiveIngredientId(item: ShoppingItem): string | null {
     return item.ingredient_id ?? matchedIngredient[item.id]?.id ?? null;
@@ -204,6 +243,18 @@ export function StockingScreen() {
     mutationFn: ({ code }: { item: ShoppingItem; code: string }) => lookupBarcode(code),
     onSuccess: (result, { item, code }) => {
       const product = result.product;
+      setMismatch(null);
+      if (product && product.ingredient_id !== effectiveIngredientId(item)) {
+        // `GET /products/barcode/{code}` cerca per codice e basta, quindi la
+        // referenza che torna può essere di un altro ingrediente: «Passata Mutti»
+        // creata sotto `pomodoro` e riletta su una voce risolta a `passata`.
+        // Adottarla qui faceva fallire con 409 l'intera sistemazione — che è
+        // tutto-o-niente — comprese le voci risolte bene, e il 409 si ripresenta
+        // identico a ogni tentativo. Il controllo del backend resta l'ultima
+        // difesa; l'interfaccia non deve arrivarci.
+        setMismatch({ item, product });
+        return;
+      }
       if (product) {
         setResolved((prev) => ({ ...prev, [item.id]: { kind: "product", product } }));
       } else {
@@ -235,8 +286,26 @@ export function StockingScreen() {
     setSearchingFor(item);
   }
 
+  /** Disfa la conferma di una riga, lasciando intatte le altre.
+   *
+   * Senza questo, una scansione sbagliata già confermata non si poteva correggere
+   * in nessun modo (i tre pulsanti stanno sotto `!resolution`): l'unica uscita era
+   * navigare via, cioè perdere le conferme di tutto il giro di spesa. Azzera anche
+   * l'errore della sistemazione, che parlava di un tentativo fatto su scelte che
+   * da adesso non sono più quelle.
+   */
+  function changeResolution(item: ShoppingItem) {
+    setResolved((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    stock.reset();
+  }
+
   function openScanner(item: ShoppingItem) {
     setSearchingFor(null);
+    setMismatch(null);
     // Il codice digitato per un'altra voce non deve sopravvivere all'apertura: il
     // residuo si agganciava alla voce nuova senza nessuna conferma intermedia.
     // Si svuota qui, all'apertura, e non dopo il lookup: finché la chiamata è in
@@ -292,6 +361,15 @@ export function StockingScreen() {
                 </span>
                 {resolution?.kind === "product" && (
                   <span className="text-sm text-neutral-500">{resolution.product.name}</span>
+                )}
+                {resolution && (
+                  <button
+                    type="button"
+                    onClick={() => changeResolution(item)}
+                    className="shrink-0 rounded border px-3 py-2 text-sm"
+                  >
+                    Cambia<span className="sr-only"> la scelta per {item.raw_text}</span>
+                  </button>
                 )}
               </div>
 
@@ -360,6 +438,17 @@ export function StockingScreen() {
             />
           </label>
           {lookup.isPending && <p className="text-sm text-neutral-500">Cerco il codice…</p>}
+          {/* il codice esiste in catalogo, ma sotto un altro ingrediente: la stessa
+              frase del pannello del catalogo, perché è lo stesso fatto. Non si
+              scrive nessuna risoluzione, quindi i tre pulsanti della voce sono
+              ancora là sopra: leggere un altro codice, cercare a catalogo o
+              confermare sfuso restano tutte aperte. */}
+          {mismatch && mismatch.item.id === scanningFor.id && (
+            <p role="alert" className="text-sm text-red-600">
+              «{mismatch.product.name}» {OTHER_INGREDIENT.one}. Leggi un altro codice, cercalo a
+              catalogo, oppure conferma «{mismatch.item.raw_text}» come sfuso.
+            </p>
+          )}
           {/* anche il fallimento di rete degrada al manuale: un errore muto qui
               era il muro più silenzioso dello schermo */}
           {failedLookup && (
@@ -420,9 +509,30 @@ export function StockingScreen() {
       )}
 
       {stock.isError && (
-        <p role="alert" className="mt-4 text-sm text-red-600">
-          Non sono riuscito a mettere in dispensa. Quel che hai confermato è ancora qui: riprova.
-        </p>
+        <div className="mt-4 flex flex-col items-start gap-2">
+          <p role="alert" className="text-sm text-red-600">
+            {stockFailureMessage(stock.error)}
+          </p>
+          {/* un 404 è l'unico caso in cui riprovare così com'è non può riuscire: la
+              lista va riletta. Le risoluzioni sono indicizzate per id di voce,
+              quindi sopravvivono alla rilettura — e quella della voce sparita viene
+              scartata da sé nel corpo della richiesta. */}
+          {stock.error instanceof ApiError && stock.error.status === 404 && (
+            <button
+              type="button"
+              onClick={() => {
+                // anche l'errore va via: lasciarlo acceso dopo la rilettura
+                // direbbe che c'è ancora un guasto su uno schermo già rimesso in
+                // sesto
+                stock.reset();
+                void refetch();
+              }}
+              className="rounded-lg border px-4 py-3 text-sm"
+            >
+              Rileggi la spesa da sistemare
+            </button>
+          )}
+        </div>
       )}
 
       <button

@@ -37,9 +37,11 @@ const FAGE = {
   id: "p1", ingredient_id: "i1", name: "Total 0%", brand: "Fage", barcode: "52010",
   source: "openfoodfacts", nutrients: { kcal: 57 }, image_url: null,
 };
-// stesso nome, ingrediente diverso: la coppia (ingrediente, prodotto) che
-// `stock_items` scriverebbe senza controllarla
-const OTHER_INGREDIENT = { ...FAGE, id: "p2", ingredient_id: "i9", name: "Total 0% magro" };
+// stesso nome, ingrediente diverso: la coppia (ingrediente, prodotto) che il
+// backend respinge con 409, e che nessuna delle due strade deve poter costruire
+const OTHER_INGREDIENT_PRODUCT = {
+  ...FAGE, id: "p2", ingredient_id: "i9", name: "Total 0% magro",
+};
 
 function renderScreen(client?: QueryClient) {
   const queryClient =
@@ -201,13 +203,13 @@ describe("StockingScreen", () => {
     );
   });
 
-  // `stock_items` (app/repositories/shopping.py) scrive la coppia (ingrediente,
-  // prodotto) così come arriva, senza controllare che il prodotto appartenga a
-  // quell'ingrediente: una voce di dispensa incoerente sarebbe silenziosa e per
-  // sempre. Il filtro è qui perché il backend non lo fa.
+  // Il backend respinge con 409 la coppia (ingrediente, prodotto) incoerente, e la
+  // sistemazione è tutto-o-niente: una scelta sbagliata offerta qui e confermata
+  // farebbe fallire l'intero giro di spesa. Il filtro c'è perché rifiutare dopo
+  // aver confermato è peggio che non offrire una scelta che non si può accettare.
   it("un prodotto di un altro ingrediente non si può agganciare a questa voce", async () => {
     stubRoutedFetch((path) =>
-      path.includes("/products/search") ? [[FAGE, OTHER_INGREDIENT]] : [CHECKED]
+      path.includes("/products/search") ? [[FAGE, OTHER_INGREDIENT_PRODUCT]] : [CHECKED]
     );
 
     renderScreen();
@@ -219,6 +221,81 @@ describe("StockingScreen", () => {
     expect(screen.queryByRole("option", { name: /magro/ })).toBeNull();
     // e il motivo è scritto: senza, sembrerebbe che il catalogo non lo conosca
     expect(screen.getByText(/di un altro ingrediente/)).toBeDefined();
+  });
+
+  // R1, l'altra metà dello stesso fatto. `GET /products/barcode/{code}` cerca per
+  // codice e basta: la referenza che torna può essere di un altro ingrediente
+  // («Passata Mutti» creata sotto `pomodoro`, riletta su una voce risolta a
+  // `passata`). Adottarla faceva fallire con 409 tutta la sistemazione, comprese le
+  // voci giuste, e riprovare rimandava lo stesso corpo: 409 per sempre.
+  it("un codice a barre di un altro ingrediente non si aggancia, e non parte nessuna richiesta", async () => {
+    const spy = stubRoutedFetch((path) =>
+      path.includes("/products/barcode/") ? [{ found: true, origin: "catalog",
+        suggestion: null, product: OTHER_INGREDIENT_PRODUCT }] : [CHECKED]
+    );
+
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+    await userEvent.type(screen.getByLabelText("Codice a barre"), "52010{Enter}");
+
+    // non `findByRole("alert")`: in jsdom senza fotocamera lo scanner ha già il suo
+    // avviso di degradazione, e i due ruoli sarebbero ambigui
+    expect(await screen.findByText(/di un altro ingrediente/)).toBeDefined();
+    // la voce non è risolta: le tre strade sono ancora tutte aperte, e il pulsante
+    // della sistemazione resta spento, cioè il 409 non è raggiungibile da qui
+    expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Metti in dispensa" })).toBeDisabled();
+    expect(spy.mock.calls.some(([url]) => String(url).endsWith("/shopping-list/stock"))).toBe(
+      false
+    );
+  });
+
+  it("una conferma sbagliata si disfà con «Cambia», senza perdere le altre", async () => {
+    // prima di R1 non c'era nessun modo di cambiare la risoluzione di una riga: i
+    // tre pulsanti stanno sotto `!resolution` e nessuno cancellava la chiave.
+    // L'unica uscita era navigare via, cioè perdere le conferme di tutto il giro.
+    const spy = stubRoutedFetch((path) => {
+      if (path.includes("/products/barcode/")) {
+        return [{ found: true, origin: "catalog", suggestion: null, product: FAGE }];
+      }
+      if (path.includes("/shopping-list/stock")) return [{ created: 1 }, 201];
+      return [CHECKED];
+    });
+
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+    await userEvent.type(screen.getByLabelText("Codice a barre"), "52010{Enter}");
+    expect(await screen.findByText("Total 0%")).toBeDefined();
+    await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /Cambia.*yogurt greco/i }));
+
+    // la riga torna da scegliere, e quella delle mele resta confermata
+    expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/i })).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+    await vi.waitFor(() =>
+      expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
+        { shopping_item_id: "s2", ingredient_id: "i2", product_id: null },
+      ])
+    );
+  });
+
+  it("una sistemazione fallita dice cosa fare, non «riprova» quando riprovare non può riuscire", async () => {
+    // la rotta è tutto-o-niente: su un 404 lo stesso corpo rimandato dà lo stesso
+    // errore per sempre, quindi «riprova» era un vicolo cieco
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list/stock") ? [{ detail: "voce di lista inesistente" }, 404]
+        : [CHECKED]
+    );
+
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+
+    const avviso = await screen.findByRole("alert");
+    expect(avviso).toHaveTextContent(/non esiste più/);
+    expect(avviso).toHaveTextContent(/non ho messo in dispensa niente/i);
+    expect(screen.getByRole("button", { name: /Rileggi la spesa/ })).toBeDefined();
   });
 
   it("un catalogo senza riscontri non è un muro: si crea il prodotto a mano", async () => {
