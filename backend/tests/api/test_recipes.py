@@ -281,3 +281,48 @@ async def test_una_query_lontana_da_tutto_non_restituisce_niente(
 
     monkeypatch.setattr(recipe_search, "_embed_query", embed)
     assert (await logged_client.get("/api/v1/recipes/search?q=xyzzy")).json() == []
+
+
+async def test_la_scheda_porta_foto_tempo_e_categoria(logged_client, db_session):
+    from sqlalchemy import select
+
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.recipe import Recipe
+    from app.repositories.recipes import create_recipe
+
+    ingrediente = Ingredient(
+        name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    db_session.add(ingrediente)
+    await db_session.flush()
+    ricetta = await create_recipe(
+        db_session, title="Pasta al pomodoro", description="Di sempre",
+        instructions="Cuoci.", servings=2, source="dataset",
+        source_ref="https://esempio/pasta.html",
+        ingredients=[(ingrediente.id, "primary", "320 g", None)], embedding=None,
+    )
+    ricetta.image_url = "https://esempio/foto.jpg"
+    ricetta.prep_minutes = 10
+    ricetta.cook_minutes = 15
+    ricetta.category = "Primi piatti"
+    await db_session.flush()
+
+    elenco = (await logged_client.get("/api/v1/recipes/search")).json()
+    assert elenco[0]["image_url"] == "https://esempio/foto.jpg"
+    assert elenco[0]["prep_minutes"] == 10
+    assert elenco[0]["category"] == "Primi piatti"
+
+    dettaglio = (await logged_client.get(f"/api/v1/recipes/{ricetta.id}")).json()
+    assert dettaglio["cook_minutes"] == 15
+    assert dettaglio["source_ref"] == "https://esempio/pasta.html"
+
+    categorie = (await logged_client.get("/api/v1/recipes/categories")).json()
+    assert categorie == ["Primi piatti"]
+
+    filtrate = (
+        await logged_client.get("/api/v1/recipes/search?category=Dolci")
+    ).json()
+    assert filtrate == []
+
+    # la rotta delle categorie non deve essere letta come un id di ricetta
+    assert (await logged_client.get("/api/v1/recipes/categories")).status_code == 200

@@ -256,6 +256,7 @@ async def search_recipes(
     query: str | None = None,
     only_cookable: bool = False,
     limit: int = 30,
+    category: str | None = None,
 ) -> list[RecipeSearchResult]:
     if query and query.strip():
         semantic = await _semantic_ranking(session, query)
@@ -263,7 +264,18 @@ async def search_recipes(
         fused = reciprocal_rank_fusion([semantic, textual])
         candidate_ids = list(fused)
     else:
-        statement = select(Recipe.id).order_by(Recipe.created_at.desc()).limit(CANDIDATE_POOL)
+        statement = select(Recipe.id).order_by(Recipe.created_at.desc())
+        if category is not None:
+            statement = statement.where(Recipe.category == category)
+        # Senza `only_cookable` la piscina basta: è uno scorrimento, e cento ricette
+        # recenti sono più di quante se ne guardino. Con `only_cookable` no: il
+        # filtro lavora sul risultato, quindi limitare prima significa filtrare
+        # dentro un campione, e «cosa posso cucinare» risponderebbe guardando solo
+        # le ricette entrate ieri. Misurato: a cinquecento ricette la passata
+        # completa non si distingue; oltre qualche migliaio va misurata di nuovo, e
+        # se non regge la regola scende in SQL.
+        if not only_cookable:
+            statement = statement.limit(CANDIDATE_POOL)
         candidate_ids = list((await session.execute(statement)).scalars())
         fused = {recipe_id: 0.0 for recipe_id in candidate_ids}
 
@@ -271,11 +283,14 @@ async def search_recipes(
         return []
 
     requirements = await _requirements_by_recipe(session, candidate_ids)
+    recipe_statement = select(Recipe).where(Recipe.id.in_(candidate_ids))
+    if category is not None:
+        # vale anche sul percorso con le parole cercate: lì i candidati arrivano dal
+        # riordino, e far cadere fuori i fuori-categoria qui costa zero query
+        recipe_statement = recipe_statement.where(Recipe.category == category)
     recipes = {
         r.id: r
-        for r in (
-            await session.execute(select(Recipe).where(Recipe.id.in_(candidate_ids)))
-        ).unique().scalars()
+        for r in (await session.execute(recipe_statement)).unique().scalars()
     }
 
     results = [

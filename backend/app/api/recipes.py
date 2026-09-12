@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,6 +68,8 @@ async def _to_out(session: AsyncSession, recipe: Recipe) -> RecipeOut:
         instructions=recipe.instructions, servings=recipe.servings, source=recipe.source,
         source_ref=recipe.source_ref, ingredients=lines,
         missing=missing_count(requirements), cookable=is_cookable(requirements),
+        image_url=recipe.image_url, prep_minutes=recipe.prep_minutes,
+        cook_minutes=recipe.cook_minutes, category=recipe.category,
     )
 
 
@@ -74,14 +77,17 @@ async def _to_out(session: AsyncSession, recipe: Recipe) -> RecipeOut:
 async def search(
     q: str | None = None,
     only_cookable: bool = False,
+    category: str | None = None,
     limit: int = Query(default=30, le=100),
     session: AsyncSession = Depends(get_session),
 ) -> list[RecipeSummaryOut]:
-    results = await search_recipes(session, q, only_cookable, limit)
+    results = await search_recipes(session, q, only_cookable, limit, category=category)
     return [
         RecipeSummaryOut(
             id=r.recipe.id, title=r.recipe.title, description=r.recipe.description,
             source=r.recipe.source, missing=r.missing, cookable=r.cookable,
+            image_url=r.recipe.image_url, prep_minutes=r.recipe.prep_minutes,
+            cook_minutes=r.recipe.cook_minutes, category=r.recipe.category,
         )
         for r in results
     ]
@@ -95,6 +101,22 @@ async def search_mode(session: AsyncSession = Depends(get_session)) -> SearchMod
     parla anche del ricettario, non solo del fornitore di vettori.
     """
     return SearchModeOut(semantic=await semantic_search_usable(session))
+
+
+@router.get("/categories", response_model=list[str])
+async def categories(session: AsyncSession = Depends(get_session)) -> list[str]:
+    """Le categorie presenti nel ricettario, per il filtro.
+
+    Solo quelle che esistono davvero: un filtro che offre voci vuote è un filtro che
+    porta a una schermata vuota.
+    """
+    rows = await session.execute(
+        select(Recipe.category)
+        .where(Recipe.category.is_not(None))
+        .distinct()
+        .order_by(Recipe.category)
+    )
+    return list(rows.scalars())
 
 
 @router.get("/{recipe_id}", response_model=RecipeOut)

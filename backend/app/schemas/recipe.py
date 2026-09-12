@@ -44,6 +44,12 @@ class RecipeOut(BaseModel):
     ingredients: list[RecipeIngredientOut]
     missing: int
     cookable: bool
+    # stesse quattro righe di RecipeSummaryOut: RecipeOut non eredita da lei oggi,
+    # e introdurre una gerarchia per risparmiarle non sarebbe YAGNI rispettato
+    image_url: str | None = None
+    prep_minutes: int | None = None
+    cook_minutes: int | None = None
+    category: str | None = None
 
 
 class RecipeSummaryOut(BaseModel):
@@ -53,6 +59,10 @@ class RecipeSummaryOut(BaseModel):
     source: str
     missing: int
     cookable: bool
+    image_url: str | None = None
+    prep_minutes: int | None = None
+    cook_minutes: int | None = None
+    category: str | None = None
 
 
 class SearchModeOut(BaseModel):
