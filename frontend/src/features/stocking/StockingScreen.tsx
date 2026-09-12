@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createIngredient, fetchShoppingList, searchIngredients } from "../shopping-list/api";
 import { BarcodeScanner } from "./BarcodeScanner";
+import { CatalogSearchPanel } from "./CatalogSearchPanel";
 import { CustomProductForm } from "./CustomProductForm";
 import type { ProductSuggestion } from "./CustomProductForm";
 import { lookupBarcode, stockItems } from "./api";
@@ -157,6 +158,9 @@ export function StockingScreen() {
   // voci senza ingredient_id, abbinate a mano in questo schermo
   const [matchedIngredient, setMatchedIngredient] = useState<Record<string, Ingredient>>({});
   const [scanningFor, setScanningFor] = useState<ShoppingItem | null>(null);
+  // la seconda strada della spec §8.2. Un pannello alla volta: due riquadri aperti
+  // sulla stessa voce direbbero due cose diverse su cosa sta per entrare in dispensa
+  const [searchingFor, setSearchingFor] = useState<ShoppingItem | null>(null);
   const [manualCode, setManualCode] = useState("");
   const [creatingFor, setCreatingFor] = useState<
     { item: ShoppingItem; barcode: string; suggestion: ProductSuggestion | null } | null
@@ -226,7 +230,13 @@ export function StockingScreen() {
     [scanningFor, lookupCode]
   );
 
+  function openCatalog(item: ShoppingItem) {
+    setScanningFor(null);
+    setSearchingFor(item);
+  }
+
   function openScanner(item: ShoppingItem) {
+    setSearchingFor(null);
     // Il codice digitato per un'altra voce non deve sopravvivere all'apertura: il
     // residuo si agganciava alla voce nuova senza nessuna conferma intermedia.
     // Si svuota qui, all'apertura, e non dopo il lookup: finché la chiamata è in
@@ -240,6 +250,7 @@ export function StockingScreen() {
   function createByHand(item: ShoppingItem, barcode: string) {
     setCreatingFor({ item, barcode, suggestion: null });
     setScanningFor(null);
+    setSearchingFor(null);
   }
 
   return (
@@ -309,6 +320,13 @@ export function StockingScreen() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => openCatalog(item)}
+                    className="rounded border px-4 py-3 text-sm"
+                  >
+                    Cerca a catalogo<span className="sr-only"> per {item.raw_text}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() =>
                       setResolved((prev) => ({ ...prev, [item.id]: { kind: "loose" } }))
                     }
@@ -359,6 +377,22 @@ export function StockingScreen() {
             </div>
           )}
         </div>
+      )}
+
+      {searchingFor && effectiveIngredientId(searchingFor) && (
+        <CatalogSearchPanel
+          // come per CustomProductForm: senza key React riusa l'istanza passando da
+          // una voce all'altra, e il campo resterebbe sul testo della voce di prima
+          key={searchingFor.id}
+          itemLabel={searchingFor.raw_text}
+          ingredientId={effectiveIngredientId(searchingFor) as string}
+          onPicked={(product) => {
+            setResolved((prev) => ({ ...prev, [searchingFor.id]: { kind: "product", product } }));
+            setSearchingFor(null);
+          }}
+          onCreateByHand={() => createByHand(searchingFor, "")}
+          onCancel={() => setSearchingFor(null)}
+        />
       )}
 
       {creatingFor && effectiveIngredientId(creatingFor.item) && (

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { StockingScreen } from "./StockingScreen";
 import { UnauthorizedError } from "../../api/client";
@@ -25,6 +30,16 @@ const UNMATCHED = [
 ];
 
 const STRANGE = { id: "i9", name: "cosa strana", display_name: "Cosa Strana", category: "altro" };
+
+// Lo yogurt che si ricompra ogni settimana: già in catalogo con marca e nutrienti,
+// e l'unico modo di riagganciarlo era riscansionare il codice a barre.
+const FAGE = {
+  id: "p1", ingredient_id: "i1", name: "Total 0%", brand: "Fage", barcode: "52010",
+  source: "openfoodfacts", nutrients: { kcal: 57 }, image_url: null,
+};
+// stesso nome, ingrediente diverso: la coppia (ingrediente, prodotto) che
+// `stock_items` scriverebbe senza controllarla
+const OTHER_INGREDIENT = { ...FAGE, id: "p2", ingredient_id: "i9", name: "Total 0% magro" };
 
 function renderScreen(client?: QueryClient) {
   const queryClient =
@@ -141,6 +156,104 @@ describe("StockingScreen", () => {
     expect(screen.getByLabelText("Nome")).toHaveValue("Passata Rustica");
     expect(screen.getByLabelText("Marca")).toHaveValue("Mutti");
     expect(screen.getByLabelText("Calorie per 100 g")).toHaveValue(30);
+  });
+
+  // M3, spec §8.2 strada 2. `searchProducts` esisteva e non era chiamata da
+  // nessuna parte: l'unica strada per un prodotto noto era il codice a barre, che
+  // non si legge se la confezione è aperta o il codice è rovinato, e «sfuso» perde
+  // la marca e con essa i nutrienti.
+  it("un prodotto già in catalogo si aggancia cercandolo per nome", async () => {
+    const spy = stubRoutedFetch((path) => {
+      if (path.includes("/products/search")) return [[FAGE]];
+      if (path.includes("/shopping-list/stock")) return [{ created: 1 }, 201];
+      return [CHECKED];
+    });
+
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
+    );
+    await userEvent.click(await screen.findByRole("option", { name: /Total 0%/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+
+    expect(postBody(spy, "/stock").entries).toEqual([
+      { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1" },
+    ]);
+  });
+
+  it("il termine di ricerca arriva al backend, per affinare aggiungendo parole", async () => {
+    const spy = stubRoutedFetch((path) =>
+      path.includes("/products/search") ? [[FAGE]] : [CHECKED]
+    );
+
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
+    );
+    await userEvent.type(screen.getByLabelText("Cerca a catalogo"), " pesca");
+
+    await vi.waitFor(() =>
+      expect(
+        spy.mock.calls.some(([url]) =>
+          String(url).includes("/products/search?q=yogurt%20greco%20pesca")
+        )
+      ).toBe(true)
+    );
+  });
+
+  // `stock_items` (app/repositories/shopping.py) scrive la coppia (ingrediente,
+  // prodotto) così come arriva, senza controllare che il prodotto appartenga a
+  // quell'ingrediente: una voce di dispensa incoerente sarebbe silenziosa e per
+  // sempre. Il filtro è qui perché il backend non lo fa.
+  it("un prodotto di un altro ingrediente non si può agganciare a questa voce", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/products/search") ? [[FAGE, OTHER_INGREDIENT]] : [CHECKED]
+    );
+
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
+    );
+
+    expect(await screen.findByRole("option", { name: /Total 0% Fage/ })).toBeDefined();
+    expect(screen.queryByRole("option", { name: /magro/ })).toBeNull();
+    // e il motivo è scritto: senza, sembrerebbe che il catalogo non lo conosca
+    expect(screen.getByText(/di un altro ingrediente/)).toBeDefined();
+  });
+
+  it("un catalogo senza riscontri non è un muro: si crea il prodotto a mano", async () => {
+    stubRoutedFetch((path) => (path.includes("/products/search") ? [[]] : [CHECKED]));
+
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
+    );
+
+    expect(await screen.findByText(/Nessun prodotto in catalogo/)).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Crea il prodotto a mano" }));
+    expect(screen.getByRole("heading", { name: /Nuovo prodotto per «yogurt greco»/ }))
+      .toBeDefined();
+  });
+
+  it("un 401 sulla ricerca a catalogo arriva alla QueryCache, come ogni altra ricerca", async () => {
+    const onError = vi.fn();
+    stubRoutedFetch((path) =>
+      path.includes("/products/search") ? [{ detail: "fuori" }, 401] : [CHECKED]
+    );
+    const client = new QueryClient({
+      queryCache: new QueryCache({ onError }),
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    renderScreen(client);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
+    );
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalled());
+    expect(
+      onError.mock.calls.some(([error]) => error instanceof UnauthorizedError)
+    ).toBe(true);
   });
 
   it("non manda in dispensa nulla se non hai confermato niente", async () => {
