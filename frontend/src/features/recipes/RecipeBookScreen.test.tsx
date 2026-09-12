@@ -8,9 +8,11 @@ import { UnauthorizedError } from "../../api/client";
 
 const RESULTS = [
   { id: "r1", title: "Pasta all'aglio", description: "Svelta", source: "dataset",
-    missing: 0, cookable: true },
+    missing: 0, cookable: true, image_url: "https://example.com/aglio.jpg",
+    prep_minutes: 10, cook_minutes: 15, category: "Primi piatti" },
   { id: "r2", title: "Pasta al pomodoro", description: "Di sempre", source: "ai",
-    missing: 1, cookable: false },
+    missing: 1, cookable: false, image_url: null, prep_minutes: null,
+    cook_minutes: null, category: null },
 ];
 
 function renderScreen(queryCache?: QueryCache) {
@@ -52,29 +54,35 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const CODA_CON_CATEGORIE = (path: string): [unknown, number] => {
+  if (path.includes("/recipes/categories")) return [["Primi piatti", "Dolci e Desserts"], 200];
+  if (path.includes("/recipes/search-mode")) return [{ semantic: true }, 200];
+  return [RESULTS, 200];
+};
+
 describe("RecipeBookScreen", () => {
   it("mostra la provenienza di ogni ricetta", async () => {
-    stubRoutedFetch(() => [RESULTS, 200]);
+    stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
     expect(await screen.findByText("dataset")).toBeDefined();
     expect(screen.getByText("AI")).toBeDefined();
   });
 
   it("dice quanto manca, senza nascondere la ricetta", async () => {
-    stubRoutedFetch(() => [RESULTS, 200]);
+    stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
     expect(await screen.findByText("Pasta al pomodoro")).toBeDefined();
     expect(screen.getByText("manca 1 ingrediente")).toBeDefined();
   });
 
   it("segnala le ricette che puoi cucinare adesso", async () => {
-    stubRoutedFetch(() => [RESULTS, 200]);
+    stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
     expect(await screen.findByText("Puoi cucinarla ora")).toBeDefined();
   });
 
   it("la ricerca passa la query al backend", async () => {
-    const spy = stubRoutedFetch(() => [RESULTS, 200]);
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
 
     renderScreen();
     await userEvent.type(await screen.findByLabelText("Cerca nel ricettario"), "pomodoro");
@@ -85,7 +93,7 @@ describe("RecipeBookScreen", () => {
   });
 
   it("il filtro restringe alle sole ricette cucinabili", async () => {
-    const spy = stubRoutedFetch(() => [RESULTS, 200]);
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
 
     renderScreen();
     await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
@@ -101,9 +109,11 @@ describe("RecipeBookScreen", () => {
   // il senso, e il difetto del Dockerfile che lo causava (C1) è stato invisibile
   // per tutto il branch proprio per questo.
   it("quando la ricerca è solo testuale lo dice, e non sembra un errore", async () => {
-    stubRoutedFetch((path) =>
-      path.includes("/search-mode") ? [{ semantic: false }, 200] : [RESULTS, 200]
-    );
+    stubRoutedFetch((path) => {
+      if (path.includes("/search-mode")) return [{ semantic: false }, 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
     renderScreen();
 
     expect(await screen.findByText(/solo testuale/i)).toBeDefined();
@@ -113,9 +123,11 @@ describe("RecipeBookScreen", () => {
   });
 
   it("quando la ricerca è ibrida non dice niente", async () => {
-    stubRoutedFetch((path) =>
-      path.includes("/search-mode") ? [{ semantic: true }, 200] : [RESULTS, 200]
-    );
+    stubRoutedFetch((path) => {
+      if (path.includes("/search-mode")) return [{ semantic: true }, 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
     renderScreen();
 
     await screen.findByText("Pasta al pomodoro");
@@ -125,9 +137,11 @@ describe("RecipeBookScreen", () => {
   it("se il modo di ricerca non risponde non mostra un avviso rotto", async () => {
     // un avviso su una cosa che forse funziona è peggio del silenzio, e il
     // ricettario deve restare utilizzabile
-    stubRoutedFetch((path) =>
-      path.includes("/search-mode") ? [{ detail: "giù" }, 500] : [RESULTS, 200]
-    );
+    stubRoutedFetch((path) => {
+      if (path.includes("/search-mode")) return [{ detail: "giù" }, 500];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
     renderScreen();
 
     await screen.findByText("Pasta al pomodoro");
@@ -284,6 +298,9 @@ describe("RecipeBookScreen", () => {
           )
         );
       }
+      if (path.includes("/recipes/categories")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
       return Promise.resolve(new Response(JSON.stringify(RESULTS), { status: 200 }));
     });
     vi.stubGlobal("fetch", spy);
@@ -295,7 +312,7 @@ describe("RecipeBookScreen", () => {
   });
 
   it("senza ingredienti in attesa non mostra la porta verso la coda", async () => {
-    stubRoutedFetch(() => [RESULTS, 200]);
+    stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
 
     await screen.findByText("Pasta al pomodoro");
@@ -317,7 +334,7 @@ describe("RecipeBookScreen", () => {
       { id: "a", title: "Agnello", description: null, source: "dataset",
         missing: 0, cookable: true },
     ];
-    stubRoutedFetch(() => [backendOrder, 200]);
+    stubRoutedFetch((path) => (path.includes("/recipes/categories") ? [[], 200] : [backendOrder, 200]));
     renderScreen();
 
     await screen.findByText("Zuppa");
@@ -325,5 +342,51 @@ describe("RecipeBookScreen", () => {
       .getAllByRole("listitem")
       .map((li) => li.querySelector("span")?.textContent);
     expect(titles).toEqual(["Zuppa", "Agnello"]);
+  });
+
+  it("mostra la foto e il tempo totale quando ci sono", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    const foto = await screen.findByRole("img", { name: "Pasta all'aglio" });
+    expect(foto).toHaveAttribute("loading", "lazy");
+    expect(screen.getByText("25 min")).toBeInTheDocument();
+  });
+
+  it("una ricetta senza foto e senza tempi non si rompe", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    expect(await screen.findByText("Pasta al pomodoro")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Pasta al pomodoro" })).not.toBeInTheDocument();
+  });
+
+  it("il filtro per categoria chiede al backend solo quella categoria", async () => {
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText("Categoria"),
+      "Dolci e Desserts"
+    );
+
+    await waitFor(() =>
+      expect(
+        spy.mock.calls.some(([url]) =>
+          String(url).includes("category=Dolci+e+Desserts")
+        )
+      ).toBe(true)
+    );
+  });
+
+  it("senza categorie nel ricettario il filtro non compare", async () => {
+    stubRoutedFetch((path) => {
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return CODA_CON_CATEGORIE(path);
+    });
+    renderScreen();
+
+    await screen.findByText("Pasta all'aglio");
+    expect(screen.queryByLabelText("Categoria")).not.toBeInTheDocument();
   });
 });

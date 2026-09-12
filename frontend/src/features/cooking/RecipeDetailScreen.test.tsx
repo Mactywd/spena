@@ -44,6 +44,23 @@ function renderScreen() {
   );
 }
 
+/** Lo stesso dettaglio del file, con una provenienza diversa.
+ *
+ * `mockImplementation` e non `mockResolvedValue`: la schermata fa più di una
+ * chiamata, e il corpo di una Response si legge una volta sola. */
+function stubFetchWithSourceRef(sourceRef: string) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ ...DETAIL, source: "dataset", source_ref: sourceRef }), {
+          status: 200,
+        })
+      )
+    )
+  );
+}
+
 describe("RecipeDetailScreen", () => {
   it("distingue ingredienti principali e secondari", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
@@ -161,5 +178,22 @@ describe("RecipeDetailScreen", () => {
     expect(await screen.findByText("Principali")).toBeDefined();
     expect(await screen.findByRole("alert")).toHaveTextContent(/dispensa/i);
     expect(screen.queryByRole("button", { name: "Cucina" })).toBeNull();
+  });
+
+  it("offre l'originale quando la ricetta viene da un indirizzo", async () => {
+    stubFetchWithSourceRef("https://ricette.giallozafferano.it/Tiramisu.html");
+    renderScreen();
+
+    const link = await screen.findByRole("link", { name: /originale/i });
+    expect(link).toHaveAttribute("href", "https://ricette.giallozafferano.it/Tiramisu.html");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+  });
+
+  it("non offre niente quando la provenienza non è un indirizzo", async () => {
+    stubFetchWithSourceRef("seme iniziale");
+    renderScreen();
+
+    expect(await screen.findByText("Pasta al pomodoro")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /originale/i })).not.toBeInTheDocument();
   });
 });

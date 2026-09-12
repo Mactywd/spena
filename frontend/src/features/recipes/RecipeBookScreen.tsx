@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
-import { fetchSearchMode, searchRecipes } from "./api";
+import { fetchCategories, fetchSearchMode, searchRecipes } from "./api";
 import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
 import { Alert } from "../../components/ui/Alert";
@@ -18,8 +18,16 @@ const DEBOUNCE_MS = 180;
  * filtro, non il ricettario. È lo stesso errore che b6ed1d9 ha corretto nel pannello
  * del catalogo («con queste parole», non «in catalogo»), dall'altro lato dell'app.
  */
-function emptyMessage(query: string, onlyCookable: boolean): string {
+function emptyMessage(query: string, onlyCookable: boolean, category: string): string {
   const searched = query.trim() !== "";
+  if (category) {
+    const conParole = searched ? " con queste parole" : "";
+    const cucinabili = onlyCookable ? " fra quelle che puoi cucinare adesso" : "";
+    return (
+      `Nessuna ricetta in «${category}»${conParole}${cucinabili}: ` +
+      "scegli «Tutte» per vedere il resto del ricettario."
+    );
+  }
   if (searched && onlyCookable) {
     return (
       "Nessuna ricetta con queste parole fra quelle che puoi cucinare adesso: " +
@@ -41,6 +49,7 @@ function emptyMessage(query: string, onlyCookable: boolean): string {
 export function RecipeBookScreen() {
   const [query, setQuery] = useState("");
   const [onlyCookable, setOnlyCookable] = useState(false);
+  const [category, setCategory] = useState("");
   const debouncedQuery = useDebounced(query, DEBOUNCE_MS);
 
   // Il termine sta dentro la chiave, e questo fa due cose che una ricerca scritta
@@ -51,8 +60,15 @@ export function RecipeBookScreen() {
   // diventare un "ricerca fallita" permanente su uno schermo che non funzionerà
   // mai più. La prima versione di questo schermo sbagliava esattamente lì.
   const { data: recipes = [], isLoading, isError } = useQuery({
-    queryKey: ["recipes", debouncedQuery, onlyCookable],
-    queryFn: () => searchRecipes(debouncedQuery, onlyCookable),
+    queryKey: ["recipes", debouncedQuery, onlyCookable, category],
+    queryFn: () => searchRecipes(debouncedQuery, onlyCookable, category),
+  });
+
+  // le categorie presenti, non tutte quelle possibili: un filtro che offre voci
+  // vuote porta a una schermata vuota
+  const { data: categories = [] } = useQuery({
+    queryKey: ["recipe-categories"],
+    queryFn: fetchCategories,
   });
 
   // Spec §11: quando il modello di embedding non si carica la ricerca resta solo
@@ -129,6 +145,25 @@ export function RecipeBookScreen() {
         Solo quelle che posso cucinare
       </label>
 
+      {categories.length > 0 && (
+        <label className="text-sm font-medium text-ink-soft">
+          Categoria
+          <select
+            aria-label="Categoria"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="mt-1.5"
+          >
+            <option value="">Tutte</option>
+            {categories.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {isLoading && <p className="pt-4 text-ink-soft">Cerco…</p>}
 
       {!isLoading && isError && (
@@ -138,7 +173,7 @@ export function RecipeBookScreen() {
       )}
 
       {!isLoading && !isError && recipes.length === 0 && (
-        <p className="pt-4 text-ink-soft">{emptyMessage(debouncedQuery, onlyCookable)}</p>
+        <p className="pt-4 text-ink-soft">{emptyMessage(debouncedQuery, onlyCookable, category)}</p>
       )}
 
       {!isLoading && !isError && recipes.length > 0 && (

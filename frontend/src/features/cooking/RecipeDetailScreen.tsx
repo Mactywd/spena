@@ -85,6 +85,22 @@ export function RecipeDetailScreen() {
       <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
       {recipe.description && <p className="pt-1 text-ink-soft">{recipe.description}</p>}
 
+      {/* L'attribuzione a un tocco. Solo se la provenienza è davvero un indirizzo:
+          per le ricette del seme `source_ref` è una nota («seme iniziale»), e un
+          collegamento a quella sarebbe un collegamento rotto.
+          `rel="noreferrer"` perché il sito di origine non ha bisogno di sapere da
+          dove arriva la visita. */}
+      {recipe.source_ref?.startsWith("http") && (
+        <a
+          href={recipe.source_ref}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium text-brand"
+        >
+          Apri l'originale
+        </a>
+      )}
+
       {cooking && pantry ? (
         <div className="pt-4">
           <CookSheet

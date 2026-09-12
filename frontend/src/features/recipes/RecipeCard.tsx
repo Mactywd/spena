@@ -17,10 +17,30 @@ function missingLabel(recipe: RecipeSummary): string {
   return `mancano ${recipe.missing} ingredienti`;
 }
 
+/** Preparazione più cottura, quando almeno uno dei due c'è.
+ *
+ * È l'informazione che decide davvero cosa si cucina stasera: «cucinabile ora» più
+ * «venti minuti» è una risposta, «cucinabile ora» da solo è metà risposta.
+ */
+function totalMinutes(recipe: RecipeSummary): number | null {
+  const total = (recipe.prep_minutes ?? 0) + (recipe.cook_minutes ?? 0);
+  return total > 0 ? total : null;
+}
+
 export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
   return (
     <li>
       <Link to={`/ricette/${recipe.id}`} className="block rounded-card bg-card p-3.5">
+        {recipe.image_url && (
+          // loading="lazy" non è un dettaglio: duecento schede su un telefono sono
+          // duecento immagini, e l'immagine arriva dal server di origine
+          <img
+            src={recipe.image_url}
+            alt={recipe.title}
+            loading="lazy"
+            className="mb-2.5 aspect-[3/2] w-full rounded-lg object-cover"
+          />
+        )}
         <div className="flex items-baseline justify-between gap-2">
           <span className="font-medium">{recipe.title}</span>
           <span className="shrink-0 text-xs text-ink-faint">
@@ -33,7 +53,7 @@ export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
         {/* verde o ambra, gli stessi due colori della dispensa: «puoi cucinarla» e
             «ti manca qualcosa» sono la stessa distinzione di «disponibile» e «quasi
             finito», vista dall'altro capo della stessa regola */}
-        <div className="pt-2">
+        <div className="flex items-center gap-2 pt-2">
           <span
             className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
               recipe.cookable ? "bg-brand-tint text-brand" : "bg-low-tint text-low"
@@ -41,6 +61,9 @@ export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
           >
             {missingLabel(recipe)}
           </span>
+          {totalMinutes(recipe) !== null && (
+            <span className="text-xs text-ink-faint">{totalMinutes(recipe)} min</span>
+          )}
         </div>
       </Link>
     </li>
