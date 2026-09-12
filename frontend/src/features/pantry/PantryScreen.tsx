@@ -114,8 +114,14 @@ export function PantryScreen() {
                   <div>
                     {/* la marca che hai comprato è più utile del nome generico */}
                     <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
+                    {/* lo spazio è scritto a mano perché `ml-2` è un margine, non del
+                        testo: senza, il nome accessibile della riga si legge
+                        «Total 0%Fage» e chi usa uno screen reader sente una parola sola */}
                     {item.product_brand && (
-                      <span className="ml-2 text-sm text-neutral-500">{item.product_brand}</span>
+                      <>
+                        {" "}
+                        <span className="text-sm text-neutral-500">{item.product_brand}</span>
+                      </>
                     )}
                   </div>
                   <StatusToggle

@@ -49,6 +49,17 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Fage")).toBeDefined();
   });
 
+  it("nome e marca restano due parole anche per chi legge con la voce", async () => {
+    // `ml-2` spaziava solo in orizzontale: il nome accessibile della riga si
+    // leggeva «Total 0%Fage», cioè una parola inventata
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(ITEMS), { status: 200 })
+    ));
+    renderScreen();
+    const row = (await screen.findByText("Total 0%")).closest("li")!;
+    expect(row.textContent).toContain("Total 0% Fage");
+  });
+
   it("per gli sfusi mostra il nome dell'ingrediente", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify(ITEMS), { status: 200 })
