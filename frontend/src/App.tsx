@@ -33,7 +33,15 @@ export default function App() {
       queryCache: new QueryCache({ onError: bounceToLogin }),
       mutationCache: new MutationCache({ onError: bounceToLogin }),
       defaultOptions: {
-        queries: { retry: (_count, error) => !(error instanceof UnauthorizedError) },
+        // Un 401 non si ritenta: la sessione è scaduta e il rimbalzo al login è
+        // già partito. Tutto il resto si ritenta, ma un numero finito di volte:
+        // un predicato che ignora il conteggio ritenta per sempre, `isError` non
+        // diventa mai vero e ogni ramo d'errore dell'app resta irraggiungibile —
+        // lo schermo resta su "Carico…" senza dire niente, che è il vicolo cieco
+        // che le regole di casa vietano.
+        queries: {
+          retry: (count, error) => count < 2 && !(error instanceof UnauthorizedError),
+        },
       },
     });
   });

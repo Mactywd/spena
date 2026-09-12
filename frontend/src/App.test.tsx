@@ -28,4 +28,27 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: "Entra" })).toBeDefined();
   });
+
+  it(
+    "un errore che non è un 401 non viene ritentato all'infinito: lo schermo lo dice",
+    async () => {
+      // Questa prova gira sul QueryClient vero dell'app, non su uno costruito con
+      // retry:false dentro al test: è l'unico modo di accorgersi che il predicato
+      // di retry ignora il conteggio e ritenta per sempre. Con quel difetto
+      // `isError` non diventa mai vero e OGNI ramo d'errore dell'app — lista,
+      // dispensa, ricettario, dettaglio ricetta — è morto in produzione, mentre
+      // i test di quei rami passano tutti col loro client locale.
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 500 })));
+      window.history.pushState({}, "", "/lista");
+
+      render(<App />);
+
+      // i tentativi hanno un'attesa crescente (1s, 2s): il limite è che finiscano,
+      // non quanto durino
+      expect(await screen.findByRole("alert", {}, { timeout: 10_000 })).toHaveTextContent(
+        /non sono riuscito a caricare la lista/i
+      );
+    },
+    20_000
+  );
 });
