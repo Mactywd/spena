@@ -4,6 +4,7 @@ La dispensa non conosce quantità. Un ingrediente è disponibile, quasi finito o
 finito, e il ruolo che ha nella ricetta decide se quello stato basta.
 """
 
+import re
 from collections.abc import Iterable
 from enum import StrEnum
 
@@ -54,3 +55,31 @@ def missing_count(requirements: Iterable[tuple[IngredientRole, Availability]]) -
 
 def is_cookable(requirements: Iterable[tuple[IngredientRole, Availability]]) -> bool:
     return missing_count(requirements) == 0
+
+
+# Le categorie i cui ingredienti si riducono senza snaturare il piatto. Sono valori
+# di IngredientCategory, scritti come stringhe perché questo modulo è puro e non
+# importa i modelli; un test del dominio li confronta con l'enum per impedire
+# che diventino nomi di categorie che non esistono più.
+SECONDARY_CATEGORIES = frozenset({"spezie", "condimenti"})
+
+
+def default_role(category: str, quantity_text: str | None) -> IngredientRole:
+    """Il ruolo dedotto per una riga di ricetta importata.
+
+    La fonte non dichiara i ruoli, e il ruolo è ciò che rende utile lo stato «quasi
+    finito»: un pomodoro agli sgoccioli non fa una pasta al pomodoro ma fa un
+    soffritto. Due segnali, entrambi presenti nei dati veri: una dose «quanto
+    basta» dice che l'ingrediente si aggiusta a piacere, e spezie e condimenti lo
+    sono per natura.
+
+    Dove il buon senso culinario non segue la categoria — l'aglio è verdura e quasi
+    sempre secondario — la correzione arriva da `ImportTerm.role_override`, deciso
+    una volta sola dalla persona che revisiona il termine.
+    """
+    compact = re.sub(r"[\s.]+", "", (quantity_text or "").lower())
+    if compact.startswith("qb") or compact in {"apiacere", "quantobasta"}:
+        return IngredientRole.SECONDARY
+    if category in SECONDARY_CATEGORIES:
+        return IngredientRole.SECONDARY
+    return IngredientRole.PRIMARY
