@@ -113,10 +113,14 @@ docker compose up -d db
 docker compose exec -T db psql -U spena -c "CREATE DATABASE spena_test"
 ```
 
-Poi, **da `backend/`**:
+Poi, **da `backend/`**, un ambiente virtuale con le dipendenze di sviluppo — la
+suite gira sull'host, non dentro al container, perché deve poter importare
+`app.core.config` e spegnere la lettura del `.env`:
 
 ```bash
-cd backend && pytest
+cd backend
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+.venv/bin/python -m pytest
 ```
 
 La suite non tocca la rete: Open Food Facts e Claude girano su fixture registrate, e
