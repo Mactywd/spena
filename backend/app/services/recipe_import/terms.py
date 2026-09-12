@@ -9,13 +9,18 @@ Quel che si automatizza è l'uguaglianza: un termine che coincide con un nostro 
 canonico o con un alias già scritto si decide da sé. Non è una proposta, è un fatto.
 """
 
+import json
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
 from app.repositories.imports import pending_pages, terms_by_key
+from app.services.ai_recipes import AiUnavailable, _build_client
 from app.services.ingredient_match import match_name
 
 
@@ -83,3 +88,134 @@ async def sync_terms(session: AsyncSession, source: str = GIALLOZAFFERANO) -> Te
         1 for term in existing.values() if term.decision == TermDecision.PENDING
     )
     return TermsSynced(created=created, auto_decided=auto_decided, pending=pending)
+
+
+PROPOSAL_MODEL = "claude-sonnet-5"
+PROPOSAL_MAX_TOKENS = 3000
+# il prompt porta l'anagrafica intera: un lotto senza tetto la farebbe crescere fino
+# a una chiamata che costa e che il modello tronca a metà
+MAX_TERMS_PER_CALL = 40
+
+PROPOSAL_SYSTEM_PROMPT = """Sei un aiuto per mettere in ordine un'anagrafica di ingredienti. Rispondi SOLO con un oggetto JSON valido, senza testo attorno e senza blocchi di codice.
+
+Ricevi una lista di nomi di ingredienti presi da un sito di cucina, e l'anagrafica di un'app di dispensa. Per ognuno dei nomi scegli UNA delle tre azioni:
+
+- "map": è lo stesso ingrediente di uno che esiste già in anagrafica, scritto più in dettaglio. "Rigatoni" è pasta, "Latte intero" è latte.
+- "create": è un ingrediente generico che l'anagrafica non ha. Dai il nome canonico in italiano minuscolo e singolare, il nome da mostrare, e la categoria.
+- "ignore": non è qualcosa che si tiene in dispensa. L'acqua, il ghiaccio, l'acqua per la cottura.
+
+Schema richiesto:
+{
+  "proposals": [
+    {"term": "il nome ricevuto, identico", "action": "map", "ingredient": "nome canonico esistente"},
+    {"term": "...", "action": "create", "name": "...", "display_name": "...", "category": "..."},
+    {"term": "...", "action": "ignore"}
+  ]
+}
+
+Regole:
+- "ingredient" deve essere uno dei nomi canonici che ti passo, scritto identico.
+- "category" deve essere una delle categorie che ti passo, scritta identica.
+- Preferisci "map" quando l'ingrediente esiste già: un'anagrafica con venti formati di pasta non sa più dire cosa c'è in casa.
+- Non inserire valori nutrizionali.
+"""
+
+
+@dataclass(frozen=True)
+class TermProposal:
+    term_id: uuid.UUID
+    action: str
+    ingredient_id: uuid.UUID | None = None
+    name: str | None = None
+    display_name: str | None = None
+    category: str | None = None
+
+
+async def propose_decisions(
+    session: AsyncSession, terms: list[ImportTerm], client: object | None = None
+) -> list[TermProposal]:
+    """Una proposta per ogni termine che il modello riesce a giudicare.
+
+    Claude propone e non decide: il risultato va mostrato e confermato. Una proposta
+    che non si può verificare — un ingrediente che non esiste, una categoria
+    inventata, un termine che non avevo chiesto — si scarta invece di essere
+    mostrata: rumore travestito da dato è peggio di nessuna proposta.
+
+    `AiUnavailable` non è un errore da nascondere né da far fallire la coda: chi
+    chiama lo traduce in «decidi a mano», che è sempre possibile.
+    """
+    batch = terms[:MAX_TERMS_PER_CALL]
+    if not batch:
+        return []
+
+    api = client if client is not None else _build_client()
+    anagrafica = list(
+        (
+            await session.execute(
+                select(Ingredient.id, Ingredient.name, Ingredient.category).order_by(
+                    Ingredient.name
+                )
+            )
+        ).all()
+    )
+    by_name = {name: ingredient_id for ingredient_id, name, _ in anagrafica}
+    categories = {str(value) for value in IngredientCategory}
+
+    question = json.dumps(
+        {
+            "termini": [term.display_name for term in batch],
+            "anagrafica": [
+                {"nome": name, "categoria": category} for _, name, category in anagrafica
+            ],
+            "categorie": sorted(categories),
+        },
+        ensure_ascii=False,
+    )
+
+    try:
+        response = await api.messages.create(
+            model=PROPOSAL_MODEL,
+            max_tokens=PROPOSAL_MAX_TOKENS,
+            system=PROPOSAL_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": question}],
+        )
+        payload = json.loads(response.content[0].text)
+        raw = payload.get("proposals") if isinstance(payload, dict) else None
+        if not isinstance(raw, list):
+            raise AiUnavailable("la risposta non contiene una lista di proposte")
+    except AiUnavailable:
+        raise
+    except Exception as exc:  # rete, quota, JSON malformato
+        raise AiUnavailable(str(exc)) from exc
+
+    by_display = {term.display_name: term for term in batch}
+    proposals: list[TermProposal] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        term = by_display.get(str(entry.get("term", "")))
+        if term is None:
+            continue  # un termine che non avevo chiesto
+        action = entry.get("action")
+        if action == "ignore":
+            proposals.append(TermProposal(term_id=term.id, action="ignore"))
+        elif action == "map":
+            ingredient_id = by_name.get(str(entry.get("ingredient", "")).strip().lower())
+            if ingredient_id is None:
+                continue  # un ingrediente che non esiste non è una proposta
+            proposals.append(
+                TermProposal(term_id=term.id, action="map", ingredient_id=ingredient_id)
+            )
+        elif action == "create":
+            category = str(entry.get("category", "")).strip().lower()
+            name = str(entry.get("name", "")).strip().lower()
+            if category not in categories or not name:
+                continue
+            proposals.append(
+                TermProposal(
+                    term_id=term.id, action="create", name=name,
+                    display_name=str(entry.get("display_name") or name).strip(),
+                    category=category,
+                )
+            )
+    return proposals
