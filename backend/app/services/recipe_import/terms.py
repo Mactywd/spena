@@ -218,6 +218,23 @@ async def propose_decisions(
             name = str(entry.get("name", "")).strip().lower()
             if category not in categories or not name:
                 continue
+            existing_id = by_name.get(name)
+            if existing_id is not None:
+                # Claude ha proposto "create" per un nome che l'anagrafica ha già
+                # (lo stesso caso di "Rigatoni" -> "pasta" che per "map" scartiamo
+                # se l'ingrediente non esiste): qui l'ingrediente esiste, quindi la
+                # carta verificata non è il "create" che il 409 rifiuterebbe a ogni
+                # tocco, ma il "map" che Claude avrebbe dovuto scegliere. Lo
+                # convertiamo invece di scartarlo: l'id e il nome canonico li
+                # abbiamo già, dalla stessa ricerca che verifica un "map" vero, senza
+                # bisogno di indovinare niente.
+                proposals.append(
+                    TermProposal(
+                        term_id=term.id, action="map", ingredient_id=existing_id,
+                        name=name_by_id.get(existing_id),
+                    )
+                )
+                continue
             proposals.append(
                 TermProposal(
                     term_id=term.id, action="create", name=name,

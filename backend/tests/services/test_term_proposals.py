@@ -158,6 +158,26 @@ async def test_un_nome_vuoto_in_create_non_e_una_proposta(db_session, termini):
     assert per_termine[termini[2].id].action == "ignore"
 
 
+async def test_una_create_su_un_nome_gia_in_anagrafica_diventa_un_map(db_session, termini):
+    """Claude che risponde "create" con un nome che l'anagrafica ha già (il caso di
+    "Rigatoni" -> "pasta" proposto come create invece di map) non deve produrre una
+    proposta non verificata: l'ingrediente esiste, quindi la proposta verificata è il
+    map che Claude avrebbe dovuto scegliere, con l'id e il nome canonico già noti."""
+    risposta = {
+        "proposals": [
+            {"term": "Rigatoni", "action": "create", "name": "pasta",
+             "display_name": "Pasta", "category": "cereali"},
+        ]
+    }
+
+    proposte = await propose_decisions(db_session, termini, client=FakeClaude(risposta))
+
+    per_termine = {p.term_id: p for p in proposte}
+    assert per_termine[termini[0].id].action == "map"
+    assert per_termine[termini[0].id].ingredient_id is not None
+    assert per_termine[termini[0].id].name == "pasta"
+
+
 async def test_una_risposta_che_non_e_json_si_dichiara(db_session, termini):
     with pytest.raises(AiUnavailable):
         await propose_decisions(db_session, termini, client=FakeClaude("mi dispiace, ecco:"))
