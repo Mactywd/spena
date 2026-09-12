@@ -44,6 +44,52 @@ describe("apiFetch", () => {
     });
   });
 
+  // Il corpo è quello vero: catturato da FastAPI con lo schema RecipeCreate del
+  // backend (titolo oltre i 200 caratteri e porzioni oltre 50), con i soli campi
+  // `input` accorciati perché ripetono il dato inviato. Inventarlo avrebbe
+  // rischiato di difendere una forma che FastAPI non produce.
+  it("il detail di un 422 diventa una frase leggibile, non «[object Object]»", async () => {
+    const body = {
+      detail: [
+        {
+          type: "string_too_long",
+          loc: ["body", "title"],
+          msg: "String should have at most 200 characters",
+          input: "xxx",
+          ctx: { max_length: 200 },
+        },
+        {
+          type: "less_than_equal",
+          loc: ["body", "servings"],
+          msg: "Input should be less than or equal to 50",
+          input: 99,
+          ctx: { le: 50 },
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), { status: 422 })
+    ));
+
+    await expect(apiFetch("/recipes", { method: "POST" })).rejects.toMatchObject({
+      status: 422,
+      message:
+        "String should have at most 200 characters; Input should be less than or equal to 50",
+    });
+  });
+
+  it("un detail di forma ignota degrada al messaggio generico invece di stamparsi male", async () => {
+    // un oggetto, non una stringa né una lista: `String(...)` ne farebbe
+    // "[object Object]", che è la bugia che questa funzione esiste per evitare
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: { motivo: "chissà" } }), { status: 400 })
+    ));
+    await expect(apiFetch("/pantry")).rejects.toMatchObject({
+      status: 400,
+      message: "errore 400",
+    });
+  });
+
   it("gestisce una risposta 204 senza corpo", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     await expect(apiFetch("/auth/logout", { method: "POST" })).resolves.toBeNull();

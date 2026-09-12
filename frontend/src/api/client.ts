@@ -16,6 +16,28 @@ export class UnauthorizedError extends ApiError {
   }
 }
 
+/** Il corpo d'errore di FastAPI ridotto a una frase. `detail` è una stringa per
+ * gli errori che solleviamo noi, ma su un 422 di validazione è una lista di
+ * oggetti, ognuno con il suo `msg`: passata nuda a `new Error` diventa
+ * "[object Object]". Nessuno schermo mostra `message` grezzo oggi — ramificano
+ * tutti su `status` — quindi questa è una riserva per chi legge una console, non
+ * un testo da mostrare: l'autorità resta `status`. */
+function detailToMessage(detail: unknown, status: number): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const joined = detail
+      .map((entry) =>
+        entry !== null && typeof entry === "object" && "msg" in entry
+          ? String((entry as { msg: unknown }).msg)
+          : String(entry)
+      )
+      .filter((message) => message !== "")
+      .join("; ");
+    if (joined !== "") return joined;
+  }
+  return `errore ${status}`;
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${BASE}${path}`, {
     ...init,
@@ -28,8 +50,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (response.status === 204) return null as T;
 
   if (!response.ok) {
-    const detail = await response.json().catch(() => null);
-    throw new ApiError(detail?.detail ?? `errore ${response.status}`, response.status);
+    const body = await response.json().catch(() => null);
+    throw new ApiError(detailToMessage(body?.detail, response.status), response.status);
   }
   return (await response.json()) as T;
 }
