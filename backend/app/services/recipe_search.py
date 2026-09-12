@@ -264,7 +264,13 @@ async def search_recipes(
         fused = reciprocal_rank_fusion([semantic, textual])
         candidate_ids = list(fused)
     else:
-        statement = select(Recipe.id).order_by(Recipe.created_at.desc())
+        # `Recipe.id.desc()` come secondo criterio: un import in blocco scrive
+        # centinaia di righe nella stessa transazione, quindi con lo stesso
+        # `created_at` (vedi il commento sopra CANDIDATE_POOL). Senza un secondo
+        # criterio `ORDER BY created_at DESC` non ha modo di spareggiare, e quali
+        # cento righe (e in che ordine) finiscono nella piscina non è definito:
+        # due richieste identiche potrebbero vedere ricettari diversi.
+        statement = select(Recipe.id).order_by(Recipe.created_at.desc(), Recipe.id.desc())
         if category is not None:
             statement = statement.where(Recipe.category == category)
         # Senza `only_cookable` la piscina basta: è uno scorrimento, e cento ricette
