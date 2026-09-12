@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from sqlalchemy import select
 
 from app.cli.seed import load_ingredients, load_recipes
@@ -63,3 +65,38 @@ async def test_recipes_load_with_roles_and_aliases(db_session):
 
     recipes = list((await db_session.execute(select(Recipe))).scalars())
     assert all(r.source == "dataset" for r in recipes)
+
+
+def test_il_seme_si_trova_nella_radice_del_repository():
+    """Fuori dal container vince il primo candidato, cioè il layout della spec."""
+    from app.cli.seed import CANDIDATE_DATA_DIRS, INGREDIENTS_FILE, RECIPES_FILE, find_data_dir
+
+    found = find_data_dir()
+    assert found == CANDIDATE_DATA_DIRS[0]
+    assert (found / INGREDIENTS_FILE).is_file()
+    assert (found / RECIPES_FILE).is_file()
+
+
+def test_il_seme_si_trova_anche_nel_montaggio_del_container(tmp_path):
+    """Dentro Docker l'immagine contiene solo backend/: data/ arriva montata.
+
+    Il primo candidato (la radice del repository) lì non esiste, e prima di questa
+    ricerca la semina dentro il container moriva con FileNotFoundError su «/data».
+    """
+    from app.cli.seed import INGREDIENTS_FILE, find_data_dir
+
+    mounted = tmp_path / "app" / "data"
+    mounted.mkdir(parents=True)
+    (mounted / INGREDIENTS_FILE).write_text("[]")
+
+    assert find_data_dir((tmp_path / "non-esiste", mounted)) == mounted
+
+
+def test_un_seme_assente_dice_cosa_manca_e_come_rimediare(tmp_path):
+    from app.cli.seed import find_data_dir
+
+    with pytest.raises(FileNotFoundError) as failure:
+        find_data_dir((tmp_path / "vuota",))
+    message = str(failure.value)
+    assert "/app/data" in message, "il messaggio deve dire dove va montata data/"
+    assert "docker-compose" in message

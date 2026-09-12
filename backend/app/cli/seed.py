@@ -16,7 +16,39 @@ from app.db.models.recipe import Recipe
 from app.repositories.recipes import create_recipe
 from app.services.embeddings import EmbeddingUnavailable, get_embedding_provider
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "data"
+# I file del seme stanno in data/ nella radice del repository (layout della spec),
+# che è fuori dal contesto di build dell'immagine del backend: dentro il container
+# arrivano come bind mount su /app/data (vedi docker-compose.yml). Fuori dal
+# container, invece, si trovano risalendo da questo file. Vanno provati entrambi:
+# misurato, senza questo `docker compose exec backend python -m app.cli.seed` —
+# la semina documentata dal piano — moriva con FileNotFoundError su «/data», cioè
+# la v1 non era seminabile dove gira.
+CANDIDATE_DATA_DIRS = (
+    Path(__file__).resolve().parents[3] / "data",
+    Path("/app/data"),
+)
+
+INGREDIENTS_FILE = "ingredients_seed.json"
+RECIPES_FILE = "recipes_seed.json"
+
+HOWTO_MISSING_DATA = (
+    f"Non trovo i file del seme ({INGREDIENTS_FILE}, {RECIPES_FILE}). "
+    "Dentro Docker la cartella data/ del repository va montata su /app/data: "
+    "controlla il volume del servizio backend in docker-compose.yml. "
+    "Fuori da Docker, esegui dalla copia del repository che contiene data/."
+)
+
+
+def find_data_dir(candidates: tuple[Path, ...] = CANDIDATE_DATA_DIRS) -> Path:
+    """La prima cartella candidata che contiene davvero il seme.
+
+    Fallisce dicendo come rimediare: un seme assente non deve trasformarsi in un
+    traceback da cui non si capisce che manca un volume.
+    """
+    for candidate in candidates:
+        if (candidate / INGREDIENTS_FILE).is_file():
+            return candidate
+    raise FileNotFoundError(HOWTO_MISSING_DATA)
 
 
 async def load_ingredients(session: AsyncSession, path: Path) -> int:
@@ -82,9 +114,10 @@ async def load_recipes(session: AsyncSession, path: Path) -> int:
 
 
 async def main() -> None:
+    data_dir = find_data_dir()
     async with SessionLocal() as session:
-        ingredients = await load_ingredients(session, DATA_DIR / "ingredients_seed.json")
-        recipes = await load_recipes(session, DATA_DIR / "recipes_seed.json")
+        ingredients = await load_ingredients(session, data_dir / INGREDIENTS_FILE)
+        recipes = await load_recipes(session, data_dir / RECIPES_FILE)
         await session.commit()
     print(f"caricati {ingredients} ingredienti e {recipes} ricette")
 

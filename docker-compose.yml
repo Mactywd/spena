@@ -26,7 +26,10 @@ services:
     depends_on:
       db: {condition: service_healthy}
     ports: ["8000:8000"]
-    volumes: ["./backend:/app"]
+    # data/ sta nella radice del repository, fuori dal contesto di build
+    # dell'immagine (./backend): senza questo montaggio `python -m app.cli.seed`
+    # dentro il container non trova il seme. Vedi app/cli/seed.py.
+    volumes: ["./backend:/app", "./data:/app/data:ro"]
 
   frontend:
     build: ./frontend
