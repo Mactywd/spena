@@ -60,6 +60,13 @@ export function ImportQueueScreen() {
     },
     enabled: missingTermIds.length > 0,
     staleTime: Infinity,
+    // Il 503 di questa rotta quando manca ANTHROPIC_API_KEY è un degrado dichiarato
+    // e permanente per tutta la vita del processo, non un intoppo passeggero: il
+    // default dell'app (vedi il commento in App.tsx) lo ritenterebbe due volte
+    // prima di mostrare "decidi a mano", per tre giri di rete che non cambieranno
+    // mai esito. Solo questa query lo spegne: il default resta quello che è per
+    // tutte le altre schermate.
+    retry: false,
   });
 
   // Cosa dipende dalla risposta di Claude — la scorciatoia in scheda e l'avviso

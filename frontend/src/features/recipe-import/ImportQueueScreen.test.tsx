@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+import { UnauthorizedError } from "../../api/client";
 import { ImportQueueScreen } from "./ImportQueueScreen";
 
 const TERMINI = [
@@ -318,6 +319,44 @@ describe("coda di revisione dell'import", () => {
     renderScreen();
 
     expect(await screen.findByText(/Niente da abbinare/i)).toBeInTheDocument();
+  });
+
+  it("un 503 permanente delle proposte non viene ritentato", async () => {
+    // `renderScreen()` qui sopra usa un client con `retry: false` globale, che
+    // nasconderebbe proprio il difetto che questo test copre (una query che
+    // prova a ritentare perché non ha il suo `retry: false`): il client qui
+    // imita invece il default vero di App.tsx (retry finché count < 2, salvo
+    // 401), per esercitare la stessa forma del problema. Il 503 di questa rotta
+    // quando manca ANTHROPIC_API_KEY è un degrado dichiarato e permanente per
+    // tutta la vita del processo, non un intoppo passeggero: senza `retry: false`
+    // sulla query delle proposte, un client con questo default la ritenterebbe
+    // due volte in più, per tre giri di rete a vuoto prima che compaia "decidi a
+    // mano".
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: (count: number, error: unknown) => count < 2 && !(error instanceof UnauthorizedError),
+        },
+      },
+    });
+    const spy = stubFetch((path, method) => {
+      if (path.includes("/imports/terms/proposals")) return [{ detail: "manca la chiave" }, 503];
+      return CODA_NORMALE(path, method);
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ImportQueueScreen />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await screen.findByText(/decidi a mano/i);
+
+    const chiamateProposte = spy.mock.calls.filter(([url]) =>
+      String(url).includes("/imports/terms/proposals")
+    );
+    expect(chiamateProposte).toHaveLength(1);
   });
 
   it("se la coda non risponde lo dice insieme a cosa resta possibile", async () => {
