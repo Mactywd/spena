@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.domain.rules import IngredientRole
-from app.repositories.ingredients import search_ingredients
+from app.services.ingredient_match import match_name
 
 MODEL = "claude-sonnet-5"
 MAX_TOKENS = 2000
@@ -77,24 +77,6 @@ def _build_client():
     return AsyncAnthropic(api_key=key)
 
 
-async def _match(
-    session: AsyncSession, raw_name: str
-) -> tuple[uuid.UUID | None, str | None, bool]:
-    """Aggancia un nome proposto all'anagrafica, dichiarando quanto si fida.
-
-    La certezza richiede corrispondenza esatta con il nome canonico: tutto il
-    resto si propone ma si marca incerto.
-    """
-    candidates = await search_ingredients(session, raw_name, limit=1)
-    if not candidates:
-        return None, None, False
-
-    best = candidates[0]
-    normalized = raw_name.strip().lower()
-    confident = normalized == best.name
-    return best.id, best.name, confident
-
-
 async def draft_recipe(
     session: AsyncSession, prompt: str, client: object | None = None
 ) -> RecipeDraft:
@@ -130,12 +112,13 @@ async def draft_recipe(
             if entry.get("role") == IngredientRole.SECONDARY
             else IngredientRole.PRIMARY
         )
-        ingredient_id, matched_name, confident = await _match(session, raw_name)
+        match = await match_name(session, raw_name)
         ingredients.append(
             DraftIngredient(
                 raw_name=raw_name, role=role,
                 quantity_text=entry.get("quantity_text") or None,
-                ingredient_id=ingredient_id, matched_name=matched_name, confident=confident,
+                ingredient_id=match.ingredient_id, matched_name=match.name,
+                confident=match.certain,
             )
         )
 
