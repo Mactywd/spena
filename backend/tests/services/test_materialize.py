@@ -158,6 +158,21 @@ async def test_nel_collasso_il_ruolo_piu_forte_vince(db_session, anagrafica):
     assert dettaglio.ingredients[0].role == IngredientRole.PRIMARY
 
 
+async def test_nel_collasso_il_ruolo_piu_forte_vince_indipendentemente_dall_ordine(db_session, anagrafica):
+    """PRIMARY vince anche quando la riga principale arriva prima della secondaria."""
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/torta2.html",
+        payload=payload("Torta", [("farina-00", "Farina 00", "500 g"),
+                                  ("farina-0", "Farina 0", "q.b.")]),
+    )
+
+    await materialize_ready(db_session)
+
+    ricetta = (await db_session.execute(select(Recipe))).scalars().one()
+    dettaglio = await get_recipe(db_session, ricetta.id)
+    assert dettaglio.ingredients[0].role == IngredientRole.PRIMARY
+
+
 async def test_un_termine_ignorato_non_produce_una_riga(db_session, anagrafica):
     await store_page(
         db_session, source=GIALLOZAFFERANO, url="https://esempio/pane.html",
@@ -232,3 +247,23 @@ async def test_la_materializzazione_e_rieseguibile(db_session, anagrafica):
 
     assert (seconda.created, seconda.skipped) == (0, 0)
     assert len((await db_session.execute(select(Recipe))).scalars().all()) == 1
+
+
+async def test_una_categoria_troppo_lunga_viene_troncata(db_session, anagrafica):
+    """Una categoria più lunga di 60 caratteri viene troncata senza errore."""
+    long_category = "Categoria molto lunga che sicuramente supera il limite di sessanta caratteri"
+    assert len(long_category) > 60
+
+    payloaded = payload("Ricetta", [("farina-00", "Farina 00", "500 g")])
+    payloaded["category"] = long_category
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/ricetta-lunga.html",
+        payload=payloaded,
+    )
+
+    esito = await materialize_ready(db_session)
+
+    assert esito.created == 1
+    ricetta = (await db_session.execute(select(Recipe))).scalars().one()
+    assert len(ricetta.category) == 60
+    assert ricetta.category == long_category[:60]

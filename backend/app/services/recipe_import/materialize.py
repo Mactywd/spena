@@ -128,8 +128,8 @@ async def materialize_ready(
             ],
             embedding=embedding,
         )
-        recipe.category = page.payload.get("category")
-        recipe.image_url = page.payload.get("image_url")
+        recipe.category = (page.payload.get("category") or None) and str(page.payload["category"])[:60]
+        recipe.image_url = (page.payload.get("image_url") or None) and str(page.payload["image_url"])[:500]
         recipe.prep_minutes = page.payload.get("prep_minutes")
         recipe.cook_minutes = page.payload.get("cook_minutes")
         page.state = ImportState.IMPORTED
