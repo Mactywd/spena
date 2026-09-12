@@ -1,0 +1,15 @@
+# Qui il costo non è solo il peso. Il Dockerfile fa `npm ci` (dal lockfile) e subito
+# dopo `COPY . .`: senza questo file l'albero node_modules dell'host viene copiato
+# sopra quello appena installato — COPY sovrascrive i file omonimi e lascia gli altri,
+# quindi ne esce un ibrido che dipende dalla macchina di chi costruisce. Misurato:
+# 350 MB di node_modules dell'host dentro allo stage di build, e `npm run build`
+# costruiva con quelli. Basta un node_modules installato su un'altra piattaforma per
+# rompere la build dell'immagine.
+#
+# e2e/ e playwright.config.ts invece NON vanno esclusi: `npm run build` esegue
+# `tsc -b`, e tsconfig.node.json li include — senza di loro l'immagine non compila.
+node_modules/
+dist/
+test-results/
+playwright-report/
+.vite/
