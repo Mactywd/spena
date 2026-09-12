@@ -29,5 +29,5 @@ export type StatusTone = {
 export const STATUS_TONE: Record<PantryStatus, StatusTone> = {
   available: { fill: "bg-brand text-white", tint: "bg-brand-tint text-brand" },
   low: { fill: "bg-low text-white", tint: "bg-low-tint text-low" },
-  finished: { fill: "bg-ink-soft text-white", tint: "bg-page text-ink-soft" },
+  finished: { fill: "bg-ink text-white", tint: "bg-page text-ink-soft" },
 };

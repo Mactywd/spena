@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { createRecipe, draftRecipe } from "../recipes/api";
 import { IngredientPicker } from "../../components/IngredientPicker";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 import type {
   DraftIngredient,
   Ingredient,
@@ -235,11 +236,11 @@ export function AiDraftScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-xl font-semibold">Scrivi una ricetta</h1>
+    <div className="flex flex-col gap-4 px-4 pt-5 pb-4">
+      <h1 className="text-2xl font-semibold tracking-tight">Scrivi una ricetta</h1>
 
       <div className="flex flex-col gap-2">
-        <label htmlFor="prompt" className="text-sm text-neutral-600">Cosa vuoi cucinare</label>
+        <label htmlFor="prompt" className="text-sm text-ink-soft">Cosa vuoi cucinare</label>
         <textarea
           id="prompt"
           aria-label="Cosa vuoi cucinare"
@@ -247,17 +248,16 @@ export function AiDraftScreen() {
           onChange={(e) => setPrompt(e.target.value)}
           rows={3}
           placeholder="Qualcosa di veloce con quello che ho"
-          className="rounded-lg border border-neutral-300 px-3 py-2"
         />
         <button
           type="button"
           onClick={() => propose.mutate()}
           disabled={prompt.trim().length < 3 || propose.isPending}
-          className="min-h-11 rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
+          className={buttonClasses("primary")}
         >
           {propose.isPending ? "Propongo…" : "Proponi"}
         </button>
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-ink-soft">
           Chiedere a Claude è facoltativo: precompila il modulo qui sotto, che funziona anche da
           solo.
         </p>
@@ -265,7 +265,7 @@ export function AiDraftScreen() {
         {/* il testo scritto resta qui sopra qualunque sia l'esito, e il modulo
             qui sotto c'era già prima: il guasto non toglie niente */}
         {propose.isError && (
-          <p role="alert" className="text-sm text-amber-700">
+          <p role="alert" className="text-sm text-low">
             La stesura AI non è disponibile. Il modulo qui sotto resta tuo: scrivi la ricetta a
             mano e salvala.
           </p>
@@ -279,7 +279,7 @@ export function AiDraftScreen() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={TITLE_MAX}
-            className="mt-1 w-full rounded border px-3 py-2 text-base"
+            className="mt-1.5"
           />
         </label>
 
@@ -291,13 +291,13 @@ export function AiDraftScreen() {
             onChange={(e) => setServingsText(e.target.value)}
             inputMode="numeric"
             placeholder="Lascia vuoto se non lo sai"
-            className="mt-1 w-full rounded border px-3 py-2 text-base"
+            className="mt-1.5"
           />
         </label>
 
         <div>
-          <h2 className="text-xs uppercase tracking-wide text-neutral-400">Ingredienti</h2>
-          <ul className="divide-y divide-neutral-100">
+          <h2 className="text-xs uppercase tracking-wide text-ink-faint">Ingredienti</h2>
+          <ul className="divide-y divide-line">
             {lines.map((line) => (
               <li key={line.key} className="flex flex-col gap-2 py-2 text-sm">
                 <div className="flex items-center justify-between gap-3">
@@ -315,9 +315,9 @@ export function AiDraftScreen() {
                   </label>
                   <span className="shrink-0 text-right text-xs">
                     {line.ingredientId === null || line.uncertain ? (
-                      <em className="text-amber-700">{matchNote(line)}</em>
+                      <em className="text-low">{matchNote(line)}</em>
                     ) : (
-                      <span className="text-emerald-700">{matchNote(line)}</span>
+                      <span className="text-brand">{matchNote(line)}</span>
                     )}
                   </span>
                 </div>
@@ -325,7 +325,7 @@ export function AiDraftScreen() {
                 {/* perché la casella parte vuota: senza questa frase "da
                     confermare" sembra un avviso, non una cosa da fare */}
                 {line.uncertain && (
-                  <p className="text-xs text-amber-700">
+                  <p className="text-xs text-low">
                     Parte escluso, perché l'aggancio è solo un'ipotesi: spunta la casella se è
                     quello giusto.
                   </p>
@@ -333,7 +333,7 @@ export function AiDraftScreen() {
 
                 {line.ingredientId !== null && (
                   <div className="flex items-end gap-2">
-                    <label className="flex-1 text-xs text-neutral-500">
+                    <label className="flex-1 text-xs text-ink-soft">
                       Quantità
                       <input
                         aria-label={`Quantità per ${line.label}`}
@@ -341,7 +341,7 @@ export function AiDraftScreen() {
                         onChange={(e) => updateLine(line.key, { quantityText: e.target.value })}
                         maxLength={QUANTITY_MAX}
                         placeholder="q.b."
-                        className="mt-1 w-full rounded border px-3 py-2 text-base text-neutral-700"
+                        className="mt-1.5 text-ink"
                       />
                     </label>
                     {line.manual ? (
@@ -357,8 +357,8 @@ export function AiDraftScreen() {
                             aria-pressed={line.role === role}
                             className={`min-h-11 rounded-full px-3 py-2 text-xs font-medium ${
                               line.role === role
-                                ? "bg-emerald-700 text-white"
-                                : "bg-neutral-100 text-neutral-600"
+                                ? "bg-brand text-white"
+                                : "bg-page text-ink-soft"
                             }`}
                           >
                             {ROLE_LABELS[role]}
@@ -366,7 +366,7 @@ export function AiDraftScreen() {
                         ))}
                       </div>
                     ) : (
-                      <span className="pb-2 text-xs text-neutral-400">
+                      <span className="pb-2 text-xs text-ink-faint">
                         {ROLE_LABELS[line.role]}
                       </span>
                     )}
@@ -389,7 +389,7 @@ export function AiDraftScreen() {
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             rows={8}
-            className="mt-1 w-full rounded border px-3 py-2 text-base"
+            className="mt-1.5"
           />
         </label>
 
@@ -397,7 +397,7 @@ export function AiDraftScreen() {
             l'utente voleva — ma va detto cosa ci rimette, prima del salvataggio
             e non dopo */}
         {savable.length === 0 && (
-          <p role="status" className="text-sm text-amber-700">
+          <p role="status" className="text-sm text-low">
             Nessun ingrediente agganciato: la ricetta si salva comunque, ma il ricettario non
             potrà dire se puoi cucinarla.
           </p>
@@ -405,13 +405,13 @@ export function AiDraftScreen() {
 
         {/* il motivo sta accanto al pulsante che sta disabilitando: un pulsante
             spento e muto è un vicolo cieco quanto un errore senza spiegazione */}
-        {problem && <p className="text-sm text-amber-700">{problem}</p>}
+        {problem && <p className="text-sm text-low">{problem}</p>}
 
         <button
           type="button"
           onClick={() => save.mutate()}
           disabled={save.isPending || problem !== null}
-          className="min-h-11 rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
+          className={buttonClasses("primary")}
         >
           {save.isPending ? "Salvo…" : "Salva nel ricettario"}
         </button>
@@ -420,7 +420,7 @@ export function AiDraftScreen() {
             schermo: titolo, procedimento, quantità e spunte restano tutti qui,
             pronti per un altro tentativo */}
         {save.isError && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-danger">
             {saveProblem(save.error)}
           </p>
         )}

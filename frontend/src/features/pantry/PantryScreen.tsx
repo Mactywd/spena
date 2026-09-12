@@ -2,6 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { StatusToggle } from "./StatusToggle";
 import { IngredientPicker } from "../../components/IngredientPicker";
+import { Alert } from "../../components/ui/Alert";
+import { Card } from "../../components/ui/Card";
+import { Screen } from "../../components/ui/Screen";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 import { addPantryItem, fetchPantry, patchPantryItem } from "./api";
 import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
 
@@ -66,87 +70,88 @@ export function PantryScreen() {
       : null;
 
   return (
-    <div className="p-4">
-      <h1 className="pb-3 text-xl font-semibold">Dispensa</h1>
-
-      <section className="border-b border-neutral-100 pb-4">
+    <Screen title="Dispensa">
+      <Card>
         <IngredientPicker
           label="Aggiungi in dispensa"
           failureNote="Riprova, oppure scrivilo in lista e sistemalo da lì."
           onPick={(ingredient) => add.mutate(ingredient)}
           disabled={add.isPending}
         />
-        <p className="pt-2 text-xs text-neutral-500">
+        <p className="pt-2 text-xs text-ink-faint">
           Entra come disponibile e senza marca. Lo stato si cambia qui sotto.
         </p>
         {/* accanto al controllo che ha fallito, e la scelta non si perde: si
             rifà toccando di nuovo l'ingrediente */}
         {addFailed && (
-          <p role="alert" className="pt-2 text-sm text-red-600">
+          <Alert className="pt-2">
             Non sono riuscito ad aggiungere la voce in dispensa. Riprova.
-          </p>
+          </Alert>
         )}
-      </section>
+      </Card>
 
-      {isLoading && <p className="pt-4 text-neutral-500">Carico…</p>}
+      {isLoading && <p className="pt-4 text-ink-soft">Carico…</p>}
 
       {/* un caricamento fallito non è una dispensa vuota: dirlo sarebbe una bugia
           su quello che c'è da mangiare */}
       {isError && (
-        <p role="alert" className="pt-4 text-sm text-red-600">
+        <Alert className="pt-4">
           Non sono riuscito a caricare la dispensa. Riprova più tardi.
-        </p>
+        </Alert>
       )}
 
       {!isLoading && !isError && items.length === 0 && (
-        <p className="pt-4 text-neutral-500">
+        <p className="pt-4 text-ink-soft">
           Dispensa vuota. Sistema la spesa, oppure aggiungi qui sopra quello che hai in casa.
         </p>
       )}
 
       {!isLoading && !isError && items.length > 0 &&
         groupByCategory(items).map(([category, group]) => (
-          <section key={category} className="pb-4">
-            <h2 className="py-2 text-xs uppercase tracking-wide text-neutral-400">{category}</h2>
-            <ul className="divide-y divide-neutral-100">
-              {group.map((item) => (
-                <li key={item.id} className="flex flex-col gap-2 py-3">
-                  <div>
-                    {/* la marca che hai comprato è più utile del nome generico */}
-                    <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
-                    {/* lo spazio è scritto a mano perché `ml-2` è un margine, non del
-                        testo: senza, il nome accessibile della riga si legge
-                        «Total 0%Fage» e chi usa uno screen reader sente una parola sola */}
-                    {item.product_brand && (
-                      <>
-                        {" "}
-                        <span className="text-sm text-neutral-500">{item.product_brand}</span>
-                      </>
+          <section key={category}>
+            <SectionHeading>{category}</SectionHeading>
+            <Card pad={false}>
+              <ul className="divide-y divide-line">
+                {group.map((item) => (
+                  <li key={item.id} className="flex flex-col gap-2.5 p-3">
+                    <div>
+                      {/* la marca che hai comprato è più utile del nome generico */}
+                      <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
+                      {/* lo spazio è scritto a mano perché `ml-2` è un margine, non del
+                          testo: senza, il nome accessibile della riga si legge
+                          «Total 0%Fage» e chi usa uno screen reader sente una parola sola */}
+                      {item.product_brand && (
+                        <>
+                          {" "}
+                          <span className="text-sm text-ink-faint">{item.product_brand}</span>
+                        </>
+                      )}
+                    </div>
+                    <StatusToggle
+                      value={item.status}
+                      disabled={busyId === item.id}
+                      onChange={(status) => change.mutate({ id: item.id, status })}
+                    />
+                    {/* il testo è quello di prima: è anche il nome con cui si comanda
+                        a voce questo bersaglio, e accorciarlo sullo schermo lo
+                        scollerebbe da quel nome */}
+                    <button
+                      type="button"
+                      disabled={busyId === item.id}
+                      onClick={() => archive.mutate(item.id)}
+                      className="self-start py-2 text-xs text-ink-faint underline disabled:opacity-40"
+                    >
+                      Togli dalla dispensa
+                    </button>
+                    {failedId === item.id && (
+                      <Alert>Non sono riuscito a salvare la modifica. Riprova.</Alert>
                     )}
-                  </div>
-                  <StatusToggle
-                    value={item.status}
-                    disabled={busyId === item.id}
-                    onChange={(status) => change.mutate({ id: item.id, status })}
-                  />
-                  <button
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => archive.mutate(item.id)}
-                    className="self-start py-2 text-xs text-neutral-500 underline disabled:opacity-40"
-                  >
-                    Togli dalla dispensa
-                  </button>
-                  {failedId === item.id && (
-                    <p role="alert" className="text-sm text-red-600">
-                      Non sono riuscito a salvare la modifica. Riprova.
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           </section>
         ))}
-    </div>
+    </Screen>
   );
 }

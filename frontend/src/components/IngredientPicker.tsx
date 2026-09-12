@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchIngredients } from "../features/shopping-list/api";
 import { useDebounced } from "../hooks/useDebounced";
+import { OptionList } from "./ui/OptionList";
 import type { Ingredient } from "../domain/types";
 
 const DEBOUNCE_MS = 180;
@@ -49,8 +50,8 @@ export function IngredientPicker({
   const showOptions = term.trim().length >= 2;
 
   return (
-    <div className="flex flex-col gap-2 pt-2">
-      <label className="text-sm">
+    <div className="flex flex-col gap-2">
+      <label className="text-sm font-medium text-ink-soft">
         {label}
         <input
           aria-label={label}
@@ -58,37 +59,26 @@ export function IngredientPicker({
           onChange={(e) => setTerm(e.target.value)}
           placeholder="Cerca in anagrafica"
           disabled={disabled}
-          className="mt-1 w-full rounded border px-3 py-3 text-base disabled:opacity-50"
+          className="mt-1.5 disabled:opacity-50"
         />
       </label>
 
       {showOptions && found.length > 0 && (
-        <ul role="listbox" className="overflow-hidden rounded-lg border border-neutral-200">
-          {found.map((ingredient) => (
-            <li key={ingredient.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={false}
-                disabled={disabled}
-                onClick={() => {
-                  onPick(ingredient);
-                  setTerm("");
-                }}
-                className="min-h-11 w-full px-3 py-3 text-left text-sm disabled:opacity-50"
-              >
-                {ingredient.display_name}
-                <span className="ml-2 text-xs text-neutral-400">{ingredient.category}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <OptionList
+          options={found}
+          disabled={disabled}
+          onPick={(ingredient) => {
+            onPick(ingredient);
+            setTerm("");
+          }}
+        />
       )}
 
       {/* la ricerca è un aiuto, non un pedaggio: il guasto va detto insieme a
-          quello che resta possibile */}
+          quello che resta possibile. L'ambra è il colore che nell'app vuol dire
+          «funziona, ma non del tutto» — lo stesso di «quasi finito» */}
       {isError && (
-        <p role="alert" className="text-sm text-amber-700">
+        <p role="alert" className="text-sm text-low">
           La ricerca degli ingredienti non risponde. {failureNote}
         </p>
       )}

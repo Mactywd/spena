@@ -1,4 +1,4 @@
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "warn";
 type Shape = "pill" | "block";
 
 // Le classi dei bottoni, non un componente: servono anche a dei `<Link>` (il «Sistema
@@ -14,6 +14,8 @@ const BASE = "inline-flex min-h-11 items-center justify-center gap-2 font-medium
 const VARIANTS: Record<Variant, string> = {
   primary: "bg-brand text-white",
   secondary: "bg-card text-ink ring-1 ring-line ring-inset",
+  // ambra: lo stesso colore del problema che questo bottone risolve
+  warn: "bg-low text-white",
   ghost: "text-ink-soft",
   danger: "text-danger",
 };
