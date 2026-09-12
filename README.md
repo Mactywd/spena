@@ -188,6 +188,18 @@ falso.
 cd frontend && npx vitest run
 ```
 
+Il controllo dei tipi è un comando separato, e il nome che sembra ovvio è quello
+sbagliato: `frontend/tsconfig.json` è in stile «solution», con `"files": []` e solo
+riferimenti ai sotto-progetti, quindi `npx tsc --noEmit` legge quel file, non trova
+niente da compilare ed esce con 0 — sempre, qualunque errore ci sia nel codice. Chi
+lancia `tsc --noEmit` per controllare i tipi ottiene un verde che non significa
+nulla. Il controllo che compila davvero i sotto-progetti è `tsc -b`, lo stesso che
+lancia `npm run build` e ora anche `npm run typecheck`:
+
+```bash
+cd frontend && npm run typecheck
+```
+
 ### Percorso end-to-end
 
 Attraversa lista, dispensa, ricettario, cottura e rientro in lista con un browser

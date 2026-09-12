@@ -16,7 +16,7 @@ cook a recipe → whatever ran out goes back on the list.
 does; the code is now the authority on what it does. `README.md` covers running,
 testing and deploying.
 
-Three things reviews here kept rediscovering, written down so the next person does
+Six things reviews here kept rediscovering, written down so the next person does
 not pay for them again:
 
 - **A test that builds its own object is not testing the one production uses.**
@@ -47,6 +47,16 @@ not pay for them again:
   «cosa posso cucinare» avrebbe risposto guardando solo le ricette di ieri. Nessun
   test poteva vederlo, perché nessun test aveva più ricette della piscina. Quando un
   lavoro moltiplica i dati, cerca i limiti scritti quando i dati erano pochi.
+- **`tsc --noEmit` is not the project's type check.** `frontend/tsconfig.json` is
+  solution-style — `{"files": [], "references": [...]}` — so `tsc --noEmit` reads
+  it, finds zero files to compile, and exits 0 always, whatever errors sit in the
+  code (measured: on a tree where `npx tsc -b --force` reports a `TS2739` in
+  `CookSheet.test.tsx`, `npx tsc --noEmit` still exits 0). Every task on
+  `import-ricette` ran `tsc --noEmit` as its type check, so an object literal left
+  missing four fields added to `RecipeSummary` shipped past all of them; only
+  `npm run build` (`tsc -b && vite build`, now also `npm run typecheck`) caught it,
+  and only at the final browser-verification task. Ask of any green type check: did
+  it compile project references, or find none to compile?
 
 ## The two decisions everything else follows from
 
