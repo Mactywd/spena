@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.recipe import Recipe, RecipeIngredient
-from app.domain.rules import Availability, IngredientRole, is_satisfied
+from app.domain.rules import Availability, IngredientRole, is_cookable, missing_count
 from app.repositories.pantry import availability_map
 from app.services.embeddings import EmbeddingUnavailable, get_embedding_provider
 
@@ -74,23 +74,31 @@ async def _textual_ranking(session: AsyncSession, query: str) -> list[uuid.UUID]
     return list((await session.execute(statement)).scalars())
 
 
-async def _missing_by_recipe(
+async def _requirements_by_recipe(
     session: AsyncSession, recipe_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, int]:
+) -> dict[uuid.UUID, list[tuple[IngredientRole, Availability]]]:
+    """Per ogni ricetta, le coppie (ruolo, disponibilità) su cui decidono le regole.
+
+    Si ferma qui di proposito: il conteggio dei mancanti e il verdetto di
+    cucinabilità sono le funzioni di app/domain/rules.py, non una somma ricopiata
+    in questo modulo. Ricalcolarle in linea è la ragione per cui il test a tabella
+    difendeva una copia che non girava.
+    """
+    requirements: dict[uuid.UUID, list[tuple[IngredientRole, Availability]]] = {
+        recipe_id: [] for recipe_id in recipe_ids
+    }
     if not recipe_ids:
-        return {}
+        return requirements
     statement = select(
         RecipeIngredient.recipe_id, RecipeIngredient.ingredient_id, RecipeIngredient.role
     ).where(RecipeIngredient.recipe_id.in_(recipe_ids))
     rows = (await session.execute(statement)).all()
 
     availability = await availability_map(session, [row[1] for row in rows])
-    missing = {recipe_id: 0 for recipe_id in recipe_ids}
     for recipe_id, ingredient_id, role in rows:
         have = availability.get(ingredient_id, Availability.MISSING)
-        if not is_satisfied(IngredientRole(role), have):
-            missing[recipe_id] += 1
-    return missing
+        requirements[recipe_id].append((IngredientRole(role), have))
+    return requirements
 
 
 async def search_recipes(
@@ -112,7 +120,7 @@ async def search_recipes(
     if not candidate_ids:
         return []
 
-    missing = await _missing_by_recipe(session, candidate_ids)
+    requirements = await _requirements_by_recipe(session, candidate_ids)
     recipes = {
         r.id: r
         for r in (
@@ -123,8 +131,8 @@ async def search_recipes(
     results = [
         RecipeSearchResult(
             recipe=recipes[recipe_id],
-            missing=missing.get(recipe_id, 0),
-            cookable=missing.get(recipe_id, 0) == 0,
+            missing=missing_count(requirements.get(recipe_id, [])),
+            cookable=is_cookable(requirements.get(recipe_id, [])),
             score=fused.get(recipe_id, 0.0),
         )
         for recipe_id in candidate_ids

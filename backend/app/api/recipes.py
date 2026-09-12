@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.db.models.recipe import Recipe
-from app.domain.rules import Availability, IngredientRole, is_satisfied
+from app.domain.rules import (
+    Availability,
+    IngredientRole,
+    is_cookable,
+    is_satisfied,
+    missing_count,
+)
 from app.repositories.pantry import availability_map
 from app.repositories.recipes import create_recipe, get_recipe
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
@@ -26,24 +32,30 @@ async def _to_out(session: AsyncSession, recipe: Recipe) -> RecipeOut:
     availability = await availability_map(session, ingredient_ids)
 
     lines: list[RecipeIngredientOut] = []
+    requirements: list[tuple[IngredientRole, Availability]] = []
     for ri in recipe.ingredients:
         have = availability.get(ri.ingredient_id, Availability.MISSING)
+        role = IngredientRole(ri.role)
+        requirements.append((role, have))
         lines.append(
             RecipeIngredientOut(
                 ingredient_id=ri.ingredient_id,
                 ingredient_name=ri.ingredient.name,
-                role=IngredientRole(ri.role),
+                role=role,
                 quantity_text=ri.quantity_text,
                 note=ri.note,
                 availability=have,
-                satisfied=is_satisfied(IngredientRole(ri.role), have),
+                satisfied=is_satisfied(role, have),
             )
         )
-    missing = sum(1 for line in lines if not line.satisfied)
+    # il conteggio e il verdetto arrivano da app/domain/rules.py, non da un `sum`
+    # qui: ricalcolarli in linea fa sì che il test a tabella difenda una copia che
+    # non gira, ed è la metà aggregata della regola del capitolo 7 della spec
     return RecipeOut(
         id=recipe.id, title=recipe.title, description=recipe.description,
         instructions=recipe.instructions, servings=recipe.servings, source=recipe.source,
-        source_ref=recipe.source_ref, ingredients=lines, missing=missing, cookable=missing == 0,
+        source_ref=recipe.source_ref, ingredients=lines,
+        missing=missing_count(requirements), cookable=is_cookable(requirements),
     )
 
 
