@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.db.models.shopping import ShoppingListItem
+from app.repositories.pantry import ProductIngredientMismatch
 from app.repositories.shopping import StockEntry, add_item, list_items, patch_item, stock_items
 from app.schemas.shopping import (
     ShoppingItemCreate,
@@ -99,6 +100,15 @@ async def stock(
     except KeyError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "voce di lista inesistente") from exc
+    except ProductIngredientMismatch as exc:
+        # diversa da "non esiste": il prodotto c'è, ma è di un altro ingrediente.
+        # Vale sia per la strada del barcode sia per quella della ricerca a
+        # catalogo, perché entrambe arrivano allo stesso controllo in
+        # add_pantry_item
+        await session.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "il prodotto appartiene a un altro ingrediente"
+        ) from exc
     except IntegrityError as exc:
         await session.rollback()
         # solo un riferimento pendente è un "inesistente": qualunque altra

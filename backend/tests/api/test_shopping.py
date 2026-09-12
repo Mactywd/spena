@@ -109,6 +109,57 @@ async def test_stocking_is_all_or_nothing(logged_client, db_session, ingredienti
     assert good.status == "checked"
 
 
+async def test_stocking_rejects_a_product_of_another_ingredient(
+    logged_client, db_session, ingredienti
+):
+    """La strada dello scontrino/catalogo ha lo stesso buco della diretta: un
+    prodotto di pomodoro non deve poter entrare come yogurt greco (brief)."""
+    pomodoro = Ingredient(name="pomodoro", display_name="Pomodoro",
+                          category=IngredientCategory.VERDURA)
+    db_session.add(pomodoro)
+    await db_session.flush()
+    product = Product(ingredient_id=pomodoro.id, name="Pomodori pelati", source="openfoodfacts")
+    db_session.add(product)
+    yogurt_item = ShoppingListItem(raw_text="yogurt greco",
+                                   ingredient_id=ingredienti["yogurt"].id,
+                                   status=ShoppingStatus.CHECKED, reason=ShoppingReason.MANUAL)
+    db_session.add(yogurt_item)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={"entries": [
+        {"shopping_item_id": str(yogurt_item.id),
+         "ingredient_id": str(ingredienti["yogurt"].id),
+         "product_id": str(product.id)},
+    ]})
+    assert response.status_code == 409
+    assert "altro ingrediente" in response.json()["detail"]
+
+    pantry = list((await db_session.execute(select(PantryItem))).scalars())
+    assert pantry == []
+
+
+async def test_stocking_with_a_dangling_product_is_404_not_500(
+    logged_client, db_session, ingredienti
+):
+    """Un product_id che non esiste più resta un 404, non un muro (come già per
+    l'ingrediente inesistente)."""
+    import uuid
+
+    yogurt_item = ShoppingListItem(raw_text="yogurt greco",
+                                   ingredient_id=ingredienti["yogurt"].id,
+                                   status=ShoppingStatus.CHECKED, reason=ShoppingReason.MANUAL)
+    db_session.add(yogurt_item)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={"entries": [
+        {"shopping_item_id": str(yogurt_item.id),
+         "ingredient_id": str(ingredienti["yogurt"].id),
+         "product_id": str(uuid.uuid4())},
+    ]})
+    assert response.status_code == 404
+    assert "inesistente" in response.json()["detail"]
+
+
 async def test_listing_can_be_filtered_by_status(logged_client, db_session, ingredienti):
     db_session.add_all([
         ShoppingListItem(raw_text="a", status=ShoppingStatus.PENDING,

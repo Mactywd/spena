@@ -9,6 +9,7 @@ from app.core.security import require_session
 from app.db.models.pantry import PantryItem
 from app.domain.rules import Availability
 from app.repositories.pantry import (
+    ProductIngredientMismatch,
     add_pantry_item,
     archive_item,
     availability_map,
@@ -59,6 +60,14 @@ async def create(
             status=payload.status, note=payload.note,
         )
         await session.commit()
+    except ProductIngredientMismatch as exc:
+        # diversa da "non esiste": il prodotto c'è, ma è di un altro ingrediente.
+        # Non è un 404 perché non c'è nulla di mancante da correggere con un
+        # retry sullo stesso id: è la coppia dichiarata che è sbagliata
+        await session.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "il prodotto appartiene a un altro ingrediente"
+        ) from exc
     except IntegrityError as exc:
         # un id pendente (tipico di una PWA con la cache vecchia) non deve essere
         # un muro: 404, come già fa POST /shopping-list/stock. Qualunque altra

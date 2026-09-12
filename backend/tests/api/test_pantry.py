@@ -89,6 +89,52 @@ async def test_loose_produce_enters_without_a_product(logged_client, dispensa):
     assert response.json()["product_id"] is None
 
 
+async def test_creating_with_a_matching_product_is_stored(
+    logged_client, db_session, dispensa
+):
+    """Il caso corretto: il prodotto è davvero di quell'ingrediente."""
+    product = Product(ingredient_id=dispensa["yogurt"].id, name="Total 0%", brand="Fage",
+                      source="openfoodfacts")
+    db_session.add(product)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(product.id),
+        "status": "available",
+    })
+    assert response.status_code == 201
+    assert response.json()["product_id"] == str(product.id)
+
+
+async def test_creating_with_a_product_of_another_ingredient_is_409(
+    logged_client, db_session, dispensa
+):
+    """Il difetto del brief: un prodotto di pomodoro non entra come yogurt."""
+    product = Product(ingredient_id=dispensa["pomodoro"].id, name="Pomodori pelati",
+                      source="openfoodfacts")
+    db_session.add(product)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(product.id),
+        "status": "available",
+    })
+    assert response.status_code == 409
+    assert "altro ingrediente" in response.json()["detail"]
+
+
+async def test_creating_with_a_dangling_product_is_404_not_500(logged_client, dispensa):
+    """Un prodotto che non esiste resta un 404, come già per l'ingrediente."""
+    import uuid
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(uuid.uuid4()),
+        "status": "available",
+    })
+    assert response.status_code == 404
+    assert "inesistente" in response.json()["detail"]
+
+
 async def test_patch_changes_status_and_stamps_the_time(logged_client, db_session, dispensa):
     item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
     db_session.add(item)
