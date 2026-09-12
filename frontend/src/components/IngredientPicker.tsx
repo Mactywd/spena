@@ -21,12 +21,17 @@ const DEBOUNCE_MS = 180;
  */
 export function IngredientPicker({
   label,
+  accessibleLabel,
   failureNote,
   onPick,
   disabled = false,
 }: {
-  /** Etichetta visibile e nome accessibile: dice a cosa serve *qui*. */
+  /** Etichetta visibile: dice a cosa serve *qui*. */
   label: string;
+  /** Nome accessibile, quando deve dire più della scritta in vista — per esempio
+   * quale termine sta per agganciare, in un elenco dove la scritta in vista si
+   * ripete identica scheda per scheda. Di norma coincide con `label`. */
+  accessibleLabel?: string;
   /** Cosa resta possibile se la ricerca non risponde: ogni schermo ha la sua via
    * d'uscita, e nominarla è quel che la distingue da un vicolo cieco. */
   failureNote: string;
@@ -54,7 +59,7 @@ export function IngredientPicker({
       <label className="text-sm font-medium text-ink-soft">
         {label}
         <input
-          aria-label={label}
+          aria-label={accessibleLabel ?? label}
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           placeholder="Cerca in anagrafica"

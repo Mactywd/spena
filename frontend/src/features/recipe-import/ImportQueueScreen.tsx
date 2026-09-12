@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
 import { decideTerm, fetchImportStatus, fetchImportTerms, fetchTermProposals } from "./api";
 import { TermCard, type Decision } from "./TermCard";
-import { useState } from "react";
+import type { TermProposal } from "../../domain/types";
 
 /** La revisione dei termini dell'import.
  *
@@ -25,22 +26,50 @@ export function ImportQueueScreen() {
     queryFn: fetchImportStatus,
   });
 
-  // Le proposte arrivano in una query loro: se Claude non risponde la coda resta
-  // usabile, e il guasto non può svuotare una schermata che funziona anche senza.
+  // Le proposte di Claude, conservate per termine una volta arrivate. Il backend
+  // filtra `/imports/terms` ai soli termini ancora in attesa: dopo una decisione
+  // l'elenco si accorcia da sé, e senza questa cache quell'accorciarsi cambierebbe
+  // la domanda fatta a Claude a ogni tocco — una richiesta intera per il lotto
+  // residuo invece di zero, perché il lotto residuo ha già la sua risposta.
+  //
+  // L'aggiornamento vive dentro `queryFn`, non in un `useEffect`: è la risposta
+  // della richiesta stessa, non una reazione a un cambiamento già avvenuto, quindi
+  // non c'è un secondo giro di render da incatenare a quello che React Query fa
+  // già da sé quando la query si risolve.
+  const [proposalsByTerm, setProposalsByTerm] = useState<Map<string, TermProposal>>(
+    () => new Map()
+  );
+
   const termIds = terms.map((term) => term.id);
-  const proposalsEnabled = termIds.length > 0;
-  const { data: proposals, isError: proposalsFailed } = useQuery({
-    queryKey: ["import-proposals", termIds.join(",")],
-    queryFn: () => fetchTermProposals(termIds),
-    enabled: proposalsEnabled,
+  // solo i termini che non hanno ancora una proposta nota: con tutti già noti non
+  // c'è niente da chiedere, e la query resta disabilitata — zero chiamate, non una.
+  const missingTermIds = termIds.filter((id) => !proposalsByTerm.has(id));
+
+  const proposalsQuery = useQuery({
+    queryKey: ["import-proposals", missingTermIds.join(",")],
+    queryFn: async () => {
+      const result = await fetchTermProposals(missingTermIds);
+      setProposalsByTerm((prev) => {
+        const next = new Map(prev);
+        for (const proposal of result.proposals) {
+          next.set(proposal.term_id, proposal);
+        }
+        return next;
+      });
+      return result;
+    },
+    enabled: missingTermIds.length > 0,
     staleTime: Infinity,
   });
 
-  // La coda mostra un termine solo quando si sa già se le proposte ci sono: senza
-  // questo, «Rigatoni» apparirebbe un istante prima di «decidi a mano», e chi guarda
-  // vedrebbe un pulsante sparire o un avviso comparire da solo un attimo dopo.
-  const proposalsSettled = !proposalsEnabled || proposals !== undefined || proposalsFailed;
-  const loading = isLoading || !proposalsSettled;
+  // Cosa dipende dalla risposta di Claude — la scorciatoia in scheda e l'avviso
+  // «decidi a mano» — aspetta che la richiesta in corso (quando c'è) si sia
+  // stabilizzata. L'elenco dei termini no: mostrarlo subito, indipendentemente
+  // dalle proposte, è la correzione del difetto critico per cui una decisione
+  // svuotava tutta la coda dietro un nuovo "Carico la coda…" a ogni tocco.
+  const proposalsSettled =
+    missingTermIds.length === 0 || proposalsQuery.isSuccess || proposalsQuery.isError;
+  const proposalsFailed = proposalsQuery.isError;
 
   const decide = useMutation({
     mutationFn: ({ termId, decision }: { termId: string; decision: Decision }) =>
@@ -54,8 +83,6 @@ export function ImportQueueScreen() {
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
     },
   });
-
-  const byTerm = new Map((proposals?.proposals ?? []).map((p) => [p.term_id, p]));
 
   return (
     <Screen title="Ingredienti da abbinare">
@@ -92,29 +119,30 @@ export function ImportQueueScreen() {
         </Alert>
       )}
 
-      {loading && <p className="pt-4 text-ink-soft">Carico la coda…</p>}
+      {isLoading && <p className="pt-4 text-ink-soft">Carico la coda…</p>}
 
-      {!loading && isError && (
+      {!isLoading && isError && (
         <Alert className="pt-4">
           Non sono riuscito a leggere la coda. Il ricettario funziona comunque: le
           ricette già importate sono al loro posto.
         </Alert>
       )}
 
-      {!loading && !isError && terms.length === 0 && (
+      {!isLoading && !isError && terms.length === 0 && (
         <p className="pt-4 text-ink-soft">
           Niente da abbinare. Ogni ingrediente delle ricette scaricate ha la sua
           decisione.
         </p>
       )}
 
-      {!loading && terms.length > 0 && (
+      {!isLoading && terms.length > 0 && (
         <ul className="flex flex-col gap-2 pt-2">
           {terms.map((term) => (
             <TermCard
               key={term.id}
               term={term}
-              proposal={byTerm.get(term.id) ?? null}
+              proposal={proposalsByTerm.get(term.id) ?? null}
+              proposalsReady={proposalsSettled}
               suggestionName={term.suggestion?.name ?? null}
               pending={decide.isPending}
               onDecide={(decision) => decide.mutate({ termId: term.id, decision })}

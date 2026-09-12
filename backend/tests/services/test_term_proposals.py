@@ -68,6 +68,9 @@ async def test_le_tre_azioni_arrivano_tradotte(db_session, termini):
     per_termine = {p.term_id: p for p in proposte}
     assert per_termine[termini[0].id].action == "map"
     assert per_termine[termini[0].id].ingredient_id is not None
+    # il nome canonico deve arrivare con la proposta: senza di esso il pulsante non
+    # può dire a cosa collega, e chiede di confermare qualcosa che non si vede
+    assert per_termine[termini[0].id].name == "pasta"
     assert per_termine[termini[1].id].action == "create"
     assert per_termine[termini[1].id].category == "carne"
     assert per_termine[termini[2].id].action == "ignore"

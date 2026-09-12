@@ -159,6 +159,7 @@ async def propose_decisions(
         ).all()
     )
     by_name = {name: ingredient_id for ingredient_id, name, _ in anagrafica}
+    name_by_id = {ingredient_id: name for ingredient_id, name, _ in anagrafica}
     categories = {str(value) for value in IngredientCategory}
 
     question = json.dumps(
@@ -204,7 +205,13 @@ async def propose_decisions(
             if ingredient_id is None:
                 continue  # un ingrediente che non esiste non è una proposta
             proposals.append(
-                TermProposal(term_id=term.id, action="map", ingredient_id=ingredient_id)
+                TermProposal(
+                    term_id=term.id, action="map", ingredient_id=ingredient_id,
+                    # il nome canonico: lo abbiamo già risolto per verificare che
+                    # l'ingrediente esista, ed è la sola fonte di un nome leggibile
+                    # che la scheda può mostrare senza fidarsi di un id cieco
+                    name=name_by_id.get(ingredient_id),
+                )
             )
         elif action == "create":
             category = str(entry.get("category", "")).strip().lower()

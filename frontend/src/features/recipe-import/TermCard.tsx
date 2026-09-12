@@ -22,9 +22,11 @@ export type Decision = {
  */
 function proposalLabel(proposal: TermProposal, term: ImportTerm): string | null {
   if (proposal.action === "map") {
-    // Il backend non manda mai un nome per "map" (vedi TermProposal in terms.py):
-    // lo stesso ingrediente che l'aggancio testuale ha già trovato è la sola fonte
-    // di un nome da mostrare che il frontend possiede.
+    // Il backend porta il nome canonico con la proposta "map" (vedi TermProposal
+    // in terms.py): lo preferiamo sempre. Il fallback sull'aggancio testuale resta
+    // solo per una proposta più vecchia o incompleta che ne fosse priva — senza,
+    // il pulsante tornerebbe al generico «l'ingrediente» anche quando un nome vero
+    // è disponibile altrove.
     const name =
       proposal.name ??
       (term.suggestion?.ingredient_id === proposal.ingredient_id
@@ -40,6 +42,7 @@ function proposalLabel(proposal: TermProposal, term: ImportTerm): string | null 
 export function TermCard({
   term,
   proposal,
+  proposalsReady,
   suggestionName,
   pending,
   onDecide,
@@ -47,6 +50,11 @@ export function TermCard({
   term: ImportTerm;
   /** La proposta di Claude, quando è arrivata. */
   proposal: TermProposal | null;
+  /** Se il giro di proposte in corso (quando c'è) si è già stabilizzato, riuscito o
+   * no. Mentre non lo è, la scorciatoia resta nascosta invece di mostrare subito
+   * l'aggancio testuale e poi magari sostituirlo con la proposta vera: un pulsante
+   * che cambia risposta da solo è peggio di un attimo senza pulsante. */
+  proposalsReady: boolean;
   /** Il nome dell'aggancio testuale: è la proposta di riserva, e c'è anche senza AI. */
   suggestionName: string | null;
   pending: boolean;
@@ -61,14 +69,15 @@ export function TermCard({
 
   // la proposta di Claude, se c'è; altrimenti l'aggancio testuale, che è sempre
   // meglio di nessun pulsante: un termine senza scorciatoia costa tre tocchi
-  const shortcut: TermProposal | null =
-    proposal ??
-    (suggestionName !== null && term.suggestion !== null
-      ? {
-          term_id: term.id, action: "map", ingredient_id: term.suggestion.ingredient_id,
-          name: suggestionName, display_name: null, category: null,
-        }
-      : null);
+  const shortcut: TermProposal | null = !proposalsReady
+    ? null
+    : proposal ??
+      (suggestionName !== null && term.suggestion !== null
+        ? {
+            term_id: term.id, action: "map", ingredient_id: term.suggestion.ingredient_id,
+            name: suggestionName, display_name: null, category: null,
+          }
+        : null);
 
   return (
     <Card as="li" className="flex flex-col gap-3">
@@ -84,7 +93,13 @@ export function TermCard({
         )}
       </div>
 
-      {shortcut && (
+      {/* quando la scorciatoia è "ignora", il pulsante permanente qui sotto fa già
+          esattamente questo in un tocco: un secondo pulsante con lo stesso testo
+          sarebbe un doppione, non una seconda via. Non è condizionato alla prontezza
+          delle proposte (a differenza di `shortcut`): il pulsante permanente resta
+          sempre lo stesso elemento, pronto o no che sia la proposta, e non sparisce
+          e riappare sotto chi lo sta per toccare. */}
+      {shortcut && shortcut.action !== "ignore" && (
         <button
           type="button"
           disabled={pending}
@@ -107,8 +122,13 @@ export function TermCard({
         </button>
       )}
 
+      {/* il nome accessibile porta il termine: la schermata mette una scheda per
+          ogni termine in attesa, e senza il nome qui dentro uno screen reader
+          sente N controlli identici — "Collega a un altro ingrediente" non dice a
+          chi lo ascolta quale dei tanti termini stia per agganciare */}
       <IngredientPicker
         label="Collega a un altro ingrediente"
+        accessibleLabel={`Collega «${term.display_name}» a un altro ingrediente`}
         failureNote="Puoi crearne uno nuovo qui sotto, o ignorare il termine."
         disabled={pending}
         onPick={(ingredient) =>
@@ -121,6 +141,7 @@ export function TermCard({
           type="button"
           disabled={pending}
           onClick={() => setCreating(true)}
+          aria-label={`Crea un ingrediente nuovo per «${term.display_name}»`}
           className={buttonClasses("secondary", "block")}
         >
           Crea un ingrediente nuovo
@@ -130,7 +151,7 @@ export function TermCard({
           <label className="text-sm font-medium text-ink-soft">
             Nome dell'ingrediente
             <input
-              aria-label="Nome dell'ingrediente"
+              aria-label={`Nome dell'ingrediente per «${term.display_name}»`}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               className="mt-1.5"
@@ -139,7 +160,7 @@ export function TermCard({
           <label className="text-sm font-medium text-ink-soft">
             Categoria
             <select
-              aria-label="Categoria"
+              aria-label={`Categoria per «${term.display_name}»`}
               value={newCategory}
               onChange={(e) => setNewCategory(e.target.value)}
               className="mt-1.5"
@@ -168,11 +189,14 @@ export function TermCard({
         </div>
       )}
 
-      {/* la correzione dell'aglio: un tocco in più, solo per le eccezioni */}
+      {/* la correzione dell'aglio: un tocco in più, solo per le eccezioni. Il nome
+          accessibile porta il termine per lo stesso motivo del picker qui sopra:
+          una scheda per termine, e senza il nome la casella è indistinguibile da
+          quella della scheda vicina */}
       <label className="flex min-h-11 items-center gap-2.5 text-sm text-ink-soft">
         <input
           type="checkbox"
-          aria-label="Di solito è un ingrediente secondario"
+          aria-label={`Di solito «${term.display_name}» è un ingrediente secondario`}
           checked={alsoSecondary}
           onChange={(e) => setAlsoSecondary(e.target.checked)}
           className="size-5"
@@ -180,18 +204,19 @@ export function TermCard({
         Di solito è secondario
       </label>
 
-      {/* quando la scorciatoia è già "ignora" questo bottone ne sarebbe un doppione
-          identico, stesso testo e stessa azione: non c'è una seconda via da offrire */}
-      {shortcut?.action !== "ignore" && (
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => onDecide({ action: "ignore" })}
-          className={buttonClasses("ghost", "block")}
-        >
-          Ignora «{term.display_name}»
-        </button>
-      )}
+      {/* sempre presente, pronta o no che sia la proposta: è la via d'uscita che
+          non lascia mai un termine senza decisione possibile. Quando la scorciatoia
+          sopra è già "ignora" questo è lo stesso tocco, non un doppione: la
+          scorciatoia in quel caso non si renderizza (vedi sopra), quindi qui non
+          c'è mai più di un pulsante con questo testo in scheda */}
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => onDecide({ action: "ignore" })}
+        className={buttonClasses("ghost", "block")}
+      >
+        Ignora «{term.display_name}»
+      </button>
     </Card>
   );
 }
