@@ -1,9 +1,10 @@
+import { STATUS_LABELS } from "./statusLabels";
 import type { PantryStatus } from "../../domain/types";
 
 const OPTIONS: [PantryStatus, string][] = [
-  ["available", "Disponibile"],
-  ["low", "Quasi finito"],
-  ["finished", "Finito"],
+  ["available", STATUS_LABELS.available],
+  ["low", STATUS_LABELS.low],
+  ["finished", STATUS_LABELS.finished],
 ];
 
 // Il controllo attraverso cui l'utente alimenta l'unico giudizio vero del sistema:
