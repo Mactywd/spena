@@ -4,7 +4,9 @@ import { AddItemField } from "./AddItemField";
 import { addShoppingItem, fetchShoppingList, patchShoppingItem } from "./api";
 import type { ShoppingItem } from "../../domain/types";
 
-const REASON_HINT: Record<string, string> = {
+// Parziale e tipizzato sull'unione: "manual" non ha nota perché non c'è niente da
+// spiegare, e il giorno in cui il backend aggiunge un motivo il compilatore lo dice.
+const REASON_HINT: Partial<Record<ShoppingItem["reason"], string>> = {
   finished_while_cooking: "rientrata perché finita cucinando",
   low_while_cooking: "rientrata perché quasi finita cucinando",
 };
@@ -25,7 +27,7 @@ function groupByCategory(items: ShoppingItem[]): [string, ShoppingItem[]][] {
 
 export function ShoppingListScreen() {
   const queryClient = useQueryClient();
-  const { data: items = [], isLoading } = useQuery({
+  const { data: items = [], isLoading, isError } = useQuery({
     queryKey: ["shopping-list"],
     queryFn: () => fetchShoppingList(),
   });
@@ -47,7 +49,7 @@ export function ShoppingListScreen() {
 
   return (
     <div>
-      <AddItemField onAdd={(text, id) => add.mutate({ text, id })} />
+      <AddItemField onAdd={(text, id) => add.mutateAsync({ text, id })} />
 
       {checkedCount > 0 && (
         <div className="px-4 pb-2">
@@ -61,7 +63,14 @@ export function ShoppingListScreen() {
       )}
 
       {isLoading && <p className="p-4 text-neutral-500">Carico…</p>}
-      {!isLoading && items.length === 0 && (
+      {/* un caricamento fallito non è una lista vuota: dirlo sarebbe una bugia su
+          quello che c'è da comprare. Scrivere resta possibile in entrambi i casi */}
+      {isError && (
+        <p role="alert" className="p-4 text-sm text-red-600">
+          Non sono riuscito a caricare la lista. Puoi comunque aggiungere voci.
+        </p>
+      )}
+      {!isLoading && !isError && items.length === 0 && (
         <p className="p-4 text-neutral-500">Lista vuota. Scrivi cosa ti serve.</p>
       )}
 
@@ -81,8 +90,12 @@ export function ShoppingListScreen() {
                 <span className={item.status === "checked" ? "text-neutral-400 line-through" : ""}>
                   {item.raw_text}
                 </span>
+                {/* visibile, non un tooltip: da telefono non esiste il passaggio del
+                    mouse, e il motivo per cui una voce è rientrata va letto */}
                 {REASON_HINT[item.reason] && (
-                  <span title={REASON_HINT[item.reason]} aria-hidden className="text-xs">↩</span>
+                  <span className="ml-auto shrink-0 text-xs text-neutral-400">
+                    {REASON_HINT[item.reason]}
+                  </span>
                 )}
               </li>
             ))}

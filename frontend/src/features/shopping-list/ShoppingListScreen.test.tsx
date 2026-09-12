@@ -43,7 +43,7 @@ describe("ShoppingListScreen", () => {
 
   it("segnala le voci rientrate dopo aver cucinato", async () => {
     renderScreen();
-    expect(await screen.findByTitle("rientrata perché finita cucinando")).toBeDefined();
+    expect(await screen.findByText("rientrata perché finita cucinando")).toBeDefined();
   });
 
   it("mostra le voci non risolte col testo che hai scritto", async () => {
@@ -69,5 +69,13 @@ describe("ShoppingListScreen", () => {
   it("offre di sistemare la spesa quando c'è almeno una voce spuntata", async () => {
     renderScreen();
     expect(await screen.findByRole("link", { name: "Sistema la spesa" })).toBeDefined();
+  });
+
+  it("un caricamento fallito non viene spacciato per lista vuota", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 500 })));
+    renderScreen();
+
+    expect(await screen.findByRole("alert")).toBeDefined();
+    expect(screen.queryByText(/Lista vuota/)).toBeNull();
   });
 });
