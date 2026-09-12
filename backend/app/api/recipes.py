@@ -17,10 +17,20 @@ from app.domain.rules import (
 from app.repositories.pantry import availability_map
 from app.repositories.recipes import create_recipe, get_recipe
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
-from app.schemas.recipe import RecipeCreate, RecipeIngredientOut, RecipeOut, RecipeSummaryOut
+from app.schemas.recipe import (
+    RecipeCreate,
+    RecipeIngredientOut,
+    RecipeOut,
+    RecipeSummaryOut,
+    SearchModeOut,
+)
 from app.services.ai_recipes import AiUnavailable, draft_recipe
-from app.services.embeddings import EmbeddingUnavailable, get_embedding_provider
-from app.services.recipe_search import search_recipes
+from app.services.embeddings import (
+    EmbeddingUnavailable,
+    get_embedding_provider,
+    log_degradation_once,
+)
+from app.services.recipe_search import search_recipes, semantic_search_available
 
 router = APIRouter(
     prefix="/api/v1/recipes", tags=["recipes"], dependencies=[Depends(require_session)]
@@ -76,6 +86,12 @@ async def search(
     ]
 
 
+@router.get("/search-mode", response_model=SearchModeOut)
+async def search_mode() -> SearchModeOut:
+    """Dichiarata prima di `/{recipe_id}`, altrimenti la rotta col parametro la mangia."""
+    return SearchModeOut(semantic=await semantic_search_available())
+
+
 @router.get("/{recipe_id}", response_model=RecipeOut)
 async def detail(
     recipe_id: uuid.UUID, session: AsyncSession = Depends(get_session)
@@ -94,8 +110,9 @@ async def create(
     text = f"{payload.title}. {payload.description or ''}"
     try:
         embedding = (await get_embedding_provider().embed_passages([text]))[0]
-    except EmbeddingUnavailable:
+    except EmbeddingUnavailable as exc:
         embedding = None
+        log_degradation_once(exc)
 
     try:
         recipe = await create_recipe(

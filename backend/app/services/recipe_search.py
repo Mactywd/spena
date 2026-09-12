@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.recipe import Recipe, RecipeIngredient
 from app.domain.rules import Availability, IngredientRole, is_cookable, missing_count
 from app.repositories.pantry import availability_map
-from app.services.embeddings import EmbeddingUnavailable, get_embedding_provider
+from app.services.embeddings import (
+    EmbeddingUnavailable,
+    get_embedding_provider,
+    log_degradation_once,
+)
 
 RRF_K = 60
 CANDIDATE_POOL = 100
@@ -72,11 +76,32 @@ async def _embed_query(query: str) -> list[float]:
     return await get_embedding_provider().embed_query(query)
 
 
+SEMANTIC_PROBE = "prova"
+
+
+async def semantic_search_available() -> bool:
+    """Se un vettore si riesce davvero a calcolare, adesso, con questa configurazione.
+
+    Passa dalla stessa funzione che usa la ricerca, quindi la risposta riguarda il
+    percorso vero e non la configurazione dichiarata. Con il fornitore locale la
+    prima chiamata carica il modello, che resta caricato (vedi embeddings.py): è un
+    preriscaldamento, non uno spreco.
+    """
+    try:
+        await _embed_query(SEMANTIC_PROBE)
+    except EmbeddingUnavailable as exc:
+        log_degradation_once(exc)
+        return False
+    return True
+
+
 async def _semantic_ranking(session: AsyncSession, query: str) -> list[uuid.UUID]:
     try:
         vector = await _embed_query(query)
-    except EmbeddingUnavailable:
-        return []  # degradazione: resta la sola ricerca testuale
+    except EmbeddingUnavailable as exc:
+        # degradazione: resta la sola ricerca testuale, ma si deve sapere
+        log_degradation_once(exc)
+        return []
     distance = Recipe.embedding.cosine_distance(vector)
     statement = (
         select(Recipe.id)

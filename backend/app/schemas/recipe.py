@@ -53,3 +53,15 @@ class RecipeSummaryOut(BaseModel):
     source: str
     missing: int
     cookable: bool
+
+
+class SearchModeOut(BaseModel):
+    """Se la ricerca del ricettario è ibrida o solo testuale, in questo momento.
+
+    La spec §11 vuole un avviso discreto quando il modello di embedding non si
+    carica. Sta in una rotta sua e non nella risposta di /recipes/search perché
+    quella è un elenco e incartarla cambierebbe un contratto che funziona; lo schermo
+    Ricette la chiede una volta e mostra la riga se `semantic` è falso.
+    """
+
+    semantic: bool

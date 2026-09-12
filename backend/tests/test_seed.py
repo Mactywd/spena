@@ -55,7 +55,10 @@ async def test_loading_is_idempotent(db_session):
 async def test_recipes_load_with_roles_and_aliases(db_session):
     await load_ingredients(db_session, DATA / "ingredients_seed.json")
     loaded = await load_recipes(db_session, DATA / "recipes_seed.json")
-    assert loaded >= 20
+    assert loaded.created >= 20
+    # con un fornitore funzionante nessuna ricetta resta senza vettore: è il numero
+    # che il comando stampa, e che distingue un ricettario sano da uno senza vettori
+    assert loaded.without_embedding == 0
 
     aliases = list((await db_session.execute(select(IngredientAlias))).scalars())
     assert len(aliases) > 0
@@ -65,6 +68,45 @@ async def test_recipes_load_with_roles_and_aliases(db_session):
 
     recipes = list((await db_session.execute(select(Recipe))).scalars())
     assert all(r.source == "dataset" for r in recipes)
+
+
+async def test_il_seme_conta_e_annuncia_le_ricette_salvate_senza_vettore(
+    db_session, monkeypatch, caplog
+):
+    """Con il fornitore guasto le ricette entrano comunque, ma il numero si deve vedere.
+
+    È il caso vero di un'immagine senza sentence-transformers: prima il comando
+    stampava soltanto «caricati 169 ingredienti e 26 ricette», identico a una semina
+    sana, e l'unico modo di scoprire i vettori mancanti era cercare invano.
+    """
+    import logging
+
+    from app.cli import seed as modulo_seme
+    from app.services import embeddings
+    from app.services.embeddings import EmbeddingUnavailable
+
+    class FornitoreGuasto:
+        async def embed_query(self, text: str):
+            raise EmbeddingUnavailable("sentence-transformers non installato")
+
+        async def embed_passages(self, texts: list[str]):
+            raise EmbeddingUnavailable("sentence-transformers non installato")
+
+    monkeypatch.setattr(modulo_seme, "get_embedding_provider", lambda: FornitoreGuasto())
+    monkeypatch.setattr(embeddings, "_degradation_logged", False)
+
+    await load_ingredients(db_session, DATA / "ingredients_seed.json")
+    with caplog.at_level(logging.WARNING):
+        loaded = await load_recipes(db_session, DATA / "recipes_seed.json")
+
+    assert loaded.created >= 20
+    assert loaded.without_embedding == loaded.created
+
+    salvate = list((await db_session.execute(select(Recipe))).scalars())
+    assert len(salvate) == loaded.created, "la ricetta vale anche senza vettore"
+    assert all(r.embedding is None for r in salvate)
+
+    assert any("INSTALL_EMBEDDINGS=1" in r.getMessage() for r in caplog.records)
 
 
 def test_il_seme_si_trova_nella_radice_del_repository():

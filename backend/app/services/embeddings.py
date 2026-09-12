@@ -8,6 +8,7 @@ risultati peggiori, che è molto più difficile da notare.
 import asyncio
 import hashlib
 import json
+import logging
 from typing import Protocol
 
 import httpx
@@ -15,9 +16,36 @@ import httpx
 from app.core.config import get_settings
 from app.db.models.recipe import EMBEDDING_DIM
 
+logger = logging.getLogger(__name__)
+
 
 class EmbeddingUnavailable(Exception):
     """Il fornitore non è utilizzabile. La ricerca degrada al solo testo."""
+
+
+# La spec §11 chiede che il degrado si veda («con avviso discreto») e finora non si
+# vedeva da nessuna parte: il ricettario senza vettori è indistinguibile da uno sano,
+# ed è questo che ha lasciato passare per tutto il branch un'immagine che non
+# installava sentence-transformers. Il messaggio nomina la causa e dice come
+# rimediare, perché è l'unica riga che chi fa il deploy leggerà.
+SEMANTIC_OFF_HOWTO = (
+    "ricerca semantica non disponibile (%s): il ricettario resta sulla sola ricerca "
+    "testuale. È la degradazione prevista dalla spec §11, non un guasto. Per "
+    "accenderla: INSTALL_EMBEDDINGS=1 in .env e `docker compose up -d --build`."
+)
+
+# Una volta per processo e non a ogni tentativo: un avviso per ricerca diventerebbe
+# rumore, e il rumore non lo legge nessuno.
+_degradation_logged = False
+
+
+def log_degradation_once(reason: object) -> None:
+    """Da chiamare in ogni punto che inghiotte EmbeddingUnavailable per degradare."""
+    global _degradation_logged
+    if _degradation_logged:
+        return
+    _degradation_logged = True
+    logger.warning(SEMANTIC_OFF_HOWTO, reason)
 
 
 # I due prefissi vivono qui e solo qui. Erano ricopiati in linea da tre fornitori su

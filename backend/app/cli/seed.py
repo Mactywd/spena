@@ -6,6 +6,7 @@ Eseguire con `python -m app.cli.seed` dentro il container del backend.
 import asyncio
 import json
 from pathlib import Path
+from typing import NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,11 @@ from app.core.db import SessionLocal
 from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.recipe import Recipe
 from app.repositories.recipes import create_recipe
-from app.services.embeddings import EmbeddingUnavailable, get_embedding_provider
+from app.services.embeddings import (
+    EmbeddingUnavailable,
+    get_embedding_provider,
+    log_degradation_once,
+)
 
 # I file del seme stanno in data/ nella radice del repository (layout della spec),
 # che è fuori dal contesto di build dell'immagine del backend: dentro il container
@@ -77,7 +82,20 @@ async def load_ingredients(session: AsyncSession, path: Path) -> int:
     return created
 
 
-async def load_recipes(session: AsyncSession, path: Path) -> int:
+class RecipesLoaded(NamedTuple):
+    """Quante ricette sono entrate, e quante senza vettore.
+
+    Il secondo numero esiste perché un ricettario seminato con zero vettori era
+    indistinguibile da uno sano: il seme inghiotte EmbeddingUnavailable per ricetta
+    (giustamente, la ricetta vale anche senza vettore) e stampava solo i conteggi.
+    Vederlo al momento della semina è il momento in cui costa meno accorgersene.
+    """
+
+    created: int
+    without_embedding: int
+
+
+async def load_recipes(session: AsyncSession, path: Path) -> RecipesLoaded:
     entries = json.loads(path.read_text())
     by_name = {
         name: ingredient_id
@@ -91,14 +109,17 @@ async def load_recipes(session: AsyncSession, path: Path) -> int:
 
     provider = get_embedding_provider()
     created = 0
+    without_embedding = 0
     for entry in entries:
         if entry["title"] in existing_titles:
             continue
         text = f"{entry['title']}. {entry.get('description', '')}"
         try:
             embedding = (await provider.embed_passages([text]))[0]
-        except EmbeddingUnavailable:
+        except EmbeddingUnavailable as exc:
             embedding = None
+            without_embedding += 1
+            log_degradation_once(exc)
 
         await create_recipe(
             session,
@@ -114,7 +135,7 @@ async def load_recipes(session: AsyncSession, path: Path) -> int:
         created += 1
 
     await session.flush()
-    return created
+    return RecipesLoaded(created=created, without_embedding=without_embedding)
 
 
 async def main() -> None:
@@ -123,7 +144,15 @@ async def main() -> None:
         ingredients = await load_ingredients(session, data_dir / INGREDIENTS_FILE)
         recipes = await load_recipes(session, data_dir / RECIPES_FILE)
         await session.commit()
-    print(f"caricati {ingredients} ingredienti e {recipes} ricette")
+    print(f"caricati {ingredients} ingredienti e {recipes.created} ricette")
+    if recipes.without_embedding:
+        # senza questa riga un ricettario senza vettori sembra identico a uno sano
+        print(
+            f"{recipes.without_embedding} ricette salvate senza vettore: la ricerca "
+            "resta solo testuale. Vedi l'avviso qui sopra per accendere la semantica; "
+            "queste ricette non riceveranno il vettore rieseguendo il seme, che è "
+            "idempotente."
+        )
 
 
 if __name__ == "__main__":
