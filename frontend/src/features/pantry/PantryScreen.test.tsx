@@ -16,6 +16,20 @@ const ITEMS = [
     status: "available", note: null, added_at: "2026-09-11T10:00:00Z" },
 ];
 
+const MELA = { id: "i2", name: "mela", display_name: "Mela", category: "frutta" };
+
+/** Un fetch che risponde in base al percorso: l'ingresso diretto ne attraversa tre
+ * (la dispensa, la ricerca in anagrafica, la scrittura), e ogni chiamata deve
+ * ricevere una Response nuova perché il corpo si legge una volta sola. */
+function stubRoutedFetch(route: (path: string, init?: RequestInit) => [unknown, number]) {
+  const spy = vi.fn((url: unknown, init?: RequestInit) => {
+    const [body, status] = route(String(url), init);
+    return Promise.resolve(new Response(JSON.stringify(body), { status }));
+  });
+  vi.stubGlobal("fetch", spy);
+  return spy;
+}
+
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -137,6 +151,61 @@ describe("PantryScreen", () => {
     expect(within(row).getByRole("button", { name: "Togli dalla dispensa" })).toBeDisabled();
     const other = screen.getByText("Pesca").closest("li")!;
     expect(within(other).getByRole("button", { name: "Finito" })).not.toBeDisabled();
+  });
+
+  // M2, spec §8.3: l'ingresso diretto. Senza, per mettere in dispensa una cosa
+  // comprata e non scritta in lista bisognava inventare una voce di lista,
+  // spuntarla e sistemarla — e lo schermo prometteva «aggiungi qualcosa a mano»
+  // da quando esisteva.
+  it("si può aggiungere in dispensa qualcosa che non era in lista", async () => {
+    const spy = stubRoutedFetch((path, init) => {
+      if (path.includes("/ingredients/search")) return [[MELA], 200];
+      if (init?.method === "POST") return [{ ...ITEMS[2] }, 201];
+      return [[], 200];
+    });
+
+    renderScreen();
+    await userEvent.type(await screen.findByLabelText("Aggiungi in dispensa"), "mel");
+    await userEvent.click(await screen.findByRole("option", { name: /Mela/ }));
+
+    const post = spy.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
+    expect(String(post?.[0])).toContain("/pantry");
+    expect(JSON.parse(String((post?.[1] as RequestInit).body))).toEqual({
+      ingredient_id: "i2",
+      status: "available",
+    });
+  });
+
+  it("un'aggiunta rifiutata lo dice accanto al campo, non in cima allo schermo", async () => {
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/ingredients/search")) return [[MELA], 200];
+      if (init?.method === "POST") return [{ detail: "no" }, 500];
+      return [[], 200];
+    });
+
+    renderScreen();
+    await userEvent.type(await screen.findByLabelText("Aggiungi in dispensa"), "mel");
+    await userEvent.click(await screen.findByRole("option", { name: /Mela/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito ad aggiungere/i);
+  });
+
+  it("mentre l'aggiunta è in volo il campo non accetta una seconda scelta", async () => {
+    // due POST in volo sulla stessa dispensa creano due voci per una sola cosa
+    // comprata, e la seconda non si distingue dalla prima
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      if (init?.method === "POST") return new Promise<Response>(() => {});
+      const body = path.includes("/ingredients/search") ? [MELA] : [];
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    await userEvent.type(await screen.findByLabelText("Aggiungi in dispensa"), "mel");
+    await userEvent.click(await screen.findByRole("option", { name: /Mela/ }));
+
+    await waitFor(() => expect(screen.getByLabelText("Aggiungi in dispensa")).toBeDisabled());
   });
 
   it("dice cosa fare quando la dispensa è vuota", async () => {
