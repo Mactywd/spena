@@ -13,7 +13,15 @@ services:
     restart: unless-stopped
 
   backend:
-    build: ./backend
+    # INSTALL_EMBEDDINGS=1 in .env aggiunge sentence-transformers all'immagine e
+    # accende così la ricerca semantica. A 0 l'immagine resta leggera (misurato:
+    # 233 MB, contro i GB che torch porta con sé) e la ricerca è solo testuale su
+    # pg_trgm, cioè la degradazione prevista dalla spec §11. È l'unico posto da
+    # cambiare: lo leggono entrambi i file Compose.
+    build:
+      context: ./backend
+      args:
+        INSTALL_EMBEDDINGS: ${INSTALL_EMBEDDINGS:-0}
     # `format: raw` non è decorativo, ed è lo stesso motivo di docker-compose.yml:
     # l'hash argon2 di APP_PASSWORD_HASH contiene dei `$` e Compose, nella forma
     # breve `env_file: .env`, li interpreta come riferimenti a variabili. Misurato:

@@ -119,9 +119,14 @@ suite gira sull'host, non dentro al container, perché deve poter importare
 
 ```bash
 cd backend
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev,ai]"
 .venv/bin/python -m pytest
 ```
+
+`ai` oltre a `dev` perché un test solo esegue l'`import anthropic` vero
+(`tests/test_image_dependencies.py`), e senza il pacchetto si salta: è il percorso
+che nessun test toccava quando l'immagine non installava l'extra, e saltarlo
+significa non difenderlo.
 
 La suite non tocca la rete: Open Food Facts e Claude girano su fixture registrate, e
 non legge il tuo `.env` (vedi il commento in `backend/tests/conftest.py`).
@@ -239,7 +244,8 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso; illeggibile (troncato), il backend non parte |
 | `COOKIE_SECURE` | `false` | `true` in produzione: il cookie solo su HTTPS |
 | `ANTHROPIC_API_KEY` | vuoto | stesura ricette con l'AI e abbinamenti incerti |
-| `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake` |
+| `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
+| `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale |
 | `EMBEDDING_ENDPOINT` | vuoto | solo con `EMBEDDING_BACKEND=http` |
 | `OFF_BASE_URL` | api ufficiale di Open Food Facts | sovrascrivibile nei test |
@@ -250,6 +256,41 @@ Nessuna di queste, mancando, porta a un vicolo cieco nell'interfaccia: senza chi
 Anthropic la ricetta si scrive a mano, senza modello di embedding la ricerca resta
 quella testuale, con Open Food Facts irraggiungibile il prodotto si crea a mano. È
 una regola di casa, non un caso fortunato.
+
+### La ricerca semantica è facoltativa, e per default è spenta
+
+`INSTALL_EMBEDDINGS` è un argomento di build, non una variabile d'ambiente: va
+scritto in `.env` come le altre, ma ha effetto solo ricostruendo l'immagine
+(`docker compose up -d --build`). Entrambi i file Compose lo leggono da lì, quindi è
+un posto solo.
+
+| | `INSTALL_EMBEDDINGS=0` (default) | `INSTALL_EMBEDDINGS=1` |
+|---|---|---|
+| immagine del backend | 233 MB | qualche GB: sentence-transformers trascina torch |
+| prima ricerca | immediata | il modello (circa 500 MB) si scarica al primo uso |
+| ricerca nel ricettario | solo testuale, su `pg_trgm` e `search_tsv` | ibrida, vettoriale più testuale come nella spec §8.5 |
+| ricette salvate | `embedding` a NULL | con il vettore |
+
+Cosa si perde davvero con `0`: la ricerca trova solo ciò che contiene le parole che
+hai scritto. «qualcosa di veloce con le uova» non trova la frittata, e «pomodoro»
+non trova «Pasta al sugo». Tutto il resto dell'app funziona identico, ed è la
+degradazione che la spec §11 prevede — non un guasto. Il backend lo scrive nei log
+al primo tentativo di calcolare un vettore, una volta per processo:
+
+```
+semantic search non disponibile: ... — la ricerca resta solo testuale.
+Per accenderla: INSTALL_EMBEDDINGS=1 in .env e `docker compose up -d --build`.
+```
+
+Se accendi `1` *dopo* aver seminato, le 26 ricette del seme restano senza vettore:
+il seme è idempotente e non le riscrive. Per rifarle, cancella il volume del
+database e risemina — oppure accetta che solo le ricette nuove siano cercabili
+anche per somiglianza.
+
+Con `INSTALL_EMBEDDINGS=0` tieni `EMBEDDING_BACKEND=local` così com'è: è la
+configurazione che si accende da sola il giorno in cui ricostruisci con `1`.
+L'alternativa è `http` con un `EMBEDDING_ENDPOINT` tuo, che dà la ricerca semantica
+senza torch dentro all'immagine.
 
 ## Oltre la v1
 
