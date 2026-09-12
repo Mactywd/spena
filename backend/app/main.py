@@ -6,25 +6,40 @@ from fastapi import Depends, FastAPI
 from app.api import auth, cooking, ingredients, pantry, products, recipes, shopping
 from app.core.config import get_settings
 from app.core.security import (
+    PASSWORD_HASH_HOWTO,
     SECRET_HOWTO,
     InsecureSessionSecret,
+    UnusablePasswordHash,
     is_insecure_session_secret,
+    is_unusable_password_hash,
     require_session,
 )
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Un server con un segreto pubblico non deve sembrare sano.
+    """Un server mal configurato non deve sembrare sano.
 
-    Il controllo in app/core/security.py scatta alla prima richiesta che tocca un
-    cookie: fino a quel momento /health risponde 200 e il deploy sembra riuscito.
-    Qui il processo muore all'avvio, dove chi ha fatto il deploy sta ancora
-    guardando i log, con scritto come generare il segreto.
+    Il controllo sul segreto in app/core/security.py scatta alla prima richiesta che
+    tocca un cookie: fino a quel momento /health risponde 200 e il deploy sembra
+    riuscito. Qui il processo muore all'avvio, dove chi ha fatto il deploy sta ancora
+    guardando i log, con scritto come rimediare.
+
+    L'hash della password sta qui per un motivo peggiore: un APP_PASSWORD_HASH
+    troncato (è quello che fa Compose ai `$` senza `format: raw`) non produce nessun
+    sintomo diagnosticabile. `verify_password` risponde False come per una password
+    sbagliata, quindi l'unico segnale è «password errata» per sempre, su un `.env`
+    che a occhio sembra pieno. Un vicolo cieco di questo tipo va fermato dove si
+    vede, cioè nei log dell'avvio.
+
+    Un hash vuoto invece lascia partire: è il `.env` non ancora riempito, e il login
+    risponde 401 dicendo il vero.
     """
-    secret = get_settings().session_secret
-    if is_insecure_session_secret(secret):
+    settings = get_settings()
+    if is_insecure_session_secret(settings.session_secret):
         raise InsecureSessionSecret(SECRET_HOWTO)
+    if is_unusable_password_hash(settings.app_password_hash):
+        raise UnusablePasswordHash(PASSWORD_HASH_HOWTO)
     yield
 
 

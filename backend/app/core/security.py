@@ -1,4 +1,4 @@
-from argon2 import PasswordHasher
+from argon2 import PasswordHasher, extract_parameters
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import HTTPException, Request, Response, status
 from itsdangerous import BadSignature, TimestampSigner
@@ -28,6 +28,23 @@ class InsecureSessionSecret(RuntimeError):
     """SESSION_SECRET assente o lasciata a un segnaposto pubblico."""
 
 
+PASSWORD_HASH_HOWTO = (
+    "APP_PASSWORD_HASH c'è ma non è un hash argon2 leggibile. La causa più probabile "
+    "è un troncamento: l'hash contiene dei `$` e Compose li interpreta come "
+    "riferimenti a variabili se il servizio backend usa la forma breve "
+    "`env_file: .env`, oppure se Compose è precedente alla 2.30 e non conosce "
+    "`format: raw` (misurato: 62 caratteri su 97 arrivano al container). Controlla "
+    "`docker compose version` e la forma di `env_file` in docker-compose.yml, poi "
+    "rigenera l'hash con: docker compose run --rm backend python -c "
+    "\"from app.core.security import hash_password; print(hash_password('la-tua-password'))\" "
+    "e incollalo in .env senza apici."
+)
+
+
+class UnusablePasswordHash(RuntimeError):
+    """APP_PASSWORD_HASH valorizzata ma illeggibile per argon2."""
+
+
 def hash_password(plain: str) -> str:
     return _hasher.hash(plain)
 
@@ -52,6 +69,25 @@ def is_insecure_session_secret(secret: str) -> bool:
     diventerebbe più permissivo di quello che conta davvero.
     """
     return not secret or secret in PLACEHOLDER_SECRETS
+
+
+def is_unusable_password_hash(hashed: str) -> bool:
+    """Vero se l'hash configurato c'è ma argon2 non sa leggerlo.
+
+    `extract_parameters` fa esattamente questa domanda — i parametri si estraggono
+    solo da un hash ben formato — senza bisogno di una password da provare.
+
+    Un hash vuoto non è illeggibile ma assente, e risponde False: è una macchina su
+    cui il `.env` non è ancora stato riempito, non una configurazione rotta, e il
+    login risponde già 401 a chiunque (vedi tests/api/test_auth.py).
+    """
+    if not hashed:
+        return False
+    try:
+        extract_parameters(hashed)
+    except InvalidHashError:
+        return True
+    return False
 
 
 def _signer() -> TimestampSigner:
