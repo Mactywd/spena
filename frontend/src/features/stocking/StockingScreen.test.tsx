@@ -229,7 +229,7 @@ describe("StockingScreen", () => {
       await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
     );
 
-    expect(await screen.findByText(/Nessun prodotto in catalogo/)).toBeDefined();
+    expect(await screen.findByText(/Nessun prodotto con queste parole/)).toBeDefined();
     await userEvent.click(screen.getByRole("button", { name: "Crea il prodotto a mano" }));
     expect(screen.getByRole("heading", { name: /Nuovo prodotto per «yogurt greco»/ }))
       .toBeDefined();

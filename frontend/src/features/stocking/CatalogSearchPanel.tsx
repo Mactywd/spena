@@ -36,6 +36,11 @@ export function CatalogSearchPanel({
   onCreateByHand: () => void;
   onCancel: () => void;
 }) {
+  // parte dal testo della voce, come dice la spec §8.2 («da `yogurt greco` a
+  // `yogurt greco carrefour pesca`»): affinare è aggiungere parole a quel che si è
+  // già scritto. Vale quando il nome del prodotto contiene il termine generico, che
+  // è il caso di Open Food Facts; per una referenza di sola marca il campo si
+  // riscrive, ed è il motivo per cui non è di sola lettura.
   const [term, setTerm] = useState(itemLabel);
   const debounced = useDebounced(term, DEBOUNCE_MS).trim();
   const ready = debounced.length >= 2;
@@ -102,10 +107,15 @@ export function CatalogSearchPanel({
         </p>
       )}
 
+      {/* "con queste parole", non "in catalogo": la ricerca guarda nome e marca del
+          prodotto, e il campo parte dal testo della voce di lista, che per una
+          referenza di marca può non comparire da nessuna parte — «Total 0% Fage»
+          non contiene «yogurt greco». Dire che il catalogo è vuoto sarebbe un
+          verdetto sbagliato sulla prima schermata del pannello. */}
       {nothingToPick && (
         <p className="text-sm text-neutral-600">
-          Nessun prodotto in catalogo per questa voce. Puoi crearlo adesso, leggere il codice a
-          barre, oppure confermarla come sfusa.
+          Nessun prodotto con queste parole: la ricerca guarda nome e marca, prova con la
+          marca. Oppure crealo adesso, leggi il codice a barre, o conferma la voce come sfusa.
         </p>
       )}
 
