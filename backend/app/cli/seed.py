@@ -19,6 +19,7 @@ from app.services.embeddings import (
     EmbeddingUnavailable,
     get_embedding_provider,
     log_degradation_once,
+    recipe_document,
 )
 
 # I file del seme stanno in data/ nella radice del repository (layout della spec),
@@ -113,7 +114,7 @@ async def load_recipes(session: AsyncSession, path: Path) -> RecipesLoaded:
     for entry in entries:
         if entry["title"] in existing_titles:
             continue
-        text = f"{entry['title']}. {entry.get('description', '')}"
+        text = recipe_document(entry["title"], entry.get("description", ""))
         try:
             embedding = (await provider.embed_passages([text]))[0]
         except EmbeddingUnavailable as exc:

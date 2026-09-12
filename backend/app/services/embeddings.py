@@ -65,6 +65,18 @@ def decorate_passage(text: str) -> str:
     return f"{PASSAGE_PREFIX}{text}"
 
 
+# Lo stesso letterale `f"{title}. {description or ''}"` era ricopiato in linea in
+# app/api/recipes.py, app/cli/seed.py, app/services/recipe_import/materialize.py e
+# app/cli/reindex.py: quattro copie di una sola regola, con il rischio che una
+# modifica futura (per esempio includere gli ingredienti nel testo) ne aggiorni tre
+# e dimentichi la quarta. Vive qui perché questo modulo possiede già tutto ciò che il
+# modello vede, prefissi compresi. Il corpo non cambia il testo prodotto finora: un
+# testo diverso invaliderebbe in silenzio ogni vettore già salvato.
+def recipe_document(title: str, description: str | None) -> str:
+    """Il testo che una ricetta presenta al modello: titolo, punto, descrizione."""
+    return f"{title}. {description or ''}"
+
+
 class EmbeddingProvider(Protocol):
     async def embed_query(self, text: str) -> list[float]: ...
 

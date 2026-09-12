@@ -29,6 +29,7 @@ from app.services.embeddings import (
     EmbeddingUnavailable,
     get_embedding_provider,
     log_degradation_once,
+    recipe_document,
 )
 from app.services.recipe_search import search_recipes, semantic_search_usable
 
@@ -111,7 +112,7 @@ async def create(
     payload: RecipeCreate, session: AsyncSession = Depends(get_session)
 ) -> RecipeOut:
     """L'embedding è un ornamento: se il modello non c'è, la ricetta si salva comunque."""
-    text = f"{payload.title}. {payload.description or ''}"
+    text = recipe_document(payload.title, payload.description)
     try:
         embedding = (await get_embedding_provider().embed_passages([text]))[0]
     except EmbeddingUnavailable as exc:

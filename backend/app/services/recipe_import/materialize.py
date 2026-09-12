@@ -24,6 +24,7 @@ from app.services.embeddings import (
     EmbeddingUnavailable,
     get_embedding_provider,
     log_degradation_once,
+    recipe_document,
 )
 
 MAX_QUANTITY_CHARS = 100  # il limite di recipe_ingredients.quantity_text
@@ -105,7 +106,7 @@ async def materialize_ready(
             skipped += 1
             continue
 
-        text = f"{page.payload.get('title', '')}. {page.payload.get('description') or ''}"
+        text = recipe_document(page.payload.get("title", ""), page.payload.get("description"))
         try:
             embedding = (await provider.embed_passages([text]))[0]
         except EmbeddingUnavailable as exc:

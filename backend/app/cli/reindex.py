@@ -16,7 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal
 from app.db.models.recipe import Recipe
-from app.services.embeddings import get_embedding_provider
+from app.services.embeddings import (
+    SEMANTIC_OFF_HOWTO,
+    EmbeddingUnavailable,
+    get_embedding_provider,
+    log_degradation_once,
+    recipe_document,
+)
 
 # a lotti, perché un ricettario grande non deve entrare tutto in memoria insieme
 BATCH = 64
@@ -38,7 +44,7 @@ async def reindex(session: AsyncSession) -> int:
         batch = list(rows.scalars())
         if not batch:
             return written
-        texts = [f"{recipe.title}. {recipe.description or ''}" for recipe in batch]
+        texts = [recipe_document(recipe.title, recipe.description) for recipe in batch]
         vectors = await provider.embed_passages(texts)
         for recipe, vector in zip(batch, vectors, strict=True):
             recipe.embedding = vector
@@ -47,8 +53,24 @@ async def reindex(session: AsyncSession) -> int:
 
 
 async def main() -> None:
+    """Mai un vicolo cieco: se il modello non c'è, lo dice e indica come accenderlo,
+    invece di lasciar risalire un traceback fino alla shell di chi esegue il comando.
+
+    Non fa `commit()` su questo percorso. I lotti già scritti restano nella
+    transazione della sessione e vengono persi quando il blocco `async with` la
+    chiude senza commit: o il giro è riuscito per intero, o il ricettario resta
+    esattamente com'era prima di lanciarlo. In pratica il caso comune (modello mai
+    installato) fallisce già al primo lotto, quindi non c'è nulla da perdere; ma un
+    fallimento a metà giro (modello che sparisce mentre gira) non deve lasciare un
+    ricettario per metà indicizzato senza che nessuno lo sappia.
+    """
     async with SessionLocal() as session:
-        scritti = await reindex(session)
+        try:
+            scritti = await reindex(session)
+        except EmbeddingUnavailable as exc:
+            log_degradation_once(exc)
+            print(SEMANTIC_OFF_HOWTO % exc)
+            return
         await session.commit()
     if scritti:
         print(f"scritti {scritti} vettori: la ricerca semantica li vede adesso")
