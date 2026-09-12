@@ -137,12 +137,12 @@ export function CustomProductForm({
         </p>
       )}
       <button type="submit" disabled={create.isPending}
-              className={buttonClasses("primary")}>
+              className={buttonClasses("primary", "block")}>
         Salva prodotto
       </button>
       {/* un 409 persistente non deve incollare il riquadro allo schermo: si esce
           sempre, e la voce resta sistemabile come sfusa */}
-      <button type="button" onClick={onCancel} className={buttonClasses("ghost")}>
+      <button type="button" onClick={onCancel} className={`${buttonClasses("ghost")} self-start`}>
         Annulla
       </button>
     </form>

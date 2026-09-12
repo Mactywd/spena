@@ -54,13 +54,14 @@
   /* I campi si vestono una volta qui, non schermata per schermata: sono otto moduli
      sparsi in sei cartelle e mantenerli uguali a mano non funziona. Il `text-base`
      non è estetica — sotto i 16px iOS ingrandisce la pagina da solo quando il campo
-     prende fuoco, e si resta con l'app storta in mano. La casella di spunta è
-     esclusa di proposito: ha un aspetto nativo che funziona già. */
-  input[type="text"],
-  input[type="search"],
-  input[type="password"],
-  input[type="number"],
-  input[type="url"],
+     prende fuoco, e si resta con l'app storta in mano.
+
+     Il selettore esclude i tipi che non sono campi di testo invece di elencare
+     quelli che lo sono: `input[type="text"]` non seleziona un `<input>` senza
+     attributo `type`, che è come sono scritti metà dei campi di quest'app — il
+     tipo predefinito è "text" per il browser, non per il foglio di stile, e la
+     prima stesura di questa regola lasciava il campo della lista trasparente. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="submit"], [type="button"], [type="reset"]),
   textarea,
   select {
     background-color: var(--color-card);

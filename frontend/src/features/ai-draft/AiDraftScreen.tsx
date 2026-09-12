@@ -253,7 +253,7 @@ export function AiDraftScreen() {
           type="button"
           onClick={() => propose.mutate()}
           disabled={prompt.trim().length < 3 || propose.isPending}
-          className={buttonClasses("primary")}
+          className={buttonClasses("primary", "block")}
         >
           {propose.isPending ? "Propongo…" : "Proponi"}
         </button>
@@ -272,7 +272,7 @@ export function AiDraftScreen() {
         )}
       </div>
 
-      <div className="flex flex-col gap-3 border-t pt-4">
+      <div className="flex flex-col gap-3 border-t border-line pt-4">
         <label className="text-sm">
           Titolo
           <input
@@ -411,7 +411,7 @@ export function AiDraftScreen() {
           type="button"
           onClick={() => save.mutate()}
           disabled={save.isPending || problem !== null}
-          className={buttonClasses("primary")}
+          className={buttonClasses("primary", "block")}
         >
           {save.isPending ? "Salvo…" : "Salva nel ricettario"}
         </button>
