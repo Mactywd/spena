@@ -311,6 +311,34 @@ describe("RecipeBookScreen", () => {
     expect(link).toHaveAttribute("href", "/ricette/importa");
   });
 
+  // "1 ingredienti da abbinare, 1 ricette in attesa" era il testo con un solo
+  // termine e una sola ricetta in attesa: entrambi i plurali sbagliati a uno, lo
+  // stesso caso che TermCard.tsx già tratta correttamente riga per riga.
+  it("con un solo ingrediente e una sola ricetta usa il singolare per entrambi", async () => {
+    const spy = vi.fn((url: unknown) => {
+      const path = String(url);
+      if (path.includes("/imports/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              { fetched: 1, pending_recipes: 1, imported: 0, skipped: 0, pending_terms: 1 }
+            ),
+            { status: 200 }
+          )
+        );
+      }
+      if (path.includes("/recipes/categories")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(RESULTS), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    const link = await screen.findByRole("link", { name: /1 ingrediente da abbinare/ });
+    expect(link).toHaveTextContent("1 ingrediente da abbinare, 1 ricetta in attesa");
+  });
+
   it("senza ingredienti in attesa non mostra la porta verso la coda", async () => {
     stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();

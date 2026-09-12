@@ -109,8 +109,13 @@ export function RecipeBookScreen() {
           className="mb-3 flex min-h-11 items-center justify-between rounded-card bg-low-tint px-3.5 py-3 text-sm text-low"
         >
           <span>
-            {importStatus.pending_terms} ingredienti da abbinare,{" "}
-            {importStatus.pending_recipes} ricette in attesa
+            {importStatus.pending_terms === 1
+              ? "1 ingrediente da abbinare"
+              : `${importStatus.pending_terms} ingredienti da abbinare`}
+            ,{" "}
+            {importStatus.pending_recipes === 1
+              ? "1 ricetta in attesa"
+              : `${importStatus.pending_recipes} ricette in attesa`}
           </span>
           <span aria-hidden="true">›</span>
         </Link>
