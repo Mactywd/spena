@@ -9,6 +9,7 @@ from sqlalchemy import (
     Computed,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -35,6 +36,12 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "recipes"
     __table_args__ = (
         CheckConstraint("source IN ('dataset', 'manual', 'ai')", name="ck_recipe_source"),
+        Index("ix_recipes_tsv", "search_tsv", postgresql_using="gin"),
+        # HNSW con distanza cosinusoidale: è la metrica usata dalla ricerca semantica
+        Index(
+            "ix_recipes_embedding", "embedding",
+            postgresql_using="hnsw", postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
 
     title: Mapped[str] = mapped_column(String(200))
@@ -68,6 +75,7 @@ class RecipeIngredient(UUIDMixin, Base):
     __table_args__ = (
         UniqueConstraint("recipe_id", "ingredient_id"),
         CheckConstraint("role IN ('primary', 'secondary')", name="ck_recipe_ingredient_role"),
+        Index("ix_recipe_ingredients_ingredient", "ingredient_id"),
     )
 
     recipe_id: Mapped[uuid.UUID] = mapped_column(

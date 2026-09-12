@@ -107,3 +107,28 @@ async def test_duplicate_ingredient_name_returns_409(logged_client):
     body = {"name": "basilico", "display_name": "Basilico", "category": "spezie"}
     assert (await logged_client.post("/api/v1/ingredients", json=body)).status_code == 201
     assert (await logged_client.post("/api/v1/ingredients", json=body)).status_code == 409
+
+
+async def test_alias_on_a_missing_ingredient_is_404_not_409(logged_client):
+    """Un ingrediente inesistente non è un alias duplicato: dirlo bene importa."""
+    import uuid
+
+    response = await logged_client.post(
+        f"/api/v1/ingredients/{uuid.uuid4()}/aliases",
+        json={"alias": "basilico genovese", "source": "manual"},
+    )
+    assert response.status_code == 404
+    assert "ingrediente" in response.json()["detail"]
+
+
+async def test_duplicate_alias_is_still_409(logged_client):
+    created = await logged_client.post("/api/v1/ingredients", json={
+        "name": "basilico", "display_name": "Basilico", "category": "spezie",
+    })
+    ingredient_id = created.json()["id"]
+    body = {"alias": "basilico genovese", "source": "manual"}
+    url = f"/api/v1/ingredients/{ingredient_id}/aliases"
+    assert (await logged_client.post(url, json=body)).status_code == 201
+    conflict = await logged_client.post(url, json=body)
+    assert conflict.status_code == 409
+    assert "alias" in conflict.json()["detail"]

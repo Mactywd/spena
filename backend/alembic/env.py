@@ -10,6 +10,10 @@ from alembic import context
 from app.core.config import get_settings
 from app.core.db import Base
 
+# Importato per l'effetto collaterale: popola Base.metadata con tutte le tabelle.
+# Senza questa riga l'autogenerate vedrebbe uno schema vuoto.
+import app.db.models  # noqa: F401,E402  isort:skip
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

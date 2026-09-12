@@ -1,9 +1,10 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
+from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.db.models.recipe import Recipe
 from app.domain.rules import Availability, IngredientRole, is_satisfied
@@ -84,16 +85,24 @@ async def create(
     except EmbeddingUnavailable:
         embedding = None
 
-    recipe = await create_recipe(
-        session, title=payload.title, description=payload.description,
-        instructions=payload.instructions, servings=payload.servings,
-        source=payload.source, source_ref=payload.source_ref,
-        ingredients=[
-            (i.ingredient_id, i.role, i.quantity_text, i.note) for i in payload.ingredients
-        ],
-        embedding=embedding,
-    )
-    await session.commit()
+    try:
+        recipe = await create_recipe(
+            session, title=payload.title, description=payload.description,
+            instructions=payload.instructions, servings=payload.servings,
+            source=payload.source, source_ref=payload.source_ref,
+            ingredients=[
+                (i.ingredient_id, i.role, i.quantity_text, i.note) for i in payload.ingredients
+            ],
+            embedding=embedding,
+        )
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        if is_missing_reference(exc):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "ingrediente ripetuto nella ricetta"
+        ) from exc
     stored = await get_recipe(session, recipe.id)
     return await _to_out(session, stored)
 

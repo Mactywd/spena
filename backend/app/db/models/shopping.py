@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,6 +34,9 @@ class ShoppingListItem(UUIDMixin, Base):
             "reason IN ('manual', 'finished_while_cooking', 'low_while_cooking')",
             name="ck_shopping_reason",
         ),
+        Index("ix_shopping_status", "status"),
+        # alimenta l'ordinamento per frequenza dell'autocomplete
+        Index("ix_shopping_ingredient", "ingredient_id"),
     )
 
     raw_text: Mapped[str] = mapped_column(String(200))

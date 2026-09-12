@@ -1,7 +1,7 @@
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +28,15 @@ class IngredientCategory(StrEnum):
 
 class Ingredient(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "ingredients"
+    # dichiarato qui e non solo nella migrazione: l'autogenerate confronta i
+    # modelli con il database e cancellerebbe ogni indice che i modelli non
+    # conoscono, autocomplete trigram compreso
+    __table_args__ = (
+        Index(
+            "ix_ingredients_name_trgm", "name",
+            postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+    )
 
     name: Mapped[str] = mapped_column(String(120), unique=True)
     display_name: Mapped[str] = mapped_column(String(120))
@@ -42,7 +51,13 @@ class Ingredient(UUIDMixin, TimestampMixin, Base):
 
 class IngredientAlias(UUIDMixin, Base):
     __tablename__ = "ingredient_aliases"
-    __table_args__ = (UniqueConstraint("ingredient_id", "alias"),)
+    __table_args__ = (
+        UniqueConstraint("ingredient_id", "alias"),
+        Index(
+            "ix_aliases_alias_trgm", "alias",
+            postgresql_using="gin", postgresql_ops={"alias": "gin_trgm_ops"},
+        ),
+    )
 
     ingredient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ingredients.id", ondelete="CASCADE")

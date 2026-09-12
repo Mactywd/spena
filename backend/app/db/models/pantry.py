@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,11 @@ class PantryItem(UUIDMixin, Base):
     __tablename__ = "pantry_items"
     __table_args__ = (
         CheckConstraint("status IN ('available', 'low', 'finished')", name="ck_pantry_status"),
+        # parziale: le query di disponibilità guardano solo le voci attive
+        Index(
+            "ix_pantry_active", "ingredient_id",
+            postgresql_where=text("archived_at IS NULL AND status <> 'finished'"),
+        ),
     )
 
     ingredient_id: Mapped[uuid.UUID] = mapped_column(

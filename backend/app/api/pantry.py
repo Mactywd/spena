@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -52,11 +53,19 @@ async def read_availability(
 async def create(
     payload: PantryItemCreate, session: AsyncSession = Depends(get_session)
 ) -> PantryItemOut:
-    item = await add_pantry_item(
-        session, ingredient_id=payload.ingredient_id, product_id=payload.product_id,
-        status=payload.status, note=payload.note,
-    )
-    await session.commit()
+    try:
+        item = await add_pantry_item(
+            session, ingredient_id=payload.ingredient_id, product_id=payload.product_id,
+            status=payload.status, note=payload.note,
+        )
+        await session.commit()
+    except IntegrityError as exc:
+        # un id pendente (tipico di una PWA con la cache vecchia) non deve essere
+        # un muro: 404, come già fa POST /shopping-list/stock
+        await session.rollback()
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "ingrediente o prodotto inesistente"
+        ) from exc
     await session.refresh(item, ["ingredient", "product"])
     return _to_out(item)
 

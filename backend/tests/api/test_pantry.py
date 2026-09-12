@@ -115,3 +115,14 @@ async def test_availability_endpoint_returns_a_map(logged_client, db_session, di
     await db_session.flush()
     body = (await logged_client.get("/api/v1/pantry/availability")).json()
     assert body[str(dispensa["pomodoro"].id)] == "low"
+
+
+async def test_creating_with_a_dangling_ingredient_is_404_not_500(logged_client):
+    """Un id che non esiste più (cache della PWA) deve dare 404, non un muro."""
+    import uuid
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(uuid.uuid4()), "status": "available",
+    })
+    assert response.status_code == 404
+    assert "inesistente" in response.json()["detail"]

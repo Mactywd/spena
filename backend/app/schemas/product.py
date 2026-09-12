@@ -1,4 +1,5 @@
 import uuid
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,11 +18,23 @@ class ProductOut(BaseModel):
 
 
 class ProductCreate(BaseModel):
+    """Il corpo con cui si conferma un prodotto, suggerito o inventato.
+
+    `source`, `image_url` e `source_payload` esistono perché la conferma di un
+    suggerimento Open Food Facts è l'unico momento in cui quei dati sono
+    disponibili: non riportarli qui significa perderli per sempre, e la fase 2
+    rielabora proprio `source_payload`. Il default resta `custom`, che è il caso
+    della creazione manuale.
+    """
+
     ingredient_id: uuid.UUID
     name: str = Field(min_length=1, max_length=200)
     brand: str | None = Field(default=None, max_length=120)
     barcode: str | None = Field(default=None, max_length=20)
     nutrients: dict[str, float] | None = None
+    source: Literal["openfoodfacts", "custom"] = "custom"
+    image_url: str | None = Field(default=None, max_length=500)
+    source_payload: dict[str, Any] | None = None
 
 
 class ProductSuggestion(BaseModel):

@@ -45,8 +45,12 @@ async def read_list(
 async def create(
     payload: ShoppingItemCreate, session: AsyncSession = Depends(get_session)
 ) -> ShoppingItemOut:
-    item = await add_item(session, payload.raw_text, payload.ingredient_id)
-    await session.commit()
+    try:
+        item = await add_item(session, payload.raw_text, payload.ingredient_id)
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
     await session.refresh(item, ["ingredient"])
     return _to_out(item)
 
@@ -63,6 +67,9 @@ async def patch(
         await session.commit()
     except KeyError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "voce inesistente") from exc
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
     return _to_out(item)
 
 
@@ -86,5 +93,7 @@ async def stock(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "voce di lista inesistente") from exc
     except IntegrityError as exc:
         await session.rollback()
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente o prodotto inesistente") from exc
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "ingrediente o prodotto inesistente"
+        ) from exc
     return {"created": len(created)}

@@ -1,6 +1,14 @@
 import pytest
 
-from app.core.security import hash_password, verify_password
+from itsdangerous import TimestampSigner
+
+from app.core.security import (
+    PLACEHOLDER_SECRETS,
+    SESSION_COOKIE,
+    InsecureSessionSecret,
+    hash_password,
+    verify_password,
+)
 
 
 def test_password_hash_roundtrip():
@@ -79,3 +87,59 @@ async def test_login_without_configured_password_is_401(client, monkeypatch):
         assert response.status_code == 401
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("placeholder", sorted(PLACEHOLDER_SECRETS))
+async def test_a_placeholder_session_secret_opens_nothing(client, monkeypatch, placeholder):
+    """I segnaposto stanno in git: un cookie firmato con loro non deve valere nulla.
+
+    Il server mal configurato si rompe in modo rumoroso; quello che non deve
+    accadere è che risponda 200 a chi non conosce la password.
+    """
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("SESSION_SECRET", placeholder)
+    try:
+        forged = TimestampSigner(placeholder).sign(b"spena").decode()
+        client.cookies.set(SESSION_COOKIE, forged)
+        with pytest.raises(InsecureSessionSecret):
+            await client.get("/api/v1/ping-protected")
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("placeholder", sorted(PLACEHOLDER_SECRETS))
+async def test_a_forged_cookie_is_rejected_by_a_configured_server(
+    client, configured_password, placeholder
+):
+    """Con un segreto vero il cookie forgiato sul segnaposto è solo una firma sbagliata."""
+    forged = TimestampSigner(placeholder).sign(b"spena").decode()
+    client.cookies.set(SESSION_COOKIE, forged)
+    assert (await client.get("/api/v1/ping-protected")).status_code == 401
+
+
+async def test_an_unconfigured_secret_cannot_issue_a_session(client, monkeypatch):
+    """Password giusta ma SESSION_SECRET assente: nessun cookie utilizzabile."""
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_PASSWORD_HASH", hash_password("apriti sesamo"))
+    monkeypatch.setenv("SESSION_SECRET", "")
+    try:
+        with pytest.raises(InsecureSessionSecret):
+            await client.post("/api/v1/auth/login", json={"password": "apriti sesamo"})
+        assert SESSION_COOKIE not in client.cookies
+    finally:
+        get_settings.cache_clear()
+
+
+def test_the_env_file_is_resolved_absolutely(tmp_path, monkeypatch):
+    """Il .env sta nella radice del repository: la CWD del processo non deve contare."""
+    from app.core.config import ENV_FILE, REPO_ROOT, Settings
+
+    assert ENV_FILE.is_absolute()
+    assert (REPO_ROOT / "docker-compose.yml").exists(), "REPO_ROOT non è la radice del repo"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
+    assert Settings().session_secret == "segreto-di-test"

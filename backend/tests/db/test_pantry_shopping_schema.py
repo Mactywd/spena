@@ -62,8 +62,17 @@ async def test_shopping_item_survives_without_a_resolved_ingredient(db_session):
     assert item.ingredient_id is None
 
 
-async def test_shopping_rejects_unknown_status_and_reason(db_session):
+async def test_shopping_rejects_an_unknown_status(db_session):
     db_session.add(ShoppingListItem(raw_text="x", status="comprato", reason=ShoppingReason.MANUAL))
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+
+
+async def test_shopping_rejects_an_unknown_reason(db_session):
+    """Il vocabolario dei motivi è ciò che scrive il ciclo di cottura: va vincolato."""
+    db_session.add(
+        ShoppingListItem(raw_text="x", status=ShoppingStatus.PENDING, reason="perche-mi-va")
+    )
     with pytest.raises(IntegrityError):
         await db_session.flush()
 

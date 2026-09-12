@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
+from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.repositories.products import create_product, find_by_barcode, search_products
 from app.schemas.product import (
@@ -67,11 +67,16 @@ async def create(
     try:
         product = await create_product(
             session, ingredient_id=payload.ingredient_id, name=payload.name,
-            brand=payload.brand, barcode=payload.barcode, source="custom",
-            nutrients=payload.nutrients,
+            brand=payload.brand, barcode=payload.barcode, source=payload.source,
+            nutrients=payload.nutrients, image_url=payload.image_url,
+            source_payload=payload.source_payload,
         )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
+        # due cause diverse, due risposte diverse: un ingrediente inesistente non è
+        # un codice a barre duplicato
+        if is_missing_reference(exc):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
         raise HTTPException(status.HTTP_409_CONFLICT, "codice a barre già in catalogo") from exc
     return ProductOut.model_validate(product)

@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,13 @@ class Product(UUIDMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "products"
+    __table_args__ = (
+        Index(
+            "ix_products_name_trgm", "name",
+            postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+        Index("ix_products_ingredient_id", "ingredient_id"),
+    )
 
     ingredient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ingredients.id", ondelete="RESTRICT")

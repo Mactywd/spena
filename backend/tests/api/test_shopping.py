@@ -121,3 +121,26 @@ async def test_listing_can_be_filtered_by_status(logged_client, db_session, ingr
         "/api/v1/shopping-list?status=pending&status=checked"
     )).json()
     assert [i["raw_text"] for i in open_items] == ["a"]
+
+
+async def test_creating_with_a_dangling_ingredient_is_404_not_500(logged_client):
+    import uuid
+
+    response = await logged_client.post("/api/v1/shopping-list", json={
+        "raw_text": "yogurt", "ingredient_id": str(uuid.uuid4()),
+    })
+    assert response.status_code == 404
+    assert "inesistente" in response.json()["detail"]
+
+
+async def test_resolving_to_a_dangling_ingredient_is_404_not_500(logged_client):
+    """Risolvere una voce su un ingrediente cancellato non deve essere un muro."""
+    import uuid
+
+    created = await logged_client.post("/api/v1/shopping-list", json={"raw_text": "yogurt"})
+    item_id = created.json()["id"]
+    response = await logged_client.patch(f"/api/v1/shopping-list/{item_id}", json={
+        "ingredient_id": str(uuid.uuid4()),
+    })
+    assert response.status_code == 404
+    assert "inesistente" in response.json()["detail"]

@@ -143,3 +143,62 @@ async def test_search_survives_an_unavailable_embedding_provider(
     response = await logged_client.get("/api/v1/recipes/search?q=pomodoro")
     assert response.status_code == 200
     assert response.json()[0]["title"] == "Pasta al pomodoro"
+
+
+async def test_creating_with_a_dangling_ingredient_is_404_not_500(logged_client):
+    import uuid
+
+    response = await logged_client.post("/api/v1/recipes", json={
+        "title": "Ricetta fantasma", "instructions": "Nulla.", "source": "manual",
+        "ingredients": [{"ingredient_id": str(uuid.uuid4()), "role": "primary"}],
+    })
+    assert response.status_code == 404
+    assert "inesistente" in response.json()["detail"]
+
+
+async def test_repeating_an_ingredient_in_a_recipe_is_409_not_500(logged_client, cucina):
+    """Lo stesso ingrediente due volte è un conflitto, non un riferimento mancante."""
+    response = await logged_client.post("/api/v1/recipes", json={
+        "title": "Pasta e pasta", "instructions": "Nulla.", "source": "manual",
+        "ingredients": [
+            {"ingredient_id": str(cucina["pasta"].id), "role": "primary"},
+            {"ingredient_id": str(cucina["pasta"].id), "role": "secondary"},
+        ],
+    })
+    assert response.status_code == 409
+
+
+async def test_search_applies_the_role_rule_to_low_items(logged_client, db_session, cucina):
+    """La regola dei ruoli vale anche in ricerca, non solo nel dettaglio.
+
+    Un principale quasi finito non è soddisfatto, un secondario quasi finito sì:
+    con pasta piena, pomodoro (principale) e aglio (secondario) agli sgoccioli,
+    manca esattamente una cosa. Un calcolo cieco al ruolo direbbe due.
+    """
+    await _create_recipe(logged_client, cucina, title="Pasta al pomodoro")
+    db_session.add_all([
+        PantryItem(ingredient_id=cucina["pasta"].id, status=PantryStatus.AVAILABLE),
+        PantryItem(ingredient_id=cucina["pomodoro"].id, status=PantryStatus.LOW),
+        PantryItem(ingredient_id=cucina["aglio"].id, status=PantryStatus.LOW),
+    ])
+    await db_session.flush()
+
+    body = (await logged_client.get("/api/v1/recipes/search?q=pomodoro")).json()
+    assert [r["title"] for r in body] == ["Pasta al pomodoro"]
+    assert body[0]["missing"] == 1
+    assert body[0]["cookable"] is False
+
+
+async def test_search_is_cookable_with_only_secondaries_low(logged_client, db_session, cucina):
+    """Tutti i principali pieni e il solo secondario agli sgoccioli: si cucina."""
+    await _create_recipe(logged_client, cucina, title="Pasta al pomodoro")
+    db_session.add_all([
+        PantryItem(ingredient_id=cucina["pasta"].id, status=PantryStatus.AVAILABLE),
+        PantryItem(ingredient_id=cucina["pomodoro"].id, status=PantryStatus.AVAILABLE),
+        PantryItem(ingredient_id=cucina["aglio"].id, status=PantryStatus.LOW),
+    ])
+    await db_session.flush()
+
+    body = (await logged_client.get("/api/v1/recipes/search?q=pomodoro")).json()
+    assert body[0]["missing"] == 0
+    assert body[0]["cookable"] is True

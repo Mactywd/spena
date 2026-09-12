@@ -4,6 +4,7 @@ from pathlib import Path
 import httpx
 import pytest_asyncio
 import respx
+from sqlalchemy import select
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.product import Product
@@ -111,3 +112,58 @@ async def test_catalog_search_refines_progressively(logged_client, db_session, y
 
     narrow = await logged_client.get("/api/v1/products/search?q=carrefour pesca")
     assert narrow.json()[0]["brand"] == "Carrefour"
+
+
+async def test_confirming_a_suggestion_keeps_its_provenance(logged_client, db_session, yogurt):
+    """La conferma è l'unico momento in cui foto, payload e provenienza esistono.
+
+    La schermata "sistema la spesa" mostra la foto scaricata un passo prima e la
+    fase 2 rielabora `source_payload`: scartarli qui li perde per sempre.
+    """
+    raw = json.loads((FIXTURES / "complete.json").read_text())
+    image = "https://images.openfoodfacts.org/images/products/520/105/400/0138/front.jpg"
+    response = await logged_client.post("/api/v1/products", json={
+        "ingredient_id": str(yogurt.id),
+        "name": "Total 0% Yogurt Greco",
+        "brand": "Fage",
+        "barcode": "5201054000138",
+        "nutrients": {"protein": 10.3},
+        "source": "openfoodfacts",
+        "image_url": image,
+        "source_payload": raw,
+    })
+    assert response.status_code == 201
+    assert response.json()["source"] == "openfoodfacts"
+    assert response.json()["image_url"] == image
+
+    stored = (await db_session.execute(
+        select(Product).where(Product.barcode == "5201054000138")
+    )).scalar_one()
+    assert stored.source_payload == raw
+    assert stored.source == "openfoodfacts"
+
+
+async def test_an_unknown_source_is_refused(logged_client, yogurt):
+    """`source` ammette solo i due valori della spec, non testo libero."""
+    response = await logged_client.post("/api/v1/products", json={
+        "ingredient_id": str(yogurt.id), "name": "Qualcosa", "source": "inventato",
+    })
+    assert response.status_code == 422
+
+
+async def test_product_on_a_missing_ingredient_is_404_not_409(logged_client):
+    import uuid
+
+    response = await logged_client.post("/api/v1/products", json={
+        "ingredient_id": str(uuid.uuid4()), "name": "Fantasma", "barcode": "8000000000002",
+    })
+    assert response.status_code == 404
+    assert "ingrediente" in response.json()["detail"]
+
+
+async def test_duplicate_barcode_is_still_409(logged_client, yogurt):
+    body = {"ingredient_id": str(yogurt.id), "name": "Total 0%", "barcode": "8000000000003"}
+    assert (await logged_client.post("/api/v1/products", json=body)).status_code == 201
+    conflict = await logged_client.post("/api/v1/products", json=body)
+    assert conflict.status_code == 409
+    assert "codice a barre" in conflict.json()["detail"]
