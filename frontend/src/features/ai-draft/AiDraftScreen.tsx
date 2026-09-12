@@ -1,18 +1,15 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { createRecipe, draftRecipe } from "../recipes/api";
-import { searchIngredients } from "../shopping-list/api";
-import { useDebounced } from "../../hooks/useDebounced";
+import { IngredientPicker } from "../../components/IngredientPicker";
 import type {
   DraftIngredient,
   Ingredient,
   IngredientRole,
   RecipeDraft,
 } from "../../domain/types";
-
-const DEBOUNCE_MS = 180;
 
 // I limiti che `RecipeCreate` applica nel backend. Stanno qui per far correggere
 // un campo *prima* della chiamata, non per decidere qualcosa: l'autorità resta
@@ -144,69 +141,6 @@ function saveProblem(error: unknown): string {
       return "Un ingrediente agganciato non esiste più. Togli la spunta a quella riga, poi salva.";
   }
   return "Non sono riuscito a salvare la ricetta. Niente è andato perso: riprova.";
-}
-
-/** L'unico modo, su questo schermo, per agganciare un ingrediente che la bozza
- * non ha trovato — o per scrivere una ricetta vera quando l'AI non risponde
- * affatto. La ricerca passa da `useQuery`: un 401 deve arrivare alla cache che
- * App.tsx aggancia all'accesso, non morire in un `.catch` locale. */
-function IngredientPicker({ onPick }: { onPick: (ingredient: Ingredient) => void }) {
-  const [term, setTerm] = useState("");
-  const debounced = useDebounced(term, DEBOUNCE_MS);
-  // sotto 2 caratteri non vale la pena interrogare il backend, come in AddItemField
-  const ready = debounced.trim().length >= 2;
-
-  const { data: found = [], isError } = useQuery({
-    queryKey: ["ingredients", debounced],
-    queryFn: () => searchIngredients(debounced),
-    enabled: ready,
-  });
-
-  return (
-    <div className="flex flex-col gap-2 pt-2">
-      <label className="text-sm">
-        Aggiungi un ingrediente
-        <input
-          aria-label="Aggiungi un ingrediente"
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-          placeholder="Cerca in anagrafica"
-          className="mt-1 w-full rounded border px-3 py-3 text-base"
-        />
-      </label>
-
-      {ready && found.length > 0 && (
-        <ul role="listbox" className="overflow-hidden rounded-lg border border-neutral-200">
-          {found.map((ingredient) => (
-            <li key={ingredient.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={false}
-                onClick={() => {
-                  onPick(ingredient);
-                  setTerm("");
-                }}
-                className="min-h-11 w-full px-3 py-3 text-left text-sm"
-              >
-                {ingredient.display_name}
-                <span className="ml-2 text-xs text-neutral-400">{ingredient.category}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* la ricerca è un aiuto, non un pedaggio: se non risponde, la ricetta si
-          salva comunque — senza agganci, e dicendolo */}
-      {isError && (
-        <p role="alert" className="text-sm text-amber-700">
-          La ricerca degli ingredienti non risponde. Puoi salvare la ricetta comunque, anche
-          senza ingredienti agganciati.
-        </p>
-      )}
-    </div>
-  );
 }
 
 // Lo schermo che tiene insieme la dipendenza meno affidabile dell'app e la via
@@ -442,7 +376,11 @@ export function AiDraftScreen() {
             ))}
           </ul>
 
-          <IngredientPicker onPick={attach} />
+          <IngredientPicker
+            label="Aggiungi un ingrediente"
+            failureNote="Puoi salvare la ricetta comunque, anche senza ingredienti agganciati."
+            onPick={attach}
+          />
         </div>
 
         <label className="text-sm">
