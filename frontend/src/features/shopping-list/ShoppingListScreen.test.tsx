@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -69,6 +69,66 @@ describe("ShoppingListScreen", () => {
   it("offre di sistemare la spesa quando c'è almeno una voce spuntata", async () => {
     renderScreen();
     expect(await screen.findByRole("link", { name: "Sistema la spesa" })).toBeDefined();
+  });
+
+  // M1: senza questo comando una voce scritta per sbaglio resta in lista per la vita
+  // dell'app, e l'unico modo di farla sparire — spuntarla e sistemarla in dispensa —
+  // crea una voce di dispensa falsa.
+  it("si può togliere dalla lista una voce scritta per sbaglio", async () => {
+    const spy = vi.fn()
+      .mockResolvedValue(new Response(JSON.stringify(ITEMS), { status: 200 }));
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Togli pomodoro dalla lista" })
+    );
+
+    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(patch?.[0]).toContain("/shopping-list/s1");
+    expect(JSON.parse(patch?.[1].body)).toEqual({ status: "archived" });
+  });
+
+  it("una modifica rifiutata lo dice, accanto alla voce giusta", async () => {
+    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
+      init?.method === "PATCH"
+        ? Promise.resolve(new Response(JSON.stringify({ detail: "no" }), { status: 500 }))
+        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
+    );
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    const row = (await screen.findByText("pomodoro")).closest("li")!;
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Togli pomodoro dalla lista" })
+    );
+
+    expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
+    const other = screen.getByText("Total 0%").closest("li")!;
+    expect(within(other).queryByRole("alert")).toBeNull();
+  });
+
+  it("mentre una scrittura è in volo i controlli di quella voce sono bloccati", async () => {
+    // due PATCH sulla stessa riga arrivano in ordine ignoto e l'ultima a rispondere
+    // vince: togliere una voce mentre la spunta è in volo non deve nemmeno partire
+    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
+      init?.method === "PATCH"
+        ? new Promise<Response>(() => {})
+        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
+    );
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    const row = (await screen.findByText("pomodoro")).closest("li")!;
+    await userEvent.click(within(row).getByRole("checkbox", { name: "pomodoro" }));
+
+    await waitFor(() =>
+      expect(within(row).getByRole("button", { name: "Togli pomodoro dalla lista" }))
+        .toBeDisabled()
+    );
+    expect(within(row).getByRole("checkbox", { name: "pomodoro" })).toBeDisabled();
+    const other = screen.getByText("Total 0%").closest("li")!;
+    expect(within(other).getByRole("checkbox", { name: "yogurt greco" })).not.toBeDisabled();
   });
 
   it("un caricamento fallito non viene spacciato per lista vuota", async () => {
