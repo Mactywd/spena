@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { fetchRecipe } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { CookSheet } from "./CookSheet";
-import type { RecipeIngredientLine } from "../../domain/types";
+import type { CookResult, RecipeIngredientLine } from "../../domain/types";
 
 function statusNote(line: RecipeIngredientLine): string {
   if (line.availability === "missing") return "manca";
@@ -13,9 +13,21 @@ function statusNote(line: RecipeIngredientLine): string {
   return line.satisfied ? "quasi finito, basta" : "quasi finito, non basta";
 }
 
+// Il numero viene dal backend, non da un conteggio fatto qui: quante voci sono
+// tornate in lista lo sa solo chi ha applicato le transizioni (una lista può già
+// contenere quell'ingrediente, e allora non si duplica).
+function cookNote(result: CookResult): string {
+  if (result.restocked === 0) return "Segnato. Niente è tornato in lista della spesa.";
+  if (result.restocked === 1) return "Segnato. Una cosa è tornata in lista della spesa.";
+  return `Segnato. ${result.restocked} cose sono tornate in lista della spesa.`;
+}
+
 export function RecipeDetailScreen() {
   const { id = "" } = useParams();
   const [cooking, setCooking] = useState(false);
+  // l'esito dell'ultima cottura: il foglio si smonta subito dopo averla registrata,
+  // e senza questo il gesto per cui esiste tutto il task non dice mai cosa ha fatto
+  const [lastCook, setLastCook] = useState<CookResult | null>(null);
 
   const {
     data: recipe,
@@ -73,10 +85,23 @@ export function RecipeDetailScreen() {
 
       {cooking && pantry ? (
         <div className="pt-4">
-          <CookSheet recipe={recipe} pantryItems={pantry} onDone={() => setCooking(false)} />
+          <CookSheet
+            recipe={recipe}
+            pantryItems={pantry}
+            onDone={(result) => {
+              if (result) setLastCook(result);
+              setCooking(false);
+            }}
+          />
         </div>
       ) : (
         <>
+          {lastCook && (
+            <p role="status" className="pt-2 text-sm text-emerald-700">
+              {cookNote(lastCook)}
+            </p>
+          )}
+
           {groups.map(({ label, lines }) => (
             <section key={label} className="pt-4">
               <h2 className="text-xs uppercase tracking-wide text-neutral-400">{label}</h2>
@@ -124,14 +149,25 @@ export function RecipeDetailScreen() {
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setCooking(true)}
-              disabled={isPantryLoading}
-              className="mt-6 w-full rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
-            >
-              Cucina
-            </button>
+            <>
+              <button
+                type="button"
+                // un esito vecchio non deve sopravvivere alla cottura successiva
+                onClick={() => {
+                  setLastCook(null);
+                  setCooking(true);
+                }}
+                disabled={isPantryLoading}
+                className="mt-6 min-h-11 w-full rounded-lg bg-emerald-700 px-4 py-3 text-white disabled:opacity-40"
+              >
+                Cucina
+              </button>
+              {/* un pulsante grigio e muto non si spiega da sé: dire che manca la
+                  dispensa costa una riga e toglie l'unico dubbio */}
+              {isPantryLoading && (
+                <p className="pt-2 text-xs text-neutral-500">Carico la dispensa…</p>
+              )}
+            </>
           )}
         </>
       )}
