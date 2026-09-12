@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { AiDraftScreen } from "./AiDraftScreen";
+import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
 
 const DRAFT = {
   title: "Pasta al pomodoro", description: "Svelta",
@@ -427,5 +428,46 @@ describe("AiDraftScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito a salvare/i);
     // la bozza resta in pagina, pronta per un altro tentativo
     expect(screen.getByDisplayValue("Pasta al pomodoro")).toBeDefined();
+  });
+});
+
+// La chiave `["recipes"]` invalida per prefisso ogni voce `["recipes", termine,
+// soloCucinabili]` del ricettario. Era vero per ispezione e per niente altro:
+// qui i due schermi stanno sotto lo stesso QueryClient, e la ricerca deve
+// ripartire da sé quando il salvataggio va a buon fine.
+describe("AiDraftScreen e il ricettario sotto lo stesso QueryClient", () => {
+  it("una ricetta salvata fa ripartire la ricerca del ricettario", async () => {
+    const spy = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.includes("/recipes/search"))
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      if (href.includes("/recipes/ai-draft"))
+        return Promise.resolve(new Response(JSON.stringify(DRAFT), { status: 200 }));
+      if (href.endsWith("/recipes") && init?.method === "POST")
+        return Promise.resolve(new Response(CREATED, { status: 201 }));
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <AiDraftScreen />
+          <RecipeBookScreen />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const searches = () =>
+      spy.mock.calls.filter(([url]) => String(url).includes("/recipes/search")).length;
+    await vi.waitFor(() => expect(searches()).toBeGreaterThan(0));
+    const before = searches();
+
+    await proposeDraft();
+    await draftLanded();
+    await userEvent.click(saveButton());
+
+    await vi.waitFor(() => expect(searches()).toBeGreaterThan(before));
   });
 });
