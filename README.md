@@ -43,10 +43,13 @@ che resta l'autorità su scopo e perimetro.
 cp .env.example .env
 ```
 
-Poi riempi le due variabili obbligatorie. Il segreto di sessione:
+Poi riempi le due variabili obbligatorie. Entrambe si generano con il Python del
+container, perché «Cosa serve» non promette un Python sull'host. Il segreto di
+sessione:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+docker compose run --rm --build backend \
+  python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 E l'hash della password di accesso, generato con lo stesso argon2 che l'applicazione
@@ -57,6 +60,11 @@ docker compose run --rm --build backend \
   python -c "from app.core.security import hash_password; print(hash_password('la-tua-password'))"
 ```
 
+Questi due comandi funzionano anche su un `.env` ancora a metà: `docker compose run
+... python -c` sostituisce il comando del container, quindi l'applicazione non parte
+e i controlli all'avvio non scattano. Per `docker compose up`, invece, i due valori
+devono essere già in `.env`.
+
 Incolla i due valori in `.env` **senza apici**. L'hash contiene dei `$` e sembra
 naturale proteggerlo con degli apici singoli: non farlo. `format: raw` non li
 toglie, quindi arriverebbero dentro il container come parte dell'hash e la verifica
@@ -65,6 +73,13 @@ fallirebbe sempre.
 Se `SESSION_SECRET` resta vuota — o al valore di esempio — il backend **rifiuta di
 partire**, e lo dice nei log con il comando per generarne una. È deliberato: un
 server che firma i cookie con un segreto pubblicato su git non deve sembrare sano.
+
+Lo stesso se `APP_PASSWORD_HASH` c'è ma non è un hash argon2 leggibile, che è come
+arriva un hash troncato dai `$`: il backend rifiuta di partire nominando la causa
+probabile e il comando per rigenerarlo. Senza quel rifiuto l'unico sintomo sarebbe
+«password errata» per qualunque password, su un `.env` che a occhio sembra pieno.
+Vuota invece lascia partire: è il `.env` non ancora riempito, e l'accesso risponde
+401 dicendo il vero.
 
 Poi:
 
@@ -109,7 +124,15 @@ non legge il tuo `.env` (vedi il commento in `backend/tests/conftest.py`).
 
 ### Frontend
 
-**Da `frontend/`**, e l'avvertenza non è pedanteria: lanciato da una
+La prima volta servono le dipendenze, e per il percorso end-to-end anche il browser
+che Playwright si scarica a parte (i test di Vitest non ne hanno bisogno):
+
+```bash
+cd frontend && npm install
+npx playwright install chromium
+```
+
+Poi, **da `frontend/`**, e l'avvertenza non è pedanteria: lanciato da una
 sottodirectory, Vitest riporta «No test files found» e passa, cioè dà un verde
 falso.
 
@@ -209,7 +232,7 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 |---|---|---|
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | vedi `.env.example` | connessione al database |
 | `SESSION_SECRET` | nessuno, obbligatorio | firma del cookie di sessione; vuota, il backend non parte |
-| `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso |
+| `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso; illeggibile (troncato), il backend non parte |
 | `COOKIE_SECURE` | `false` | `true` in produzione: il cookie solo su HTTPS |
 | `ANTHROPIC_API_KEY` | vuoto | stesura ricette con l'AI e abbinamenti incerti |
 | `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake` |
