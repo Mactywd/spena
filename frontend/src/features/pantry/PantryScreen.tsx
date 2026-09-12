@@ -1,0 +1,72 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { StatusToggle } from "./StatusToggle";
+import { fetchPantry, patchPantryItem } from "./api";
+import type { PantryItem, PantryStatus } from "../../domain/types";
+
+function groupByCategory(items: PantryItem[]): [string, PantryItem[]][] {
+  const groups = new Map<string, PantryItem[]>();
+  for (const item of items) {
+    groups.set(item.ingredient_category, [...(groups.get(item.ingredient_category) ?? []), item]);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+export function PantryScreen() {
+  const queryClient = useQueryClient();
+  const { data: items = [], isLoading, isError } = useQuery({
+    queryKey: ["pantry"],
+    queryFn: fetchPantry,
+  });
+
+  const change = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: PantryStatus }) =>
+      patchPantryItem(id, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pantry"] }),
+  });
+
+  return (
+    <div className="p-4">
+      <h1 className="pb-3 text-xl font-semibold">Dispensa</h1>
+
+      {isLoading && <p className="text-neutral-500">Carico…</p>}
+
+      {/* un caricamento fallito non è una dispensa vuota: dirlo sarebbe una bugia
+          su quello che c'è da mangiare */}
+      {isError && (
+        <p role="alert" className="text-sm text-red-600">
+          Non sono riuscito a caricare la dispensa. Riprova più tardi.
+        </p>
+      )}
+
+      {!isLoading && !isError && items.length === 0 && (
+        <p className="text-neutral-500">
+          Dispensa vuota. Sistema la spesa oppure aggiungi qualcosa a mano.
+        </p>
+      )}
+
+      {!isLoading && !isError && items.length > 0 &&
+        groupByCategory(items).map(([category, group]) => (
+          <section key={category} className="pb-4">
+            <h2 className="py-2 text-xs uppercase tracking-wide text-neutral-400">{category}</h2>
+            <ul className="divide-y divide-neutral-100">
+              {group.map((item) => (
+                <li key={item.id} className="flex flex-col gap-2 py-3">
+                  <div>
+                    {/* la marca che hai comprato è più utile del nome generico */}
+                    <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
+                    {item.product_brand && (
+                      <span className="ml-2 text-sm text-neutral-500">{item.product_brand}</span>
+                    )}
+                  </div>
+                  <StatusToggle
+                    value={item.status}
+                    onChange={(status) => change.mutate({ id: item.id, status })}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+    </div>
+  );
+}

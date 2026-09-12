@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { LoginScreen } from "./features/auth/LoginScreen";
+import { PantryScreen } from "./features/pantry/PantryScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
 import { TabBar } from "./components/TabBar";
@@ -45,7 +46,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/lista" replace />} />
             <Route path="/lista" element={<ShoppingListScreen />} />
             <Route path="/sistema" element={<StockingScreen />} />
-            <Route path="/dispensa" element={<div className="p-4">Dispensa</div>} />
+            <Route path="/dispensa" element={<PantryScreen />} />
             <Route path="/ricette" element={<div className="p-4">Ricette</div>} />
           </Routes>
         </main>
