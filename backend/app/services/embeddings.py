@@ -100,7 +100,14 @@ class HttpEmbeddingProvider:
 
 
 class FakeEmbeddingProvider:
-    """Deterministico e istantaneo: i test non scaricano 500 MB di modello."""
+    """Deterministico e istantaneo: i test non scaricano 500 MB di modello.
+
+    Le distanze che produce sono riproducibili ma arbitrarie rispetto al contenuto —
+    misurato sui passaggi del seme, 0,16–0,37 fra qualunque coppia, senza relazione
+    con la pertinenza. Quindi non serve a calibrare né a provare
+    SEMANTIC_MAX_DISTANCE: la soglia si prova con vettori espliciti, dove la distanza
+    è aritmetica a vista (tests/api/test_recipes.py).
+    """
 
     def _vector(self, text: str) -> list[float]:
         digest = hashlib.sha256(text.encode()).digest()

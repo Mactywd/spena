@@ -202,3 +202,82 @@ async def test_search_is_cookable_with_only_secondaries_low(logged_client, db_se
     body = (await logged_client.get("/api/v1/recipes/search?q=pomodoro")).json()
     assert body[0]["missing"] == 0
     assert body[0]["cookable"] is True
+
+
+def _vettore_a_distanza(distanza: float) -> list[float]:
+    """Vettore unitario a `distanza` coseno da `_vettore_a_distanza(0)`.
+
+    Vive nel piano dei primi due assi: `cosine_distance` fra due unitari è
+    `1 - prodotto scalare`, quindi la distanza che il database calcolerà è quella
+    scritta qui e il lettore può verificarla a mente.
+    """
+    from app.db.models.recipe import EMBEDDING_DIM
+
+    coseno = 1.0 - distanza
+    vettore = [0.0] * EMBEDDING_DIM
+    vettore[0] = coseno
+    vettore[1] = (1.0 - coseno**2) ** 0.5
+    return vettore
+
+
+@pytest_asyncio.fixture
+async def due_ricette_a_distanza_nota(db_session):
+    """Una ricetta vicina (0,10) e una lontana (0,30), intorno alla soglia di 0,17.
+
+    I titoli non contengono la parola che le query useranno: così è la sola metà
+    semantica a deciderne la sorte, e la metà testuale non maschera il risultato.
+    """
+    from app.repositories.recipes import create_recipe
+
+    for titolo, distanza in (("Ricetta vicina", 0.10), ("Ricetta lontana", 0.30)):
+        await create_recipe(
+            db_session, title=titolo, description=None, instructions="Nulla.",
+            servings=None, source="manual", source_ref=None, ingredients=[],
+            embedding=_vettore_a_distanza(distanza),
+        )
+    await db_session.flush()
+
+
+def _query_finta(monkeypatch, distanza_zero_da: float = 0.0):
+    from app.services import recipe_search
+
+    async def embed(_: str) -> list[float]:
+        return _vettore_a_distanza(distanza_zero_da)
+
+    monkeypatch.setattr(recipe_search, "_embed_query", embed)
+
+
+async def test_la_soglia_semantica_tiene_i_vicini_e_scarta_il_resto(
+    logged_client, due_ricette_a_distanza_nota, monkeypatch
+):
+    """La metà semantica deve trovare ciò che il testo non trova, ma non tutto.
+
+    Query nel punto 0: la ricetta a 0,10 è dentro la soglia (0,17), quella a 0,30 no.
+    La parola cercata non compare in nessun titolo, quindi l'unica via per entrare
+    nei risultati è il vettore.
+    """
+    _query_finta(monkeypatch)
+    body = (await logged_client.get("/api/v1/recipes/search?q=xyzzy")).json()
+    assert [r["title"] for r in body] == ["Ricetta vicina"]
+
+
+async def test_una_query_lontana_da_tutto_non_restituisce_niente(
+    logged_client, due_ricette_a_distanza_nota, monkeypatch
+):
+    """Il difetto che la soglia esiste per chiudere: prima tornava il ricettario intero.
+
+    Il vettore della query è ortogonale a entrambe le ricette (distanza 1,0) e la
+    parola non compare da nessuna parte: la risposta onesta è nessun risultato, non
+    il meno peggio.
+    """
+    from app.db.models.recipe import EMBEDDING_DIM
+    from app.services import recipe_search
+
+    ortogonale = [0.0] * EMBEDDING_DIM
+    ortogonale[2] = 1.0
+
+    async def embed(_: str) -> list[float]:
+        return ortogonale
+
+    monkeypatch.setattr(recipe_search, "_embed_query", embed)
+    assert (await logged_client.get("/api/v1/recipes/search?q=xyzzy")).json() == []
