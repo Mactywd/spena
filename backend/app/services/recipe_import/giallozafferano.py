@@ -14,6 +14,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
+import httpx
 from bs4 import BeautifulSoup
 
 # Un rimando fotografico è un numero isolato da spazi su entrambi i lati, prima
@@ -264,3 +265,72 @@ def parse_recipe(html: str) -> ParsedRecipe:
         ingredients=parse_ingredients(soup),
         nutrition=data.get("nutrition") if isinstance(data.get("nutrition"), dict) else None,
     )
+
+
+# Dichiarare cosa si è, su un sito che nel suo robots.txt vieta esplicitamente
+# `Claude-Web` e `anthropic-ai`. Questo non è quei crawler, ed è giusto che si
+# distingua anche nei loro log. Vedi §3 dello spec per la decisione.
+USER_AGENT = (
+    "SpenaPersonalArchive/1.0 (archivio personale di ricette, nessuna ridistribuzione)"
+)
+# Una pagina alla volta, con una pausa. Non è una configurazione: è la differenza
+# fra leggere e rastrellare.
+DELAY_SECONDS = 1.2
+REQUEST_TIMEOUT = 20.0
+MAX_CONSECUTIVE_FAILURES = 2
+
+RECIPE_SITEMAP = "https://ricette.giallozafferano.it/sitemap/ricette.xml"
+
+SITEMAP_LOCATION = re.compile(r"<loc>\s*(.*?)\s*</loc>", re.S)
+
+
+class SourceUnavailable(Exception):
+    """La fonte sta dicendo di smettere, o non risponde affatto.
+
+    Distinta da `UnparsablePage` di proposito: questa ferma il giro, quella scarta
+    una pagina e lascia continuare. Insistere contro un `429` è la cosa da non fare,
+    e perdere il lavoro già fatto sarebbe inutile: le pagine prese sono già salvate.
+    """
+
+
+def build_client() -> httpx.AsyncClient:
+    """Un client che si presenta, aspetta e segue i rinvii."""
+    return httpx.AsyncClient(
+        headers={"User-Agent": USER_AGENT},
+        timeout=REQUEST_TIMEOUT,
+        follow_redirects=True,
+    )
+
+
+async def fetch_sitemap(client: httpx.AsyncClient) -> list[str]:
+    """Gli indirizzi delle pagine di ricetta, nell'ordine in cui la fonte li elenca.
+
+    Si tengono solo gli indirizzi che finiscono in `.html`: la stessa sitemap elenca
+    anche pagine di categoria, che non sono ricette e farebbero scartare una pagina
+    su dieci per niente.
+    """
+    try:
+        response = await client.get(RECIPE_SITEMAP)
+    except httpx.HTTPError as exc:
+        raise SourceUnavailable(f"sitemap irraggiungibile: {exc}") from exc
+    if response.status_code != 200:
+        raise SourceUnavailable(f"la sitemap ha risposto {response.status_code}")
+    return [url for url in SITEMAP_LOCATION.findall(response.text) if url.endswith(".html")]
+
+
+async def fetch_page(client: httpx.AsyncClient, url: str) -> str:
+    """Il testo di una pagina.
+
+    `429` e `5xx` sollevano `SourceUnavailable`, che ferma il giro. Qualunque altra
+    risposta non buona solleva `UnparsablePage`, che scarta questa pagina e lascia
+    andare avanti: una ricetta cancellata dal sito non è un guasto del sito.
+    """
+    try:
+        response = await client.get(url)
+    except httpx.HTTPError as exc:
+        raise SourceUnavailable(f"{url} irraggiungibile: {exc}") from exc
+    if response.status_code == 429 or response.status_code >= 500:
+        raise SourceUnavailable(f"{url}: la fonte ha risposto {response.status_code}")
+    if response.status_code != 200:
+        raise UnparsablePage(f"la fonte ha risposto {response.status_code}")
+    return response.text
