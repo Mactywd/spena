@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { fetchShoppingList, searchIngredients } from "../shopping-list/api";
+import { createIngredient, fetchShoppingList, searchIngredients } from "../shopping-list/api";
 import { BarcodeScanner } from "./BarcodeScanner";
 import { CustomProductForm } from "./CustomProductForm";
 import type { ProductSuggestion } from "./CustomProductForm";
@@ -12,12 +12,18 @@ type Resolution =
   | { kind: "loose" }
   | { kind: "product"; product: Product };
 
+// il reparto di un ingrediente nato da un testo libero non lo sappiamo, e
+// indovinarlo sarebbe una bugia: "altro" è il reparto che la lista mostra in
+// fondo, insieme alle altre voci da chiarire
+const UNKNOWN_CATEGORY = "altro";
+
 /**
  * Una voce spuntata ma senza ingrediente abbinato ("un ingrediente che risolve
  * a niente", nelle parole del brief): il testo libero della lista non ha mai
  * trovato un corrispondente. Non può sparire in silenzio dal conto finale, e
  * qui sotto il sistema non inventa niente da solo: l'utente abbina un
- * ingrediente esistente, proprio come quando scrive in lista (Task 18).
+ * ingrediente esistente, proprio come quando scrive in lista (Task 18), oppure
+ * — quando non esiste, che è il caso normale per un testo spaiato — lo crea.
  */
 function MatchIngredientField({
   rawText,
@@ -28,8 +34,20 @@ function MatchIngredientField({
 }) {
   const [query, setQuery] = useState(rawText);
   const [suggestions, setSuggestions] = useState<Ingredient[]>([]);
+  // "searching" finché la prima risposta non arriva: dire "nessuno corrisponde"
+  // prima di aver cercato sarebbe falso per la durata del debounce
+  const [outcome, setOutcome] = useState<"searching" | "searched" | "failed">("searching");
   // sotto 2 caratteri non vale la pena interrogare il backend, come in AddItemField
   const showSuggestions = query.trim().length >= 2;
+
+  const create = useMutation({
+    mutationFn: (text: string) =>
+      // name e display_name sono lo stesso testo: il backend normalizza il primo
+      // (strip + lower), e inventare noi una forma canonica sarebbe logica di
+      // dominio sul client
+      createIngredient({ name: text, display_name: text, category: UNKNOWN_CATEGORY }),
+    onSuccess: onMatched,
+  });
 
   useEffect(() => {
     if (!showSuggestions) return;
@@ -39,10 +57,14 @@ function MatchIngredientField({
     const timer = setTimeout(() => {
       searchIngredients(query)
         .then((found) => {
-          if (!superseded) setSuggestions(found);
+          if (superseded) return;
+          setSuggestions(found);
+          setOutcome("searched");
         })
         .catch(() => {
-          if (!superseded) setSuggestions([]);
+          if (superseded) return;
+          setSuggestions([]);
+          setOutcome("failed");
         });
     }, 180);
     return () => {
@@ -50,6 +72,8 @@ function MatchIngredientField({
       clearTimeout(timer);
     };
   }, [query, showSuggestions]);
+
+  const trimmed = query.trim();
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
@@ -61,8 +85,11 @@ function MatchIngredientField({
         <input
           aria-label={`Abbina un ingrediente per ${rawText}`}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="mt-1 w-full rounded border px-3 py-2"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOutcome("searching");
+          }}
+          className="mt-1 w-full rounded border px-3 py-3 text-base"
         />
       </label>
       {showSuggestions && suggestions.length > 0 && (
@@ -74,7 +101,7 @@ function MatchIngredientField({
                 role="option"
                 aria-selected={false}
                 onClick={() => onMatched(ingredient)}
-                className="w-full px-3 py-2 text-left text-sm"
+                className="w-full px-3 py-3 text-left text-sm"
               >
                 {ingredient.display_name}
                 <span className="ml-2 text-xs text-neutral-400">{ingredient.category}</span>
@@ -83,6 +110,37 @@ function MatchIngredientField({
           ))}
         </ul>
       )}
+      {/* una voce arriva qui proprio perché il suo testo non somigliava a niente:
+          cercare lo stesso testo è il caso in cui è più probabile non trovare
+          nulla, e senza una via d'uscita quella voce resterebbe in lista per
+          sempre. Crearlo è l'unica uscita, e nessun task successivo la prevede. */}
+      {showSuggestions && outcome === "searched" && suggestions.length === 0 && (
+        <p className="text-sm text-amber-800">
+          Nessun ingrediente corrisponde. Puoi crearlo adesso: finisce nel reparto «
+          {UNKNOWN_CATEGORY}» e la voce diventa sistemabile.
+        </p>
+      )}
+      {showSuggestions && outcome === "failed" && (
+        <p role="alert" className="text-sm text-red-600">
+          La ricerca degli ingredienti non risponde. Riprova a scrivere, oppure crealo.
+        </p>
+      )}
+      {showSuggestions && outcome !== "searching" && suggestions.length === 0 && (
+        <button
+          type="button"
+          onClick={() => create.mutate(trimmed)}
+          disabled={create.isPending}
+          className="rounded-lg bg-amber-700 px-4 py-3 text-sm text-white disabled:opacity-40"
+        >
+          Crea l'ingrediente «{trimmed}»
+        </button>
+      )}
+      {create.isError && (
+        <p role="alert" className="text-sm text-red-600">
+          Non sono riuscito a creare l'ingrediente. Forse esiste già con un altro nome: cercalo
+          qui sopra, oppure riprova.
+        </p>
+      )}
     </div>
   );
 }
@@ -90,7 +148,7 @@ function MatchIngredientField({
 export function StockingScreen() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: items = [] } = useQuery({
+  const { data: items = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["shopping-list", "checked"],
     queryFn: () => fetchShoppingList(["checked"]),
   });
@@ -133,39 +191,81 @@ export function StockingScreen() {
     },
   });
 
+  // Il lookup passa da una mutazione e non da una chiamata nuda per due ragioni:
+  // un errore non resta una promise rifiutata che nessuno guarda (prima, con la
+  // rete giù, premere Invio non faceva assolutamente niente), e un 401 passa
+  // dalla MutationCache di App.tsx, cioè riporta all'accesso come ogni altra
+  // scrittura invece di morire qui.
+  const lookup = useMutation({
+    mutationFn: ({ code }: { item: ShoppingItem; code: string }) => lookupBarcode(code),
+    onSuccess: (result, { item, code }) => {
+      const product = result.product;
+      if (product) {
+        setResolved((prev) => ({ ...prev, [item.id]: { kind: "product", product } }));
+      } else {
+        // conosciuto da Open Food Facts ma non ancora in catalogo: il modulo si
+        // apre precompilato con quel che si sa già, non da zero. Ignoto anche
+        // lì, o servizio giù: stesso modulo, stavolta vuoto — mai un muro.
+        setCreatingFor({ item, barcode: code, suggestion: result.suggestion });
+      }
+      setScanningFor(null);
+    },
+  });
+  const { mutate: lookupCode } = lookup;
+  const failedLookup = lookup.isError ? lookup.variables : null;
+
   // Senza useCallback, ogni tasto premuto nel campo del codice manuale (un
   // sibling re-render, non legato allo scanner) creerebbe una nuova identità
   // di `onDetected`, e l'effetto di BarcodeScanner ne dipende: la fotocamera
-  // si spegnerebbe e si riaccenderebbe a ogni carattere digitato. Le funzioni
-  // `set*` di useState sono stabili, quindi usando la forma a updater (non
-  // chiudendo su `resolved`) submitCode resta stabile a sua volta.
-  const submitCode = useCallback(async (item: ShoppingItem, code: string) => {
-    const lookup = await lookupBarcode(code);
-    const { product } = lookup;
-    if (product) {
-      setResolved((prev) => ({ ...prev, [item.id]: { kind: "product", product } }));
-      setScanningFor(null);
-      return;
-    }
-    // conosciuto da Open Food Facts ma non ancora in catalogo: il modulo si apre
-    // precompilato con quel che si sa già, non da zero. Ignoto anche lì, o
-    // servizio giù: stesso modulo, stavolta vuoto — non è mai un vicolo cieco.
-    setCreatingFor({ item, barcode: code, suggestion: lookup.suggestion });
-    setScanningFor(null);
-  }, []);
-
+  // si spegnerebbe e si riaccenderebbe a ogni carattere digitato. `mutate` di
+  // react-query è stabile, quindi lo resta anche questa.
   const handleDetected = useCallback(
     (code: string) => {
-      if (scanningFor) void submitCode(scanningFor, code);
+      if (scanningFor) lookupCode({ item: scanningFor, code });
     },
-    [scanningFor, submitCode]
+    [scanningFor, lookupCode]
   );
+
+  function openScanner(item: ShoppingItem) {
+    // Il codice digitato per un'altra voce non deve sopravvivere all'apertura: il
+    // residuo si agganciava alla voce nuova senza nessuna conferma intermedia.
+    // Si svuota qui, all'apertura, e non dopo il lookup: finché la chiamata è in
+    // volo o è andata male, quel che l'utente ha digitato resta dov'è, come il
+    // campo di AddItemField in Task 18.
+    setManualCode("");
+    lookup.reset();
+    setScanningFor(item);
+  }
+
+  function createByHand(item: ShoppingItem, barcode: string) {
+    setCreatingFor({ item, barcode, suggestion: null });
+    setScanningFor(null);
+  }
 
   return (
     <div className="p-4">
       <h1 className="pb-3 text-xl font-semibold">Sistema la spesa</h1>
 
-      {items.length === 0 && (
+      {isLoading && <p className="text-neutral-500">Carico…</p>}
+      {/* un caricamento fallito non è una lista vuota: dire "non hai spuntato
+          niente" a chi è tornato dalla spesa con le borse in mano è una bugia,
+          e senza riprova non gli resta niente da fare */}
+      {isError && (
+        <div className="flex flex-col items-start gap-2">
+          <p role="alert" className="text-sm text-red-600">
+            Non sono riuscito a caricare la spesa da sistemare. La lista non è vuota: non l'ho
+            letta.
+          </p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="rounded-lg border px-4 py-3 text-sm"
+          >
+            Riprova
+          </button>
+        </div>
+      )}
+      {!isLoading && !isError && items.length === 0 && (
         <p className="text-neutral-500">Niente da sistemare. Spunta prima qualcosa in lista.</p>
       )}
 
@@ -194,22 +294,27 @@ export function StockingScreen() {
               )}
 
               {!resolution && ingredientId && (
-                <div className="flex gap-2">
+                // wrap: su 375px due pulsanti con il nome della voce dentro non
+                // stanno su una riga, e stringerli li rende difficili da toccare
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setScanningFor(item)}
-                    className="rounded border px-3 py-2 text-sm"
+                    onClick={() => openScanner(item)}
+                    className="rounded border px-4 py-3 text-sm"
                   >
-                    Codice a barre per {item.raw_text}
+                    {/* il nome della voce serve al nome accessibile, non all'occhio:
+                        letto da uno screen reader distingue i pulsanti, visibile
+                        stringerebbe la riga senza aggiungere niente */}
+                    Codice a barre<span className="sr-only"> per {item.raw_text}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() =>
                       setResolved((prev) => ({ ...prev, [item.id]: { kind: "loose" } }))
                     }
-                    className="rounded border px-3 py-2 text-sm"
+                    className="rounded border px-4 py-3 text-sm"
                   >
-                    Sfuso, senza marca: {item.raw_text}
+                    Sfuso, senza marca<span className="sr-only">: {item.raw_text}</span>
                   </button>
                 </div>
               )}
@@ -231,18 +336,41 @@ export function StockingScreen() {
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void submitCode(scanningFor, manualCode);
+                if (e.key === "Enter") lookupCode({ item: scanningFor, code: manualCode });
               }}
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-3 text-base"
             />
           </label>
+          {lookup.isPending && <p className="text-sm text-neutral-500">Cerco il codice…</p>}
+          {/* anche il fallimento di rete degrada al manuale: un errore muto qui
+              era il muro più silenzioso dello schermo */}
+          {failedLookup && (
+            <div className="flex flex-col items-start gap-2">
+              <p role="alert" className="text-sm text-red-600">
+                Non sono riuscito a leggere il codice. Riprova, oppure crea il prodotto a mano.
+              </p>
+              <button
+                type="button"
+                onClick={() => createByHand(failedLookup.item, failedLookup.code)}
+                className="rounded-lg border px-4 py-3 text-sm"
+              >
+                Crea il prodotto a mano
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {creatingFor && effectiveIngredientId(creatingFor.item) && (
         <div className="mt-4">
           <CustomProductForm
+            // senza key React riusa l'istanza passando da una voce all'altra: i
+            // campi restano quelli di prima mentre ingrediente e codice sono già
+            // i nuovi, e si salva il prodotto sbagliato sotto l'ingrediente
+            // sbagliato, in silenzio e per sempre
+            key={`${creatingFor.item.id}:${creatingFor.barcode}`}
             ingredientId={effectiveIngredientId(creatingFor.item) as string}
+            itemLabel={creatingFor.item.raw_text}
             barcode={creatingFor.barcode}
             suggestion={creatingFor.suggestion}
             onCreated={(product) => {
@@ -252,6 +380,7 @@ export function StockingScreen() {
               }));
               setCreatingFor(null);
             }}
+            onCancel={() => setCreatingFor(null)}
           />
         </div>
       )}

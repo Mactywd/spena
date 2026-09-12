@@ -26,3 +26,10 @@ export function patchShoppingItem(
 export function searchIngredients(query: string) {
   return apiFetch<Ingredient[]>(`/ingredients/search?q=${encodeURIComponent(query)}`);
 }
+
+/** L'ultima uscita per una voce il cui testo libero non somiglia a nessun
+ * ingrediente: crearlo è l'unico modo perché quella voce non resti in lista per
+ * sempre. La normalizzazione del nome la fa il backend, non noi. */
+export function createIngredient(body: { name: string; display_name: string; category: string }) {
+  return apiFetch<Ingredient>("/ingredients", { method: "POST", body: JSON.stringify(body) });
+}
