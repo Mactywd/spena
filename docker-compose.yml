@@ -29,7 +29,11 @@ services:
     # data/ sta nella radice del repository, fuori dal contesto di build
     # dell'immagine (./backend): senza questo montaggio `python -m app.cli.seed`
     # dentro il container non trova il seme. Vedi app/cli/seed.py.
-    volumes: ["./backend:/app", "./data:/app/data:ro"]
+    # Il bersaglio è /data e non /app/data perché qui /app è a sua volta un bind di
+    # ./backend: un montaggio annidato fa creare a Docker il punto di innesto sul
+    # filesystem dell'host, cioè un backend/data vuoto e di proprietà di root che
+    # poi non si cancella senza sudo.
+    volumes: ["./backend:/app", "./data:/data:ro"]
 
   frontend:
     build: ./frontend

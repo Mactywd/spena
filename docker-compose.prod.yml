@@ -27,8 +27,10 @@ services:
       COOKIE_SECURE: "true"
     # solo lettura, e solo per il seme: data/ vive nella radice del repository,
     # fuori dal contesto di build dell'immagine, quindi `python -m app.cli.seed`
-    # non lo troverebbe. Vedi app/cli/seed.py.
-    volumes: ["./data:/app/data:ro"]
+    # non lo troverebbe. Lo stesso bersaglio dello sviluppo (/data) di proposito: è
+    # quello che il percorso end-to-end prova davvero, e un secondo bersaglio solo
+    # per la produzione sarebbe l'unico mai verificato. Vedi app/cli/seed.py.
+    volumes: ["./data:/data:ro"]
     depends_on: [db]
     restart: unless-stopped
 

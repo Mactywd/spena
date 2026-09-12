@@ -18,14 +18,17 @@ from app.services.embeddings import EmbeddingUnavailable, get_embedding_provider
 
 # I file del seme stanno in data/ nella radice del repository (layout della spec),
 # che è fuori dal contesto di build dell'immagine del backend: dentro il container
-# arrivano come bind mount su /app/data (vedi docker-compose.yml). Fuori dal
-# container, invece, si trovano risalendo da questo file. Vanno provati entrambi:
-# misurato, senza questo `docker compose exec backend python -m app.cli.seed` —
-# la semina documentata dal piano — moriva con FileNotFoundError su «/data», cioè
-# la v1 non era seminabile dove gira.
+# arrivano come bind mount su /data (vedi docker-compose.yml). Fuori dal container,
+# invece, si trovano risalendo da questo file. Vanno provati entrambi: misurato,
+# senza questa ricerca `docker compose exec backend python -m app.cli.seed` — la
+# semina documentata dal piano — moriva con FileNotFoundError, cioè la v1 non era
+# seminabile dove gira.
+# Il montaggio bersaglia /data e non /app/data perché in sviluppo /app è a sua volta
+# un bind di ./backend, e un montaggio annidato fa creare a Docker il punto di
+# innesto sull'host: un backend/data vuoto e di proprietà di root.
 CANDIDATE_DATA_DIRS = (
     Path(__file__).resolve().parents[3] / "data",
-    Path("/app/data"),
+    Path("/data"),
 )
 
 INGREDIENTS_FILE = "ingredients_seed.json"
@@ -33,8 +36,9 @@ RECIPES_FILE = "recipes_seed.json"
 
 HOWTO_MISSING_DATA = (
     f"Non trovo i file del seme ({INGREDIENTS_FILE}, {RECIPES_FILE}). "
-    "Dentro Docker la cartella data/ del repository va montata su /app/data: "
-    "controlla il volume del servizio backend in docker-compose.yml. "
+    "Dentro Docker la cartella data/ del repository va montata su /data "
+    "(`./data:/data:ro`): controlla il volume del servizio backend in "
+    "docker-compose.yml. "
     "Fuori da Docker, esegui dalla copia del repository che contiene data/."
 )
 

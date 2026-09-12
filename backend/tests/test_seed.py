@@ -81,11 +81,11 @@ def test_il_seme_si_trova_anche_nel_montaggio_del_container(tmp_path):
     """Dentro Docker l'immagine contiene solo backend/: data/ arriva montata.
 
     Il primo candidato (la radice del repository) lì non esiste, e prima di questa
-    ricerca la semina dentro il container moriva con FileNotFoundError su «/data».
+    ricerca la semina dentro il container moriva con FileNotFoundError.
     """
     from app.cli.seed import INGREDIENTS_FILE, find_data_dir
 
-    mounted = tmp_path / "app" / "data"
+    mounted = tmp_path / "data"
     mounted.mkdir(parents=True)
     (mounted / INGREDIENTS_FILE).write_text("[]")
 
@@ -98,5 +98,7 @@ def test_un_seme_assente_dice_cosa_manca_e_come_rimediare(tmp_path):
     with pytest.raises(FileNotFoundError) as failure:
         find_data_dir((tmp_path / "vuota",))
     message = str(failure.value)
-    assert "/app/data" in message, "il messaggio deve dire dove va montata data/"
+    # Il bersaglio del montaggio, non solo la parola «data»: il messaggio e i file
+    # Compose devono restare d'accordo, ed è l'unica cosa che chi semina ha in mano.
+    assert "./data:/data" in message, "il messaggio deve dire dove va montata data/"
     assert "docker-compose" in message

@@ -68,3 +68,45 @@ def test_il_backend_legge_env_nella_forma_lunga_con_format_raw(nome_file):
             f"{nome_file}: la voce di `env_file` per `.env` è {voce!r}, "
             f"senza `format: raw`. {PERCHE}"
         )
+
+
+@pytest.mark.parametrize("nome_file", COMPOSE_FILES)
+def test_il_seme_e_montato_dove_il_comando_di_semina_lo_cerca(nome_file):
+    """Il bersaglio del montaggio e i candidati del CLI devono restare d'accordo.
+
+    Sono in due file diversi e nessuno dei due dice dell'altro: se divergono,
+    `docker compose exec backend python -m app.cli.seed` muore con FileNotFoundError
+    e la v1 non è seminabile dove gira.
+
+    La seconda metà è il motivo per cui il bersaglio è /data: dentro a un altro bind
+    mount — in sviluppo /app è ./backend — Docker crea il punto di innesto sul
+    filesystem dell'host, e quella cartella nasce di proprietà di root, dentro ai
+    sorgenti, non cancellabile senza sudo.
+    """
+    from app.cli.seed import CANDIDATE_DATA_DIRS
+
+    backend = yaml.safe_load((REPO_ROOT / nome_file).read_text())["services"]["backend"]
+    montaggi = [voce.split(":") for voce in backend["volumes"]]
+    bersagli = [parti[1] for parti in montaggi if parti[0] == "./data"]
+
+    assert len(bersagli) == 1, (
+        f"{nome_file}: mi aspetto un solo montaggio di ./data nel backend, "
+        f"trovati {bersagli!r}"
+    )
+    bersaglio = Path(bersagli[0])
+    assert bersaglio in CANDIDATE_DATA_DIRS, (
+        f"{nome_file}: ./data è montata su {bersaglio}, che non è tra i candidati di "
+        f"app/cli/seed.py ({[str(c) for c in CANDIDATE_DATA_DIRS]}). "
+        "Così `python -m app.cli.seed` dentro il container non trova il seme."
+    )
+
+    for parti in montaggi:
+        if parti[0] == "./data" or not parti[0].startswith("./"):
+            continue
+        altro_bind = Path(parti[1])
+        assert altro_bind not in bersaglio.parents, (
+            f"{nome_file}: ./data è montata su {bersaglio}, dentro al bind "
+            f"{parti[0]} -> {altro_bind}. Un montaggio annidato fa creare a Docker il "
+            f"punto di innesto sull'host, cioè una cartella vuota di proprietà di root "
+            f"dentro a {parti[0]} che non si cancella senza sudo."
+        )
