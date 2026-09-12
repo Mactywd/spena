@@ -8,6 +8,7 @@ import {
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { LoginScreen } from "./features/auth/LoginScreen";
 import { PantryScreen } from "./features/pantry/PantryScreen";
+import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
 import { TabBar } from "./components/TabBar";
@@ -47,7 +48,7 @@ export default function App() {
             <Route path="/lista" element={<ShoppingListScreen />} />
             <Route path="/sistema" element={<StockingScreen />} />
             <Route path="/dispensa" element={<PantryScreen />} />
-            <Route path="/ricette" element={<div className="p-4">Ricette</div>} />
+            <Route path="/ricette" element={<RecipeBookScreen />} />
           </Routes>
         </main>
         <TabBar />
