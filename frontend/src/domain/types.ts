@@ -93,3 +93,25 @@ export interface CookResult {
   updated: number;
   restocked: number;
 }
+
+// Un ingrediente proposto da Claude, prima che l'utente l'accetti: `ingredient_id`
+// è null quando niente in anagrafica gli somiglia, e `confident` è false quando
+// l'aggancio è solo un suggerimento. Nessuno dei due casi va accettato in silenzio.
+export interface DraftIngredient {
+  raw_name: string;
+  role: IngredientRole;
+  quantity_text: string | null;
+  ingredient_id: string | null;
+  matched_name: string | null;
+  confident: boolean;
+}
+
+// La bozza di ricetta restituita da POST /recipes/ai-draft. Non salva nulla da
+// sé: propone soltanto, e non contiene mai valori nutrizionali.
+export interface RecipeDraft {
+  title: string;
+  description: string | null;
+  instructions: string;
+  servings: number | null;
+  ingredients: DraftIngredient[];
+}

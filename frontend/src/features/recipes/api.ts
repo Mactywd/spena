@@ -1,5 +1,5 @@
 import { apiFetch } from "../../api/client";
-import type { CookResult, RecipeDetail, RecipeSummary } from "../../domain/types";
+import type { CookResult, RecipeDetail, RecipeDraft, RecipeSummary } from "../../domain/types";
 
 export function searchRecipes(query: string, onlyCookable: boolean) {
   const params = new URLSearchParams();
@@ -14,6 +14,15 @@ export function fetchRecipe(id: string) {
 
 export function createRecipe(body: unknown) {
   return apiFetch<RecipeDetail>("/recipes", { method: "POST", body: JSON.stringify(body) });
+}
+
+// Propone una ricetta, non la salva: il salvataggio passa da createRecipe come
+// per ogni altra fonte, una volta che l'utente ha visto e corretto la bozza.
+export function draftRecipe(prompt: string) {
+  return apiFetch<RecipeDraft>("/recipes/ai-draft", {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  });
 }
 
 export function cookRecipe(
