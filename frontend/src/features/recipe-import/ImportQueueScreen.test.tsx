@@ -263,8 +263,47 @@ describe("coda di revisione dell'import", () => {
     // render di "Rigatoni" — per questo è un `findByText`, non un `getByText`.
     expect(await screen.findByText("Rigatoni")).toBeInTheDocument();
     expect(await screen.findByText(/decidi a mano/i)).toBeInTheDocument();
-    // il suggerimento testuale resta, ed è l'altra via per decidere in un tocco
-    expect(await screen.findByRole("button", { name: /Collega a pasta/i })).toBeInTheDocument();
+
+    // "Rigatoni" ha solo il suggerimento testuale (`certain: false`, una
+    // somiglianza trigram con "pasta", non una proposta di Claude che qui non è
+    // mai arrivata): resta una via in un tocco, ma retrocessa, non il pulsante
+    // primario "Collega a pasta" che il difetto critico rendeva. Quella frase
+    // asserirebbe un aggancio che nessuno ha verificato — esattamente come
+    // "Collega a pisello" per "Pinoli".
+    const scorciatoia = await screen.findByRole("button", { name: /Forse «pasta»/i });
+    expect(scorciatoia).toBeInTheDocument();
+    expect(scorciatoia.className).not.toContain("bg-brand");
+    expect(screen.queryByRole("button", { name: /^Collega a pasta$/i })).not.toBeInTheDocument();
+  });
+
+  it("un aggancio testuale certo resta un tocco solo anche senza proposta di Claude", async () => {
+    // "coincidenza esatta su nome o alias" (match_name, certain: true) è un fatto,
+    // non un'ipotesi: merita lo stesso pulsante primario di una proposta di
+    // Claude, anche quando Claude non ha proposto niente per questo termine.
+    const TERMINE_CERTO = [
+      {
+        id: "t3",
+        display_name: "Pinoli",
+        occurrences: 3,
+        suggestion: { ingredient_id: "i9", name: "pinolo", certain: true },
+        waiting_titles: ["Pesto alla genovese"],
+      },
+    ];
+    stubFetch((path) => {
+      if (path.includes("/imports/terms/proposals")) return [{ proposals: [] }, 200];
+      if (path.includes("/imports/terms")) return [TERMINE_CERTO, 200];
+      if (path.includes("/imports/status"))
+        return [
+          { fetched: 3, pending_recipes: 3, imported: 0, skipped: 0, pending_terms: 1 },
+          200,
+        ];
+      return [{}, 404];
+    });
+    renderScreen();
+
+    const pulsante = await screen.findByRole("button", { name: /^Collega a pinolo$/i });
+    expect(pulsante.className).toContain("bg-brand");
+    expect(screen.queryByRole("button", { name: /Forse «pinolo»/i })).not.toBeInTheDocument();
   });
 
   it("a coda vuota dice che non c'è niente da fare", async () => {

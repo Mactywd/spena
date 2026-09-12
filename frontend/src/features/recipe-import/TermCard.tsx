@@ -14,29 +14,47 @@ export type Decision = {
   role_override?: "primary" | "secondary";
 };
 
-/** Cosa farà il pulsante, detto in parole.
+/** Il nome dell'ingrediente agganciato da una proposta "map", quando c'è.
+ *
+ * Il backend porta il nome canonico con la proposta "map" (vedi TermProposal in
+ * terms.py): lo preferiamo sempre. Il fallback sull'aggancio testuale resta solo
+ * per una proposta più vecchia o incompleta che ne fosse priva — senza, il
+ * pulsante cadrebbe sul generico «l'ingrediente» anche quando un nome vero è
+ * disponibile altrove.
+ */
+function mappedName(proposal: TermProposal, term: ImportTerm): string | null {
+  return (
+    proposal.name ??
+    (term.suggestion?.ingredient_id === proposal.ingredient_id ? term.suggestion.name : null)
+  );
+}
+
+/** Cosa farà il pulsante primario, detto in parole.
  *
  * «Collega a pasta» e «Crea Speck in carne» sono frasi che si leggono e si
  * confermano; «Applica proposta» costringerebbe a fidarsi di qualcosa che non si
  * vede, che è esattamente ciò che la revisione esiste per evitare.
+ *
+ * Solo per un aggancio certo: una coincidenza esatta, o una proposta di Claude
+ * che ha già verificato che l'ingrediente esiste. L'aggancio testuale incerto ha
+ * la sua etichetta, più prudente, in `uncertainLabel`.
  */
 function proposalLabel(proposal: TermProposal, term: ImportTerm): string | null {
-  if (proposal.action === "map") {
-    // Il backend porta il nome canonico con la proposta "map" (vedi TermProposal
-    // in terms.py): lo preferiamo sempre. Il fallback sull'aggancio testuale resta
-    // solo per una proposta più vecchia o incompleta che ne fosse priva — senza,
-    // il pulsante tornerebbe al generico «l'ingrediente» anche quando un nome vero
-    // è disponibile altrove.
-    const name =
-      proposal.name ??
-      (term.suggestion?.ingredient_id === proposal.ingredient_id
-        ? term.suggestion.name
-        : null);
-    return `Collega a ${name ?? "l'ingrediente"}`;
-  }
+  if (proposal.action === "map") return `Collega a ${mappedName(proposal, term) ?? "l'ingrediente"}`;
   if (proposal.action === "create")
     return `Crea «${proposal.display_name ?? proposal.name}» in ${proposal.category}`;
   return `Ignora «${term.display_name}»`;
+}
+
+/** Cosa dice il pulsante retrocesso per un aggancio testuale incerto.
+ *
+ * Non "Collega a X": quella frase è un'asserzione, e qui c'è solo una somiglianza
+ * di nome trovata per trigram (vedi match_name in ingredient_match.py), non un
+ * fatto. "Forse" e "da confermare" dicono la differenza a chi legge, prima che il
+ * tocco scriva un alias permanente.
+ */
+function uncertainLabel(proposal: TermProposal, term: ImportTerm): string {
+  return `Forse «${mappedName(proposal, term) ?? "l'ingrediente"}» — tocca per confermare`;
 }
 
 export function TermCard({
@@ -79,6 +97,18 @@ export function TermCard({
           }
         : null);
 
+  // Una proposta di Claude (`proposal !== null`) ha già verificato che
+  // l'ingrediente esiste in anagrafica: resta il tocco primario a prescindere da
+  // `certain`, che riguarda solo l'aggancio testuale. L'aggancio testuale invece
+  // eredita `certain` da `match_name` (backend/app/services/ingredient_match.py):
+  // certo è una coincidenza esatta su nome o alias, un fatto che non ha bisogno
+  // di conferma; incerto è il risultato migliore di una ricerca per somiglianza,
+  // un'ipotesi come tante altre. Questo è il difetto critico: "Pinoli" diventava
+  // alias permanente di "pisello" con un tocco sul pulsante primario, perché qui
+  // `certain` non veniva mai letto.
+  const shortcutIsCertain =
+    shortcut !== null && (proposal !== null || term.suggestion?.certain === true);
+
   return (
     <Card as="li" className="flex flex-col gap-3">
       <div>
@@ -99,7 +129,7 @@ export function TermCard({
           delle proposte (a differenza di `shortcut`): il pulsante permanente resta
           sempre lo stesso elemento, pronto o no che sia la proposta, e non sparisce
           e riappare sotto chi lo sta per toccare. */}
-      {shortcut && shortcut.action !== "ignore" && (
+      {shortcut && shortcutIsCertain && shortcut.action !== "ignore" && (
         <button
           type="button"
           disabled={pending}
@@ -186,6 +216,31 @@ export function TermCard({
           >
             Crea e collega
           </button>
+        </div>
+      )}
+
+      {/* l'aggancio testuale incerto: una somiglianza di nome, non un fatto
+          verificato (vedi `shortcutIsCertain` sopra). Sta sotto ai controlli a
+          mano e non sopra, e con un pulsante ghost come "Ignora" invece del verde
+          pieno: la stessa scorciatoia di prima, ma senza il peso visivo di una
+          risposta già data. Non la togliamo — un termine senza scorciatoia costa
+          tre tocchi — la retrocediamo. */}
+      {shortcut && !shortcutIsCertain && (
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              onDecide({ action: "map", ingredient_id: shortcut.ingredient_id!, role_override: role })
+            }
+            className={buttonClasses("ghost", "block")}
+          >
+            {uncertainLabel(shortcut, term)}
+          </button>
+          <p className="text-xs text-ink-faint">
+            È solo una somiglianza tra i nomi: verificala prima di confermarla, oppure scegli
+            un altro ingrediente con i controlli qui sopra.
+          </p>
         </div>
       )}
 
