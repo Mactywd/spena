@@ -359,7 +359,7 @@ describe("coda di revisione dell'import", () => {
       },
     ];
     let chiamateUndo = 0;
-    stubFetch((path, method) => {
+    const spy = stubFetch((path, method) => {
       if (path.includes("/undo") && method === "POST") {
         chiamateUndo += 1;
         if (chiamateUndo === 1) {
@@ -382,7 +382,18 @@ describe("coda di revisione dell'import", () => {
     const rifaiComunque = screen.getByRole("button", { name: /rifai comunque/i });
     await userEvent.click(rifaiComunque);
 
+    // Il numero di chiamate da solo non basta: uno stub che alterna risposta in
+    // base al conteggio le farebbe salire a due anche se il secondo tentativo non
+    // portasse `force`. La prova vera è nel corpo della seconda richiesta.
     await waitFor(() => expect(chiamateUndo).toBe(2));
+    const chiamateUndoFatte = spy.mock.calls.filter(
+      ([url, init]) =>
+        String(url).includes("/undo") && (init as RequestInit | undefined)?.method === "POST"
+    );
+    expect(chiamateUndoFatte).toHaveLength(2);
+    expect(JSON.parse(String((chiamateUndoFatte[1][1] as RequestInit).body))).toEqual({
+      force: true,
+    });
   });
 
   it("chiedere all'AI applica la coda e dice cosa ha sbloccato", async () => {

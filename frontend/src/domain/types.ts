@@ -148,8 +148,6 @@ export interface ImportTerm {
   decided_name: string | null;
 }
 
-export type TermAction = "map" | "create" | "ignore";
-
 export interface TermDecisionResult {
   unlocked: number;
   remaining_terms: number;

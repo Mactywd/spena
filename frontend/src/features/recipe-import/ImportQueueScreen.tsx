@@ -187,7 +187,7 @@ export function ImportQueueScreen() {
         <section className="pt-6">
           <h2 className="text-sm font-medium text-ink-soft">Deciso dall'AI</h2>
           <p className="pt-1 text-xs text-ink-faint">
-            Le 50 decisioni più recenti, non tutte quelle prese. Ogni riga si può
+            Le decisioni più recenti, non tutte quelle prese. Ogni riga si può
             annullare: il termine torna in coda e le ricette che ne erano nate si
             rifanno.
           </p>
