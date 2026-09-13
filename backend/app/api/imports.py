@@ -93,11 +93,12 @@ async def decide_with_ai(
     termine la cui risposta non passa la verifica resta in coda, e la coda manuale è
     identica a prima.
     """
-    if payload.term_ids:
+    if payload.term_ids is not None:
         rows = await session.execute(
             select(ImportTerm).where(
                 ImportTerm.id.in_(payload.term_ids),
                 ImportTerm.decision == TermDecision.PENDING,
+                ImportTerm.source == GIALLOZAFFERANO,
             )
         )
         terms = list(rows.scalars())

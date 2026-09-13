@@ -135,3 +135,119 @@ async def test_la_vecchia_rotta_delle_proposte_non_esiste_piu(client):
         "/api/v1/imports/terms/proposals", json={"term_ids": []}
     )
     assert response.status_code == 404
+
+
+async def test_lista_vuota_di_term_ids_e_un_no_op(logged_client, db_session, monkeypatch):
+    """Una lista vuota `[]` non significa «tutto quanto in coda»: significa zero termini.
+
+    La distinzione importa perché il payload può omettere `term_ids` (significa "tutti"),
+    oppure passare una lista (significa "questi"). Una lista vuota deve essere un no-op:
+    nessun termine viene deciso, nessuno è applicato, il database resta intatto.
+    """
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+
+    # Creiamo diversi termini PENDING nella coda
+    terms = [
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key=f"k-pasta-{i}", display_name=f"Pasta {i}",
+            occurrences=1, decision=TermDecision.PENDING,
+        )
+        for i in range(5)
+    ]
+    db_session.add_all(terms)
+    await db_session.flush()
+
+    # Fake LLM che mapperebbe tutti i termini se chiamato
+    import app.services.recipe_import.decide as modulo
+
+    monkeypatch.setattr(
+        modulo, "open_client",
+        lambda: ScriptedLlm({f"Pasta {i}": llm_map("pasta") for i in range(5)})
+    )
+
+    # Mandiamo term_ids vuoto: deve essere un no-op (zero termini decisi)
+    response = await logged_client.post(
+        "/api/v1/imports/terms/decide", json={"term_ids": []}
+    )
+    assert response.status_code == 200
+    corpo = response.json()
+    # Niente è stato deciso: la lista vuota significa "questi zero termini"
+    assert corpo["applied"] == 0
+    assert corpo["created"] == 0
+    assert corpo["ignored"] == 0
+    # still_pending è 0 perché abbiamo passato 0 termini a decide_terms
+    # ma remaining_terms nel database è ancora 5 (non abbiamo toccato niente)
+    assert corpo["still_pending"] == 0
+    assert corpo["remaining_terms"] == 5
+
+    # Nel database, tutti i termini restano PENDING
+    for term in terms:
+        await db_session.refresh(term)
+        assert term.decision == TermDecision.PENDING
+
+
+async def test_term_ids_non_decide_termini_da_altra_fonte(
+    logged_client, db_session, monkeypatch
+):
+    """Un termine che appartiene a un'altra source non viene deciso nemmeno se
+    passato esplicitamente in `term_ids`.
+
+    La rotta deve filtrare per source come fa nel ramo senza `term_ids`.
+    """
+    # Creiamo un ingrediente per la verifica
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+
+    # Creiamo un termine da GIALLOZAFFERANO (quello che vogliamo decidere)
+    term_gz = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-rigatoni", display_name="Rigatoni",
+        occurrences=1, decision=TermDecision.PENDING,
+    )
+
+    # Creiamo un termine da un'altra source
+    altro_source = "altro-catalogo"
+    term_altro = ImportTerm(
+        source=altro_source, term_key="k-penne", display_name="Penne",
+        occurrences=1, decision=TermDecision.PENDING,
+    )
+    db_session.add_all([term_gz, term_altro])
+    await db_session.flush()
+
+    # Fake LLM che sa decidere entrambi
+    import app.services.recipe_import.decide as modulo
+
+    monkeypatch.setattr(
+        modulo, "open_client",
+        lambda: ScriptedLlm({
+            "Rigatoni": llm_map("pasta"),
+            "Penne": llm_map("pasta"),
+        })
+    )
+
+    # Proviamo a passare ENTRAMBI gli id: il filtro per source deve escludere
+    # term_altro dalla query, per cui solo term_gz arriva a decide_terms
+    response = await logged_client.post(
+        "/api/v1/imports/terms/decide",
+        json={"term_ids": [str(term_gz.id), str(term_altro.id)]}
+    )
+    assert response.status_code == 200
+    corpo = response.json()
+    # Solo il termine di GIALLOZAFFERANO è stato deciso (term_altro è stato filtrato)
+    assert corpo["applied"] == 1
+    assert corpo["created"] == 0
+    assert corpo["ignored"] == 0
+    # still_pending è 0 perché solo 1 termine è arrivato a decide_terms, ed è stato deciso
+    assert corpo["still_pending"] == 0
+    # remaining_terms conta solo i termini di GIALLOZAFFERANO, quindi è 0
+    # (term_altro non è contato perché è di altra source)
+    assert corpo["remaining_terms"] == 0
+
+    # Nel database
+    await db_session.refresh(term_gz)
+    assert term_gz.decision == TermDecision.MAPPED  # questo è stato deciso
+
+    await db_session.refresh(term_altro)
+    assert term_altro.decision == TermDecision.PENDING  # questo NO, perché di altra source
