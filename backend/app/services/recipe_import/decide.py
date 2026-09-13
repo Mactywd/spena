@@ -179,3 +179,156 @@ async def decide_one(
         )
 
     return None  # un'azione che non conosco
+
+
+COLLAPSE_MAX_TOKENS = 800
+
+COLLAPSE_SYSTEM_PROMPT = """Sei un aiuto per mettere in ordine un'anagrafica di ingredienti di un'app di dispensa, che serve a rispondere «ce l'ho in casa?».
+
+Ricevi una lista di nomi di ingredienti che stanno per essere aggiunti, e per ognuno i nomi già presenti in anagrafica che gli assomigliano. Raggruppa i nomi che sono lo stesso ingrediente.
+
+Per ogni gruppo:
+- "canonical": il nome che sopravvive. Deve essere uno dei nomi che ti passo — fra quelli nuovi o fra quelli già in anagrafica. Non inventarne uno terzo.
+- "merge": i nomi nuovi che diventano varianti di quel canonico. Solo nomi presenti nella lista che ti ho dato.
+
+Regole:
+- Raggruppa solo ciò che in cucina è la stessa cosa. "Salmone" e "Salmone selvaggio" sì. "Cipolla" e "Cipollotto" NO: sono ingredienti diversi.
+- Nel dubbio non raggruppare: due ingredienti in più si correggono, una distinzione perduta no.
+- Se non c'è niente da raggruppare, torna una lista vuota.
+- Non inserire valori nutrizionali.
+"""
+
+COLLAPSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "groups": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "canonical": {"type": "string"},
+                    "merge": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["canonical", "merge"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["groups"],
+    "additionalProperties": False,
+}
+
+NEIGHBOURS_PER_NAME = 3
+
+
+async def collapse_creates(
+    session: AsyncSession,
+    proposals: list[TermDecisionProposal],
+    registry: Registry,
+    client: object | None = None,
+) -> list[TermDecisionProposal]:
+    """Unisce i `create` che sono lo stesso ingrediente. Non scrive niente.
+
+    Copre due rischi in una chiamata: nuovo contro nuovo (che nessuna delle chiamate
+    parallele poteva vedere) e nuovo contro esistente (che `decide_one` avrebbe dovuto
+    prendere, e che un modello con 3,8 miliardi di parametri attivi a volte non
+    prende).
+
+    I vicini si trovano con `search_ingredients`, la ricerca per trigrammi che è già
+    la primitiva di somiglianza del progetto: al modello arriva un input minuscolo e
+    non l'anagrafica intera.
+
+    Zero chiamate quando non c'è niente da chiedere: nessun `create`, oppure un solo
+    `create` la cui ricerca per trigrammi non trova nessun vicino — né fra i nuovi (non
+    ce ne sono altri) né in anagrafica (nessuna riga simile). Un solo `create` con un
+    vicino in anagrafica invece chiama comunque: è esattamente il caso «nuovo contro
+    esistente» che `decide_one` avrebbe dovuto prendere e a volte non prende.
+
+    Un guasto del modello non perde il lotto: si tornano le proposte come sono
+    arrivate. Il collasso è una rifinitura, e far cadere N decisioni buone per una
+    chiamata andata male sarebbe il contrario di quel che serve.
+    """
+    from app.repositories.ingredients import search_ingredients
+
+    creates = [p for p in proposals if p.action == "create" and p.name]
+    if not creates:
+        return list(proposals)
+
+    proposed = {p.name: p for p in creates if p.name}
+    neighbours: dict[str, list[str]] = {}
+    for name in proposed:
+        found = await search_ingredients(session, name, limit=NEIGHBOURS_PER_NAME)
+        neighbours[name] = [ingredient.name for ingredient in found]
+
+    if len(proposed) < 2 and not any(neighbours.values()):
+        return list(proposals)  # niente con cui collassare, né fra i nuovi né in anagrafica
+
+    question = json.dumps(
+        {
+            "nuovi": [
+                {"nome": name, "simili_in_anagrafica": neighbours[name]} for name in proposed
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+    try:
+        payload = await complete_json(
+            system=COLLAPSE_SYSTEM_PROMPT,
+            user=question,
+            schema=COLLAPSE_SCHEMA,
+            schema_name="collasso_ingredienti",
+            max_tokens=COLLAPSE_MAX_TOKENS,
+            client=client,
+        )
+    except LlmUnavailable:
+        return list(proposals)
+
+    groups = payload.get("groups")
+    if not isinstance(groups, list):
+        return list(proposals)
+
+    merged: dict[str, TermDecisionProposal] = {}
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        canonical = str(group.get("canonical") or "").strip().lower()
+        names = group.get("merge")
+        if not canonical or not isinstance(names, list):
+            continue
+
+        # il canonico deve essere qualcosa che esiste o che stiamo creando: un terzo
+        # nome inventato fa scartare il gruppo, e i nomi restano separati
+        existing_id = registry.by_name.get(canonical)
+        if canonical not in proposed and existing_id is None:
+            continue
+
+        for raw in names:
+            name = str(raw or "").strip().lower()
+            if name == canonical or name not in proposed:
+                continue  # un nome che nessuno ha proposto non si accorpa
+            losing = proposed[name]
+            winner = proposed.get(canonical)
+            merged[name] = TermDecisionProposal(
+                term_id=losing.term_id,
+                action="merge",
+                ingredient_id=existing_id,  # None quando il canonico è un `create` del lotto
+                name=canonical,
+                # Nome visibile e categoria sono quelli del **vincitore**, non del nome
+                # che perde. Quando il canonico è un `create` dello stesso lotto, il
+                # fan-in può trovarsi a creare l'ingrediente partendo da questa
+                # proposta — dipende da quale delle due incontra prima — e con
+                # l'etichetta del perdente nascerebbe «salmone» con nome visibile
+                # «Salmone selvaggio». Prenderli dal vincitore rende il risultato
+                # indipendente dall'ordine, che è la sola forma in cui è corretto.
+                display_name=(
+                    winner.display_name if winner is not None else canonical.capitalize()
+                ),
+                category=winner.category if winner is not None else losing.category,
+            )
+
+    out: list[TermDecisionProposal] = []
+    for proposal in proposals:
+        replacement = merged.get(proposal.name) if proposal.action == "create" else None
+        out.append(replacement if replacement is not None else proposal)
+    return out
