@@ -15,6 +15,7 @@ from app.domain.rules import (
     is_satisfied,
     missing_count,
 )
+from app.repositories.ingredients import create_ingredient
 from app.repositories.pantry import availability_map
 from app.repositories.recipes import create_recipe, get_recipe
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
@@ -32,6 +33,7 @@ from app.services.embeddings import (
     log_degradation_once,
     recipe_document,
 )
+from app.services.ingredient_match import match_name
 from app.services.llm import LlmUnavailable
 from app.services.recipe_search import search_recipes, semantic_search_usable
 
@@ -143,13 +145,35 @@ async def create(
         log_degradation_once(exc)
 
     try:
+        # Le righe che nominano un ingrediente non ancora in anagrafica lo creano qui,
+        # dentro la stessa transazione della ricetta: se il salvataggio fallisce non
+        # resta nessun ingrediente orfano. In sequenza e non in parallelo, per lo
+        # stesso motivo del fan-in dell'import: due righe con lo stesso nome nuovo
+        # devono diventare un ingrediente, non un doppione.
+        resolved: list[tuple[uuid.UUID, str, str | None, str | None]] = []
+        for line in payload.ingredients:
+            ingredient_id = line.ingredient_id
+            if ingredient_id is None:
+                # `match_name` e non una ricerca sul solo nome canonico: se la bozza
+                # dice «pomodori» e l'anagrafica ha «pomodoro» con quell'alias,
+                # collegarsi è giusto e creare sarebbe un duplicato travestito
+                match = await match_name(session, line.name or "")
+                if match.certain and match.ingredient_id is not None:
+                    ingredient_id = match.ingredient_id
+                else:
+                    created = await create_ingredient(
+                        session, name=line.name or "",
+                        display_name=(line.name or "").capitalize(),
+                        category=line.category or "altro",
+                    )
+                    ingredient_id = created.id
+            resolved.append((ingredient_id, line.role, line.quantity_text, line.note))
+
         recipe = await create_recipe(
             session, title=payload.title, description=payload.description,
             instructions=payload.instructions, servings=payload.servings,
             source=payload.source, source_ref=payload.source_ref,
-            ingredients=[
-                (i.ingredient_id, i.role, i.quantity_text, i.note) for i in payload.ingredients
-            ],
+            ingredients=resolved,
             embedding=embedding,
         )
         await session.commit()

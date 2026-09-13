@@ -108,6 +108,7 @@ export interface DraftIngredient {
   ingredient_id: string | null;
   matched_name: string | null;
   confident: boolean;
+  proposed_category: string | null;
 }
 
 // La bozza di ricetta restituita da POST /recipes/ai-draft. Non salva nulla da

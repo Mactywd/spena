@@ -5,6 +5,7 @@ import { ApiError } from "../../api/client";
 import { createRecipe, draftRecipe } from "../recipes/api";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import { INGREDIENT_CATEGORIES } from "../../domain/categories";
 import type {
   DraftIngredient,
   Ingredient,
@@ -41,11 +42,17 @@ interface FormLine {
   role: IngredientRole;
   quantityText: string;
   included: boolean;
+  // `null` quando la riga è agganciata o quando il modello non ha detto niente
+  // di utilizzabile. Valorizzato è la ragione per cui una riga senza aggancio
+  // può comunque salvarsi: il modello ha detto cos'è e in che reparto, e non
+  // c'è nessun aggancio dubbio da verificare.
+  proposedCategory: string | null;
 }
 
 function lineFromDraft(line: DraftIngredient, index: number): FormLine {
   const attached = line.ingredient_id !== null;
   const uncertain = attached && !line.confident;
+  const proposedCategory = attached ? null : line.proposed_category ?? null;
   return {
     // l'indice, non il solo nome: niente vieta al modello di proporre due volte
     // lo stesso `raw_name` (il prompt non lo vieta e `draft_recipe` non deduplica),
@@ -63,7 +70,11 @@ function lineFromDraft(line: DraftIngredient, index: number): FormLine {
     // ricettario senza che nessuno l'abbia guardato, ed è esattamente
     // l'accettazione in silenzio che la seconda decisione di progetto vieta: un
     // ingrediente sbagliato avvelena la disponibilità di ogni ricetta che lo usa.
-    included: attached && !uncertain,
+    // Una riga senza aggancio ma con una categoria proposta è il caso opposto:
+    // non c'è nessuna ipotesi da confermare, il modello ha detto cos'è, quindi
+    // parte inclusa.
+    included: (attached && !uncertain) || proposedCategory !== null,
+    proposedCategory,
   };
 }
 
@@ -82,11 +93,15 @@ function lineFromIngredient(ingredient: Ingredient): FormLine {
     role: "primary",
     quantityText: "",
     included: true,
+    proposedCategory: null,
   };
 }
 
 function matchNote(line: FormLine): string {
-  if (line.ingredientId === null) return `${line.label} non in anagrafica, sarà escluso`;
+  if (line.ingredientId === null) {
+    if (line.proposedCategory !== null) return `${line.label}: da creare salvando`;
+    return `${line.label} non in anagrafica, sarà escluso`;
+  }
   if (line.uncertain) return `${line.matchedName}, da confermare`;
   return line.matchedName ?? line.label;
 }
@@ -188,7 +203,12 @@ export function AiDraftScreen() {
     },
   });
 
-  const savable = lines.filter((line) => line.ingredientId !== null && line.included);
+  // Una riga si può salvare se è agganciata, o se porta nome e categoria con cui
+  // crearla. La seconda forma parte inclusa: non c'è nessun aggancio da verificare,
+  // e il selettore della categoria qui sotto è lì per correggerla prima di salvare.
+  const savable = lines.filter(
+    (line) => line.included && (line.ingredientId !== null || line.proposedCategory !== null)
+  );
   const problem = validationProblem(title, instructions, servingsText, savable);
 
   const save = useMutation({
@@ -202,13 +222,22 @@ export function AiDraftScreen() {
         // una persona, e spacciarla per "ai" sarebbe una bugia nello storico
         source: draft ? "ai" : "manual",
         source_ref: draft ? sourceRef(prompt) : null,
-        ingredients: savable.map((line) => ({
-          ingredient_id: line.ingredientId,
-          role: line.role,
-          // `quantity_text` è testo da mostrare, mai un numero da calcolare:
-          // passa verbatim, e vuoto resta vuoto invece di diventare ""
-          quantity_text: line.quantityText.trim() === "" ? null : line.quantityText,
-        })),
+        ingredients: savable.map((line) =>
+          line.ingredientId !== null
+            ? {
+                ingredient_id: line.ingredientId,
+                role: line.role,
+                // `quantity_text` è testo da mostrare, mai un numero da calcolare:
+                // passa verbatim, e vuoto resta vuoto invece di diventare ""
+                quantity_text: line.quantityText.trim() === "" ? null : line.quantityText,
+              }
+            : {
+                name: line.label.trim().toLowerCase(),
+                category: line.proposedCategory,
+                role: line.role,
+                quantity_text: line.quantityText.trim() === "" ? null : line.quantityText,
+              }
+        ),
       }),
     onSuccess: (recipe) => {
       // la ricetta appena scritta deve apparire nel ricettario al prossimo giro:
@@ -329,6 +358,31 @@ export function AiDraftScreen() {
                     Parte escluso, perché l'aggancio è solo un'ipotesi: spunta la casella se è
                     quello giusto.
                   </p>
+                )}
+
+                {line.ingredientId === null && line.proposedCategory !== null && (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-ink-soft">
+                      Non è in anagrafica: lo creo io salvando.
+                    </p>
+                    <label className="text-xs font-medium text-ink-soft">
+                      Categoria
+                      <select
+                        aria-label={`Categoria per «${line.label}»`}
+                        value={line.proposedCategory ?? "altro"}
+                        onChange={(e) =>
+                          updateLine(line.key, { proposedCategory: e.target.value })
+                        }
+                        className="mt-1"
+                      >
+                        {INGREDIENT_CATEGORIES.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
                 )}
 
                 {line.ingredientId !== null && (
