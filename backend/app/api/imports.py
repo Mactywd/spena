@@ -19,10 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.core.security import require_session
-from app.db.models.ingredient import Ingredient, IngredientAlias
+from app.db.models.ingredient import Ingredient
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
 from app.repositories.imports import counts, get_term, pending_terms, waiting_titles
-from app.repositories.ingredients import add_alias, create_ingredient
+from app.repositories.ingredients import create_ingredient, remember_alias
 from app.schemas.recipe_import import (
     DecisionOut,
     ImportStatusOut,
@@ -147,7 +147,7 @@ async def decide(
 
         term.decision = TermDecision.MAPPED
         term.ingredient_id = ingredient.id
-        await _remember_alias(session, ingredient.id, term.display_name)
+        await remember_alias(session, ingredient.id, term.display_name)
 
     term.role_override = payload.role_override
     term.decided_by = "human"
@@ -158,27 +158,3 @@ async def decide(
     numbers = await counts(session, GIALLOZAFFERANO)
     await session.commit()
     return DecisionOut(unlocked=materialized.created, remaining_terms=numbers.pending_terms)
-
-
-async def _remember_alias(
-    session: AsyncSession, ingredient_id: uuid.UUID, display_name: str
-) -> None:
-    """L'alias è ciò che fa valere la decisione per sempre, e anche fuori dall'import.
-
-    Si scrive solo se quell'alias non esiste già per nessun ingrediente: il vincolo
-    del database è su `(ingredient_id, alias)` e lascerebbe passare lo stesso alias
-    su due ingredienti diversi, cioè un autocomplete che dà due risposte a una
-    domanda sola. Il legame fra termine e ingrediente vive su `import_terms`, quindi
-    saltarlo non perde la decisione.
-    """
-    alias = display_name.strip().lower()
-    if not alias:
-        return
-    already = (
-        await session.execute(
-            select(IngredientAlias).where(IngredientAlias.alias == alias)
-        )
-    ).scalars().first()
-    if already is not None:
-        return
-    await add_alias(session, ingredient_id, alias, source="import")

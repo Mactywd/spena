@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient, IngredientAlias
@@ -91,3 +91,102 @@ async def add_alias(
     session.add(entry)
     await session.flush()
     return entry
+
+
+async def remember_alias(
+    session: AsyncSession, ingredient_id: uuid.UUID, display_name: str
+) -> bool:
+    """L'alias è ciò che fa valere una decisione per sempre, e anche fuori dall'import.
+
+    Si scrive solo se quell'alias non esiste già per nessun ingrediente: il vincolo del
+    database è su `(ingredient_id, alias)` e lascerebbe passare lo stesso alias su due
+    ingredienti diversi, cioè un autocomplete che dà due risposte a una domanda sola.
+    Il legame fra termine e ingrediente vive su `import_terms`, quindi saltarlo non
+    perde la decisione.
+
+    Torna `True` se l'ha scritto. Unica implementazione: la usano la decisione umana
+    (api/imports.py), quella dell'AI (services/recipe_import/decide.py) e il collasso.
+    Due copie di questa regola si scollerebbero, e la prima cosa a scollarsi sarebbe
+    il vincolo su cui poggia l'autocomplete.
+    """
+    cleaned = display_name.strip().lower()
+    if not cleaned:
+        return False
+    already = (
+        await session.execute(select(IngredientAlias).where(IngredientAlias.alias == cleaned))
+    ).scalars().first()
+    if already is not None:
+        return False
+    await add_alias(session, ingredient_id, cleaned, source="import")
+    return True
+
+
+async def forget_alias(
+    session: AsyncSession, ingredient_id: uuid.UUID, display_name: str
+) -> bool:
+    """L'inversa di `remember_alias`, e prudente per la stessa ragione.
+
+    Cancella solo un alias scritto dall'import (`source="import"`) e solo su quel
+    preciso ingrediente: annullare una decisione dell'AI non deve poter smontare
+    l'anagrafica del seme, dove gli alias arrivano da `source="seed"` e valgono a
+    prescindere da qualunque import.
+    """
+    cleaned = display_name.strip().lower()
+    if not cleaned:
+        return False
+    entry = (
+        await session.execute(
+            select(IngredientAlias).where(
+                IngredientAlias.ingredient_id == ingredient_id,
+                IngredientAlias.alias == cleaned,
+                IngredientAlias.source == "import",
+            )
+        )
+    ).scalars().first()
+    if entry is None:
+        return False
+    await session.delete(entry)
+    await session.flush()
+    return True
+
+
+async def delete_ingredient_if_unused(
+    session: AsyncSession, ingredient_id: uuid.UUID
+) -> bool:
+    """Cancella un ingrediente solo se nessuno lo usa più. Torna `True` se l'ha fatto.
+
+    «Usarlo» significa: una riga di ricetta, un articolo in dispensa, una voce di
+    lista, o un termine dell'import che lo indica. I suoi **alias** non contano: sono
+    parte della decisione che lo ha creato, non un uso indipendente, e se contassero
+    nessun ingrediente creato dall'AI sarebbe mai cancellabile — ogni decisione ne
+    scrive uno.
+
+    È questo controllo che rende gratuito l'annullamento di un collasso: se «salmone
+    selvaggio» era stato accorpato in «salmone», annullare «Salmone» trova l'altro
+    termine e non cancella niente.
+    """
+    from app.db.models.pantry import PantryItem
+    from app.db.models.recipe import RecipeIngredient
+    from app.db.models.recipe_import import ImportTerm
+
+    for model, column in (
+        (RecipeIngredient, RecipeIngredient.ingredient_id),
+        (PantryItem, PantryItem.ingredient_id),
+        (ShoppingListItem, ShoppingListItem.ingredient_id),
+        (ImportTerm, ImportTerm.ingredient_id),
+    ):
+        used = (
+            await session.execute(select(model.id).where(column == ingredient_id).limit(1))
+        ).scalars().first()
+        if used is not None:
+            return False
+
+    await session.execute(
+        delete(IngredientAlias).where(IngredientAlias.ingredient_id == ingredient_id)
+    )
+    ingredient = await session.get(Ingredient, ingredient_id)
+    if ingredient is None:
+        return False
+    await session.delete(ingredient)
+    await session.flush()
+    return True
