@@ -8,9 +8,10 @@ Le ricette si rifanno da `payload`, che è ancora nel database esattamente per q
 (spec madre §6.1): non serve nessuna chirurgia su `recipe_ingredients`.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 import pytest_asyncio
-from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory

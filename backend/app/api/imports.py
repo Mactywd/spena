@@ -211,7 +211,8 @@ async def undo(
     except CookedRecipesAffected as exc:
         # `undo_decision` controlla la ricetta cucinata e lancia prima di qualunque
         # mutazione, così non c'è niente da annullare. Inoltre, `get_session()` avvolge
-        # la sessione con `async with` che chiude e scarta i cambiamenti al'exit().
+        # la sessione con `async with`, che la chiude e scarta ogni mutazione: questo ramo
+        # non arriva mai a `commit()`.
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             f"{exc.count} di queste ricette le hai già cucinate: rifacendole lo storico "
