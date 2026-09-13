@@ -19,6 +19,7 @@ from app.repositories.ingredients import (
     forget_alias,
     remember_alias,
 )
+from app.repositories.products import create_product
 from app.repositories.recipes import create_recipe
 
 
@@ -104,6 +105,27 @@ async def test_un_ingrediente_in_dispensa_resta(db_session):
     db_session.add(PantryItem(ingredient_id=speck.id, status="available"))
     await db_session.flush()
     assert await delete_ingredient_if_unused(db_session, speck.id) is False
+
+
+async def test_un_ingrediente_con_un_prodotto_resta(db_session):
+    """Un prodotto senza articolo di dispensa trattiene comunque l'ingrediente.
+
+    `pantry.py` non cancella mai un articolo, lo archivia (`archived_at`): un
+    prodotto può quindi restare l'unico riferimento vivo molto dopo che l'ultimo
+    articolo in dispensa è sparito. Costruito con `create_product`, il repository
+    che l'app usa davvero, non con un `Product(...)` scritto a mano: altrimenti il
+    test garantirebbe solo che il modello ha una colonna, non che il percorso reale
+    viene controllato.
+    """
+    yogurt = await create_ingredient(
+        db_session, name="yogurt greco", display_name="Yogurt greco",
+        category=IngredientCategory.LATTICINI,
+    )
+    await create_product(
+        db_session, ingredient_id=yogurt.id, name="Fage Total 0%", source="custom",
+    )
+    assert await delete_ingredient_if_unused(db_session, yogurt.id) is False
+    assert await db_session.get(Ingredient, yogurt.id) is not None
 
 
 async def test_i_suoi_alias_non_lo_trattengono(db_session):

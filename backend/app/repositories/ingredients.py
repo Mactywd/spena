@@ -156,16 +156,20 @@ async def delete_ingredient_if_unused(
     """Cancella un ingrediente solo se nessuno lo usa più. Torna `True` se l'ha fatto.
 
     «Usarlo» significa: una riga di ricetta, un articolo in dispensa, una voce di
-    lista, o un termine dell'import che lo indica. I suoi **alias** non contano: sono
-    parte della decisione che lo ha creato, non un uso indipendente, e se contassero
-    nessun ingrediente creato dall'AI sarebbe mai cancellabile — ogni decisione ne
-    scrive uno.
+    lista, un termine dell'import che lo indica, o un prodotto che lo porta come
+    referenza — un barattolo può restare sullo scaffale della dispensa (mai
+    cancellato, solo archiviato) molto dopo che l'ultimo articolo che lo citava è
+    sparito, e a quel punto è il prodotto solo a tenere in piedi il vincolo. I suoi
+    **alias** non contano: sono parte della decisione che lo ha creato, non un uso
+    indipendente, e se contassero nessun ingrediente creato dall'AI sarebbe mai
+    cancellabile — ogni decisione ne scrive uno.
 
     È questo controllo che rende gratuito l'annullamento di un collasso: se «salmone
     selvaggio» era stato accorpato in «salmone», annullare «Salmone» trova l'altro
     termine e non cancella niente.
     """
     from app.db.models.pantry import PantryItem
+    from app.db.models.product import Product
     from app.db.models.recipe import RecipeIngredient
     from app.db.models.recipe_import import ImportTerm
 
@@ -174,6 +178,7 @@ async def delete_ingredient_if_unused(
         (PantryItem, PantryItem.ingredient_id),
         (ShoppingListItem, ShoppingListItem.ingredient_id),
         (ImportTerm, ImportTerm.ingredient_id),
+        (Product, Product.ingredient_id),
     ):
         used = (
             await session.execute(select(model.id).where(column == ingredient_id).limit(1))
@@ -181,12 +186,12 @@ async def delete_ingredient_if_unused(
         if used is not None:
             return False
 
-    await session.execute(
-        delete(IngredientAlias).where(IngredientAlias.ingredient_id == ingredient_id)
-    )
     ingredient = await session.get(Ingredient, ingredient_id)
     if ingredient is None:
         return False
+    await session.execute(
+        delete(IngredientAlias).where(IngredientAlias.ingredient_id == ingredient_id)
+    )
     await session.delete(ingredient)
     await session.flush()
     return True
