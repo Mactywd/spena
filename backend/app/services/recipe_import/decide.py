@@ -288,7 +288,14 @@ async def collapse_creates(
     if not isinstance(groups, list):
         return list(proposals)
 
-    merged: dict[str, TermDecisionProposal] = {}
+    # Chiave per `term_id`, non per nome: due termini distinti possono proporre lo
+    # stesso `create` («Salmone selvaggio» e «Filetto di salmone selvaggio» riducono
+    # entrambi a `name="salmone selvaggio"`). Con una chiave per nome, se quel nome
+    # perde in un gruppo, entrambe le proposte verrebbero sostituite dallo stesso
+    # oggetto: uno dei due `term_id` sparirebbe dal risultato e l'altro comparirebbe
+    # due volte, facendo applicare — e contare — la stessa decisione due volte al
+    # passo che scrive.
+    merged: dict[uuid.UUID, TermDecisionProposal] = {}
     for group in groups:
         if not isinstance(group, dict):
             continue
@@ -303,32 +310,37 @@ async def collapse_creates(
         if canonical not in proposed and existing_id is None:
             continue
 
+        winner = proposed.get(canonical)
         for raw in names:
             name = str(raw or "").strip().lower()
             if name == canonical or name not in proposed:
                 continue  # un nome che nessuno ha proposto non si accorpa
-            losing = proposed[name]
-            winner = proposed.get(canonical)
-            merged[name] = TermDecisionProposal(
-                term_id=losing.term_id,
-                action="merge",
-                ingredient_id=existing_id,  # None quando il canonico è un `create` del lotto
-                name=canonical,
-                # Nome visibile e categoria sono quelli del **vincitore**, non del nome
-                # che perde. Quando il canonico è un `create` dello stesso lotto, il
-                # fan-in può trovarsi a creare l'ingrediente partendo da questa
-                # proposta — dipende da quale delle due incontra prima — e con
-                # l'etichetta del perdente nascerebbe «salmone» con nome visibile
-                # «Salmone selvaggio». Prenderli dal vincitore rende il risultato
-                # indipendente dall'ordine, che è la sola forma in cui è corretto.
-                display_name=(
-                    winner.display_name if winner is not None else canonical.capitalize()
-                ),
-                category=winner.category if winner is not None else losing.category,
-            )
+            # Il gruppo del modello parla di nomi, non di `term_id`: `proposed[name]`
+            # ne indicherebbe uno solo, ma più termini possono aver proposto lo stesso
+            # `create` (sopra). Il merge va scritto per ciascuno di essi, non per uno
+            # a caso — altrimenti il secondo resterebbe un `create` con un nome che il
+            # collasso ha appena deciso di non tenere.
+            for losing in (p for p in creates if p.name == name):
+                merged[losing.term_id] = TermDecisionProposal(
+                    term_id=losing.term_id,
+                    action="merge",
+                    ingredient_id=existing_id,  # None quando il canonico è un `create` del lotto
+                    name=canonical,
+                    # Nome visibile e categoria sono quelli del **vincitore**, non del nome
+                    # che perde. Quando il canonico è un `create` dello stesso lotto, il
+                    # fan-in può trovarsi a creare l'ingrediente partendo da questa
+                    # proposta — dipende da quale delle due incontra prima — e con
+                    # l'etichetta del perdente nascerebbe «salmone» con nome visibile
+                    # «Salmone selvaggio». Prenderli dal vincitore rende il risultato
+                    # indipendente dall'ordine, che è la sola forma in cui è corretto.
+                    display_name=(
+                        winner.display_name if winner is not None else canonical.capitalize()
+                    ),
+                    category=winner.category if winner is not None else losing.category,
+                )
 
     out: list[TermDecisionProposal] = []
     for proposal in proposals:
-        replacement = merged.get(proposal.name) if proposal.action == "create" else None
+        replacement = merged.get(proposal.term_id) if proposal.action == "create" else None
         out.append(replacement if replacement is not None else proposal)
     return out

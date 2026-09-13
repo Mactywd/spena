@@ -40,10 +40,11 @@ async def anagrafica(db_session):
     return await load_registry(db_session)
 
 
-def crea(nome: str, categoria: str = "pesce") -> TermDecisionProposal:
+def crea(nome: str, categoria: str = "pesce", display_name: str | None = None) -> TermDecisionProposal:
     return TermDecisionProposal(
         term_id=uuid.uuid4(), action="create", name=nome,
-        display_name=nome.capitalize(), category=categoria,
+        display_name=display_name if display_name is not None else nome.capitalize(),
+        category=categoria,
     )
 
 
@@ -63,6 +64,46 @@ async def test_due_nomi_vicini_diventano_uno_e_laltro_un_alias(db_session, anagr
     assert len(accorpati) == 1
     assert accorpati[0].term_id == selvaggio.term_id
     assert accorpati[0].name == "salmone"
+
+
+async def test_il_merge_porta_etichetta_e_categoria_del_vincitore_non_del_perdente(
+    db_session, anagrafica
+):
+    """Nessun test qui sopra distingue l'etichetta del vincitore da quella del
+    perdente: condividevano `category="pesce"` e nessuno guardava `display_name`.
+    Scambiare vincitore e perdente nel codice di produzione passava comunque tutti
+    e sette i test. Qui vincitore e perdente hanno nome ed etichetta diversi apposta,
+    così un errore nella direzione della copia si vede.
+    """
+    salmone = crea("salmone", categoria="pesce", display_name="Salmone")
+    selvaggio = crea(
+        "salmone selvaggio", categoria="pesce fresco", display_name="Salmone selvaggio"
+    )
+    finto = FakeLlm({"groups": [{"canonical": "salmone", "merge": ["salmone selvaggio"]}]})
+
+    risultato = await collapse_creates(
+        db_session, [salmone, selvaggio], anagrafica, client=finto
+    )
+
+    accorpato = next(p for p in risultato if p.action == "merge")
+    assert accorpato.display_name == "Salmone"
+    assert accorpato.category == "pesce"
+
+
+async def test_il_merge_su_canonico_gia_in_anagrafica_usa_il_nome_capitalizzato(
+    db_session, anagrafica
+):
+    """Quando il canonico è già in anagrafica non ha una proposta propria nel lotto:
+    l'etichetta ricade sul nome canonico capitalizzato, mai su quella del perdente.
+    """
+    fresca = crea("pasta fresca", categoria="cereali", display_name="Pasta fresca")
+    finto = FakeLlm({"groups": [{"canonical": "pasta", "merge": ["pasta fresca"]}]})
+
+    risultato = await collapse_creates(db_session, [fresca], anagrafica, client=finto)
+
+    accorpato = next(p for p in risultato if p.action == "merge")
+    assert accorpato.display_name == "Pasta"
+    assert accorpato.category == "cereali"
 
 
 async def test_un_canonico_che_nessuno_ha_proposto_fa_scartare_il_gruppo(db_session, anagrafica):
@@ -131,6 +172,38 @@ async def test_un_solo_create_non_si_chiama_nessuno(db_session, anagrafica):
     risultato = await collapse_creates(db_session, [crea("speck", "carne")], anagrafica, client=finto)
     assert [p.name for p in risultato] == ["speck"]
     assert finto.bodies == []
+
+
+async def test_due_termini_con_lo_stesso_nome_da_creare_sopravvivono_entrambi(
+    db_session, anagrafica
+):
+    """«Salmone selvaggio» e «Filetto di salmone selvaggio» riducono allo stesso
+    `create name="salmone selvaggio"`: due termini diversi, un solo nome. Se quel
+    nome perde in un gruppo di collasso e `merged` è indicizzato per nome, le due
+    proposte finiscono sostituite dallo stesso oggetto — un `term_id` sparisce dal
+    risultato e l'altro compare due volte, e la scrittura del passo successivo
+    applicherebbe — e conterebbe — la stessa decisione due volte per un solo termine.
+    Indicizzare per `term_id` toglie la collisione: entrambi restano, una volta sola
+    ciascuno.
+    """
+    salmone = crea("salmone")
+    selvaggio_a = crea("salmone selvaggio")  # da "Salmone selvaggio"
+    selvaggio_b = crea("salmone selvaggio")  # da "Filetto di salmone selvaggio"
+    finto = FakeLlm({"groups": [{"canonical": "salmone", "merge": ["salmone selvaggio"]}]})
+
+    risultato = await collapse_creates(
+        db_session, [salmone, selvaggio_a, selvaggio_b], anagrafica, client=finto
+    )
+
+    term_ids_risultato = [p.term_id for p in risultato]
+    assert term_ids_risultato.count(selvaggio_a.term_id) == 1
+    assert term_ids_risultato.count(selvaggio_b.term_id) == 1
+    assert selvaggio_a.term_id in term_ids_risultato
+    assert selvaggio_b.term_id in term_ids_risultato
+
+    accorpati = {p.term_id: p for p in risultato if p.action == "merge"}
+    assert set(accorpati) == {selvaggio_a.term_id, selvaggio_b.term_id}
+    assert all(p.name == "salmone" for p in accorpati.values())
 
 
 async def test_un_guasto_del_modello_non_perde_le_proposte(db_session, anagrafica):
