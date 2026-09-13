@@ -13,15 +13,16 @@ I test qui sono asserzioni sui file di build (Dockerfile e Compose), nello stile
 di tests/test_compose.py. Girano sempre, anche dove gli extra non sono installati, e
 falliscono se qualcuno torna a `pip install -e .`.
 
-`ai_recipes.py` portava anche un test che eseguiva `_build_client()` per davvero,
-contro il client Anthropic: quel ponte è stato ritirato (task 13, passaggio della
-stesura AI a `complete_json`/OpenRouter) e con lui `_build_client` e `AiUnavailable`,
-quindi quel test non ha più un soggetto e va via con loro.
+Task 13 ha ritirato il ponte Anthropic (`_build_client`, `AiUnavailable`): la stesura
+AI adesso usa OpenRouter via `httpx`, che è una dipendenza di base. Il vecchio test
+che eseguiva `_build_client()` non ha più un soggetto e se ne è andato con lui. La
+garanzia che `test_limmagine_installa_lextra_ai` continua a offrire non è più
+specifica per la stesura AI, ma per le funzionalità che vivono in quell'extra in
+generale.
 
 Quello che nessun test di questa suite può dimostrare è che l'immagine *costruita*
-contenga il pacchetto: la suite non gira dentro al container. Quella verifica è a
-mano, e sta nel rapporto — `docker run --rm <immagine> python -c "import anthropic"`
-più una chiamata vera a POST /api/v1/recipes/ai-draft nello stack e2e.
+contenga i pacchetti degli extra: la suite non gira dentro al container. Quella
+verifica è a mano, e sta nel rapporto.
 """
 
 import re
@@ -49,9 +50,11 @@ def test_limmagine_installa_lextra_ai():
     assert any(".[ai]" in r or '".[ai]"' in r or "[ai," in r for r in installazioni), (
         f"{DOCKERFILE}: il pacchetto viene installato senza l'extra `ai`.\n"
         f"Trovato: {installazioni!r}\n"
-        "`pip install -e .` non installa nessun extra: senza `ai` il pacchetto "
-        "anthropic non esiste nell'immagine e POST /api/v1/recipes/ai-draft risponde "
-        "sempre 503 «pacchetto anthropic non installato», con qualunque chiave."
+        "`pip install -e .` non installa nessun extra: senza `ai` mancano dipendenze "
+        "opzionali dall'immagine. Fino a task 13, la stesura AI usava il pacchetto "
+        "`anthropic` e richiedeva questo extra; adesso usa OpenRouter via `httpx` "
+        "(dipendenza di base), ma altri servizi potrebbero dipendere da pacchetti "
+        "negli extra opzionali."
     )
 
 

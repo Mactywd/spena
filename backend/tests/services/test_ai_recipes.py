@@ -176,3 +176,34 @@ async def test_una_categoria_inventata_non_si_propone(db_session, monkeypatch):
         assert draft.ingredients[0].proposed_category is None
     finally:
         get_settings.cache_clear()
+
+
+async def test_ingrediente_noto_non_propone_categoria_anche_se_valida(db_session, anagrafica):
+    """Se l'anagrafica ha già l'ingrediente, non proponiamo una categoria neanche se il
+    modello ne ha data una valida: la categoria è già scelta da un essere umano,
+    e proporla da questa schermata inviterebbe a cambiarla, il che è una violazione
+    del controllo accessi. Questo test prova che il mezzo della guardia
+    (match.ingredient_id is None) è indispensabile, non è mai bypassato dal mezzo
+    della categoria valida."""
+    draft = await draft_recipe(
+        db_session,
+        "pasta fredda",
+        client=FakeLlm({
+            "title": "Pasta fredda",
+            "description": "Estate",
+            "instructions": "1. cuoci",
+            "servings": 2,
+            "ingredients": [
+                # Il modello propone "pasta" (che esiste già) con una categoria
+                # completamente diversa dalla realtà ("carne" invece di "cereali").
+                # Il test verifica che la categoria proposta viene ignorata perché
+                # match.ingredient_id is not None.
+                {"name": "pasta", "role": "primary", "quantity_text": "200 g",
+                 "category": "carne"}
+            ],
+        })
+    )
+    pasta = draft.ingredients[0]
+    assert pasta.ingredient_id is not None  # esiste in anagrafica
+    assert pasta.matched_name == "pasta"
+    assert pasta.proposed_category is None  # non si propone nulla
