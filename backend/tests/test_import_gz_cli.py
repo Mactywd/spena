@@ -8,6 +8,7 @@ from app.cli.import_gz import run_import
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe_import import ImportState, RecipeImport
 from app.services.recipe_import.giallozafferano import RECIPE_SITEMAP, build_client
+from llm_fakes import ScriptedLlm, llm_create, llm_map
 
 PAGINA = """<html><head>
 <script type="application/ld+json">
@@ -25,6 +26,31 @@ SITEMAP = """<?xml version="1.0"?><urlset>
  <url><loc>https://ricette.giallozafferano.it/Due.html</loc></url>
  <url><loc>https://ricette.giallozafferano.it/Tre.html</loc></url>
 </urlset>"""
+
+
+PAGINA_DUE_INGREDIENTI = """<html><head>
+<script type="application/ld+json">
+{"@type": "Recipe", "name": "Amatriciana", "description": "Breve",
+ "recipeYield": 2, "prepTime": "PT5M", "cookTime": "PT10M",
+ "recipeCategory": "Primi piatti",
+ "recipeInstructions": ["Cuoci 1 ."]}
+</script></head><body>
+<dl class="gz-list-ingredients">
+<dd class="gz-ingredient"><a href="/ricette-con-i-Rigatoni/">Rigatoni</a><span> 320 g </span></dd>
+<dd class="gz-ingredient"><a href="/ricette-con-lo-Speck/">Speck</a><span> 100 g </span></dd>
+</dl></body></html>"""
+
+
+def fonte_finta_con_una_ricetta() -> httpx.AsyncClient:
+    """La stessa fonte finta usata nel resto di questo file — sitemap più una
+    pagina, via `respx` — con due ingredienti da decidere invece di uno solo:
+    "Rigatoni" (mappabile su un ingrediente già in anagrafica) e "Speck" (nuovo).
+    Va chiamata dentro un test già `@respx.mock`, come le sue vicine qui sopra."""
+    respx.get(RECIPE_SITEMAP).mock(return_value=httpx.Response(200, text=SITEMAP))
+    respx.get("https://ricette.giallozafferano.it/Uno.html").mock(
+        return_value=httpx.Response(200, text=PAGINA_DUE_INGREDIENTI)
+    )
+    return build_client()
 
 
 async def nessuna_pausa(_seconds: float) -> None:
@@ -227,3 +253,72 @@ async def test_sitemap_irraggiungibile_fermando_presto(db_session):
     assert esito.skipped == 0
     assert esito.stopped_early is True
     assert pagine.call_count == 0
+
+
+@respx.mock
+async def test_lo_scarico_decide_i_termini_e_materializza(db_session, monkeypatch):
+    """Un comando solo: scarica, decide, e le ricette entrano.
+
+    È il criterio di riuscita numero 1 della spec. Prima di questo cambiamento il
+    comando finiva su «0 importate, 5 in attesa» e aspettava una persona.
+    """
+    from app.core.config import get_settings
+    from app.db.models.recipe import Recipe
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    try:
+        # "pasta" deve esistere già in anagrafica perché il "map" dell'AI su
+        # "Rigatoni" sia verificabile: senza un ingrediente da quel nome
+        # `decide_one` non ha niente da confermare, e il termine resterebbe
+        # `pending` — esattamente il caso che `test_senza_chiave...` copre già.
+        db_session.add(
+            Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+        )
+        await db_session.flush()
+
+        client = fonte_finta_con_una_ricetta()
+        llm = ScriptedLlm(
+            {"Rigatoni": llm_map("pasta"), "Speck": llm_create("speck", "Speck", "carne")}
+        )
+
+        esito = await run_import(
+            db_session, limit=1, client=client, sleep=nessuna_pausa, llm_client=llm
+        )
+
+        assert esito.taken == 1
+        assert esito.decided >= 1
+        ricette = (await db_session.execute(select(Recipe))).scalars().all()
+        assert len(ricette) == 1
+    finally:
+        get_settings.cache_clear()
+
+
+@respx.mock
+async def test_senza_chiave_lo_scarico_non_fallisce_e_lascia_i_termini_in_coda(
+    db_session, monkeypatch
+):
+    """La degradazione dichiarata: mai un vicolo cieco.
+
+    Senza chiave il comando deve comportarsi come prima di questa feature — pagine
+    salvate, termini in coda, uscita pulita — non morire su un'eccezione.
+    """
+    from app.core.config import get_settings
+    from app.db.models.recipe_import import ImportTerm, TermDecision
+
+    get_settings.cache_clear()
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    try:
+        client = fonte_finta_con_una_ricetta()
+        esito = await run_import(db_session, limit=1, client=client, sleep=nessuna_pausa)
+
+        assert esito.taken == 1
+        assert esito.decided == 0
+        in_coda = (
+            await db_session.execute(
+                select(ImportTerm).where(ImportTerm.decision == TermDecision.PENDING)
+            )
+        ).scalars().all()
+        assert in_coda != []
+    finally:
+        get_settings.cache_clear()

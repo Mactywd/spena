@@ -20,7 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal
 from app.db.models.recipe_import import GIALLOZAFFERANO
-from app.repositories.imports import counts, known_urls, store_page, store_unparsable
+from app.repositories.imports import (
+    counts,
+    known_urls,
+    pending_terms,
+    store_page,
+    store_unparsable,
+)
+from app.services.llm import LlmUnavailable
+from app.services.recipe_import.decide import decide_terms
 from app.services.recipe_import.giallozafferano import (
     DELAY_SECONDS,
     MAX_CONSECUTIVE_FAILURES,
@@ -36,12 +44,19 @@ from app.services.recipe_import.terms import sync_terms
 
 DEFAULT_LIMIT = 50  # prudente di proposito: il lotto si rilancia, la cortesia no
 
+# Quanti termini l'AI giudica in un giro. Una chiamata a termine: il tetto è
+# sull'attesa e sulla spesa di un singolo lancio, non sulla correttezza — i termini
+# che restano fuori li prende il lancio successivo, o il bottone «Riprova con l'AI».
+MAX_TERMS_PER_RUN = 60
+
 
 @dataclass(frozen=True)
 class ImportRun:
     taken: int
     skipped: int
     stopped_early: bool
+    decided: int = 0
+    still_pending: int = 0
 
 
 async def run_import(
@@ -50,6 +65,7 @@ async def run_import(
     limit: int,
     client: httpx.AsyncClient,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    llm_client: object | None = None,
 ) -> ImportRun:
     """Prende fino a `limit` pagine nuove, le analizza e le salva.
 
@@ -125,8 +141,28 @@ async def run_import(
     # i termini si allineano sempre, anche dopo un giro fermato a metà: le pagine
     # prese devono comparire in coda, altrimenti il lavoro fatto non si vede
     await sync_terms(session, GIALLOZAFFERANO)
+
+    # Poi l'AI decide quel che sa decidere, e solo allora si materializza: in
+    # quest'ordine un comando solo riempie il ricettario. Senza chiave configurata
+    # `LlmUnavailable` arriva qui e non oltre — le pagine restano salvate, i termini in
+    # coda, e il comando esce pulito. È la regola «mai un vicolo cieco».
+    decided = 0
+    still_pending = 0
+    waiting = await pending_terms(session, GIALLOZAFFERANO, limit=MAX_TERMS_PER_RUN)
+    if waiting:
+        try:
+            outcome = await decide_terms(session, waiting, client=llm_client)
+            decided = outcome.applied
+            still_pending = outcome.still_pending
+        except LlmUnavailable as exc:
+            still_pending = len(waiting)
+            print(f"riconoscimento non disponibile ({exc}): i termini restano in coda.")
+
     await materialize_ready(session, GIALLOZAFFERANO)
-    return ImportRun(taken=taken, skipped=skipped, stopped_early=stopped_early)
+    return ImportRun(
+        taken=taken, skipped=skipped, stopped_early=stopped_early,
+        decided=decided, still_pending=still_pending,
+    )
 
 
 async def main() -> None:
@@ -145,10 +181,12 @@ async def main() -> None:
         f"ricettario: {totals.imported} importate, {totals.pending_recipes} in attesa, "
         f"{totals.skipped} scartate in tutto"
     )
+    if result.decided:
+        print(f"{result.decided} ingredienti riconosciuti da sé")
     if totals.pending_terms:
         print(
-            f"{totals.pending_terms} ingredienti da abbinare: aprili dal ricettario, "
-            "alla riga in cima. Le ricette entrano da sé mentre decidi."
+            f"{totals.pending_terms} ingredienti da abbinare a mano: aprili dal "
+            "ricettario, alla riga in cima. Le ricette entrano da sé mentre decidi."
         )
 
 
