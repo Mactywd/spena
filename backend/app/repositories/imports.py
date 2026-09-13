@@ -112,6 +112,28 @@ async def pending_terms(
     return list(rows.scalars())
 
 
+async def decided_terms(
+    session: AsyncSession, source: str, decided_by: str, limit: int = 50
+) -> list[ImportTerm]:
+    """I termini decisi da chi si chiede, i più recenti in cima.
+
+    L'ordine è per data di decisione e non per `occurrences` come la coda: qui si
+    rivede quel che è appena stato fatto, e ciò che è appena stato fatto è la cosa che
+    più probabilmente si vuole correggere.
+    """
+    rows = await session.execute(
+        select(ImportTerm)
+        .where(
+            ImportTerm.source == source,
+            ImportTerm.decided_by == decided_by,
+            ImportTerm.decision != TermDecision.PENDING,
+        )
+        .order_by(ImportTerm.decided_at.desc().nullslast(), ImportTerm.display_name)
+        .limit(limit)
+    )
+    return list(rows.scalars())
+
+
 async def terms_by_key(session: AsyncSession, source: str) -> dict[str, ImportTerm]:
     rows = await session.execute(select(ImportTerm).where(ImportTerm.source == source))
     return {term.term_key: term for term in rows.scalars()}

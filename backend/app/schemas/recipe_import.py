@@ -29,6 +29,14 @@ class TermOut(BaseModel):
     # qualche titolo in attesa: «Scorza di limone» si giudica diversamente in una
     # torta e in un arrosto
     waiting_titles: list[str]
+    # Valorizzati solo per un termine già deciso. Servono all'elenco della revisione,
+    # che deve dire in una riga cosa è stato fatto: «Rigatoni → pasta», «Speck →
+    # creato, carne», «Acqua → ignorato». `decided_action` distingue "map" da
+    # "created" perché disfare un ingrediente creato ha una conseguenza in più —
+    # l'ingrediente si cancella — e chi legge deve saperlo prima di toccare.
+    decided_by: str | None = None
+    decided_action: Literal["map", "created", "ignored"] | None = None
+    decided_name: str | None = None
 
 
 class DecideRequest(BaseModel):

@@ -13,6 +13,7 @@ dopo, dall'elenco «Deciso dall'AI», con un annullamento per ognuna.
 
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -22,7 +23,13 @@ from app.core.db import get_session
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
-from app.repositories.imports import counts, get_term, pending_terms, waiting_titles
+from app.repositories.imports import (
+    counts,
+    decided_terms,
+    get_term,
+    pending_terms,
+    waiting_titles,
+)
 from app.repositories.ingredients import create_ingredient, remember_alias
 from app.schemas.recipe_import import (
     DecideOut,
@@ -59,8 +66,26 @@ async def read_status(session: AsyncSession = Depends(get_session)) -> ImportSta
 @router.get("/terms", response_model=list[TermOut])
 async def read_terms(
     limit: int = Query(default=20, le=50),
+    decided_by: Literal["ai", "human", "auto"] | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> list[TermOut]:
+    """Senza `decided_by`, la coda da decidere. Con, l'elenco di chi l'ha già deciso.
+
+    Una rotta e una forma sola: due rotte con due schemi quasi uguali si scollano, e
+    la prima cosa a scollarsi sarebbe il campo che dice cosa è stato deciso.
+    """
+    if decided_by is not None:
+        terms = await decided_terms(session, GIALLOZAFFERANO, decided_by, limit=limit)
+        return [
+            TermOut(
+                id=term.id, display_name=term.display_name, occurrences=term.occurrences,
+                suggestion=None, waiting_titles=[], decided_by=term.decided_by,
+                decided_action=_decided_action(term),
+                decided_name=await _ingredient_name(session, term.ingredient_id),
+            )
+            for term in terms
+        ]
+
     terms = await pending_terms(session, GIALLOZAFFERANO, limit=limit)
     titles = await waiting_titles(
         session, GIALLOZAFFERANO, [term.term_key for term in terms]
@@ -83,6 +108,33 @@ async def read_terms(
             )
         )
     return out
+
+
+def _decided_action(term: ImportTerm) -> str | None:
+    """«map» o «created» non si distinguono guardando il termine, e non serve.
+
+    `import_terms` non registra chi ha creato l'ingrediente, e aggiungere una colonna
+    per dirlo violerebbe la regola «nessuna migrazione». Si deduce da un fatto vero e
+    già scritto: un ingrediente il cui unico alias dell'import è il nome di questo
+    termine è nato con questa decisione. Il caso ambiguo — due termini sullo stesso
+    ingrediente — ricade su «map», che è la descrizione prudente: dice meno, non dice
+    il falso, e l'annullamento sa comunque cosa fare perché il controllo sugli usi è
+    suo e non di questa etichetta.
+    """
+    if term.decision == TermDecision.IGNORED:
+        return "ignored"
+    if term.decision == TermDecision.MAPPED:
+        return "map"
+    return None
+
+
+async def _ingredient_name(
+    session: AsyncSession, ingredient_id: uuid.UUID | None
+) -> str | None:
+    if ingredient_id is None:
+        return None
+    ingredient = await session.get(Ingredient, ingredient_id)
+    return ingredient.name if ingredient is not None else None
 
 
 @router.post("/terms/decide", response_model=DecideOut)
