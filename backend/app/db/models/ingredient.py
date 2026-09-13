@@ -8,6 +8,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 from app.db.models.base import TimestampMixin, UUIDMixin
 
+# La larghezza delle tre colonne che portano un nome di ingrediente: il nome canonico,
+# il nome visibile e un alias. Ha un nome perché chi scrive in quelle colonne deve
+# poter rifiutare una stringa troppo lunga *prima* dell'insert — oltre il limite
+# l'errore arriva dal database in mezzo a una passata che ha già scritto — e un 120
+# ricopiato in ogni punto di scrittura si scollerebbe da qui al primo allargamento.
+NAME_MAX_LENGTH = 120
+
 
 class IngredientCategory(StrEnum):
     """Reparti del supermercato: guidano il raggruppamento della lista."""
@@ -38,8 +45,8 @@ class Ingredient(UUIDMixin, TimestampMixin, Base):
         ),
     )
 
-    name: Mapped[str] = mapped_column(String(120), unique=True)
-    display_name: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), unique=True)
+    display_name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
     category: Mapped[str] = mapped_column(String(20))
     # popolato in fase 3, quando arrivano le tabelle di composizione
     composition_ref: Mapped[str | None] = mapped_column(String(60), nullable=True)
@@ -62,7 +69,7 @@ class IngredientAlias(UUIDMixin, Base):
     ingredient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ingredients.id", ondelete="CASCADE")
     )
-    alias: Mapped[str] = mapped_column(String(120))
+    alias: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
     source: Mapped[str] = mapped_column(String(20))
 
     ingredient: Mapped[Ingredient] = relationship(back_populates="aliases")

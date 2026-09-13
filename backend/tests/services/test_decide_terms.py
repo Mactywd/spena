@@ -6,6 +6,8 @@ scritture in sequenza, con `match_name` rifatto prima di ogni `create` — è la
 per cui il fan-in esiste.
 """
 
+import asyncio
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
@@ -45,6 +47,39 @@ async def aggiungi(db_session, *termini: ImportTerm) -> list[ImportTerm]:
     db_session.add_all(termini)
     await db_session.flush()
     return list(termini)
+
+
+class CountingLlm:
+    """`ScriptedLlm` che misura quante chiamate sono in volo nello stesso istante.
+
+    Serve perché `ScriptedLlm.post` non ha nessun punto di attesa: torna senza mai
+    cedere il controllo, quindi con lui il fan-out si comporta come un ciclo
+    sequenziale e togliere il semaforo — o il `gather` — non farebbe fallire niente.
+    Qui `post` dorme, così le chiamate si sovrappongono davvero: `max_in_flight` dice
+    se il parallelo c'è, e se il semaforo lo tiene entro il limite.
+    """
+
+    def __init__(self, per_term: dict[str, object], pausa: float = 0.02) -> None:
+        self._inner = ScriptedLlm(per_term)
+        self._pausa = pausa
+        self.in_flight = 0
+        self.max_in_flight = 0
+
+    async def post(self, url, json: dict, headers):  # noqa: A002
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            await asyncio.sleep(self._pausa)
+            return await self._inner.post(url, json=json, headers=headers)
+        finally:
+            self.in_flight -= 1
+
+    async def aclose(self):
+        return None
+
+    @property
+    def calls(self) -> int:
+        return self._inner.calls
 
 
 async def test_le_tre_azioni_si_applicano(db_session, base):
@@ -308,3 +343,117 @@ async def test_senza_chiave_solleva_invece_di_decidere_a_caso(db_session, base, 
     finally:
         get_settings.cache_clear()
     assert rigatoni.decision == TermDecision.PENDING
+
+
+async def test_una_decisione_azzera_il_ruolo_forzato(db_session, base):
+    """`role_override` è nell'elenco della spec §4.3, e il Task 10 lo riporta a `NULL`.
+
+    L'AI non propone ruoli, quindi il valore giusto è `None`. Scriverlo e non solo
+    lasciarlo stare è ciò che rende i due elenchi — quello che scrive e quello che
+    annulla — la stessa lista, senza una differenza da spiegare.
+    """
+    rigatoni, acqua = await aggiungi(
+        db_session, termine("Rigatoni", "k-rigatoni"), termine("Acqua", "k-acqua")
+    )
+    rigatoni.role_override = "primary"
+    acqua.role_override = "secondary"
+    await db_session.flush()
+
+    finto = ScriptedLlm({"Rigatoni": llm_map("pasta"), "Acqua": LLM_IGNORE})
+    esito = await decide_terms(db_session, [rigatoni, acqua], client=finto)
+
+    assert esito.applied == 2
+    assert rigatoni.role_override is None
+    assert acqua.role_override is None
+
+
+async def test_un_errore_inatteso_su_un_termine_non_perde_le_altre_decisioni(
+    db_session, base, monkeypatch
+):
+    """Il `gather` non deve poter buttare il lotto per un errore che non è di rete.
+
+    `complete_json` traduce tutto ciò che è rete o parsing in `LlmUnavailable`, che
+    `ask` assorbe; il corpo di `decide_one` dopo la chiamata, e la costruzione della
+    domanda, non sono coperti da niente. Senza `return_exceptions=True` un errore lì
+    risalirebbe dal `gather` e porterebbe via anche le decisioni già verificate degli
+    altri termini — chiudendo il client condiviso con le chiamate ancora in volo.
+    """
+    from app.services.recipe_import import decide as modulo
+
+    vero = modulo.decide_one
+
+    async def a_volte_scoppia(session, term, registry, client=None):
+        if term.display_name == "Speck":
+            raise RuntimeError("un difetto nostro, non un guasto del modello")
+        return await vero(session, term, registry, client=client)
+
+    monkeypatch.setattr(modulo, "decide_one", a_volte_scoppia)
+
+    rigatoni, speck = await aggiungi(
+        db_session, termine("Rigatoni", "k-rigatoni"), termine("Speck", "k-speck")
+    )
+    finto = ScriptedLlm({"Rigatoni": llm_map("pasta")})
+
+    esito = await decide_terms(db_session, [rigatoni, speck], client=finto)
+
+    assert esito.applied == 1
+    assert esito.still_pending == 1
+    assert rigatoni.decision == TermDecision.MAPPED
+    assert speck.decision == TermDecision.PENDING
+    assert speck.decided_by is None
+
+
+async def test_una_concorrenza_a_zero_non_appende_limport(db_session, base, monkeypatch):
+    """`LLM_MAX_CONCURRENCY=0` sarebbe un semaforo che non si apre mai.
+
+    Si scrive in `.env`, quindi ci arriva un operatore e non un test. Un import appeso
+    per sempre non ha né timeout né errore: è il guasto che non si presenta. Degrada a
+    una domanda per volta. Il `wait_for` è lì perché senza di lui un ritorno di questo
+    difetto farebbe restare appesa la suite, non fallire un test.
+    """
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "0")
+    get_settings.cache_clear()
+
+    rigatoni, acqua = await aggiungi(
+        db_session, termine("Rigatoni", "k-rigatoni"), termine("Acqua", "k-acqua")
+    )
+    finto = ScriptedLlm({"Rigatoni": llm_map("pasta"), "Acqua": LLM_IGNORE})
+
+    esito = await asyncio.wait_for(
+        decide_terms(db_session, [rigatoni, acqua], client=finto), timeout=5
+    )
+
+    assert esito.applied == 2
+    assert finto.calls == 2
+
+
+async def test_le_domande_partono_insieme_e_il_semaforo_le_tiene(db_session, base, monkeypatch):
+    """La proprietà su cui poggia tutto il disegno: le domande vanno in parallelo.
+
+    È la ragione per cui si fa una chiamata per termine invece di un lotto unico (vedi
+    la docstring del modulo), e nessun altro test la vede: con un finto che non attende
+    mai, un ciclo sequenziale e il `gather` sono indistinguibili. Le due assert sono le
+    due metà della stessa proprietà — più di una chiamata insieme, e non più di quante
+    il semaforo permette.
+    """
+    from app.core.config import get_settings
+
+    limite = 2
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", str(limite))
+    get_settings.cache_clear()
+
+    termini = await aggiungi(
+        db_session, *(termine(f"Pasta formato {n}", f"k-{n}") for n in range(6))
+    )
+    finto = CountingLlm({f"Pasta formato {n}": llm_map("pasta") for n in range(6)})
+
+    esito = await decide_terms(db_session, list(termini), client=finto)
+
+    assert esito.applied == 6
+    assert finto.calls == 6
+    # in parallelo davvero: un ciclo sequenziale misurerebbe 1
+    assert finto.max_in_flight > 1
+    # e non oltre il limite: senza semaforo misurerebbe 6
+    assert finto.max_in_flight <= limite

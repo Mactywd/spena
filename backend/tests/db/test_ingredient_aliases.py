@@ -63,6 +63,25 @@ async def test_un_alias_gia_preso_da_un_altro_ingrediente_non_si_ruba(db_session
     assert await aliases(db_session, riso.id) == []
 
 
+async def test_un_alias_piu_lungo_della_colonna_si_salta_invece_di_esplodere(db_session):
+    """`import_terms.display_name` è `String(200)`, `alias` è `String(120)`.
+
+    Un termine lunghissimo della fonte arriva qui legittimo, e senza il controllo
+    l'insert è un errore del database in mezzo a una passata che ha già assegnato la
+    decisione (e magari già creato l'ingrediente). Saltare l'alias non perde niente: il
+    legame vive su `import_terms`, e si paga solo il fatto che quel termine non si
+    riconoscerà da solo al prossimo giro.
+    """
+    pasta = await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    lunghissimo = "rigatoni " * 20
+    assert len(lunghissimo.strip()) > 120
+
+    assert await remember_alias(db_session, pasta.id, lunghissimo) is False
+    assert await aliases(db_session, pasta.id) == []
+
+
 async def test_forget_alias_cancella_solo_il_proprio_e_solo_quelli_dellimport(db_session):
     pasta = await create_ingredient(
         db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI

@@ -28,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.db.models.ingredient import Ingredient, IngredientCategory
+from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientCategory
 from app.db.models.recipe_import import ImportTerm, TermDecision
 from app.services.llm import LlmUnavailable, build_headers, complete_json, open_client
 
@@ -347,13 +347,12 @@ async def collapse_creates(
     return out
 
 
-# `ingredients.name`, `ingredients.display_name` e `ingredient_aliases.alias` sono tutte
-# `String(120)`. Non è una preferenza di stile: oltre quel limite l'insert è un errore
-# del database in mezzo alla passata che scrive, e niente a monte lo rifiuta — `decide_one`
-# controlla che il nome non sia vuoto e che la categoria sia una delle dodici, e si ferma.
-NAME_MAX_LENGTH = 120
-
-
+# `ingredients.name` e `ingredients.display_name` sono `String(NAME_MAX_LENGTH)`. Non è
+# una preferenza di stile: oltre quel limite l'insert è un errore del database in mezzo
+# alla passata che scrive, e niente a monte lo rifiuta — `decide_one` controlla che il
+# nome non sia vuoto e che la categoria sia una delle dodici, e si ferma. Il limite si
+# legge dal modello, dove la colonna è dichiarata: due 120 scritti a mano si
+# scollerebbero al primo allargamento.
 def _fits(text: str | None) -> bool:
     return bool(text) and len(text.strip()) <= NAME_MAX_LENGTH
 
@@ -393,7 +392,11 @@ async def decide_terms(
     build_headers()
 
     registry = await load_registry(session)
-    semaphore = asyncio.Semaphore(get_settings().llm_max_concurrency)
+    # `max(1, ...)`: `LLM_MAX_CONCURRENCY` si scrive in `.env`, e a 0 (o negativo) il
+    # semaforo non si aprirebbe mai — l'import resterebbe appeso per sempre, senza
+    # timeout e senza errore, che è il guasto peggiore perché non si presenta. Un valore
+    # assurdo degrada a una domanda per volta: lento, ma finisce e si vede.
+    semaphore = asyncio.Semaphore(max(1, get_settings().llm_max_concurrency))
 
     async def ask(term: ImportTerm, api: object) -> TermDecisionProposal | None:
         async with semaphore:
@@ -406,8 +409,17 @@ async def decide_terms(
     owned = client is None
     api = client if client is not None else open_client()
     try:
-        raw = await asyncio.gather(*(ask(term, api) for term in terms))
-        proposals = [p for p in raw if p is not None]
+        # `return_exceptions=True`: `ask` assorbe `LlmUnavailable`, ma il resto del
+        # corpo di `decide_one` (e la lettura del termine per costruire la domanda) non
+        # è coperto da niente, e un errore qualsiasi che risalisse dal gather
+        # butterebbe le decisioni buone di tutto il lotto e chiuderebbe il client
+        # condiviso nel `finally` con le altre chiamate ancora in volo — l'opposto
+        # dell'isolamento del guasto per cui il fan-out esiste. Ciò che non è una
+        # proposta vale «nessuna decisione»: quel termine resta in coda.
+        raw = await asyncio.gather(
+            *(ask(term, api) for term in terms), return_exceptions=True
+        )
+        proposals = [p for p in raw if isinstance(p, TermDecisionProposal)]
         proposals = await collapse_creates(session, proposals, registry, client=api)
     finally:
         if owned:
@@ -462,12 +474,20 @@ async def decide_terms(
 
             term.decision = TermDecision.MAPPED
             term.ingredient_id = ingredient_id
-            # `import_terms.display_name` è `String(200)` e `alias` è `String(120)`:
-            # un termine lunghissimo si decide comunque, perché la decisione vive su
-            # `import_terms` e saltare l'alias non la perde (vedi `remember_alias`).
-            if _fits(term.display_name):
-                await remember_alias(session, ingredient_id, term.display_name)
+            # `import_terms.display_name` è `String(200)` e `alias` è `String(120)`: un
+            # termine lunghissimo si decide comunque e l'alias si salta, perché la
+            # decisione vive su `import_terms` e perderla sarebbe sproporzionato —
+            # l'aggancio è buono, è l'etichetta permanente che non entra nella colonna.
+            # Il rifiuto lo fa `remember_alias`, che torna `False`: farlo qui lascerebbe
+            # scoperta la decisione umana, che chiama la stessa funzione.
+            await remember_alias(session, ingredient_id, term.display_name)
 
+        # `role_override` sta nell'elenco della spec §4.3 dei campi che ogni decisione
+        # applicata scrive, e il Task 10 lo riporta a `NULL` annullando: l'AI non
+        # propone ruoli, quindi il valore è `None` — scritto e non solo lasciato stare,
+        # perché chi confronta i due elenchi non deve trovarci una differenza da
+        # spiegare.
+        term.role_override = None
         term.decided_by = "ai"
         term.decided_at = datetime.now(UTC)
         applied += 1

@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.ingredient import Ingredient, IngredientAlias
+from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientAlias
 from app.db.models.shopping import ShoppingListItem
 
 SIMILARITY_FLOOR = 0.15  # sotto questa soglia i suggerimenti diventano rumore
@@ -104,13 +104,21 @@ async def remember_alias(
     Il legame fra termine e ingrediente vive su `import_terms`, quindi saltarlo non
     perde la decisione.
 
+    Si salta anche quando l'alias non entra nella colonna: `import_terms.display_name`
+    è `String(200)` e `alias` è `String(120)`, quindi un termine lunghissimo della
+    fonte arriva qui legittimo e uscirebbe come errore del database a metà della
+    passata che scrive — con la decisione già assegnata e l'ingrediente magari già
+    creato. Il controllo sta qui e non nei chiamanti per la stessa ragione del
+    paragrafo sopra: al piano di sopra ci sono la decisione umana e quella dell'AI, e
+    una sola delle due si ricorderebbe di farlo.
+
     Torna `True` se l'ha scritto. Unica implementazione: la usano la decisione umana
     (api/imports.py), quella dell'AI (services/recipe_import/decide.py) e il collasso.
     Due copie di questa regola si scollerebbero, e la prima cosa a scollarsi sarebbe
     il vincolo su cui poggia l'autocomplete.
     """
     cleaned = display_name.strip().lower()
-    if not cleaned:
+    if not cleaned or len(cleaned) > NAME_MAX_LENGTH:
         return False
     already = (
         await session.execute(select(IngredientAlias).where(IngredientAlias.alias == cleaned))
