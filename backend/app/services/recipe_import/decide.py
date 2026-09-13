@@ -21,6 +21,7 @@ import asyncio
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select
@@ -28,8 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.models.ingredient import Ingredient, IngredientCategory
-from app.db.models.recipe_import import ImportTerm
-from app.services.llm import LlmUnavailable, complete_json, open_client
+from app.db.models.recipe_import import ImportTerm, TermDecision
+from app.services.llm import LlmUnavailable, build_headers, complete_json, open_client
 
 TERM_MAX_TOKENS = 300  # una decisione sola: qui sopra c'è solo spazio per divagare
 
@@ -344,3 +345,135 @@ async def collapse_creates(
         replacement = merged.get(proposal.term_id) if proposal.action == "create" else None
         out.append(replacement if replacement is not None else proposal)
     return out
+
+
+# `ingredients.name`, `ingredients.display_name` e `ingredient_aliases.alias` sono tutte
+# `String(120)`. Non è una preferenza di stile: oltre quel limite l'insert è un errore
+# del database in mezzo alla passata che scrive, e niente a monte lo rifiuta — `decide_one`
+# controlla che il nome non sia vuoto e che la categoria sia una delle dodici, e si ferma.
+NAME_MAX_LENGTH = 120
+
+
+def _fits(text: str | None) -> bool:
+    return bool(text) and len(text.strip()) <= NAME_MAX_LENGTH
+
+
+@dataclass(frozen=True)
+class Decided:
+    applied: int
+    created: int
+    ignored: int
+    still_pending: int
+
+
+async def decide_terms(
+    session: AsyncSession, terms: list[ImportTerm], client: object | None = None
+) -> Decided:
+    """Decide i termini in attesa e applica: fan-out, collasso, fan-in.
+
+    Le domande partono insieme sotto un semaforo (`LLM_MAX_CONCURRENCY`); le
+    **scritture** si applicano dopo, in sequenza e in ordine, rifacendo `match_name`
+    prima di ogni `create`. Il parallelo è sulla rete, non sul database: due `create`
+    dello stesso nome scritti insieme sarebbero un doppione o una violazione del
+    vincolo, e in sequenza il secondo trova quello che il primo ha appena creato.
+
+    Un guasto su un termine lascia in coda solo quel termine. `LlmUnavailable`
+    risale solo quando **nessuna** chiamata è partita — manca la chiave — perché
+    quello non è un intoppo: è una configurazione assente, e chi chiama la traduce in
+    «decidi a mano».
+    """
+    from app.repositories.ingredients import create_ingredient, remember_alias
+    from app.services.ingredient_match import match_name
+
+    if not terms:
+        return Decided(applied=0, created=0, ignored=0, still_pending=0)
+
+    # senza chiave si esce prima di aprire qualunque cosa: è la configurazione, non
+    # un intoppo, e N fallimenti identici non sono più informativi di uno
+    build_headers()
+
+    registry = await load_registry(session)
+    semaphore = asyncio.Semaphore(get_settings().llm_max_concurrency)
+
+    async def ask(term: ImportTerm, api: object) -> TermDecisionProposal | None:
+        async with semaphore:
+            try:
+                return await decide_one(session, term, registry, client=api)
+            except LlmUnavailable:
+                # questo termine resta in coda; gli altri non ne sanno niente
+                return None
+
+    owned = client is None
+    api = client if client is not None else open_client()
+    try:
+        raw = await asyncio.gather(*(ask(term, api) for term in terms))
+        proposals = [p for p in raw if p is not None]
+        proposals = await collapse_creates(session, proposals, registry, client=api)
+    finally:
+        if owned:
+            await api.aclose()
+
+    by_id = {term.id: term for term in terms}
+    applied = created = ignored = 0
+
+    for proposal in proposals:
+        term = by_id.get(proposal.term_id)
+        if term is None:
+            continue
+
+        if proposal.action == "ignore":
+            term.decision = TermDecision.IGNORED
+            term.ingredient_id = None
+            # nessun alias: punterebbe a niente, e resterebbe
+            ignored += 1
+        else:
+            # `merge` e `map` chiedono entrambi un ingrediente esistente; `create` lo
+            # fa nascere. `match_name` si rifà qui, per ogni `create`, e il suo esito
+            # vince sul registro caricato in cima: quel registro è stato letto prima
+            # che partissero N chiamate parallele, quindi qui è già vecchio — e
+            # `decide_one` confronta un nome nuovo solo con `ingredients.name`, mai
+            # con gli alias, mentre `match_name` guarda entrambi. È così che un
+            # `create: rigatoni` su un'anagrafica che ha «rigatoni» come alias di
+            # «pasta» torna a essere il `map` che doveva essere, e così che il secondo
+            # dei due `create` dello stesso nome trova quello che il primo ha appena
+            # scritto.
+            ingredient_id = proposal.ingredient_id
+            if ingredient_id is None and proposal.name:
+                match = await match_name(session, proposal.name)
+                if match.certain:
+                    ingredient_id = match.ingredient_id
+            if ingredient_id is None:
+                if proposal.action not in ("create", "merge") or not proposal.name:
+                    continue
+                if not _fits(proposal.name) or not _fits(
+                    proposal.display_name or proposal.name
+                ):
+                    # si rifiuta come ogni altra risposta non verificabile: il termine
+                    # resta `pending` e lo raccoglie la coda umana
+                    continue
+                ingredient = await create_ingredient(
+                    session,
+                    name=proposal.name,
+                    display_name=proposal.display_name or proposal.name,
+                    category=proposal.category or "altro",
+                )
+                ingredient_id = ingredient.id
+                created += 1
+
+            term.decision = TermDecision.MAPPED
+            term.ingredient_id = ingredient_id
+            # `import_terms.display_name` è `String(200)` e `alias` è `String(120)`:
+            # un termine lunghissimo si decide comunque, perché la decisione vive su
+            # `import_terms` e saltare l'alias non la perde (vedi `remember_alias`).
+            if _fits(term.display_name):
+                await remember_alias(session, ingredient_id, term.display_name)
+
+        term.decided_by = "ai"
+        term.decided_at = datetime.now(UTC)
+        applied += 1
+
+    await session.flush()
+    still_pending = sum(1 for term in terms if term.decision == TermDecision.PENDING)
+    return Decided(
+        applied=applied, created=created, ignored=ignored, still_pending=still_pending
+    )
