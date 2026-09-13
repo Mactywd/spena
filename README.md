@@ -104,6 +104,40 @@ file Compose stesso, che è una cosa diversa da `env_file:` e non accetta
 `format: raw`. Verificato: dentro al container `APP_PASSWORD_HASH` è lungo 97
 caratteri, cioè intero.
 
+## Portare ricette nel ricettario
+
+```bash
+docker compose exec backend python -m app.cli.import_gz --limit 200
+```
+
+Scarica un lotto di ricette da GialloZafferano: una pagina alla volta, con una pausa
+di cortesia, e mai due volte lo stesso indirizzo. Rilanciarlo prende il lotto
+successivo, quindi il ricettario si riempie a tappe e non in una notte.
+
+Dopo lo scarico, gli ingredienti che l'anagrafica non riconosce finiscono in una coda.
+Ci si arriva dalla riga in cima al ricettario, che compare solo quando c'è qualcosa da
+decidere. Ogni decisione vale per sempre — diventa un alias dell'ingrediente, e la
+conosce anche l'autocomplete della lista — e fa entrare da sé le ricette che la
+aspettavano.
+
+Se tieni accesa la ricerca semantica (`INSTALL_EMBEDDINGS=1`), dopo un import esegui:
+
+```bash
+docker compose exec backend python -m app.cli.reindex
+```
+
+Calcola i vettori delle ricette che non ne hanno. Senza, le ricette importate
+restano cercabili solo per le parole che contengono, e rieseguire l'import non
+rimedia: è idempotente e non torna su ciò che è già dentro.
+
+Una nota che vale la pena sapere. Il `robots.txt` della fonte vieta esplicitamente i
+crawler AI, e le sue condizioni d'uso con ogni probabilità vietano la raccolta
+sistematica. Questo comando non è un crawler AI e si comporta di conseguenza, ma la
+scelta di usarlo è di chi lo esegue: le ricette restano nel tuo database, non si
+ridistribuiscono, e ognuna conserva l'indirizzo originale, che la schermata della
+ricetta offre con «apri l'originale». La decisione e i suoi limiti stanno in §3 di
+`docs/superpowers/specs/2026-09-12-import-ricette-design.md`.
+
 ## Test
 
 Tre suite separate. Ognuna va lanciata dalla sua directory.
@@ -152,6 +186,18 @@ falso.
 
 ```bash
 cd frontend && npx vitest run
+```
+
+Il controllo dei tipi è un comando separato, e il nome che sembra ovvio è quello
+sbagliato: `frontend/tsconfig.json` è in stile «solution», con `"files": []` e solo
+riferimenti ai sotto-progetti, quindi `npx tsc --noEmit` legge quel file, non trova
+niente da compilare ed esce con 0 — sempre, qualunque errore ci sia nel codice. Chi
+lancia `tsc --noEmit` per controllare i tipi ottiene un verde che non significa
+nulla. Il controllo che compila davvero i sotto-progetti è `tsc -b`, lo stesso che
+lancia `npm run build` e ora anche `npm run typecheck`:
+
+```bash
+cd frontend && npm run typecheck
 ```
 
 ### Percorso end-to-end
@@ -336,12 +382,17 @@ Per accenderla: INSTALL_EMBEDDINGS=1 in .env e `docker compose up -d --build`.
 ```
 
 Se accendi `1` *dopo* aver seminato, le 26 ricette del seme restano senza vettore:
-il seme è idempotente e non le riscrive. Per rifarle, cancella il volume del
-database e risemina — oppure accetta che solo le ricette nuove siano cercabili
-anche per somiglianza. Nel frattempo il ricettario continua a mostrare la riga
-«Ricerca solo testuale»: `/recipes/search-mode` risponde `semantic: true` solo se
-esiste almeno una ricetta con il vettore, quindi l'avviso dice quel che cercare fa
-davvero e non quel che il fornitore saprebbe fare.
+il seme è idempotente e non le riscrive. Per dargliene uno esegui
+
+```bash
+docker compose exec backend python -m app.cli.reindex
+```
+
+che calcola i vettori mancanti sul posto, senza toccare le ricette che ce l'hanno
+già: non serve cancellare niente. Finché non lo esegui il ricettario continua a
+mostrare la riga «Ricerca solo testuale»: `/recipes/search-mode` risponde
+`semantic: true` solo se esiste almeno una ricetta con il vettore, quindi l'avviso
+dice quel che cercare fa davvero e non quel che il fornitore saprebbe fare.
 
 **Il primo ingresso in Ricette dopo una ricostruzione.** È quello che fa partire il
 download: lo schermo interroga `/recipes/search-mode`, che calcola un vettore di

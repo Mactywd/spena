@@ -13,6 +13,7 @@ from app.services.embeddings import (
     decorate_passage,
     decorate_query,
     get_embedding_provider,
+    recipe_document,
 )
 
 ENDPOINT = "http://embedding-service/embed"
@@ -95,6 +96,18 @@ async def test_missing_dependency_raises_embedding_unavailable(monkeypatch):
     monkeypatch.setattr(provider, "_load_model", lambda: (_ for _ in ()).throw(ImportError("no")))
     with pytest.raises(EmbeddingUnavailable):
         await provider.embed_query("pasta")
+
+
+def test_recipe_document_unisce_titolo_e_descrizione():
+    """Era ricopiato in linea in quattro punti; ora lo fissa un test solo."""
+    assert recipe_document("Pasta al pomodoro", "Un classico") == (
+        "Pasta al pomodoro. Un classico"
+    )
+
+
+def test_recipe_document_senza_descrizione_non_scrive_none():
+    """`None` diventa stringa vuota, non la parola "None" nel testo per il modello."""
+    assert recipe_document("Pasta al pomodoro", None) == "Pasta al pomodoro. "
 
 
 def test_factory_honours_the_configured_backend(monkeypatch):

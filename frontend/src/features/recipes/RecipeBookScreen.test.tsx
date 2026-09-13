@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -8,9 +8,11 @@ import { UnauthorizedError } from "../../api/client";
 
 const RESULTS = [
   { id: "r1", title: "Pasta all'aglio", description: "Svelta", source: "dataset",
-    missing: 0, cookable: true },
+    missing: 0, cookable: true, image_url: "https://example.com/aglio.jpg",
+    prep_minutes: 10, cook_minutes: 15, category: "Primi piatti" },
   { id: "r2", title: "Pasta al pomodoro", description: "Di sempre", source: "ai",
-    missing: 1, cookable: false },
+    missing: 1, cookable: false, image_url: null, prep_minutes: null,
+    cook_minutes: null, category: null },
 ];
 
 function renderScreen(queryCache?: QueryCache) {
@@ -27,12 +29,21 @@ function renderScreen(queryCache?: QueryCache) {
   );
 }
 
-/** Un fetch che risponde in base al percorso: lo schermo fa due chiamate — la
- * ricerca e il modo di ricerca — e ognuna deve ricevere una Response nuova, perché
- * il corpo di una Response si legge una volta sola. */
+// Nessun ingrediente in attesa: la riga d'ingresso verso la coda non deve
+// comparire nei test che non la riguardano.
+const NESSUN_IMPORT_IN_CORSO = {
+  fetched: 0, pending_recipes: 0, imported: 0, skipped: 0, pending_terms: 0,
+};
+
+/** Un fetch che risponde in base al percorso: lo schermo fa tre chiamate — la
+ * ricerca, il modo di ricerca e lo stato dell'import — e ognuna deve ricevere una
+ * Response nuova, perché il corpo di una Response si legge una volta sola. */
 function stubRoutedFetch(route: (path: string) => [unknown, number]) {
   const spy = vi.fn((url: unknown) => {
-    const [body, status] = route(String(url));
+    const path = String(url);
+    const [body, status] = path.includes("/imports/status")
+      ? [NESSUN_IMPORT_IN_CORSO, 200]
+      : route(path);
     return Promise.resolve(new Response(JSON.stringify(body), { status }));
   });
   vi.stubGlobal("fetch", spy);
@@ -43,36 +54,35 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const CODA_CON_CATEGORIE = (path: string): [unknown, number] => {
+  if (path.includes("/recipes/categories")) return [["Primi piatti", "Dolci e Desserts"], 200];
+  if (path.includes("/recipes/search-mode")) return [{ semantic: true }, 200];
+  return [RESULTS, 200];
+};
+
 describe("RecipeBookScreen", () => {
   it("mostra la provenienza di ogni ricetta", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(RESULTS), { status: 200 })
-    ));
+    stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
     expect(await screen.findByText("dataset")).toBeDefined();
     expect(screen.getByText("AI")).toBeDefined();
   });
 
   it("dice quanto manca, senza nascondere la ricetta", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(RESULTS), { status: 200 })
-    ));
+    stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
     expect(await screen.findByText("Pasta al pomodoro")).toBeDefined();
     expect(screen.getByText("manca 1 ingrediente")).toBeDefined();
   });
 
   it("segnala le ricette che puoi cucinare adesso", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(RESULTS), { status: 200 })
-    ));
+    stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
     expect(await screen.findByText("Puoi cucinarla ora")).toBeDefined();
   });
 
   it("la ricerca passa la query al backend", async () => {
-    const spy = vi.fn().mockResolvedValue(new Response(JSON.stringify(RESULTS), { status: 200 }));
-    vi.stubGlobal("fetch", spy);
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
 
     renderScreen();
     await userEvent.type(await screen.findByLabelText("Cerca nel ricettario"), "pomodoro");
@@ -83,8 +93,7 @@ describe("RecipeBookScreen", () => {
   });
 
   it("il filtro restringe alle sole ricette cucinabili", async () => {
-    const spy = vi.fn().mockResolvedValue(new Response(JSON.stringify(RESULTS), { status: 200 }));
-    vi.stubGlobal("fetch", spy);
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
 
     renderScreen();
     await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
@@ -100,9 +109,11 @@ describe("RecipeBookScreen", () => {
   // il senso, e il difetto del Dockerfile che lo causava (C1) è stato invisibile
   // per tutto il branch proprio per questo.
   it("quando la ricerca è solo testuale lo dice, e non sembra un errore", async () => {
-    stubRoutedFetch((path) =>
-      path.includes("/search-mode") ? [{ semantic: false }, 200] : [RESULTS, 200]
-    );
+    stubRoutedFetch((path) => {
+      if (path.includes("/search-mode")) return [{ semantic: false }, 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
     renderScreen();
 
     expect(await screen.findByText(/solo testuale/i)).toBeDefined();
@@ -112,9 +123,11 @@ describe("RecipeBookScreen", () => {
   });
 
   it("quando la ricerca è ibrida non dice niente", async () => {
-    stubRoutedFetch((path) =>
-      path.includes("/search-mode") ? [{ semantic: true }, 200] : [RESULTS, 200]
-    );
+    stubRoutedFetch((path) => {
+      if (path.includes("/search-mode")) return [{ semantic: true }, 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
     renderScreen();
 
     await screen.findByText("Pasta al pomodoro");
@@ -124,9 +137,11 @@ describe("RecipeBookScreen", () => {
   it("se il modo di ricerca non risponde non mostra un avviso rotto", async () => {
     // un avviso su una cosa che forse funziona è peggio del silenzio, e il
     // ricettario deve restare utilizzabile
-    stubRoutedFetch((path) =>
-      path.includes("/search-mode") ? [{ detail: "giù" }, 500] : [RESULTS, 200]
-    );
+    stubRoutedFetch((path) => {
+      if (path.includes("/search-mode")) return [{ detail: "giù" }, 500];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
     renderScreen();
 
     await screen.findByText("Pasta al pomodoro");
@@ -267,6 +282,71 @@ describe("RecipeBookScreen", () => {
     expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
   });
 
+  // Task 14: il ricettario apre la porta verso la coda di revisione, ma solo
+  // quando c'è davvero qualcosa da decidere: una riga che compare sempre sarebbe
+  // rumore, una che non compare mai nasconderebbe ricette scaricate e mai entrate.
+  it("quando ci sono ingredienti da abbinare, apre la porta verso la coda", async () => {
+    const spy = vi.fn((url: unknown) => {
+      const path = String(url);
+      if (path.includes("/imports/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              { fetched: 20, pending_recipes: 3, imported: 17, skipped: 0, pending_terms: 5 }
+            ),
+            { status: 200 }
+          )
+        );
+      }
+      if (path.includes("/recipes/categories")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(RESULTS), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    const link = await screen.findByRole("link", { name: /5 ingredienti da abbinare/ });
+    expect(link).toHaveTextContent(/3 ricette in attesa/);
+    expect(link).toHaveAttribute("href", "/ricette/importa");
+  });
+
+  // "1 ingredienti da abbinare, 1 ricette in attesa" era il testo con un solo
+  // termine e una sola ricetta in attesa: entrambi i plurali sbagliati a uno, lo
+  // stesso caso che TermCard.tsx già tratta correttamente riga per riga.
+  it("con un solo ingrediente e una sola ricetta usa il singolare per entrambi", async () => {
+    const spy = vi.fn((url: unknown) => {
+      const path = String(url);
+      if (path.includes("/imports/status")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              { fetched: 1, pending_recipes: 1, imported: 0, skipped: 0, pending_terms: 1 }
+            ),
+            { status: 200 }
+          )
+        );
+      }
+      if (path.includes("/recipes/categories")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(RESULTS), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    const link = await screen.findByRole("link", { name: /1 ingrediente da abbinare/ });
+    expect(link).toHaveTextContent("1 ingrediente da abbinare, 1 ricetta in attesa");
+  });
+
+  it("senza ingredienti in attesa non mostra la porta verso la coda", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    await screen.findByText("Pasta al pomodoro");
+    expect(screen.queryByRole("link", { name: /da abbinare/ })).toBeNull();
+  });
+
   it("non riordina: l'ordine è quello che decide il backend", async () => {
     // L'ordinamento nasce da `recipe_search.py`, che mette davanti ciò a cui manca
     // meno. Una ricetta non cucinabile prima di una cucinabile è quindi un ordine
@@ -282,9 +362,7 @@ describe("RecipeBookScreen", () => {
       { id: "a", title: "Agnello", description: null, source: "dataset",
         missing: 0, cookable: true },
     ];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(backendOrder), { status: 200 })
-    ));
+    stubRoutedFetch((path) => (path.includes("/recipes/categories") ? [[], 200] : [backendOrder, 200]));
     renderScreen();
 
     await screen.findByText("Zuppa");
@@ -292,5 +370,70 @@ describe("RecipeBookScreen", () => {
       .getAllByRole("listitem")
       .map((li) => li.querySelector("span")?.textContent);
     expect(titles).toEqual(["Zuppa", "Agnello"]);
+  });
+
+  it("mostra la foto e il tempo totale quando ci sono", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    const foto = await screen.findByRole("img", { name: "Pasta all'aglio" });
+    expect(foto).toHaveAttribute("loading", "lazy");
+    expect(screen.getByText("25 min")).toBeInTheDocument();
+  });
+
+  it("una ricetta senza foto e senza tempi non si rompe", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    expect(await screen.findByText("Pasta al pomodoro")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Pasta al pomodoro" })).not.toBeInTheDocument();
+  });
+
+  // Il caso normale, non un'eccezione (spec §6.3): l'immagine viene dal server di
+  // origine e non è mai copiata, quindi un 404 dopo un rinominamento a monte, un
+  // blocco sul Referer o solo poco segnale in corridoio la fanno fallire. Senza
+  // questa gestione la scheda mostra il titolo due volte (l'alt dell'immagine
+  // rotta, e il titolo vero sotto) più un riquadro vuoto delle dimensioni della
+  // foto mancata — ~230px su 812.
+  it("una foto che non carica non lascia un buco: la scheda torna al layout senza foto", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    const foto = await screen.findByRole("img", { name: "Pasta all'aglio" });
+    fireEvent.error(foto);
+
+    expect(screen.queryByRole("img", { name: "Pasta all'aglio" })).not.toBeInTheDocument();
+    // il titolo resta una volta sola: non si duplica nell'alt di un'immagine ormai
+    // fuori pagina
+    expect(screen.getAllByText("Pasta all'aglio")).toHaveLength(1);
+  });
+
+  it("il filtro per categoria chiede al backend solo quella categoria", async () => {
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText("Categoria"),
+      "Dolci e Desserts"
+    );
+
+    await waitFor(() =>
+      expect(
+        spy.mock.calls.some(([url]) =>
+          String(url).includes("category=Dolci+e+Desserts")
+        )
+      ).toBe(true)
+    );
+  });
+
+  it("senza categorie nel ricettario il filtro non compare", async () => {
+    stubRoutedFetch((path) => {
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return CODA_CON_CATEGORIE(path);
+    });
+    renderScreen();
+
+    await screen.findByText("Pasta all'aglio");
+    expect(screen.queryByLabelText("Categoria")).not.toBeInTheDocument();
   });
 });

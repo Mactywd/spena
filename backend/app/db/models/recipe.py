@@ -42,6 +42,7 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
             "ix_recipes_embedding", "embedding",
             postgresql_using="hnsw", postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+        Index("ix_recipes_category", "category"),
     )
 
     title: Mapped[str] = mapped_column(String(200))
@@ -50,6 +51,14 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
     servings: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(20))
     source_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Arrivano dall'import (spec §6.3) e restano nulle per le ricette scritte a mano
+    # e per quelle dell'AI, che non le hanno e non le avranno.
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    prep_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cook_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # testo libero e non enum: la tassonomia è della fonte, e un enum costringerebbe
+    # a una migrazione il giorno che aggiungono una voce
+    category: Mapped[str | None] = mapped_column(String(60), nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
     search_tsv: Mapped[str] = mapped_column(
         TSVECTOR,

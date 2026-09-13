@@ -16,7 +16,7 @@ cook a recipe → whatever ran out goes back on the list.
 does; the code is now the authority on what it does. `README.md` covers running,
 testing and deploying.
 
-Three things reviews here kept rediscovering, written down so the next person does
+Six things reviews here kept rediscovering, written down so the next person does
 not pay for them again:
 
 - **A test that builds its own object is not testing the one production uses.**
@@ -41,6 +41,23 @@ not pay for them again:
   Adding the ingredient/product guard turned one mismatched barcode into a rejected
   whole shop with an unactionable "riprova". When you close a hole, ask what the new
   refusal leaves the user able to do.
+- **A filter that works on the result cannot sit behind a limit.**
+  `recipe_search.py` selected the 100 most recent recipes and then applied
+  `only_cookable`: with 26 recipes that was the whole recipe book, with 500 it
+  is a sample, and "what can I cook" would have answered by looking only at
+  yesterday's recipes. No test could see it, because no test had more recipes
+  than the candidate pool. When a job multiplies the data, look for the limits
+  written when the data was small.
+- **`tsc --noEmit` is not the project's type check.** `frontend/tsconfig.json` is
+  solution-style — `{"files": [], "references": [...]}` — so `tsc --noEmit` reads
+  it, finds zero files to compile, and exits 0 always, whatever errors sit in the
+  code (measured: on a tree where `npx tsc -b --force` reports a `TS2739` in
+  `CookSheet.test.tsx`, `npx tsc --noEmit` still exits 0). Every task on
+  `import-ricette` ran `tsc --noEmit` as its type check, so an object literal left
+  missing four fields added to `RecipeSummary` shipped past all of them; only
+  `npm run build` (`tsc -b && vite build`, now also `npm run typecheck`) caught it,
+  and only at the final browser-verification task. Ask of any green type check: did
+  it compile project references, or find none to compile?
 
 ## The two decisions everything else follows from
 
@@ -108,6 +125,12 @@ matches. It never produces nutrient values.
   anything carrying white text is above 4.5:1, because this app is read in a
   supermarket aisle in daylight.
 - Specs and plans are written in Italian, code and identifiers in English.
+- **Import brings in recipes, not random new ingredients.** The source catalogue
+  is finer than the ingredient registry: `Rigatoni` becomes an alias of `pasta`,
+  decided once in `import_terms` and written into `ingredient_aliases`. There is
+  no second mapping table, and a wrong decision is corrected from the ingredient
+  registry. The spec is
+  `docs/superpowers/specs/2026-09-12-import-ricette-design.md`.
 
 ## Roadmap beyond v1
 

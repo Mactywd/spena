@@ -1,10 +1,13 @@
 import pytest
 
+from app.db.models.ingredient import IngredientCategory
 from app.domain.rules import (
     Availability,
+    SECONDARY_CATEGORIES,
     IngredientRole,
     PantryStatus,
     availability_of,
+    default_role,
     is_cookable,
     is_satisfied,
     missing_count,
@@ -69,3 +72,60 @@ def test_missing_count_and_cookability():
 def test_recipe_without_ingredients_is_cookable():
     assert is_cookable([]) is True
     assert missing_count([]) == 0
+
+
+@pytest.mark.parametrize(
+    "category, quantity, expected",
+    [
+        # la dose decide da sola: «q.b.» vuol dire che si aggiusta a piacere
+        ("cereali", "q.b.", IngredientRole.SECONDARY),
+        ("cereali", "qb", IngredientRole.SECONDARY),
+        ("cereali", "q.b. (circa due cucchiai)", IngredientRole.SECONDARY),
+        ("cereali", "a piacere", IngredientRole.SECONDARY),
+        ("cereali", "quanto basta", IngredientRole.SECONDARY),
+        # la categoria decide da sola: spezie e condimenti si riducono senza
+        # snaturare il piatto, anche quando la dose è precisa
+        ("spezie", "2 foglie", IngredientRole.SECONDARY),
+        ("condimenti", "2 cucchiai", IngredientRole.SECONDARY),
+        # tutto il resto con una dose vera è principale
+        ("cereali", "320 g", IngredientRole.PRIMARY),
+        ("carne", "80 g", IngredientRole.PRIMARY),
+        ("latticini", "100 g", IngredientRole.PRIMARY),
+        ("verdura", "1 spicchio", IngredientRole.PRIMARY),
+        # dose assente non è dose «q.b.»: non si inventa un secondario
+        ("verdura", None, IngredientRole.PRIMARY),
+        ("verdura", "", IngredientRole.PRIMARY),
+    ],
+)
+def test_default_role(category, quantity, expected):
+    assert default_role(category, quantity) is expected
+
+
+def test_ogni_categoria_e_decisa():
+    """Nessuna categoria dell'anagrafica resta senza risposta, e ognuna delle
+    dodici ha il suo ruolo atteso scritto qui — non ricalcolato dall'implementazione,
+    altrimenti il test proverebbe solo che la funzione è d'accordo con se stessa."""
+    ruoli_attesi = {
+        IngredientCategory.VERDURA: IngredientRole.PRIMARY,
+        IngredientCategory.FRUTTA: IngredientRole.PRIMARY,
+        IngredientCategory.CARNE: IngredientRole.PRIMARY,
+        IngredientCategory.PESCE: IngredientRole.PRIMARY,
+        IngredientCategory.LATTICINI: IngredientRole.PRIMARY,
+        IngredientCategory.CEREALI: IngredientRole.PRIMARY,
+        IngredientCategory.LEGUMI: IngredientRole.PRIMARY,
+        IngredientCategory.CONDIMENTI: IngredientRole.SECONDARY,
+        IngredientCategory.SPEZIE: IngredientRole.SECONDARY,
+        IngredientCategory.BEVANDE: IngredientRole.PRIMARY,
+        IngredientCategory.DOLCI: IngredientRole.PRIMARY,
+        IngredientCategory.ALTRO: IngredientRole.PRIMARY,
+    }
+    assert set(ruoli_attesi) == set(IngredientCategory)
+    for category, expected in ruoli_attesi.items():
+        assert default_role(category, "100 g") is expected
+
+
+def test_le_categorie_secondarie_esistono_in_anagrafica():
+    """`rules.py` è puro e non importa i modelli: le due stringhe potrebbero
+    diventare nomi di categorie che non esistono più, e la deduzione smetterebbe
+    di funzionare senza che nessun test se ne accorga."""
+    assert SECONDARY_CATEGORIES <= {str(value) for value in IngredientCategory}

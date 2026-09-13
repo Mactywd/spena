@@ -1,11 +1,16 @@
 import { apiFetch } from "../../api/client";
 import type { CookResult, RecipeDetail, RecipeDraft, RecipeSummary } from "../../domain/types";
 
-export function searchRecipes(query: string, onlyCookable: boolean) {
+export function searchRecipes(query: string, onlyCookable: boolean, category: string) {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
   if (onlyCookable) params.set("only_cookable", "true");
+  if (category) params.set("category", category);
   return apiFetch<RecipeSummary[]>(`/recipes/search?${params.toString()}`);
+}
+
+export function fetchCategories() {
+  return apiFetch<string[]>("/recipes/categories");
 }
 
 /** Se la ricerca del ricettario è ibrida o solo testuale, in questo momento. Il

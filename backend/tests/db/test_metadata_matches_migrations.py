@@ -15,11 +15,14 @@ from app.db.models.pantry import PantryItem
 
 MIGRATED_INDEXES = {
     "ix_aliases_alias_trgm",
+    "ix_import_terms_queue",
     "ix_ingredients_name_trgm",
     "ix_pantry_active",
     "ix_products_ingredient_id",
     "ix_products_name_trgm",
+    "ix_recipe_imports_state",
     "ix_recipe_ingredients_ingredient",
+    "ix_recipes_category",
     "ix_recipes_embedding",
     "ix_recipes_tsv",
     "ix_shopping_ingredient",
@@ -40,7 +43,7 @@ async def test_models_describe_the_migrated_schema(db_session):
 
 
 async def test_every_migrated_index_is_declared_on_a_model(db_session):
-    """I dieci indici esistono nel database e sono dichiarati nei modelli.
+    """I tredici indici esistono nel database e sono dichiarati nei modelli.
 
     `compare_metadata` da solo non basterebbe a dimostrarlo: un indice assente da
     entrambe le parti non produce differenze.

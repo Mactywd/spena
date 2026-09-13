@@ -119,3 +119,17 @@ async def test_con_il_pacchetto_installato_il_client_vero_si_costruisce(monkeypa
         assert type(client).__name__ == "AsyncAnthropic"
     finally:
         get_settings.cache_clear()
+
+
+def test_beautifulsoup_e_una_dipendenza_di_base_e_non_un_extra():
+    """Il parser dell'import non è una funzione opzionale.
+
+    Messo fra gli extra finirebbe fuori dall'immagine esattamente come `anthropic`
+    prima di questo file, e `python -m app.cli.import_gz` morirebbe su ImportError
+    al primo uso in produzione, dove non c'è nessun test a dirlo.
+    """
+    progetto = tomllib.loads(PYPROJECT.read_text())["project"]
+    assert any("beautifulsoup4" in dep for dep in progetto["dependencies"]), (
+        f"{PYPROJECT}: beautifulsoup4 non è fra le dipendenze di base "
+        f"({progetto['dependencies']!r}): il parser dell'import non parte."
+    )

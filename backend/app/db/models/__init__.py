@@ -9,15 +9,18 @@ from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
 from app.db.models.recipe import CookingEvent, Recipe, RecipeIngredient
+from app.db.models.recipe_import import ImportTerm, RecipeImport
 from app.db.models.shopping import ShoppingListItem
 
 __all__ = [
     "CookingEvent",
+    "ImportTerm",
     "Ingredient",
     "IngredientAlias",
     "PantryItem",
     "Product",
     "Recipe",
+    "RecipeImport",
     "RecipeIngredient",
     "ShoppingListItem",
 ]
