@@ -21,10 +21,10 @@ const DEBOUNCE_MS = 180;
 function emptyMessage(query: string, onlyCookable: boolean, category: string): string {
   const searched = query.trim() !== "";
   if (category) {
-    const conParole = searched ? " con queste parole" : "";
-    const cucinabili = onlyCookable ? " fra quelle che puoi cucinare adesso" : "";
+    const withSearchFragment = searched ? " con queste parole" : "";
+    const onlyCookableFragment = onlyCookable ? " fra quelle che puoi cucinare adesso" : "";
     return (
-      `Nessuna ricetta in «${category}»${conParole}${cucinabili}: ` +
+      `Nessuna ricetta in «${category}»${withSearchFragment}${onlyCookableFragment}: ` +
       "scegli «Tutte» per vedere il resto del ricettario."
     );
   }
