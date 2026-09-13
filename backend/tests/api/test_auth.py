@@ -188,12 +188,12 @@ def test_the_suite_does_not_read_the_developers_env_file(monkeypatch):
 
     monkeypatch.delenv("APP_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("SESSION_SECRET", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
     settings = Settings()
     assert settings.app_password_hash == ""
     assert settings.session_secret == ""
-    assert not settings.anthropic_api_key
+    assert not settings.openrouter_api_key
 
 
 def test_il_predicato_boccia_solo_i_segreti_inutilizzabili():

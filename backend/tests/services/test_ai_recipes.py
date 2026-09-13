@@ -132,7 +132,7 @@ async def test_missing_api_key_raises_ai_unavailable(db_session, anagrafica, mon
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(AiUnavailable):
         await draft_recipe(db_session, "x")
     get_settings.cache_clear()

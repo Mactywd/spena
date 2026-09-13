@@ -67,9 +67,14 @@ class RecipeDraft:
 
 
 def _build_client():
-    key = get_settings().anthropic_api_key
+    # Anthropic non è più un fornitore configurabile a sé: la chiave che apre questo
+    # client resta temporaneamente `openrouter_api_key`, l'unico segreto LLM che
+    # Settings conosce da questo task in poi. Il Task 2 sostituisce l'intero client
+    # con quello OpenRouter (`complete_json`); qui si evita solo che la rimozione di
+    # `anthropic_api_key` trasformi «chiave assente» in un AttributeError.
+    key = get_settings().openrouter_api_key
     if not key:
-        raise AiUnavailable("ANTHROPIC_API_KEY non configurata")
+        raise AiUnavailable("OPENROUTER_API_KEY non configurata")
     try:
         from anthropic import AsyncAnthropic
     except ImportError as exc:

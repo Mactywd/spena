@@ -315,7 +315,7 @@ async def test_senza_claude_le_proposte_dicono_di_decidere_a_mano(
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     termine = (
         await db_session.execute(
             select(ImportTerm).where(ImportTerm.display_name == "Bottarga")

@@ -110,7 +110,7 @@ async def test_con_il_pacchetto_installato_il_client_vero_si_costruisce(monkeypa
     from app.services.ai_recipes import AiUnavailable, _build_client
 
     get_settings.cache_clear()
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta-per-il-test")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta-per-il-test")
     try:
         try:
             client = _build_client()

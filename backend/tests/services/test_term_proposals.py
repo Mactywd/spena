@@ -203,7 +203,7 @@ async def test_senza_chiave_configurata_si_dichiara(db_session, termini, monkeyp
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     try:
         with pytest.raises(AiUnavailable):
             await propose_decisions(db_session, termini)

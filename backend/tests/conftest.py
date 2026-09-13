@@ -11,7 +11,7 @@ os.environ.setdefault("EMBEDDING_BACKEND", "fake")
 # La suite non legge il .env dello sviluppatore. Da quando `env_file` è un percorso
 # assoluto (app/core/config.py) quel file viene trovato anche sotto pytest, e un test
 # che dimostra il comportamento "variabile non configurata" ricadrebbe in silenzio sul
-# valore reale: con ANTHROPIC_API_KEY valorizzata,
+# valore reale: con OPENROUTER_API_KEY valorizzata,
 # test_missing_api_key_raises_ai_unavailable costruirebbe un client vero e farebbe una
 # chiamata a pagamento, contro la regola di CLAUDE.md per cui la suite non tocca la
 # rete. Neutralizzarlo qui, prima che Settings venga istanziata la prima volta, vale
