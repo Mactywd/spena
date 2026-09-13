@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
-import { decideTerm, fetchImportStatus, fetchImportTerms, fetchTermProposals } from "./api";
+import { buttonClasses } from "../../components/ui/buttonClasses";
+import { decideTerm, decideWithAi, fetchImportStatus, fetchImportTerms, undoTerm } from "./api";
+import { DecidedTermRow } from "./DecidedTermRow";
 import { TermCard, type Decision } from "./TermCard";
-import type { TermProposal } from "../../domain/types";
 
 /** Il messaggio da mostrare quando una decisione fallisce.
  *
@@ -29,6 +30,10 @@ function decisionErrorMessage(error: unknown): string {
  * Una decisione per volta, e ogni decisione materializza subito le ricette che
  * aspettavano quel termine: il numero che torna è ciò che rende questa schermata un
  * lavoro con un risultato visibile invece di un modulo da compilare.
+ *
+ * L'AI decide in blocco su richiesta (`decideWithAi`), non termine per termine: le
+ * sue decisioni si rivedono dall'elenco «Deciso dall'AI» qui sotto, ognuna con il
+ * suo annulla, invece che come proposte da confermare una a una.
  */
 export function ImportQueueScreen() {
   const queryClient = useQueryClient();
@@ -36,7 +41,7 @@ export function ImportQueueScreen() {
 
   const { data: terms = [], isLoading, isError } = useQuery({
     queryKey: ["import-terms"],
-    queryFn: fetchImportTerms,
+    queryFn: () => fetchImportTerms(),
   });
 
   const { data: status } = useQuery({
@@ -44,57 +49,46 @@ export function ImportQueueScreen() {
     queryFn: fetchImportStatus,
   });
 
-  // Le proposte di Claude, conservate per termine una volta arrivate. Il backend
-  // filtra `/imports/terms` ai soli termini ancora in attesa: dopo una decisione
-  // l'elenco si accorcia da sé, e senza questa cache quell'accorciarsi cambierebbe
-  // la domanda fatta a Claude a ogni tocco — una richiesta intera per il lotto
-  // residuo invece di zero, perché il lotto residuo ha già la sua risposta.
-  //
-  // L'aggiornamento vive dentro `queryFn`, non in un `useEffect`: è la risposta
-  // della richiesta stessa, non una reazione a un cambiamento già avvenuto, quindi
-  // non c'è un secondo giro di render da incatenare a quello che React Query fa
-  // già da sé quando la query si risolve.
-  const [proposalsByTerm, setProposalsByTerm] = useState<Map<string, TermProposal>>(
-    () => new Map()
-  );
-
-  const termIds = terms.map((term) => term.id);
-  // solo i termini che non hanno ancora una proposta nota: con tutti già noti non
-  // c'è niente da chiedere, e la query resta disabilitata — zero chiamate, non una.
-  const missingTermIds = termIds.filter((id) => !proposalsByTerm.has(id));
-
-  const proposalsQuery = useQuery({
-    queryKey: ["import-proposals", missingTermIds.join(",")],
-    queryFn: async () => {
-      const result = await fetchTermProposals(missingTermIds);
-      setProposalsByTerm((prev) => {
-        const next = new Map(prev);
-        for (const proposal of result.proposals) {
-          next.set(proposal.term_id, proposal);
-        }
-        return next;
-      });
-      return result;
-    },
-    enabled: missingTermIds.length > 0,
-    staleTime: Infinity,
-    // Il 503 di questa rotta quando manca ANTHROPIC_API_KEY è un degrado dichiarato
-    // e permanente per tutta la vita del processo, non un intoppo passeggero: il
-    // default dell'app (vedi il commento in App.tsx) lo ritenterebbe due volte
-    // prima di mostrare "decidi a mano", per tre giri di rete che non cambieranno
-    // mai esito. Solo questa query lo spegne: il default resta quello che è per
-    // tutte le altre schermate.
-    retry: false,
+  // Le decisioni dell'AI, le più recenti fra le ultime 50: il backend non ne
+  // conta il totale, quindi il sottotitolo qui sotto lo dice invece di lasciare
+  // credere che l'elenco sia tutta la storia.
+  const { data: decided = [] } = useQuery({
+    queryKey: ["import-terms", "ai"],
+    queryFn: () => fetchImportTerms("ai"),
   });
 
-  // Cosa dipende dalla risposta di Claude — la scorciatoia in scheda e l'avviso
-  // «decidi a mano» — aspetta che la richiesta in corso (quando c'è) si sia
-  // stabilizzata. L'elenco dei termini no: mostrarlo subito, indipendentemente
-  // dalle proposte, è la correzione del difetto critico per cui una decisione
-  // svuotava tutta la coda dietro un nuovo "Carico la coda…" a ogni tocco.
-  const proposalsSettled =
-    missingTermIds.length === 0 || proposalsQuery.isSuccess || proposalsQuery.isError;
-  const proposalsFailed = proposalsQuery.isError;
+  const [undoConfirm, setUndoConfirm] = useState<{ termId: string; message: string } | null>(
+    null
+  );
+
+  const askAi = useMutation({
+    mutationFn: () => decideWithAi(),
+    onSuccess: (result) => {
+      setLastUnlocked(result.unlocked);
+      queryClient.invalidateQueries({ queryKey: ["import-terms"] });
+      queryClient.invalidateQueries({ queryKey: ["import-status"] });
+      queryClient.invalidateQueries({ queryKey: ["recipes"] });
+    },
+  });
+
+  const undo = useMutation({
+    mutationFn: ({ termId, force }: { termId: string; force: boolean }) =>
+      undoTerm(termId, force),
+    onSuccess: () => {
+      setUndoConfirm(null);
+      queryClient.invalidateQueries({ queryKey: ["import-terms"] });
+      queryClient.invalidateQueries({ queryKey: ["import-status"] });
+      queryClient.invalidateQueries({ queryKey: ["recipes"] });
+    },
+    onError: (error, variables) => {
+      // Il 409 non è un guasto: è la conseguenza sullo storico di cottura, detta
+      // prima. Il messaggio arriva dal backend col numero dentro, e mostrarlo è
+      // l'unica cosa che permette di decidere se insistere.
+      if (error instanceof ApiError && error.status === 409 && !variables.force) {
+        setUndoConfirm({ termId: variables.termId, message: error.message });
+      }
+    },
+  });
 
   const decide = useMutation({
     mutationFn: ({ termId, decision }: { termId: string; decision: Decision }) =>
@@ -136,14 +130,6 @@ export function ImportQueueScreen() {
         </p>
       )}
 
-      {/* una constatazione, non un guasto: la coda funziona anche senza proposte */}
-      {proposalsFailed && (
-        <p className="pt-2 text-xs text-ink-faint">
-          Le proposte non sono disponibili: decidi a mano, il suggerimento qui sotto
-          viene dalla somiglianza dei nomi.
-        </p>
-      )}
-
       {decide.isError && (
         <Alert className="pt-2">{decisionErrorMessage(decide.error)}</Alert>
       )}
@@ -164,20 +150,81 @@ export function ImportQueueScreen() {
         </p>
       )}
 
+      {terms.length > 0 && (
+        <button
+          type="button"
+          disabled={askAi.isPending}
+          onClick={() => askAi.mutate()}
+          className={buttonClasses("secondary", "block")}
+        >
+          {askAi.isPending ? "Sto chiedendo…" : "Riprova con l'AI"}
+        </button>
+      )}
+
+      {askAi.isError && (
+        <Alert className="pt-2">
+          {askAi.error instanceof ApiError && askAi.error.status === 503
+            ? askAi.error.message
+            : "Non sono riuscito a chiedere all'AI. Decidi a mano: la coda funziona."}
+        </Alert>
+      )}
+
       {!isLoading && terms.length > 0 && (
         <ul className="flex flex-col gap-2 pt-2">
           {terms.map((term) => (
             <TermCard
               key={term.id}
               term={term}
-              proposal={proposalsByTerm.get(term.id) ?? null}
-              proposalsReady={proposalsSettled}
               suggestionName={term.suggestion?.name ?? null}
               pending={decide.isPending}
               onDecide={(decision) => decide.mutate({ termId: term.id, decision })}
             />
           ))}
         </ul>
+      )}
+
+      {decided.length > 0 && (
+        <section className="pt-6">
+          <h2 className="text-sm font-medium text-ink-soft">Deciso dall'AI</h2>
+          <p className="pt-1 text-xs text-ink-faint">
+            Le 50 decisioni più recenti, non tutte quelle prese. Ogni riga si può
+            annullare: il termine torna in coda e le ricette che ne erano nate si
+            rifanno.
+          </p>
+          <ul className="pt-2">
+            {decided.map((term) => (
+              <DecidedTermRow
+                key={term.id}
+                term={term}
+                pending={undo.isPending}
+                onUndo={() => undo.mutate({ termId: term.id, force: false })}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {undoConfirm && (
+        <div role="alertdialog" aria-label="Conferma l'annullamento" className="pt-3">
+          <Alert>{undoConfirm.message}</Alert>
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              disabled={undo.isPending}
+              onClick={() => undo.mutate({ termId: undoConfirm.termId, force: true })}
+              className={buttonClasses("primary", "pill")}
+            >
+              Rifai comunque
+            </button>
+            <button
+              type="button"
+              onClick={() => setUndoConfirm(null)}
+              className={buttonClasses("ghost", "pill")}
+            >
+              Lascia com'è
+            </button>
+          </div>
+        </div>
       )}
     </Screen>
   );

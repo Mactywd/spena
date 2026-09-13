@@ -3,7 +3,7 @@ import { IngredientPicker } from "../../components/IngredientPicker";
 import { Card } from "../../components/ui/Card";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { INGREDIENT_CATEGORIES } from "../../domain/categories";
-import type { ImportTerm, TermProposal } from "../../domain/types";
+import type { ImportTerm } from "../../domain/types";
 
 export type Decision = {
   action: "map" | "create" | "ignore";
@@ -14,65 +14,13 @@ export type Decision = {
   role_override?: "primary" | "secondary";
 };
 
-/** Il nome dell'ingrediente agganciato da una proposta "map", quando c'è.
- *
- * Il backend porta il nome canonico con la proposta "map" (vedi TermProposal in
- * terms.py): lo preferiamo sempre. Il fallback sull'aggancio testuale resta solo
- * per una proposta più vecchia o incompleta che ne fosse priva — senza, il
- * pulsante cadrebbe sul generico «l'ingrediente» anche quando un nome vero è
- * disponibile altrove.
- */
-function mappedName(proposal: TermProposal, term: ImportTerm): string | null {
-  return (
-    proposal.name ??
-    (term.suggestion?.ingredient_id === proposal.ingredient_id ? term.suggestion.name : null)
-  );
-}
-
-/** Cosa farà il pulsante primario, detto in parole.
- *
- * «Collega a pasta» e «Crea Speck in carne» sono frasi che si leggono e si
- * confermano; «Applica proposta» costringerebbe a fidarsi di qualcosa che non si
- * vede, che è esattamente ciò che la revisione esiste per evitare.
- *
- * Solo per un aggancio certo: una coincidenza esatta, o una proposta di Claude
- * che ha già verificato che l'ingrediente esiste. L'aggancio testuale incerto ha
- * la sua etichetta, più prudente, in `uncertainLabel`.
- */
-function proposalLabel(proposal: TermProposal, term: ImportTerm): string | null {
-  if (proposal.action === "map") return `Collega a ${mappedName(proposal, term) ?? "l'ingrediente"}`;
-  if (proposal.action === "create")
-    return `Crea «${proposal.display_name ?? proposal.name}» in ${proposal.category}`;
-  return `Ignora «${term.display_name}»`;
-}
-
-/** Cosa dice il pulsante retrocesso per un aggancio testuale incerto.
- *
- * Non "Collega a X": quella frase è un'asserzione, e qui c'è solo una somiglianza
- * di nome trovata per trigram (vedi match_name in ingredient_match.py), non un
- * fatto. "Forse" e "da confermare" dicono la differenza a chi legge, prima che il
- * tocco scriva un alias permanente.
- */
-function uncertainLabel(proposal: TermProposal, term: ImportTerm): string {
-  return `Forse «${mappedName(proposal, term) ?? "l'ingrediente"}» — tocca per confermare`;
-}
-
 export function TermCard({
   term,
-  proposal,
-  proposalsReady,
   suggestionName,
   pending,
   onDecide,
 }: {
   term: ImportTerm;
-  /** La proposta di Claude, quando è arrivata. */
-  proposal: TermProposal | null;
-  /** Se il giro di proposte in corso (quando c'è) si è già stabilizzato, riuscito o
-   * no. Mentre non lo è, la scorciatoia resta nascosta invece di mostrare subito
-   * l'aggancio testuale e poi magari sostituirlo con la proposta vera: un pulsante
-   * che cambia risposta da solo è peggio di un attimo senza pulsante. */
-  proposalsReady: boolean;
   /** Il nome dell'aggancio testuale: è la proposta di riserva, e c'è anche senza AI. */
   suggestionName: string | null;
   pending: boolean;
@@ -85,29 +33,21 @@ export function TermCard({
 
   const role = alsoSecondary ? ("secondary" as const) : undefined;
 
-  // la proposta di Claude, se c'è; altrimenti l'aggancio testuale, che è sempre
-  // meglio di nessun pulsante: un termine senza scorciatoia costa tre tocchi
-  const shortcut: TermProposal | null = !proposalsReady
-    ? null
-    : proposal ??
-      (suggestionName !== null && term.suggestion !== null
-        ? {
-            term_id: term.id, action: "map", ingredient_id: term.suggestion.ingredient_id,
-            name: suggestionName, display_name: null, category: null,
-          }
-        : null);
+  // l'aggancio testuale, che è sempre meglio di nessun pulsante: un termine senza
+  // scorciatoia costa tre tocchi. Non ci sono più proposte dell'AI da confermare
+  // qui: quelle si rivedono, già applicate, dall'elenco «Deciso dall'AI».
+  const shortcut: { ingredient_id: string; name: string } | null =
+    suggestionName !== null && term.suggestion !== null
+      ? { ingredient_id: term.suggestion.ingredient_id, name: suggestionName }
+      : null;
 
-  // Una proposta di Claude (`proposal !== null`) ha già verificato che
-  // l'ingrediente esiste in anagrafica: resta il tocco primario a prescindere da
-  // `certain`, che riguarda solo l'aggancio testuale. L'aggancio testuale invece
-  // eredita `certain` da `match_name` (backend/app/services/ingredient_match.py):
-  // certo è una coincidenza esatta su nome o alias, un fatto che non ha bisogno
-  // di conferma; incerto è il risultato migliore di una ricerca per somiglianza,
-  // un'ipotesi come tante altre. Questo è il difetto critico: "Pinoli" diventava
-  // alias permanente di "pisello" con un tocco sul pulsante primario, perché qui
-  // `certain` non veniva mai letto.
-  const shortcutIsCertain =
-    shortcut !== null && (proposal !== null || term.suggestion?.certain === true);
+  // L'aggancio testuale eredita `certain` da `match_name`
+  // (backend/app/services/ingredient_match.py): certo è una coincidenza esatta su
+  // nome o alias, un fatto che non ha bisogno di conferma; incerto è il risultato
+  // migliore di una ricerca per somiglianza, un'ipotesi come tante altre. Questo è
+  // il difetto critico: "Pinoli" diventava alias permanente di "pisello" con un
+  // tocco sul pulsante primario, perché qui `certain` non veniva mai letto.
+  const shortcutIsCertain = shortcut !== null && term.suggestion?.certain === true;
 
   return (
     <Card as="li" className="flex flex-col gap-3">
@@ -123,32 +63,16 @@ export function TermCard({
         )}
       </div>
 
-      {/* quando la scorciatoia è "ignora", il pulsante permanente qui sotto fa già
-          esattamente questo in un tocco: un secondo pulsante con lo stesso testo
-          sarebbe un doppione, non una seconda via. Non è condizionato alla prontezza
-          delle proposte (a differenza di `shortcut`): il pulsante permanente resta
-          sempre lo stesso elemento, pronto o no che sia la proposta, e non sparisce
-          e riappare sotto chi lo sta per toccare. */}
-      {shortcut && shortcutIsCertain && shortcut.action !== "ignore" && (
+      {shortcut && shortcutIsCertain && (
         <button
           type="button"
           disabled={pending}
           onClick={() =>
-            onDecide(
-              shortcut.action === "map"
-                ? { action: "map", ingredient_id: shortcut.ingredient_id!, role_override: role }
-                : shortcut.action === "create"
-                  ? {
-                      action: "create", name: shortcut.name!,
-                      display_name: shortcut.display_name ?? shortcut.name!,
-                      category: shortcut.category!, role_override: role,
-                    }
-                  : { action: "ignore" }
-            )
+            onDecide({ action: "map", ingredient_id: shortcut.ingredient_id, role_override: role })
           }
           className={buttonClasses("primary", "block")}
         >
-          {proposalLabel(shortcut, term)}
+          Collega a {shortcut.name}
         </button>
       )}
 
@@ -231,11 +155,11 @@ export function TermCard({
             type="button"
             disabled={pending}
             onClick={() =>
-              onDecide({ action: "map", ingredient_id: shortcut.ingredient_id!, role_override: role })
+              onDecide({ action: "map", ingredient_id: shortcut.ingredient_id, role_override: role })
             }
             className={buttonClasses("ghost", "block")}
           >
-            {uncertainLabel(shortcut, term)}
+            Forse «{shortcut.name}» — tocca per confermare
           </button>
           <p className="text-xs text-ink-faint">
             È solo una somiglianza tra i nomi: verificala prima di confermarla, oppure scegli
@@ -259,11 +183,10 @@ export function TermCard({
         Di solito è secondario
       </label>
 
-      {/* sempre presente, pronta o no che sia la proposta: è la via d'uscita che
-          non lascia mai un termine senza decisione possibile. Quando la scorciatoia
-          sopra è già "ignora" questo è lo stesso tocco, non un doppione: la
-          scorciatoia in quel caso non si renderizza (vedi sopra), quindi qui non
-          c'è mai più di un pulsante con questo testo in scheda */}
+      {/* sempre presente: è la via d'uscita che non lascia mai un termine senza
+          decisione possibile. Quando la scorciatoia sopra è già certa questo resta
+          comunque un pulsante distinto, perché la scorciatoia certa collega, non
+          ignora: non c'è mai un doppione con lo stesso testo in scheda */}
       <button
         type="button"
         disabled={pending}

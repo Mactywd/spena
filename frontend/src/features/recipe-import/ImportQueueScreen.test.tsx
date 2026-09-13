@@ -3,16 +3,19 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { ImportQueueScreen } from "./ImportQueueScreen";
+import type { ImportTerm } from "../../domain/types";
 
-const TERMINI = [
+const TERMINI: ImportTerm[] = [
   {
     id: "t1",
     display_name: "Rigatoni",
     occurrences: 12,
     suggestion: { ingredient_id: "i1", name: "pasta", certain: false },
     waiting_titles: ["Pasta alla norma", "Pasta al forno"],
+    decided_by: null,
+    decided_action: null,
+    decided_name: null,
   },
   {
     id: "t2",
@@ -20,20 +23,15 @@ const TERMINI = [
     occurrences: 7,
     suggestion: null,
     waiting_titles: ["Pane casereccio"],
+    decided_by: null,
+    decided_action: null,
+    decided_name: null,
   },
 ];
 
-const PROPOSTE = {
-  proposals: [
-    { term_id: "t1", action: "map", ingredient_id: "i1", name: null,
-      display_name: null, category: null },
-    { term_id: "t2", action: "ignore", ingredient_id: null, name: null,
-      display_name: null, category: null },
-  ],
-};
+const STATO_NORMALE = { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 };
 
-function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderScreen(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -43,7 +41,7 @@ function renderScreen() {
   );
 }
 
-/** Un fetch che risponde in base al percorso e al metodo: la schermata fa tre
+/** Un fetch che risponde in base al percorso e al metodo: la schermata fa più
  * chiamate diverse, e il corpo di una Response si legge una volta sola. */
 function stubFetch(route: (path: string, method: string) => [unknown, number]) {
   const spy = vi.fn((url: unknown, init?: RequestInit) => {
@@ -54,18 +52,52 @@ function stubFetch(route: (path: string, method: string) => [unknown, number]) {
   return spy;
 }
 
-const CODA_NORMALE = (path: string, method: string): [unknown, number] => {
-  if (path.includes("/imports/terms/proposals")) return [PROPOSTE, 200];
-  if (path.includes("/imports/terms") && method === "POST")
-    return [{ unlocked: 12, remaining_terms: 1 }, 200];
-  if (path.includes("/imports/terms")) return [TERMINI, 200];
-  if (path.includes("/imports/status"))
-    return [
-      { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 },
-      200,
-    ];
-  return [{}, 404];
+type CodaOptions = {
+  pending?: ImportTerm[];
+  decided?: ImportTerm[];
+  status?: typeof STATO_NORMALE;
+  decideResult?: [unknown, number];
+  askAiResult?: [unknown, number];
+  undoStatus?: number;
+  undoDetail?: string;
 };
+
+/** Monta la schermata su un unico finto `fetch` che copre tutte le rotte che usa
+ * (la coda pendente, i decisi dall'AI, lo stato, la decisione a mano, il
+ * bottone dell'AI, l'annullamento): un solo apparato per tutti i test di questo
+ * file, esteso per i casi nuovi invece di raddoppiato con un secondo modo di
+ * fingere le chiamate. */
+function renderQueue(options: CodaOptions = {}) {
+  const pending = options.pending ?? TERMINI;
+  const decided = options.decided ?? [];
+  const status = options.status ?? STATO_NORMALE;
+
+  const spy = stubFetch((path, method) => {
+    if (path.includes("/imports/terms/decide") && method === "POST") {
+      return (
+        options.askAiResult ?? [
+          { applied: 0, created: 0, ignored: 0, still_pending: 0, unlocked: 0, remaining_terms: 0 },
+          200,
+        ]
+      );
+    }
+    if (path.includes("/undo") && method === "POST") {
+      if (options.undoStatus && options.undoStatus !== 200) {
+        return [{ detail: options.undoDetail ?? "conflitto" }, options.undoStatus];
+      }
+      return [{ recipes_requeued: 0, ingredient_deleted: false, remaining_terms: 0 }, 200];
+    }
+    if (path.includes("/decision") && method === "POST") {
+      return options.decideResult ?? [{ unlocked: 12, remaining_terms: 1 }, 200];
+    }
+    if (path.includes("decided_by=ai")) return [decided, 200];
+    if (path.includes("/imports/terms")) return [pending, 200];
+    if (path.includes("/imports/status")) return [status, 200];
+    return [{}, 404];
+  });
+  renderScreen();
+  return spy;
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -73,65 +105,17 @@ afterEach(() => {
 
 describe("coda di revisione dell'import", () => {
   it("mostra il termine, quante ricette aspettano e qualche titolo", async () => {
-    stubFetch(CODA_NORMALE);
-    renderScreen();
+    renderQueue();
 
     expect(await screen.findByText("Rigatoni")).toBeInTheDocument();
     expect(screen.getByText(/12 ricette in attesa/)).toBeInTheDocument();
     expect(screen.getByText(/Pasta alla norma/)).toBeInTheDocument();
   });
 
-  it("la proposta di Claude diventa un pulsante che dice cosa farà", async () => {
-    stubFetch(CODA_NORMALE);
-    renderScreen();
+  it("confermare l'aggancio testuale manda la decisione e dice quante ricette ha sbloccato", async () => {
+    const spy = renderQueue();
 
-    expect(
-      await screen.findByRole("button", { name: /Collega a pasta/i })
-    ).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /^Ignora «Acqua»$/ })).toBeInTheDocument();
-  });
-
-  it("il pulsante mostra il nome della proposta anche quando differisce dal suggerimento testuale", async () => {
-    // il caso che la revisione esiste per coprire: Claude sceglie un ingrediente
-    // diverso da quello trovato per somiglianza del nome ("pasta" per "Rigatoni").
-    // Senza il nome portato dalla proposta, il pulsante cadrebbe sul generico
-    // "Collega a l'ingrediente" — chiedendo di confermare qualcosa che non si vede.
-    stubFetch((path, method) => {
-      if (path.includes("/imports/terms/proposals"))
-        return [
-          {
-            proposals: [
-              { term_id: "t1", action: "map", ingredient_id: "i2", name: "sugo di pomodoro",
-                display_name: null, category: null },
-              { term_id: "t2", action: "ignore", ingredient_id: null, name: null,
-                display_name: null, category: null },
-            ],
-          },
-          200,
-        ];
-      if (path.includes("/imports/terms") && method === "POST")
-        return [{ unlocked: 12, remaining_terms: 1 }, 200];
-      if (path.includes("/imports/terms")) return [TERMINI, 200];
-      if (path.includes("/imports/status"))
-        return [
-          { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 },
-          200,
-        ];
-      return [{}, 404];
-    });
-    renderScreen();
-
-    expect(
-      await screen.findByRole("button", { name: /Collega a sugo di pomodoro/i })
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Collega a pasta/i })).not.toBeInTheDocument();
-  });
-
-  it("confermare la proposta manda la decisione e dice quante ricette ha sbloccato", async () => {
-    const spy = stubFetch(CODA_NORMALE);
-    renderScreen();
-
-    await userEvent.click(await screen.findByRole("button", { name: /Collega a pasta/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Forse «pasta»/i }));
 
     await waitFor(() => expect(screen.getByText(/Sbloccate 12 ricette/)).toBeInTheDocument());
     const decisione = spy.mock.calls.find(
@@ -149,29 +133,16 @@ describe("coda di revisione dell'import", () => {
   // plurale sbagliato in numero e genere, lo stesso difetto che TermCard.tsx
   // già tratta correttamente.
   it("sbloccare una sola ricetta lo dice al singolare", async () => {
-    stubFetch((path, method) => {
-      if (path.includes("/imports/terms/proposals")) return [PROPOSTE, 200];
-      if (path.includes("/imports/terms") && method === "POST")
-        return [{ unlocked: 1, remaining_terms: 1 }, 200];
-      if (path.includes("/imports/terms")) return [TERMINI, 200];
-      if (path.includes("/imports/status"))
-        return [
-          { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 },
-          200,
-        ];
-      return [{}, 404];
-    });
-    renderScreen();
+    renderQueue({ decideResult: [{ unlocked: 1, remaining_terms: 1 }, 200] });
 
-    await userEvent.click(await screen.findByRole("button", { name: /Collega a pasta/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Forse «pasta»/i }));
 
     await waitFor(() => expect(screen.getByText("Sbloccata 1 ricetta.")).toBeInTheDocument());
     expect(screen.queryByText(/Sbloccate 1 ricette/)).not.toBeInTheDocument();
   });
 
   it("ignorare un termine lo manda come tale", async () => {
-    const spy = stubFetch(CODA_NORMALE);
-    renderScreen();
+    const spy = renderQueue();
 
     await userEvent.click(await screen.findByRole("button", { name: /^Ignora «Acqua»$/ }));
 
@@ -187,54 +158,12 @@ describe("coda di revisione dell'import", () => {
     });
   });
 
-  it("una decisione non svuota la coda, e non richiede di nuovo le proposte già note", async () => {
-    // Uno stub che si comporta come il backend vero: dopo la decisione, l'elenco
-    // dei termini in attesa si accorcia da sé (il backend filtra ai soli pendenti).
-    // Uno stub statico non può vedere né il blank-out né la richiesta ripetuta: è
-    // esattamente perché non lo vedeva che il difetto critico è passato i test.
-    let decisa = false;
-    const spy = stubFetch((path, method) => {
-      if (path.includes("/imports/terms/proposals")) return [PROPOSTE, 200];
-      if (path.includes("/imports/terms") && method === "POST") {
-        decisa = true;
-        return [{ unlocked: 12, remaining_terms: 1 }, 200];
-      }
-      if (path.includes("/imports/terms")) return [decisa ? [TERMINI[1]] : TERMINI, 200];
-      if (path.includes("/imports/status"))
-        return [
-          { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 },
-          200,
-        ];
-      return [{}, 404];
-    });
-    renderScreen();
-
-    await userEvent.click(await screen.findByRole("button", { name: /Collega a pasta/i }));
-
-    // subito dopo il tocco, prima ancora che la decisione torni: la coda non deve
-    // sparire dietro un nuovo "Carico la coda…"
-    expect(screen.queryByText(/Carico la coda/i)).not.toBeInTheDocument();
-
-    await waitFor(() => expect(screen.getByText(/Sbloccate 12 ricette/)).toBeInTheDocument());
-
-    // "Acqua" resta in vista: l'elenco più corto che torna dal backend non ha mai
-    // fatto sparire la scheda dietro uno spinner
-    expect(await screen.findByText("Acqua")).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /^Ignora «Acqua»$/ })).toBeInTheDocument();
-
-    const chiamateProposte = spy.mock.calls.filter(([url]) =>
-      String(url).includes("/imports/terms/proposals")
-    );
-    expect(chiamateProposte).toHaveLength(1);
-  });
-
   it("i controlli di ogni scheda portano il termine nel nome accessibile", async () => {
     // la schermata rende una scheda per termine, e senza il nome dentro il nome
     // accessibile uno screen reader sente N controlli identici — lo stesso difetto
     // per "Collega a un altro ingrediente", "Crea un ingrediente nuovo", "Nome
     // dell'ingrediente", "Categoria" e la casella del secondario, su ogni scheda.
-    stubFetch(CODA_NORMALE);
-    renderScreen();
+    renderQueue();
 
     await screen.findByText("Rigatoni");
 
@@ -275,56 +204,25 @@ describe("coda di revisione dell'import", () => {
     ).toBeInTheDocument();
   });
 
-  it("senza le proposte la coda funziona e lo dichiara", async () => {
-    stubFetch((path, method) => {
-      if (path.includes("/imports/terms/proposals")) return [{ detail: "no" }, 503];
-      return CODA_NORMALE(path, method);
-    });
-    renderScreen();
-
-    // l'elenco compare appena arrivano i termini, senza aspettare le proposte (è
-    // il punto del difetto critico corretto qui): "decidi a mano" arriva un giro
-    // dopo, quando il tentativo di Claude si è dichiarato fallito, non nello stesso
-    // render di "Rigatoni" — per questo è un `findByText`, non un `getByText`.
-    expect(await screen.findByText("Rigatoni")).toBeInTheDocument();
-    expect(await screen.findByText(/decidi a mano/i)).toBeInTheDocument();
-
-    // "Rigatoni" ha solo il suggerimento testuale (`certain: false`, una
-    // somiglianza trigram con "pasta", non una proposta di Claude che qui non è
-    // mai arrivata): resta una via in un tocco, ma retrocessa, non il pulsante
-    // primario "Collega a pasta" che il difetto critico rendeva. Quella frase
-    // asserirebbe un aggancio che nessuno ha verificato — esattamente come
-    // "Collega a pisello" per "Pinoli".
-    const scorciatoia = await screen.findByRole("button", { name: /Forse «pasta»/i });
-    expect(scorciatoia).toBeInTheDocument();
-    expect(scorciatoia.className).not.toContain("bg-brand");
-    expect(screen.queryByRole("button", { name: /^Collega a pasta$/i })).not.toBeInTheDocument();
-  });
-
-  it("un aggancio testuale certo resta un tocco solo anche senza proposta di Claude", async () => {
+  it("un aggancio testuale certo resta il pulsante primario", async () => {
     // "coincidenza esatta su nome o alias" (match_name, certain: true) è un fatto,
-    // non un'ipotesi: merita lo stesso pulsante primario di una proposta di
-    // Claude, anche quando Claude non ha proposto niente per questo termine.
-    const TERMINE_CERTO = [
+    // non un'ipotesi: merita il pulsante primario, non quello retrocesso.
+    const TERMINE_CERTO: ImportTerm[] = [
       {
         id: "t3",
         display_name: "Pinoli",
         occurrences: 3,
         suggestion: { ingredient_id: "i9", name: "pinolo", certain: true },
         waiting_titles: ["Pesto alla genovese"],
+        decided_by: null,
+        decided_action: null,
+        decided_name: null,
       },
     ];
-    stubFetch((path) => {
-      if (path.includes("/imports/terms/proposals")) return [{ proposals: [] }, 200];
-      if (path.includes("/imports/terms")) return [TERMINE_CERTO, 200];
-      if (path.includes("/imports/status"))
-        return [
-          { fetched: 3, pending_recipes: 3, imported: 0, skipped: 0, pending_terms: 1 },
-          200,
-        ];
-      return [{}, 404];
+    renderQueue({
+      pending: TERMINE_CERTO,
+      status: { fetched: 3, pending_recipes: 3, imported: 0, skipped: 0, pending_terms: 1 },
     });
-    renderScreen();
 
     const pulsante = await screen.findByRole("button", { name: /^Collega a pinolo$/i });
     expect(pulsante.className).toContain("bg-brand");
@@ -335,17 +233,10 @@ describe("coda di revisione dell'import", () => {
   // entrambi i conteggi a 1: ogni conteggio governa la propria frase (nome,
   // verbo e participio), e qui concordano al singolare entrambi insieme.
   it("la riga di stato è al singolare quando entrambi i conteggi sono 1", async () => {
-    stubFetch((path) => {
-      if (path.includes("/imports/terms/proposals")) return [{ proposals: [] }, 200];
-      if (path.includes("/imports/terms")) return [[], 200];
-      if (path.includes("/imports/status"))
-        return [
-          { fetched: 2, pending_recipes: 1, imported: 1, skipped: 0, pending_terms: 0 },
-          200,
-        ];
-      return [{}, 404];
+    renderQueue({
+      pending: [],
+      status: { fetched: 2, pending_recipes: 1, imported: 1, skipped: 0, pending_terms: 0 },
     });
-    renderScreen();
 
     expect(
       await screen.findByText("1 ricetta scaricata aspetta, 1 è già dentro.")
@@ -355,17 +246,10 @@ describe("coda di revisione dell'import", () => {
   // Il caso che una frase condivisa tra i due conteggi sbaglierebbe: uno dei
   // due è 1 e l'altro no, quindi un solo ramo non può concordare entrambi.
   it("la riga di stato tratta i due conteggi indipendentemente quando solo uno è 1", async () => {
-    stubFetch((path) => {
-      if (path.includes("/imports/terms/proposals")) return [{ proposals: [] }, 200];
-      if (path.includes("/imports/terms")) return [[], 200];
-      if (path.includes("/imports/status"))
-        return [
-          { fetched: 6, pending_recipes: 1, imported: 5, skipped: 0, pending_terms: 0 },
-          200,
-        ];
-      return [{}, 404];
+    renderQueue({
+      pending: [],
+      status: { fetched: 6, pending_recipes: 1, imported: 5, skipped: 0, pending_terms: 0 },
     });
-    renderScreen();
 
     expect(
       await screen.findByText("1 ricetta scaricata aspetta, 5 sono già dentro.")
@@ -373,55 +257,12 @@ describe("coda di revisione dell'import", () => {
   });
 
   it("a coda vuota dice che non c'è niente da fare", async () => {
-    stubFetch((path) => {
-      if (path.includes("/imports/terms/proposals")) return [{ proposals: [] }, 200];
-      if (path.includes("/imports/terms")) return [[], 200];
-      return [
-        { fetched: 20, pending_recipes: 0, imported: 20, skipped: 0, pending_terms: 0 },
-        200,
-      ];
+    renderQueue({
+      pending: [],
+      status: { fetched: 20, pending_recipes: 0, imported: 20, skipped: 0, pending_terms: 0 },
     });
-    renderScreen();
 
     expect(await screen.findByText(/Niente da abbinare/i)).toBeInTheDocument();
-  });
-
-  it("un 503 permanente delle proposte non viene ritentato", async () => {
-    // `renderScreen()` qui sopra usa un client con `retry: false` globale, che
-    // nasconderebbe proprio il difetto che questo test copre (una query che
-    // prova a ritentare perché non ha il suo `retry: false`): il client qui
-    // usa il default vero di App.tsx (retry finché count < 2, salvo 401), per
-    // esercitare la stessa forma del problema. Il 503 di questa rotta quando
-    // manca ANTHROPIC_API_KEY è un degrado dichiarato e permanente per tutta
-    // la vita del processo, non un intoppo passeggero: senza `retry: false`
-    // sulla query delle proposte, un client con questo default la ritenterebbe
-    // due volte in più, per tre giri di rete a vuoto prima che compaia "decidi
-    // a mano".
-    const client = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: defaultQueryRetryPredicate,
-        },
-      },
-    });
-    const spy = stubFetch((path, method) => {
-      if (path.includes("/imports/terms/proposals")) return [{ detail: "manca la chiave" }, 503];
-      return CODA_NORMALE(path, method);
-    });
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter>
-          <ImportQueueScreen />
-        </MemoryRouter>
-      </QueryClientProvider>
-    );
-
-    await screen.findByText(/decidi a mano/i);
-
-    const chiamateProposte = spy.mock.calls.filter(([url]) =>
-      String(url).includes("/imports/terms/proposals")
-    );
-    expect(chiamateProposte).toHaveLength(1);
   });
 
   it("un 409 sulla decisione mostra il motivo del backend, non la frase generica", async () => {
@@ -429,18 +270,14 @@ describe("coda di revisione dell'import", () => {
     // ingrediente "sale" esiste già. Il backend risponde 409 con un `detail`
     // che dice la via d'uscita (collegare invece di creare); la frase generica
     // "riprova" nasconderebbe esattamente quella via.
-    stubFetch((path, method) => {
-      if (path.includes("/imports/terms/proposals")) return [PROPOSTE, 200];
-      if (path.includes("/imports/terms") && method === "POST")
-        return [
-          { detail: "«sale» è già in anagrafica: collega il termine invece di creare un doppione." },
-          409,
-        ];
-      return CODA_NORMALE(path, method);
+    renderQueue({
+      decideResult: [
+        { detail: "«sale» è già in anagrafica: collega il termine invece di creare un doppione." },
+        409,
+      ],
     });
-    renderScreen();
 
-    await userEvent.click(await screen.findByRole("button", { name: /Collega a pasta/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Forse «pasta»/i }));
 
     expect(
       await screen.findByText(/«sale» è già in anagrafica: collega il termine/)
@@ -451,15 +288,9 @@ describe("coda di revisione dell'import", () => {
   });
 
   it("un 500 sulla decisione resta sulla frase generica, con la rassicurazione", async () => {
-    stubFetch((path, method) => {
-      if (path.includes("/imports/terms/proposals")) return [PROPOSTE, 200];
-      if (path.includes("/imports/terms") && method === "POST")
-        return [{ detail: "rotto" }, 500];
-      return CODA_NORMALE(path, method);
-    });
-    renderScreen();
+    renderQueue({ decideResult: [{ detail: "rotto" }, 500] });
 
-    await userEvent.click(await screen.findByRole("button", { name: /Collega a pasta/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Forse «pasta»/i }));
 
     expect(
       await screen.findByText(/Non sono riuscito a registrare la decisione\. Niente è andato perso: riprova\./)
@@ -474,5 +305,120 @@ describe("coda di revisione dell'import", () => {
     renderScreen();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/ricettario/i);
+  });
+
+  it("mostra l'elenco di quel che l'AI ha deciso, con il suo annulla", async () => {
+    // il finto di questo file serve già /imports/terms: aggiungi la risposta per
+    // ?decided_by=ai usando lo stesso apparato, non un secondo modo di fingere
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "pasta",
+        },
+      ],
+    });
+    expect(await screen.findByText("Rigatoni")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
+    ).toBeInTheDocument();
+  });
+
+  it("un 409 sull'annullamento chiede conferma invece di fallire", async () => {
+    // è l'unico punto della feature in cui si chiede qualcosa: se questo test non
+    // c'è, la perdita del collegamento allo storico diventa invisibile
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "pasta",
+        },
+      ],
+      undoStatus: 409,
+      undoDetail: "1 di queste ricette le hai già cucinate: conferma per procedere.",
+    });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
+    );
+    expect(await screen.findByText(/già cucinate/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /rifai comunque/i })).toBeInTheDocument();
+  });
+
+  it("confermare l'annullamento dopo il 409 lo rimanda con `force`", async () => {
+    // senza `force` il secondo tentativo tornerebbe di nuovo 409, e "Rifai
+    // comunque" sarebbe un pulsante che non fa mai quel che dice
+    const decisi: ImportTerm[] = [
+      {
+        id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+        waiting_titles: [], decided_by: "ai", decided_action: "map",
+        decided_name: "pasta",
+      },
+    ];
+    let chiamateUndo = 0;
+    stubFetch((path, method) => {
+      if (path.includes("/undo") && method === "POST") {
+        chiamateUndo += 1;
+        if (chiamateUndo === 1) {
+          return [{ detail: "1 di queste ricette le hai già cucinate." }, 409];
+        }
+        return [{ recipes_requeued: 1, ingredient_deleted: false, remaining_terms: 0 }, 200];
+      }
+      if (path.includes("decided_by=ai")) return [decisi, 200];
+      if (path.includes("/imports/terms")) return [[], 200];
+      if (path.includes("/imports/status")) return [STATO_NORMALE, 200];
+      return [{}, 404];
+    });
+    renderScreen();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
+    );
+    await screen.findByText(/già cucinate/i);
+
+    const rifaiComunque = screen.getByRole("button", { name: /rifai comunque/i });
+    await userEvent.click(rifaiComunque);
+
+    await waitFor(() => expect(chiamateUndo).toBe(2));
+  });
+
+  it("chiedere all'AI applica la coda e dice cosa ha sbloccato", async () => {
+    const spy = renderQueue({
+      askAiResult: [
+        { applied: 2, created: 0, ignored: 1, still_pending: 0, unlocked: 5, remaining_terms: 0 },
+        200,
+      ],
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+
+    await waitFor(() => expect(screen.getByText(/Sbloccate 5 ricette/)).toBeInTheDocument());
+    const chiamata = spy.mock.calls.find(
+      ([url, init]) =>
+        String(url).includes("/imports/terms/decide") &&
+        (init as RequestInit | undefined)?.method === "POST"
+    );
+    expect(JSON.parse(String((chiamata?.[1] as RequestInit).body))).toEqual({});
+  });
+
+  it("un 503 dell'AI lo dice col messaggio del backend, e la coda resta usabile a mano", async () => {
+    // Mai un vicolo cieco: il modello irraggiungibile non deve impedire di
+    // decidere a mano. Il messaggio specifico del 503 (non quello generico)
+    // è l'unica prova che il branch sullo status è ancora lì.
+    renderQueue({
+      askAiResult: [{ detail: "il modello non risponde: decidi a mano." }, 503],
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+
+    expect(await screen.findByText(/il modello non risponde: decidi a mano\./i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Non sono riuscito a chiedere all'AI/i)
+    ).not.toBeInTheDocument();
+    // i controlli a mano restano lì, invariati dal fallimento dell'AI
+    expect(screen.getByRole("button", { name: /Forse «pasta»/i })).toBeEnabled();
   });
 });

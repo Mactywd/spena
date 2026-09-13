@@ -141,20 +141,31 @@ export interface ImportTerm {
   occurrences: number;
   suggestion: TermSuggestion | null;
   waiting_titles: string[];
+  /** Valorizzati solo per un termine già deciso, cioè solo nell'elenco della
+   * revisione: la coda da decidere li ha sempre nulli. */
+  decided_by: string | null;
+  decided_action: "map" | "created" | "ignored" | null;
+  decided_name: string | null;
 }
 
 export type TermAction = "map" | "create" | "ignore";
 
-export interface TermProposal {
-  term_id: string;
-  action: TermAction;
-  ingredient_id: string | null;
-  name: string | null;
-  display_name: string | null;
-  category: string | null;
-}
-
 export interface TermDecisionResult {
   unlocked: number;
+  remaining_terms: number;
+}
+
+export interface DecideResult {
+  applied: number;
+  created: number;
+  ignored: number;
+  still_pending: number;
+  unlocked: number;
+  remaining_terms: number;
+}
+
+export interface UndoResult {
+  recipes_requeued: number;
+  ingredient_deleted: boolean;
   remaining_terms: number;
 }

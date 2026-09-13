@@ -1,26 +1,37 @@
 import { apiFetch } from "../../api/client";
 import type {
+  DecideResult,
   ImportStatus,
   ImportTerm,
   TermDecisionResult,
-  TermProposal,
+  UndoResult,
 } from "../../domain/types";
 
 export function fetchImportStatus() {
   return apiFetch<ImportStatus>("/imports/status");
 }
 
-export function fetchImportTerms() {
-  return apiFetch<ImportTerm[]>("/imports/terms");
+export function fetchImportTerms(decidedBy?: "ai") {
+  const query = decidedBy ? `?decided_by=${decidedBy}` : "";
+  return apiFetch<ImportTerm[]>(`/imports/terms${query}`);
 }
 
-/** Le proposte di Claude, in una chiamata separata dall'elenco di proposito: la coda
- * deve caricarsi subito, e un guasto del modello non deve svuotare una schermata che
- * funziona anche senza. */
-export function fetchTermProposals(termIds: string[]) {
-  return apiFetch<{ proposals: TermProposal[] }>("/imports/terms/proposals", {
+/** Fa decidere all'AI i termini in coda, e applica. Non torna proposte da
+ * confermare: le decisioni si rivedono dall'elenco «Deciso dall'AI». Senza
+ * `termIds` vale per tutta la coda, che è il caso del bottone. */
+export function decideWithAi(termIds?: string[]) {
+  return apiFetch<DecideResult>("/imports/terms/decide", {
     method: "POST",
-    body: JSON.stringify({ term_ids: termIds }),
+    body: JSON.stringify(termIds ? { term_ids: termIds } : {}),
+  });
+}
+
+/** Rimette un termine deciso in coda, e con lui le ricette che ne erano nate.
+ * `force` supera il 409 che avvisa di uno storico di cottura da scollegare. */
+export function undoTerm(termId: string, force = false) {
+  return apiFetch<UndoResult>(`/imports/terms/${termId}/undo`, {
+    method: "POST",
+    body: JSON.stringify({ force }),
   });
 }
 
