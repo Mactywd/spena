@@ -10,6 +10,7 @@ Le ricette si rifanno da `payload`, che è ancora nel database esattamente per q
 
 import pytest
 import pytest_asyncio
+from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
@@ -35,7 +36,7 @@ async def deciso(db_session):
     term = ImportTerm(
         source=GIALLOZAFFERANO, term_key="k-speck", display_name="Speck",
         occurrences=1, decision=TermDecision.MAPPED, ingredient_id=speck.id,
-        decided_by="ai", role_override="secondary",
+        decided_by="ai", decided_at=datetime.now(UTC), role_override="secondary",
     )
     db_session.add(term)
     await db_session.flush()
