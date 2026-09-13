@@ -5,9 +5,10 @@ aspettavano quel termine: il numero che torna — «sbloccate dodici ricette» �
 che rende la revisione un lavoro con un risultato visibile invece di un modulo da
 compilare.
 
-Le proposte di Claude stanno in una rotta separata dall'elenco di proposito: la coda
+Il riconoscimento con l'AI sta in una rotta separata dall'elenco di proposito: la coda
 deve caricarsi subito, e un guasto del modello non deve poter svuotare una schermata
-che funziona anche senza.
+che funziona anche senza. Quella rotta applica, non propone: la revisione umana viene
+dopo, dall'elenco «Deciso dall'AI», con un annullamento per ognuna.
 """
 
 import uuid
@@ -24,23 +25,26 @@ from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecisio
 from app.repositories.imports import counts, get_term, pending_terms, waiting_titles
 from app.repositories.ingredients import create_ingredient, remember_alias
 from app.schemas.recipe_import import (
+    DecideOut,
+    DecideRequest,
     DecisionOut,
     ImportStatusOut,
-    ProposalOut,
-    ProposalsOut,
-    ProposalsRequest,
     SuggestionOut,
     TermDecisionIn,
     TermOut,
 )
-from app.services.ai_recipes import AiUnavailable
 from app.services.ingredient_match import match_name
+from app.services.llm import LlmUnavailable
+from app.services.recipe_import.decide import decide_terms
 from app.services.recipe_import.materialize import materialize_ready
-from app.services.recipe_import.terms import propose_decisions
 
 router = APIRouter(
     prefix="/api/v1/imports", tags=["imports"], dependencies=[Depends(require_session)]
 )
+
+# Quanti termini in un giro della rotta. Una chiamata a termine: il tetto è
+# sull'attesa di chi ha premuto il bottone, non sulla correttezza.
+MAX_TERMS_PER_CALL = 40
 
 
 @router.get("/status", response_model=ImportStatusOut)
@@ -78,25 +82,44 @@ async def read_terms(
     return out
 
 
-@router.post("/terms/proposals", response_model=ProposalsOut)
-async def read_proposals(
-    payload: ProposalsRequest, session: AsyncSession = Depends(get_session)
-) -> ProposalsOut:
-    rows = await session.execute(
-        select(ImportTerm).where(ImportTerm.id.in_(payload.term_ids))
-    )
-    terms = list(rows.scalars())
-    if not terms:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "nessuno di questi termini esiste")
+@router.post("/terms/decide", response_model=DecideOut)
+async def decide_with_ai(
+    payload: DecideRequest, session: AsyncSession = Depends(get_session)
+) -> DecideOut:
+    """Fa decidere all'AI i termini in coda, e applica.
+
+    Non torna proposte da confermare: le decisioni si applicano, con `decided_by="ai"`,
+    e si rivedono dall'elenco «Deciso dall'AI» con un annullamento per ognuna. Un
+    termine la cui risposta non passa la verifica resta in coda, e la coda manuale è
+    identica a prima.
+    """
+    if payload.term_ids:
+        rows = await session.execute(
+            select(ImportTerm).where(
+                ImportTerm.id.in_(payload.term_ids),
+                ImportTerm.decision == TermDecision.PENDING,
+            )
+        )
+        terms = list(rows.scalars())
+    else:
+        terms = await pending_terms(session, GIALLOZAFFERANO, limit=MAX_TERMS_PER_CALL)
 
     try:
-        proposals = await propose_decisions(session, terms)
-    except AiUnavailable as exc:
+        outcome = await decide_terms(session, terms)
+    except LlmUnavailable as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"le proposte non sono disponibili ({exc}): decidi a mano, la coda funziona.",
+            f"il riconoscimento non è disponibile ({exc}): decidi a mano, la coda funziona.",
         ) from exc
-    return ProposalsOut(proposals=[ProposalOut(**vars(p)) for p in proposals])
+
+    materialized = await materialize_ready(session, GIALLOZAFFERANO)
+    numbers = await counts(session, GIALLOZAFFERANO)
+    await session.commit()
+    return DecideOut(
+        applied=outcome.applied, created=outcome.created, ignored=outcome.ignored,
+        still_pending=outcome.still_pending, unlocked=materialized.created,
+        remaining_terms=numbers.pending_terms,
+    )
 
 
 @router.post("/terms/{term_id}/decision", response_model=DecisionOut)

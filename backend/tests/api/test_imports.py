@@ -308,30 +308,6 @@ async def test_collegare_a_un_ingrediente_inesistente_e_un_404(
     assert response.status_code == 404
 
 
-async def test_senza_claude_le_proposte_dicono_di_decidere_a_mano(
-    logged_client, db_session, in_attesa, monkeypatch
-):
-    """La coda resta usabile: è la regola «mai un vicolo cieco»."""
-    from app.core.config import get_settings
-
-    get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    termine = (
-        await db_session.execute(
-            select(ImportTerm).where(ImportTerm.display_name == "Bottarga")
-        )
-    ).scalars().one()
-    try:
-        response = await logged_client.post(
-            "/api/v1/imports/terms/proposals", json={"term_ids": [str(termine.id)]}
-        )
-    finally:
-        get_settings.cache_clear()
-
-    assert response.status_code == 503
-    assert "a mano" in response.json()["detail"]
-
-
 async def test_una_decisione_umana_resiste_a_un_nuovo_sync(
     logged_client, db_session, in_attesa
 ):
