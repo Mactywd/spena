@@ -9,15 +9,14 @@ accorgersene, perché tutti i test di tests/services/test_ai_recipes.py iniettan
 client finto e l'unico che arriva a `_build_client` esce sulla chiave assente, prima
 dell'`import anthropic`. L'istruzione di import non era eseguita da nessun test.
 
-I tre test qui coprono due cose diverse, e nessuno dei due copre l'altra:
+I test qui sono asserzioni sui file di build (Dockerfile e Compose), nello stile
+di tests/test_compose.py. Girano sempre, anche dove gli extra non sono installati, e
+falliscono se qualcuno torna a `pip install -e .`.
 
-- la prima metà è un'asserzione sui file di build (Dockerfile e Compose), nello stile
-  di tests/test_compose.py. È quella che ferma la regressione: gira sempre, anche
-  dove gli extra non sono installati, e fallisce se qualcuno torna a `pip install -e .`.
-- la seconda esegue davvero l'import e costruisce il client vero, cioè l'unico
-  percorso che nessun test toccava. Si salta dove `anthropic` non c'è, perché il
-  virtualenv dello sviluppatore può legittimamente non averlo (`pip install -e
-  ".[dev]"`); il README installa `".[dev,ai]"` proprio per farlo girare.
+`ai_recipes.py` portava anche un test che eseguiva `_build_client()` per davvero,
+contro il client Anthropic: quel ponte è stato ritirato (task 13, passaggio della
+stesura AI a `complete_json`/OpenRouter) e con lui `_build_client` e `AiUnavailable`,
+quindi quel test non ha più un soggetto e va via con loro.
 
 Quello che nessun test di questa suite può dimostrare è che l'immagine *costruita*
 contenga il pacchetto: la suite non gira dentro al container. Quella verifica è a
@@ -27,10 +26,8 @@ più una chiamata vera a POST /api/v1/recipes/ai-draft nello stack e2e.
 
 import re
 import tomllib
-from importlib.util import find_spec
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -92,33 +89,6 @@ def test_lextra_embeddings_resta_opzionale_e_spento_per_default():
             f"argomento di build (trovato {servizio.get('build')!r}). Senza, il valore "
             "scritto in `.env` non arriva all'immagine e l'interruttore non esiste."
         )
-
-
-@pytest.mark.skipif(
-    find_spec("anthropic") is None,
-    reason="anthropic non installato: `pip install -e \".[dev,ai]\"` per far girare "
-    "questo test, che è l'unico a eseguire l'import vero",
-)
-async def test_con_il_pacchetto_installato_il_client_vero_si_costruisce(monkeypatch):
-    """L'unico test che esegue `import anthropic` dentro `_build_client`.
-
-    Nessuna chiamata di rete: costruire `AsyncAnthropic` non parla con nessuno, e la
-    chiave è finta di proposito. Ciò che si dimostra è che con una chiave configurata
-    il percorso non finisce più in AiUnavailable per dipendenza mancante.
-    """
-    from app.core.config import get_settings
-    from app.services.ai_recipes import AiUnavailable, _build_client
-
-    get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta-per-il-test")
-    try:
-        try:
-            client = _build_client()
-        except AiUnavailable as exc:  # pragma: no cover - è il difetto, non il caso sano
-            pytest.fail(f"con anthropic installato _build_client non deve fallire: {exc}")
-        assert type(client).__name__ == "AsyncAnthropic"
-    finally:
-        get_settings.cache_clear()
 
 
 def test_beautifulsoup_e_una_dipendenza_di_base_e_non_un_extra():

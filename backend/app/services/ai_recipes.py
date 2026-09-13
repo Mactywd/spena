@@ -1,4 +1,4 @@
-"""Stesura di ricette con Claude.
+"""Stesura di ricette con un LLM.
 
 Il modello fa una cosa sola: trasformare una richiesta in linguaggio naturale in
 una ricetta strutturata, con i ruoli degli ingredienti già separati. Non salva
@@ -10,18 +10,17 @@ aggancio debole viene mostrato ma marcato incerto, perché un ingrediente
 sbagliato in silenzio avvelena la disponibilità di tutte le ricette.
 """
 
-import json
 import uuid
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.domain.rules import IngredientRole
 from app.services.ingredient_match import match_name
+from app.services.llm import LlmUnavailable, complete_json
+from app.services.recipe_import.decide import CATEGORIES
 
-MODEL = "claude-sonnet-5"
-MAX_TOKENS = 2000
+DRAFT_MAX_TOKENS = 2000
 
 SYSTEM_PROMPT = """Sei un assistente di cucina. Rispondi SOLO con un oggetto JSON valido, senza testo attorno e senza blocchi di codice.
 
@@ -32,7 +31,7 @@ Schema richiesto:
   "instructions": "string, passaggi numerati",
   "servings": numero intero,
   "ingredients": [
-    {"name": "nome generico dell'ingrediente", "role": "primary" oppure "secondary", "quantity_text": "string libera"}
+    {"name": "nome generico dell'ingrediente", "role": "primary" oppure "secondary", "quantity_text": "string libera", "category": "reparto di supermercato"}
   ]
 }
 
@@ -40,11 +39,34 @@ Regole:
 - "role" è "primary" se l'ingrediente caratterizza il piatto e senza di esso la ricetta non esiste; è "secondary" se serve in piccole dosi e si può ridurre senza snaturare il piatto, come spezie, erbe aromatiche e condimenti.
 - "name" deve essere il nome generico dell'ingrediente in italiano minuscolo, senza marche e senza aggettivi di preparazione. Scrivi "basilico", non "basilico fresco tritato finemente".
 - Non inserire valori nutrizionali, calorie o macronutrienti.
+- "category" è il reparto di supermercato dell'ingrediente, scelto fra: verdura, frutta, carne, pesce, latticini, cereali, legumi, condimenti, spezie, bevande, dolci, altro. Serve nel caso l'ingrediente non sia ancora in anagrafica.
 """
 
-
-class AiUnavailable(Exception):
-    """Claude non raggiungibile o risposta inutilizzabile. La sezione lo dichiara."""
+DRAFT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "description": {"type": ["string", "null"]},
+        "instructions": {"type": "string"},
+        "servings": {"type": ["integer", "null"]},
+        "ingredients": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string", "enum": ["primary", "secondary"]},
+                    "quantity_text": {"type": ["string", "null"]},
+                    "category": {"type": "string"},
+                },
+                "required": ["name", "role", "quantity_text", "category"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["title", "description", "instructions", "servings", "ingredients"],
+    "additionalProperties": False,
+}
 
 
 @dataclass
@@ -55,6 +77,7 @@ class DraftIngredient:
     ingredient_id: uuid.UUID | None
     matched_name: str | None
     confident: bool
+    proposed_category: str | None = None
 
 
 @dataclass
@@ -66,49 +89,25 @@ class RecipeDraft:
     ingredients: list[DraftIngredient]
 
 
-def _build_client():
-    # Anthropic non è più un fornitore configurabile a sé: la chiave che apre questo
-    # client resta temporaneamente `openrouter_api_key`, l'unico segreto LLM che
-    # Settings conosce da questo task in poi. Il Task 2 sostituisce l'intero client
-    # con quello OpenRouter (`complete_json`); qui si evita solo che la rimozione di
-    # `anthropic_api_key` trasformi «chiave assente» in un AttributeError.
-    key = get_settings().openrouter_api_key
-    if not key:
-        raise AiUnavailable("OPENROUTER_API_KEY non configurata")
-    try:
-        from anthropic import AsyncAnthropic
-    except ImportError as exc:
-        raise AiUnavailable("pacchetto anthropic non installato") from exc
-    return AsyncAnthropic(api_key=key)
-
-
 async def draft_recipe(
     session: AsyncSession, prompt: str, client: object | None = None
 ) -> RecipeDraft:
-    api = client if client is not None else _build_client()
-
-    try:
-        response = await api.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        payload = json.loads(response.content[0].text)
-        if not isinstance(payload, dict):
-            raise AiUnavailable("la risposta non è un oggetto JSON")
-        raw_ingredients = payload.get("ingredients") or []
-        if not isinstance(raw_ingredients, list) or any(
-            not isinstance(entry, dict) for entry in raw_ingredients
-        ):
-            raise AiUnavailable("la lista degli ingredienti ha una forma inutilizzabile")
-    except AiUnavailable:
-        raise
-    except Exception as exc:  # errore di rete, quota, JSON malformato
-        raise AiUnavailable(str(exc)) from exc
+    payload = await complete_json(
+        system=SYSTEM_PROMPT,
+        user=prompt,
+        schema=DRAFT_SCHEMA,
+        schema_name="bozza_ricetta",
+        max_tokens=DRAFT_MAX_TOKENS,
+        client=client,
+    )
+    raw_ingredients = payload.get("ingredients") or []
+    if not isinstance(raw_ingredients, list):
+        raise LlmUnavailable("la lista degli ingredienti ha una forma inutilizzabile")
 
     ingredients: list[DraftIngredient] = []
     for entry in raw_ingredients:
+        if not isinstance(entry, dict):
+            continue
         raw_name = str(entry.get("name", "")).strip()
         if not raw_name:
             continue
@@ -118,12 +117,23 @@ async def draft_recipe(
             else IngredientRole.PRIMARY
         )
         match = await match_name(session, raw_name)
+        category = str(entry.get("category") or "").strip().lower()
         ingredients.append(
             DraftIngredient(
                 raw_name=raw_name, role=role,
                 quantity_text=entry.get("quantity_text") or None,
                 ingredient_id=match.ingredient_id, matched_name=match.name,
                 confident=match.certain,
+                # Solo se l'anagrafica non ce l'ha: proporre una categoria per un
+                # ingrediente che esiste già inviterebbe a cambiargliela da una
+                # schermata che non è il registro. E solo se è una delle dodici: un
+                # campo vuoto da riempire è meglio di un valore che il salvataggio
+                # rifiuterebbe.
+                proposed_category=(
+                    category
+                    if match.ingredient_id is None and category in CATEGORIES
+                    else None
+                ),
             )
         )
 

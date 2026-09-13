@@ -25,13 +25,14 @@ from app.schemas.recipe import (
     RecipeSummaryOut,
     SearchModeOut,
 )
-from app.services.ai_recipes import AiUnavailable, draft_recipe
+from app.services.ai_recipes import draft_recipe
 from app.services.embeddings import (
     EmbeddingUnavailable,
     get_embedding_provider,
     log_degradation_once,
     recipe_document,
 )
+from app.services.llm import LlmUnavailable
 from app.services.recipe_search import search_recipes, semantic_search_usable
 
 router = APIRouter(
@@ -174,7 +175,7 @@ async def ai_draft(
     """Propone, non salva. Il salvataggio passa da POST /recipes come le altre."""
     try:
         draft = await draft_recipe(session, payload.prompt)
-    except AiUnavailable as exc:
+    except LlmUnavailable as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, f"stesura AI non disponibile: {exc}"
         ) from exc

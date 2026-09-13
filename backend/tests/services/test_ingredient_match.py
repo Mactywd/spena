@@ -1,4 +1,5 @@
 import pytest_asyncio
+from llm_fakes import FakeLlm
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.services.ingredient_match import match_name
@@ -72,6 +73,8 @@ async def test_la_stesura_ai_usa_questa_funzione(db_session, anagrafica, monkeyp
     Se `draft_recipe` tornasse a calcolarsi l'aggancio da sé, questo test resta
     verde mentre ogni garanzia qui sopra difende codice che nessuno chiama.
     """
+    from app.core.config import get_settings
+
     import app.services.ai_recipes as ai_recipes
 
     chiamate: list[str] = []
@@ -83,30 +86,20 @@ async def test_la_stesura_ai_usa_questa_funzione(db_session, anagrafica, monkeyp
 
     monkeypatch.setattr(ai_recipes, "match_name", spia)
 
-    class FakeClaude:
-        def __init__(self) -> None:
-            self.messages = self
-
-        async def create(self, **_kwargs):
-            import json
-
-            class Block:
-                text = json.dumps(
-                    {
-                        "title": "Pasta al pomodoro",
-                        "description": "",
-                        "instructions": "Cuoci.",
-                        "servings": 2,
-                        "ingredients": [
-                            {"name": "pasta", "role": "primary", "quantity_text": "200 g"}
-                        ],
-                    }
-                )
-
-            class Response:
-                content = [Block()]
-
-            return Response()
-
-    await ai_recipes.draft_recipe(db_session, "qualcosa", client=FakeClaude())
+    get_settings.cache_clear()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    try:
+        finto = FakeLlm({
+            "title": "Pasta al pomodoro",
+            "description": "",
+            "instructions": "Cuoci.",
+            "servings": 2,
+            "ingredients": [
+                {"name": "pasta", "role": "primary", "quantity_text": "200 g",
+                 "category": "cereali"}
+            ],
+        })
+        await ai_recipes.draft_recipe(db_session, "qualcosa", client=finto)
+    finally:
+        get_settings.cache_clear()
     assert chiamate == ["pasta"]
