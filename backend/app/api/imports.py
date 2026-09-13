@@ -32,11 +32,14 @@ from app.schemas.recipe_import import (
     SuggestionOut,
     TermDecisionIn,
     TermOut,
+    UndoOut,
+    UndoRequest,
 )
 from app.services.ingredient_match import match_name
 from app.services.llm import LlmUnavailable
 from app.services.recipe_import.decide import decide_terms
 from app.services.recipe_import.materialize import materialize_ready
+from app.services.recipe_import.undo import CookedRecipesAffected, undo_decision
 
 router = APIRouter(
     prefix="/api/v1/imports", tags=["imports"], dependencies=[Depends(require_session)]
@@ -182,3 +185,40 @@ async def decide(
     numbers = await counts(session, GIALLOZAFFERANO)
     await session.commit()
     return DecisionOut(unlocked=materialized.created, remaining_terms=numbers.pending_terms)
+
+
+@router.post("/terms/{term_id}/undo", response_model=UndoOut)
+async def undo(
+    term_id: uuid.UUID,
+    payload: UndoRequest,
+    session: AsyncSession = Depends(get_session),
+) -> UndoOut:
+    """Rimette un termine deciso in coda, e con lui il mondo che quella decisione ha mosso.
+
+    Non è un editor: dopo questo, il termine si decide a mano con la scheda di sempre.
+    """
+    term = await get_term(session, term_id)
+    if term is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "termine inesistente")
+    if term.decision == TermDecision.PENDING:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"«{term.display_name}» è già in coda: non c'è nessuna decisione da disfare.",
+        )
+
+    try:
+        undone = await undo_decision(session, term, force=payload.force)
+    except CookedRecipesAffected as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"{exc.count} di queste ricette le hai già cucinate: rifacendole lo storico "
+            "resta ma perde il collegamento. Conferma per procedere.",
+        ) from exc
+
+    numbers = await counts(session, GIALLOZAFFERANO)
+    await session.commit()
+    return UndoOut(
+        recipes_requeued=undone.recipes_requeued,
+        ingredient_deleted=undone.ingredient_deleted,
+        remaining_terms=numbers.pending_terms,
+    )
