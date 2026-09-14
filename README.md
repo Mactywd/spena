@@ -123,11 +123,14 @@ termini restano in coda e si decidono dalla riga in cima al ricettario, un tocco
 ciascuno, come prima che questa funzione esistesse.
 
 Quel che l'AI ha deciso si rivede da `/ricette/importa`, nell'elenco «Deciso dall'AI»:
-ogni riga dice cosa ha fatto — collegato a un ingrediente, creato, ignorato — e si può
-annullare. Annullare rimette il termine in coda, cancella l'alias che aveva scritto,
-cancella l'ingrediente creato se nessun altro lo usa, e rifà le ricette che ne erano
-nate. Se una di quelle ricette l'hai già cucinata, chiede conferma prima: lo storico
-sopravvive ma perde il collegamento alla ricetta.
+ogni riga dice cosa ha fatto — collegato a un ingrediente, o ignorato — e si può
+annullare. Non c'è un'etichetta «creato» a parte: nessun fatto scritto oggi permette
+di distinguere un aggancio che ha usato un ingrediente già in anagrafica da uno che
+l'ha creato, quindi entrambi si dicono «collegato». Annullare rimette il termine in
+coda, cancella l'alias che aveva scritto, cancella l'ingrediente creato se nessun
+altro lo usa, e rifà le ricette che ne erano nate. Se una di quelle ricette l'hai già
+cucinata, chiede conferma prima: lo storico sopravvive ma perde il collegamento alla
+ricetta.
 
 Ogni decisione vale per sempre — diventa un alias dell'ingrediente, e la conosce anche
 l'autocomplete della lista — quindi ogni giro costa meno del precedente: un termine già

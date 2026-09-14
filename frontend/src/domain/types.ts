@@ -145,7 +145,11 @@ export interface ImportTerm {
   /** Valorizzati solo per un termine già deciso, cioè solo nell'elenco della
    * revisione: la coda da decidere li ha sempre nulli. */
   decided_by: string | null;
-  decided_action: "map" | "created" | "ignored" | null;
+  // Solo "map" o "ignored": non esiste un terzo valore "created". Nessun fatto
+  // scritto oggi distingue un `map` che ha usato un ingrediente già in anagrafica
+  // da uno che l'ha creato — vedi `_decided_action` in `backend/app/api/imports.py`
+  // per il perché, compreso perché la deduzione che sembra ovvia è sbagliata.
+  decided_action: "map" | "ignored" | null;
   decided_name: string | null;
 }
 

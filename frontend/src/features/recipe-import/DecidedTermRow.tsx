@@ -12,7 +12,6 @@ import type { ImportTerm } from "../../domain/types";
  */
 function decisionSummary(term: ImportTerm): string {
   if (term.decided_action === "ignored") return "ignorato: non si tiene in dispensa";
-  if (term.decided_action === "created") return `creato: ${term.decided_name ?? "—"}`;
   return `collegato a ${term.decided_name ?? "un ingrediente"}`;
 }
 
