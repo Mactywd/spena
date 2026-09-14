@@ -19,6 +19,7 @@ guadagna in accuratezza.
 
 import asyncio
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,6 +32,8 @@ from app.core.config import get_settings
 from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientCategory
 from app.db.models.recipe_import import ImportTerm, TermDecision
 from app.services.llm import LlmUnavailable, build_headers, complete_json, open_client
+
+logger = logging.getLogger(__name__)
 
 TERM_MAX_TOKENS = 300  # una decisione sola: qui sopra c'è solo spazio per divagare
 
@@ -402,8 +405,16 @@ async def decide_terms(
         async with semaphore:
             try:
                 return await decide_one(session, term, registry, client=api)
-            except LlmUnavailable:
-                # questo termine resta in coda; gli altri non ne sanno niente
+            except LlmUnavailable as exc:
+                # questo termine resta in coda; gli altri non ne sanno niente. Il
+                # livello resta warning e non error: un modello giù è un evento
+                # atteso (timeout, 429), non un difetto nostro — ma deve pur
+                # comparire da qualche parte, perché un lotto intero che fallisce
+                # così riporta `applied=0` senza dire perché.
+                logger.warning(
+                    "termine %r (%s) non deciso, resta in coda: %s",
+                    term.display_name, term.id, exc,
+                )
                 return None
 
     owned = client is None
@@ -419,6 +430,16 @@ async def decide_terms(
         raw = await asyncio.gather(
             *(ask(term, api) for term in terms), return_exceptions=True
         )
+        # Un'eccezione qui non è un guasto del modello, è un difetto nostro — il
+        # solo assorbimento sopra non la copre — e senza questo log un `decide_one`
+        # rotto produce lo stesso `applied=0, still_pending=N` di un modello giù,
+        # indistinguibile nei log perché finora non ce n'erano.
+        for term, esito in zip(terms, raw):
+            if isinstance(esito, BaseException):
+                logger.error(
+                    "errore inatteso decidendo il termine %r (%s)",
+                    term.display_name, term.id, exc_info=esito,
+                )
         proposals = [p for p in raw if isinstance(p, TermDecisionProposal)]
         proposals = await collapse_creates(session, proposals, registry, client=api)
     finally:

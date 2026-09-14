@@ -330,11 +330,13 @@ async def test_un_termine_troppo_lungo_per_un_alias_si_decide_comunque(db_sessio
     assert alias == []
 
 
-async def test_un_guasto_su_un_termine_non_tocca_gli_altri(db_session, base):
+async def test_un_guasto_su_un_termine_non_tocca_gli_altri(db_session, base, caplog):
     """L'isolamento del guasto, che è l'altro regalo del fan-out.
 
     Con un lotto unico una chiamata caduta perdeva tutte le decisioni del lotto.
     """
+    import logging
+
     import httpx
 
     rigatoni, speck = await aggiungi(
@@ -345,12 +347,18 @@ async def test_un_guasto_su_un_termine_non_tocca_gli_altri(db_session, base):
         "Speck": httpx.ReadTimeout("lento"),
     })
 
-    esito = await decide_terms(db_session, [rigatoni, speck], client=finto)
+    with caplog.at_level(logging.WARNING):
+        esito = await decide_terms(db_session, [rigatoni, speck], client=finto)
 
     assert esito.applied == 1
     assert esito.still_pending == 1
     assert rigatoni.decision == TermDecision.MAPPED
     assert speck.decision == TermDecision.PENDING
+    # senza questo avviso `applied=0, still_pending=N` non dice da nessuna parte
+    # perché: un modello giù per ogni termine sarebbe indistinguibile da un difetto
+    # nostro, e la ragione starebbe solo nel corpo HTTP che nessuno rilegge
+    messaggi = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("Speck" in m and "non deciso" in m for m in messaggi)
 
 
 async def test_una_lista_vuota_non_chiama_nessuno(db_session, base):
@@ -398,7 +406,7 @@ async def test_una_decisione_azzera_il_ruolo_forzato(db_session, base):
 
 
 async def test_un_errore_inatteso_su_un_termine_non_perde_le_altre_decisioni(
-    db_session, base, monkeypatch
+    db_session, base, monkeypatch, caplog
 ):
     """Il `gather` non deve poter buttare il lotto per un errore che non è di rete.
 
@@ -408,6 +416,8 @@ async def test_un_errore_inatteso_su_un_termine_non_perde_le_altre_decisioni(
     risalirebbe dal `gather` e porterebbe via anche le decisioni già verificate degli
     altri termini — chiudendo il client condiviso con le chiamate ancora in volo.
     """
+    import logging
+
     from app.services.recipe_import import decide as modulo
 
     vero = modulo.decide_one
@@ -424,13 +434,20 @@ async def test_un_errore_inatteso_su_un_termine_non_perde_le_altre_decisioni(
     )
     finto = ScriptedLlm({"Rigatoni": llm_map("pasta")})
 
-    esito = await decide_terms(db_session, [rigatoni, speck], client=finto)
+    with caplog.at_level(logging.ERROR):
+        esito = await decide_terms(db_session, [rigatoni, speck], client=finto)
 
     assert esito.applied == 1
     assert esito.still_pending == 1
     assert rigatoni.decision == TermDecision.MAPPED
     assert speck.decision == TermDecision.PENDING
     assert speck.decided_by is None
+    # un difetto nostro non deve produrre lo stesso silenzio di un modello giù:
+    # qui ci vuole il livello error e la traccia, non solo un avviso
+    (record,) = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert "Speck" in record.getMessage()
+    assert record.exc_info is not None
+    assert record.exc_info[1].args == ("un difetto nostro, non un guasto del modello",)
 
 
 async def test_una_concorrenza_a_zero_non_appende_limport(db_session, base, monkeypatch):
