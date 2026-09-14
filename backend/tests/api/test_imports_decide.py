@@ -251,3 +251,46 @@ async def test_term_ids_non_decide_termini_da_altra_fonte(
 
     await db_session.refresh(term_altro)
     assert term_altro.decision == TermDecision.PENDING  # questo NO, perché di altra source
+
+
+async def test_term_ids_e_soggetto_allo_stesso_limite_del_ramo_senza(
+    logged_client, db_session, monkeypatch
+):
+    """`term_ids` accetta fino a 200 id: senza un limite qui, un chiamante che ne
+    manda tanti spende altrettante chiamate al modello a pagamento in una sola
+    richiesta HTTP. Il ramo «tutti i pendenti» già si ferma a `MAX_TERMS_PER_CALL`;
+    questo prova che il ramo per id fa lo stesso, e non uno dei due soli.
+    """
+    from app.api.imports import MAX_TERMS_PER_CALL
+
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    oltre_il_limite = MAX_TERMS_PER_CALL + 5
+    termini = [
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key=f"k-{n}", display_name=f"Termine {n}",
+            occurrences=1, decision=TermDecision.PENDING,
+        )
+        for n in range(oltre_il_limite)
+    ]
+    db_session.add_all(termini)
+    await db_session.flush()
+
+    import app.services.recipe_import.decide as modulo
+
+    finto = ScriptedLlm({f"Termine {n}": llm_map("pasta") for n in range(oltre_il_limite)})
+    monkeypatch.setattr(modulo, "open_client", lambda: finto)
+
+    response = await logged_client.post(
+        "/api/v1/imports/terms/decide",
+        json={"term_ids": [str(t.id) for t in termini]},
+    )
+    assert response.status_code == 200
+    corpo = response.json()
+    # la chiamata al modello parte solo per i primi MAX_TERMS_PER_CALL, non per tutti
+    # quelli passati in term_ids
+    assert finto.calls == MAX_TERMS_PER_CALL
+    assert corpo["applied"] == MAX_TERMS_PER_CALL
+    # i restanti non sono nemmeno arrivati a `decide_terms`: contano ancora in coda
+    assert corpo["remaining_terms"] == oltre_il_limite - MAX_TERMS_PER_CALL

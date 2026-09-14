@@ -149,12 +149,15 @@ async def decide_with_ai(
     identica a prima.
     """
     if payload.term_ids is not None:
+        # `term_ids` accetta fino a 200 id (vedi lo schema): senza un limite qui, un
+        # chiamante che ne manda 200 spende 200 chiamate al modello a pagamento in una
+        # sola richiesta. Lo stesso `MAX_TERMS_PER_CALL` del ramo «tutti i pendenti».
         rows = await session.execute(
             select(ImportTerm).where(
                 ImportTerm.id.in_(payload.term_ids),
                 ImportTerm.decision == TermDecision.PENDING,
                 ImportTerm.source == GIALLOZAFFERANO,
-            )
+            ).limit(MAX_TERMS_PER_CALL)
         )
         terms = list(rows.scalars())
     else:
