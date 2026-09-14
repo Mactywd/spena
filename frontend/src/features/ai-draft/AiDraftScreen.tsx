@@ -334,8 +334,8 @@ export function AiDraftScreen() {
                     {/* Stessa condizione del filtro `savable` qui sopra: una riga
                         entra nel salvataggio se è agganciata o se porta nome e
                         categoria con cui crearla, quindi è esattamente lì che deve
-                        poter essere esclusa. Farle drift-are separate ha già
-                        prodotto un vicolo cieco: una riga "da creare salvando" che
+                        poter essere esclusa. Lasciarle scostare ha già prodotto un
+                        vicolo cieco: una riga "da creare salvando" che
                         collide con un'altra allo stesso ingrediente diventava un 409
                         senza nessuna casella con cui toglierne una. */}
                     {(line.ingredientId !== null || line.proposedCategory !== null) && (
