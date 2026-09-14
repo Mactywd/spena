@@ -1,34 +1,27 @@
-"""L'immagine deve installare ciò che le funzionalità della v1 richiedono.
+"""L'immagine deve contenere ciò che le funzionalità richiedono, senza extra sulla strada.
 
-Il difetto che questi test difendono è rimasto nascosto per tutto il branch, e vale
-la pena scrivere perché. `backend/Dockerfile` faceva `pip install -e .`, che non
-installa nessun extra: nell'unico deploy che questo progetto ha, `anthropic` non
-esisteva, quindi lo schermo della stesura AI rispondeva «pacchetto anthropic non
-installato» con qualunque chiave configurata. Nessun test della suite poteva
-accorgersene, perché tutti i test di tests/services/test_ai_recipes.py iniettano un
-client finto e l'unico che arriva a `_build_client` esce sulla chiave assente, prima
-dell'`import anthropic`. L'istruzione di import non era eseguita da nessun test.
+La storia che questo file ricorda: `anthropic` era un extra (`.[ai]`), il Dockerfile
+faceva `pip install -e .`, e nell'unico deploy del progetto il pacchetto non esisteva —
+quindi la stesura AI rispondeva «pacchetto non installato» con qualunque chiave. Nessun
+test poteva accorgersene, perché tutti iniettavano un client finto e l'unico che
+arrivava alla costruzione vera usciva sulla chiave assente, prima dell'import.
 
-I test qui sono asserzioni sui file di build (Dockerfile e Compose), nello stile
-di tests/test_compose.py. Girano sempre, anche dove gli extra non sono installati, e
-falliscono se qualcuno torna a `pip install -e .`.
+Da OpenRouter quel difetto è strutturalmente impossibile: il client parla HTTP con
+`httpx`, che è una **dipendenza di base**. Quel che resta da difendere è che rimanga
+tale, e che `anthropic` non rientri.
 
-Task 13 ha ritirato il ponte Anthropic (`_build_client`, `AiUnavailable`): la stesura
-AI adesso usa OpenRouter via `httpx`, che è una dipendenza di base. Il vecchio test
-che eseguiva `_build_client()` non ha più un soggetto e se ne è andato con lui. La
-garanzia che `test_limmagine_installa_lextra_ai` continua a offrire non è più
-specifica per la stesura AI, ma per le funzionalità che vivono in quell'extra in
-generale.
-
-Quello che nessun test di questa suite può dimostrare è che l'immagine *costruita*
-contenga i pacchetti degli extra: la suite non gira dentro al container. Quella
-verifica è a mano, e sta nel rapporto.
+La seconda metà di questo file prova la costruzione della richiesta vera. È l'erede del
+test che eseguiva `import anthropic`: la lezione di CLAUDE.md — un percorso che nessun
+test attraversa è un percorso rotto che nessuno vede — vale per la richiesta esattamente
+come valeva per l'import.
 """
 
+import json
 import re
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -42,37 +35,41 @@ def righe_unite(testo: str) -> str:
     return re.sub(r"\\\s*\n\s*", " ", testo)
 
 
-def test_limmagine_installa_lextra_ai():
-    contenuto = righe_unite(DOCKERFILE.read_text())
-    installazioni = [r for r in contenuto.splitlines() if "pip install" in r]
-    assert installazioni, f"{DOCKERFILE}: nessun `pip install`, questo test cerca male"
-
-    assert any(".[ai]" in r or '".[ai]"' in r or "[ai," in r for r in installazioni), (
-        f"{DOCKERFILE}: il pacchetto viene installato senza l'extra `ai`.\n"
-        f"Trovato: {installazioni!r}\n"
-        "`pip install -e .` non installa nessun extra: senza `ai` mancano dipendenze "
-        "opzionali dall'immagine. Fino a task 13, la stesura AI usava il pacchetto "
-        "`anthropic` e richiedeva questo extra; adesso usa OpenRouter via `httpx` "
-        "(dipendenza di base), ma altri servizi potrebbero dipendere da pacchetti "
-        "negli extra opzionali."
+def test_httpx_e_una_dipendenza_di_base_e_non_un_extra():
+    """Il client del modello ci gira sopra: messo fra gli extra ripeterebbe la storia
+    di `anthropic`, e ogni chiamata all'LLM morirebbe su ImportError in produzione."""
+    progetto = tomllib.loads(PYPROJECT.read_text())["project"]
+    assert any("httpx" in dep for dep in progetto["dependencies"]), (
+        f"{PYPROJECT}: httpx non è fra le dipendenze di base ({progetto['dependencies']!r}): "
+        "il client di OpenRouter non parte."
     )
 
 
-def test_lextra_ai_e_quello_che_porta_anthropic():
-    """Le due metà devono restare d'accordo: l'extra giusto, col pacchetto giusto."""
-    extra = tomllib.loads(PYPROJECT.read_text())["project"]["optional-dependencies"]
-    assert any("anthropic" in dep for dep in extra["ai"]), (
-        f"{PYPROJECT}: l'extra `ai` non dichiara anthropic ({extra['ai']!r}), "
-        "quindi installarlo dal Dockerfile non servirebbe a niente"
+def test_anthropic_non_e_piu_una_dipendenza_di_nessun_tipo():
+    contenuto = PYPROJECT.read_text()
+    assert "anthropic" not in contenuto, (
+        f"{PYPROJECT}: `anthropic` è tornata. Il fornitore è OpenRouter, e un secondo "
+        "client che nessuno esercita è il difetto in cima a CLAUDE.md."
+    )
+    extra = tomllib.loads(contenuto)["project"].get("optional-dependencies", {})
+    assert "ai" not in extra, f"{PYPROJECT}: l'extra `ai` è tornato ({extra.keys()!r})"
+
+
+def test_il_dockerfile_non_installa_nessun_extra_ai():
+    contenuto = righe_unite(DOCKERFILE.read_text())
+    installazioni = [r for r in contenuto.splitlines() if "pip install" in r]
+    assert installazioni, f"{DOCKERFILE}: nessun `pip install`, questo test cerca male"
+    assert not any("[ai" in r for r in installazioni), (
+        f"{DOCKERFILE}: installa ancora un extra `ai` ({installazioni!r}), che non esiste più"
     )
 
 
 def test_lextra_embeddings_resta_opzionale_e_spento_per_default():
     """torch pesa GB: si accende da `.env`, e da un posto solo.
 
-    Questo test difende la decisione in entrambe le direzioni — che l'interruttore
-    esista e che il default sia spento — perché un'immagine che si porta torch dietro
-    a sorpresa è l'altro modo di sbagliare.
+    Difeso in entrambe le direzioni — che l'interruttore esista e che il default sia
+    spento — perché un'immagine che si porta torch dietro a sorpresa è l'altro modo di
+    sbagliare.
     """
     contenuto = righe_unite(DOCKERFILE.read_text())
     assert "ARG INSTALL_EMBEDDINGS=0" in contenuto, (
@@ -83,26 +80,62 @@ def test_lextra_embeddings_resta_opzionale_e_spento_per_default():
         f"{DOCKERFILE}: nessun ramo installa l'extra `embeddings`, quindi "
         "INSTALL_EMBEDDINGS=1 non accenderebbe niente"
     )
-
     for nome_file in COMPOSE_FILES:
         servizio = yaml.safe_load((REPO_ROOT / nome_file).read_text())["services"]["backend"]
         args = servizio.get("build", {}).get("args", {})
         assert "INSTALL_EMBEDDINGS" in args, (
-            f"{nome_file}: il servizio backend non passa INSTALL_EMBEDDINGS come "
-            f"argomento di build (trovato {servizio.get('build')!r}). Senza, il valore "
-            "scritto in `.env` non arriva all'immagine e l'interruttore non esiste."
+            f"{nome_file}: il servizio backend non passa INSTALL_EMBEDDINGS come argomento "
+            f"di build (trovato {servizio.get('build')!r}). Senza, il valore scritto in "
+            "`.env` non arriva all'immagine e l'interruttore non esiste."
         )
 
 
 def test_beautifulsoup_e_una_dipendenza_di_base_e_non_un_extra():
-    """Il parser dell'import non è una funzione opzionale.
-
-    Messo fra gli extra finirebbe fuori dall'immagine esattamente come `anthropic`
-    prima di questo file, e `python -m app.cli.import_gz` morirebbe su ImportError
-    al primo uso in produzione, dove non c'è nessun test a dirlo.
-    """
+    """Il parser dell'import non è una funzione opzionale."""
     progetto = tomllib.loads(PYPROJECT.read_text())["project"]
     assert any("beautifulsoup4" in dep for dep in progetto["dependencies"]), (
         f"{PYPROJECT}: beautifulsoup4 non è fra le dipendenze di base "
         f"({progetto['dependencies']!r}): il parser dell'import non parte."
     )
+
+
+async def test_la_richiesta_vera_si_costruisce_per_intero(monkeypatch):
+    """L'erede del test che eseguiva `import anthropic`: nessun finto, nessuna rete.
+
+    Costruisce il corpo e gli header che `complete_json` manderebbe, chiamando le
+    funzioni vere. È l'unico test che attraversa `build_headers` e
+    `build_provider_preferences` insieme al corpo, ed è il posto in cui un errore di
+    battitura su `X-Title` o su `require_parameters` si vede.
+    """
+    import httpx
+    import respx
+
+    from app.core.config import get_settings
+    from app.services.llm import build_headers, build_provider_preferences, complete_json
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta-per-il-test")
+    monkeypatch.setenv("OPENROUTER_APP_URL", "https://esempio.invalid")
+    try:
+        assert build_headers()["X-Title"] == "Spena Import Ricette"
+        assert build_provider_preferences() == {"sort": "price", "require_parameters": True}
+
+        async with respx.mock:
+            route = respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
+                return_value=httpx.Response(
+                    200, json={"choices": [{"message": {"content": '{"ok": true}'}}]}
+                )
+            )
+            await complete_json(
+                system="s", user="u",
+                schema={
+                    "type": "object", "properties": {"ok": {"type": "boolean"}},
+                    "required": ["ok"], "additionalProperties": False,
+                },
+                schema_name="prova", max_tokens=10,
+            )
+        corpo = json.loads(route.calls.last.request.content)
+        assert corpo["model"] == "google/gemma-4-26b-a4b-it"
+        assert corpo["response_format"]["json_schema"]["strict"] is True
+    finally:
+        get_settings.cache_clear()
