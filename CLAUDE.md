@@ -16,7 +16,7 @@ cook a recipe → whatever ran out goes back on the list.
 does; the code is now the authority on what it does. `README.md` covers running,
 testing and deploying.
 
-Six things reviews here kept rediscovering, written down so the next person does
+Seven things reviews here kept rediscovering, written down so the next person does
 not pay for them again:
 
 - **A test that builds its own object is not testing the one production uses.**
