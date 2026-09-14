@@ -369,6 +369,13 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso; illeggibile (troncato), il backend non parte |
 | `COOKIE_SECURE` | `false` | `true` in produzione: il cookie solo su HTTPS |
 | `OPENROUTER_API_KEY` | vuoto | stesura ricette con l'AI e decisione dei termini incerti nell'import |
+| `OPENROUTER_MODEL` | `google/gemma-4-26b-a4b-it` | il modello; cambiarlo è come passare a uno più grosso (es. `anthropic/claude-sonnet-5`) |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | endpoint dell'API, sovrascrivibile nei test |
+| `OPENROUTER_APP_TITLE` | `Spena Import Ricette` | header `X-Title` mandato a OpenRouter |
+| `OPENROUTER_APP_URL` | vuoto | header `HTTP-Referer`; vuota, l'header si omette |
+| `OPENROUTER_PROVIDER_ONLY` | vuoto | vuoto: instradamento per prezzo scelto da OpenRouter. Valorizzata (es. `darkbloom`): pinni il provider a mano, e perdi la caduta automatica sul successivo |
+| `LLM_TIMEOUT_SECONDS` | `60` | oltre il quale una chiamata al modello si considera persa |
+| `LLM_MAX_CONCURRENCY` | `8` | quante domande in volo nel riconoscimento parallelo dei termini |
 | `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
 | `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale; cambiandolo va rimisurata `SEMANTIC_MAX_DISTANCE` (vedi sotto) |

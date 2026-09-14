@@ -3,6 +3,15 @@
 Data: 2026-09-11
 Stato: approvato in brainstorming, da tradurre in piano di implementazione
 
+> **Nota d'emendamento, 2026-09-13.** Il fornitore dell'AI generativa non è più
+> l'API di Anthropic: è OpenRouter, con `google/gemma-4-26b-a4b-it` come modello di
+> default e `OPENROUTER_API_KEY` al posto di `ANTHROPIC_API_KEY`. Vedi
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §3. Il testo
+> originale resta sotto com'era, a memoria di cosa si è progettato l'11 settembre; i
+> passaggi superati sono segnalati dove compaiono. Quel che sopravvive intatto: i
+> due punti in cui l'AI entra (stesura di una ricetta, riconoscimento degli
+> ingredienti) e il fatto che non produce mai valori nutrizionali.
+
 ## 1. Obiettivo
 
 Spena tiene insieme quattro cose che di solito vivono in app separate: la lista
@@ -131,6 +140,11 @@ caricamento del modello.
 API HTTP, così il cambio di fornitore è una variabile d'ambiente.
 
 ### AI generativa
+
+> **Superato il 2026-09-13.** Non è più l'API di Anthropic: è OpenRouter, con
+> `google/gemma-4-26b-a4b-it` come modello di default (sostituibile in
+> `OPENROUTER_MODEL`, anche con un modello Anthropic dietro lo stesso proxy). Vedi
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §3.
 
 Claude API, modello `claude-sonnet-5`, usata in due punti e solo lì:
 
@@ -485,7 +499,7 @@ l'app aperta in chiaro su internet.
 | `POSTGRES_*` | vedi `.env.example` | connessione al database |
 | `SESSION_SECRET` | nessuno, obbligatorio | firma del cookie di sessione |
 | `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash della password di accesso |
-| `ANTHROPIC_API_KEY` | vuoto | sezione di scrittura AI e matching incerto |
+| `ANTHROPIC_API_KEY` | vuoto | sezione di scrittura AI e matching incerto — **superato il 2026-09-13**: è `OPENROUTER_API_KEY`, vedi `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §8 |
 | `EMBEDDING_BACKEND` | `local` | `local` oppure `http` |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale |
 | `OFF_BASE_URL` | api ufficiale | sovrascrivibile nei test |
