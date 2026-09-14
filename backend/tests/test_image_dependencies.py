@@ -10,18 +10,17 @@ Da OpenRouter quel difetto è strutturalmente impossibile: il client parla HTTP 
 `httpx`, che è una **dipendenza di base**. Quel che resta da difendere è che rimanga
 tale, e che `anthropic` non rientri.
 
-La seconda metà di questo file prova la costruzione della richiesta vera. È l'erede del
-test che eseguiva `import anthropic`: la lezione di CLAUDE.md — un percorso che nessun
-test attraversa è un percorso rotto che nessuno vede — vale per la richiesta esattamente
-come valeva per l'import.
+L'erede del test che eseguiva `import anthropic` — quello che attraversa la richiesta
+vera, header e corpo insieme, senza finti e senza rete — è
+`tests/services/test_llm.py::test_la_richiesta_porta_attribuzione_schema_e_instradamento`.
+Questo file resta sulla superficie di dipendenza dell'immagine; quella garanzia vive
+dov'è già provata, non in doppio.
 """
 
-import json
 import re
 import tomllib
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -97,45 +96,3 @@ def test_beautifulsoup_e_una_dipendenza_di_base_e_non_un_extra():
         f"{PYPROJECT}: beautifulsoup4 non è fra le dipendenze di base "
         f"({progetto['dependencies']!r}): il parser dell'import non parte."
     )
-
-
-async def test_la_richiesta_vera_si_costruisce_per_intero(monkeypatch):
-    """L'erede del test che eseguiva `import anthropic`: nessun finto, nessuna rete.
-
-    Costruisce il corpo e gli header che `complete_json` manderebbe, chiamando le
-    funzioni vere. È l'unico test che attraversa `build_headers` e
-    `build_provider_preferences` insieme al corpo, ed è il posto in cui un errore di
-    battitura su `X-Title` o su `require_parameters` si vede.
-    """
-    import httpx
-    import respx
-
-    from app.core.config import get_settings
-    from app.services.llm import build_headers, build_provider_preferences, complete_json
-
-    get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta-per-il-test")
-    monkeypatch.setenv("OPENROUTER_APP_URL", "https://esempio.invalid")
-    try:
-        assert build_headers()["X-Title"] == "Spena Import Ricette"
-        assert build_provider_preferences() == {"sort": "price", "require_parameters": True}
-
-        async with respx.mock:
-            route = respx.post("https://openrouter.ai/api/v1/chat/completions").mock(
-                return_value=httpx.Response(
-                    200, json={"choices": [{"message": {"content": '{"ok": true}'}}]}
-                )
-            )
-            await complete_json(
-                system="s", user="u",
-                schema={
-                    "type": "object", "properties": {"ok": {"type": "boolean"}},
-                    "required": ["ok"], "additionalProperties": False,
-                },
-                schema_name="prova", max_tokens=10,
-            )
-        corpo = json.loads(route.calls.last.request.content)
-        assert corpo["model"] == "google/gemma-4-26b-a4b-it"
-        assert corpo["response_format"]["json_schema"]["strict"] is True
-    finally:
-        get_settings.cache_clear()
