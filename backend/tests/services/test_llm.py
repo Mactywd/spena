@@ -14,7 +14,9 @@ import pytest
 import respx
 
 from app.core.config import get_settings
+from app.services.ai_recipes import DRAFT_SCHEMA
 from app.services.llm import LlmUnavailable, complete_json
+from app.services.recipe_import.decide import COLLAPSE_SCHEMA, TERM_SCHEMA
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -179,3 +181,42 @@ async def test_un_timeout_diventa_llm_unavailable(con_chiave):
             await complete_json(
                 system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
             )
+
+
+def _sotto_oggetti(schema: dict):
+    """Genera ogni sotto-schema di tipo "object", in profondità.
+
+    Basta per le forme che le tre schede reali usano: oggetti con "properties" e
+    array con "items". Non serve altro perché nessuna delle tre ricorre a "anyOf",
+    "oneOf" o "$ref".
+    """
+    if not isinstance(schema, dict):
+        return
+    if schema.get("type") == "object":
+        yield schema
+        for sotto_schema in (schema.get("properties") or {}).values():
+            yield from _sotto_oggetti(sotto_schema)
+    elif schema.get("type") == "array":
+        yield from _sotto_oggetti(schema.get("items") or {})
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [TERM_SCHEMA, COLLAPSE_SCHEMA, DRAFT_SCHEMA],
+    ids=["TERM_SCHEMA", "COLLAPSE_SCHEMA", "DRAFT_SCHEMA"],
+)
+def test_gli_schemi_veri_rispettano_lo_strict_mode(schema):
+    """Le tre schede che l'app manda davvero, non delle copie.
+
+    Sta qui perché questo file è già dove il vincolo dello strict mode di
+    OpenRouter — ogni proprietà in "required", "additionalProperties" a false a ogni
+    livello — si dichiara e si prova, finora solo sulla scheda giocattolo del file
+    (`SCHEMA`). Importare le costanti vere da `decide.py` e da `ai_recipes.py`, invece
+    di riscriverle qui, è ciò che rende la prova vera: una copia si scollerebbe dalla
+    scheda che la richiesta manda davvero, e la suite resterebbe verde mentre
+    OpenRouter rifiuta con un 400 che qui diventa `LlmUnavailable` in silenzio.
+    """
+    for oggetto in _sotto_oggetti(schema):
+        proprieta = set((oggetto.get("properties") or {}).keys())
+        assert oggetto.get("additionalProperties") is False
+        assert set(oggetto.get("required") or []) == proprieta
