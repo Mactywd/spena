@@ -114,11 +114,30 @@ Scarica un lotto di ricette da GialloZafferano: una pagina alla volta, con una p
 di cortesia, e mai due volte lo stesso indirizzo. Rilanciarlo prende il lotto
 successivo, quindi il ricettario si riempie a tappe e non in una notte.
 
-Dopo lo scarico, gli ingredienti che l'anagrafica non riconosce finiscono in una coda.
-Ci si arriva dalla riga in cima al ricettario, che compare solo quando c'è qualcosa da
-decidere. Ogni decisione vale per sempre — diventa un alias dell'ingrediente, e la
-conosce anche l'autocomplete della lista — e fa entrare da sé le ricette che la
-aspettavano.
+Dopo lo scarico, gli ingredienti che l'anagrafica non riconosce li decide l'AI: uno per
+uno, e quelli che non sa giudicare li lascia in coda. Le ricette entrano da sé, quindi
+nel caso normale questo comando è l'unica cosa da fare.
+
+Ci vuole `OPENROUTER_API_KEY` in `.env`. Senza, tutto continua a funzionare a mano: i
+termini restano in coda e si decidono dalla riga in cima al ricettario, un tocco
+ciascuno, come prima che questa funzione esistesse.
+
+Quel che l'AI ha deciso si rivede da `/ricette/importa`, nell'elenco «Deciso dall'AI»:
+ogni riga dice cosa ha fatto — collegato a un ingrediente, creato, ignorato — e si può
+annullare. Annullare rimette il termine in coda, cancella l'alias che aveva scritto,
+cancella l'ingrediente creato se nessun altro lo usa, e rifà le ricette che ne erano
+nate. Se una di quelle ricette l'hai già cucinata, chiede conferma prima: lo storico
+sopravvive ma perde il collegamento alla ricetta.
+
+Ogni decisione vale per sempre — diventa un alias dell'ingrediente, e la conosce anche
+l'autocomplete della lista — quindi ogni giro costa meno del precedente: un termine già
+deciso non torna mai al modello.
+
+Per sapere quale provider di OpenRouter serve il modello e a quanto:
+
+```bash
+docker compose exec backend python -m app.cli.llm_prices
+```
 
 Se tieni accesa la ricerca semantica (`INSTALL_EMBEDDINGS=1`), dopo un import esegui:
 
@@ -158,16 +177,15 @@ suite gira sull'host, non dentro al container, perché deve poter importare
 
 ```bash
 cd backend
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev,ai]"
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m pytest
 ```
 
-`ai` oltre a `dev` perché un test solo esegue l'`import anthropic` vero
-(`tests/test_image_dependencies.py`), e senza il pacchetto si salta: è il percorso
-che nessun test toccava quando l'immagine non installava l'extra, e saltarlo
-significa non difenderlo.
+Niente extra `ai`: il client dell'LLM parla HTTP con `httpx`, che è una dipendenza di
+base, non un extra installato a parte come lo era `anthropic`.
+`tests/test_image_dependencies.py` difende che resti così.
 
-La suite non tocca la rete: Open Food Facts e Claude girano su fixture registrate, e
+La suite non tocca la rete: Open Food Facts e l'LLM girano su fixture registrate, e
 non legge il tuo `.env` (vedi il commento in `backend/tests/conftest.py`).
 
 ### Frontend
@@ -319,9 +337,14 @@ L'errore di Alembic è lì, ripetuto a ogni riavvio. Lo schema non resta a metà
 `alembic/env.py` avvolge tutte le revisioni in una sola transazione e Postgres ha DDL
 transazionale, quindi la migrazione fallita è come se non fosse mai partita.
 
-Anche qui le migrazioni girano all'avvio del backend, quindi un `git pull` con una
-migrazione nuova e un `up -d --build` bastano: non c'è un comando da ricordarsi. Il
-seme invece resta a mano, perché non è un'operazione da ripetere a ogni riavvio.
+Anche qui le migrazioni girano all'avvio del backend, quindi con una migrazione nuova
+basta rilanciare il deploy. Un `git pull` e un
+`docker compose -f docker-compose.prod.yml up -d --build --wait` bastano. **Il `-f`
+non è opzionale**: senza, Compose usa `docker-compose.yml`, i due file condividono il
+nome di progetto `spena`, e lo stack di produzione viene sostituito da quello di
+sviluppo — che non ha le etichette di Traefik. Il dominio smette di rispondere e non
+lo scrive nessun log. Il seme invece resta a mano, perché non è un'operazione da
+ripetere a ogni riavvio.
 
 Il progetto Compose, in mancanza di `-p`, si chiama `spena` anche qui, cioè come
 quello di sviluppo: sulla stessa macchina i due stack si contenderebbero gli stessi
@@ -342,7 +365,7 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `SESSION_SECRET` | nessuno, obbligatorio | firma del cookie di sessione; vuota, il backend non parte |
 | `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso; illeggibile (troncato), il backend non parte |
 | `COOKIE_SECURE` | `false` | `true` in produzione: il cookie solo su HTTPS |
-| `ANTHROPIC_API_KEY` | vuoto | stesura ricette con l'AI e abbinamenti incerti |
+| `OPENROUTER_API_KEY` | vuoto | stesura ricette con l'AI e decisione dei termini incerti nell'import |
 | `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
 | `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale; cambiandolo va rimisurata `SEMANTIC_MAX_DISTANCE` (vedi sotto) |
@@ -351,10 +374,11 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `OFF_TIMEOUT_SECONDS` | `3` | oltre il quale si degrada all'inserimento manuale |
 | `SPENA_HOST` | nessuno | solo in produzione: host pubblicato da Traefik |
 
-Nessuna di queste, mancando, porta a un vicolo cieco nell'interfaccia: senza chiave
-Anthropic la ricetta si scrive a mano, senza modello di embedding la ricerca resta
-quella testuale, con Open Food Facts irraggiungibile il prodotto si crea a mano. È
-una regola di casa, non un caso fortunato.
+Nessuna di queste, mancando, porta a un vicolo cieco nell'interfaccia: senza
+`OPENROUTER_API_KEY` la ricetta si scrive a mano e i termini dell'import si decidono
+dalla coda, senza modello di embedding la ricerca resta quella testuale, con Open
+Food Facts irraggiungibile il prodotto si crea a mano. È una regola di casa, non un
+caso fortunato.
 
 ### La ricerca semantica è facoltativa, e per default è spenta
 

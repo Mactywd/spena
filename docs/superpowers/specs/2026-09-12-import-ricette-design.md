@@ -353,6 +353,13 @@ Oggi `_match` marca incerto `pomodori pelati` che è un alias esplicito di
 
 ### 8.2 Le proposte di Claude
 
+> **Emendato il 2026-09-13.** Questa sezione diceva «Claude propone e non decide».
+> Non vale più: il fornitore è OpenRouter con `google/gemma-4-26b-a4b-it`, e l'AI
+> **decide**, con la coda che diventa la revisione e un annullamento per ogni
+> decisione. Vedi `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §2.
+> Quel che resta valido di questa sezione è la verifica di ogni risposta contro
+> l'anagrafica vera, che il codice nuovo riusa intatta.
+
 `app/services/recipe_import/terms.py::propose_decisions(session, terms)`
 
 Una chiamata per lotto di termini (massimo 40), modello `claude-sonnet-5`. Riceve i

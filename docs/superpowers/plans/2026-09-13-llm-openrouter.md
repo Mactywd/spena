@@ -32,7 +32,14 @@ Valgono per ogni task, sempre. Non si ripetono nei task.
   Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
   ```
   Negli step sotto i comandi `git commit` sono scritti in breve: la riga di attribuzione va aggiunta comunque, sempre.
-- **Comandi:** il backend si prova con `docker compose exec backend pytest <path> -v`. Se lo stack non è su: `docker compose up -d --wait`. Il frontend con `cd frontend && npx vitest run <path>`.
+- **Comandi:** il backend si prova con `cd backend && .venv/bin/python -m pytest <path> -v`, con Postgres su tramite `docker compose up -d db`. Il frontend con `cd frontend && npx vitest run <path>`.
+
+  > **Corretto il 2026-09-14.** Questa riga diceva `docker compose exec backend pytest
+  > <path> -v`. Non gira: il Dockerfile installa solo `-e .` (più `[embeddings]` quando
+  > acceso), mai l'extra `dev`, quindi `pytest` non è nell'immagine. Ogni task di questo
+  > piano ha girato sull'host, che è quel che `README.md` documenta in «Test». I comandi
+  > `Run:` scritti nei singoli task restano con la forma vecchia: sono il verbale di cosa
+  > diceva il piano, non un comando da rilanciare.
 
 ---
 
