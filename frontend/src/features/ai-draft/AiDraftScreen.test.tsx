@@ -512,6 +512,34 @@ describe("AiDraftScreen", () => {
     expect(corpo.ingredients[0]).toMatchObject({ name: "speck", category: "pesce" });
     expect(corpo.ingredients[0].ingredient_id).toBeUndefined();
   });
+
+  // Fix round 1: una riga "da creare salvando" parte inclusa ma non aveva NESSUNA
+  // casella con cui escluderla — il modello può proporre lo stesso `raw_name` due
+  // volte (vedi il commento su `lineFromDraft`), e due righe così collidono sullo
+  // stesso ingrediente appena create, dando un 409 che il messaggio d'errore dice
+  // di risolvere togliendo la spunta a una delle due. Senza casella quel consiglio
+  // era un vicolo cieco. L'assert è sul CORPO della POST, non sul DOM: una riga
+  // tolta dalla vista ma ancora mandata al backend supererebbe un test che guarda
+  // solo lo schermo.
+  it("un ingrediente da creare si esclude con la sua casella, e resta fuori dal corpo salvato", async () => {
+    await mostraBozzaCon([
+      {
+        raw_name: "speck", role: "primary", quantity_text: "100 g",
+        ingredient_id: null, matched_name: null, confident: false,
+        proposed_category: "carne",
+      },
+    ]);
+
+    const casella = await screen.findByLabelText(/includi speck/i);
+    expect(casella).toBeChecked();
+
+    await userEvent.click(casella);
+    expect(casella).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: /salva/i }));
+
+    const corpo = ultimoCorpoDiPost("/recipes");
+    expect(corpo.ingredients).toHaveLength(0);
+  });
 });
 
 // La chiave `["recipes"]` invalida per prefisso ogni voce `["recipes", termine,
