@@ -271,7 +271,7 @@ Una riga per ingrediente del catalogo della fonte. È il dizionario.
 | `decision` | varchar(20) | `pending` \| `mapped` \| `ignored` |
 | `ingredient_id` | uuid null | FK `ingredients(id)`, `ON DELETE RESTRICT` |
 | `role_override` | varchar(20) null | `primary` \| `secondary`, §9 |
-| `decided_by` | varchar(20) null | `auto` \| `human` |
+| `decided_by` | varchar(20) null | `auto` \| `human` \| `ai` (dal 2026-09-13) |
 | `decided_at` | timestamptz null | |
 
 Vincoli: `UNIQUE (source, key)`, indice su `(decision, occurrences DESC)`, check su
