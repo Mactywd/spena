@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
 from app.repositories.ingredients import create_ingredient
+from app.services.ingredient_match import match_name
 from app.services.recipe_import.decide import decide_terms
 from llm_fakes import LLM_IGNORE, ScriptedLlm, llm_create, llm_map
 
@@ -174,6 +175,35 @@ async def test_due_create_dello_stesso_nome_fanno_un_ingrediente_e_due_termini(d
         )
     ).scalars().all()
     assert sorted(alias) == ["speck", "speck a cubetti"]
+
+
+async def test_una_somiglianza_non_certa_non_aggancia_il_create(db_session, base):
+    """Guardia sulla riga 455: `match.certain` non è ridondante col solo `ingredient_id`.
+
+    "pomodorini" è solo un vicino per trigram di "pomodoro" (lo si verifica qui sotto
+    con la stessa funzione, non lo si assume): il `create` proposto dal modello deve
+    diventare davvero un nuovo ingrediente, non agganciarsi in silenzio al vicino più
+    simile. È lo stesso difetto che rese «Pinoli» un alias permanente di «pisello»:
+    una somiglianza presentata come un fatto.
+    """
+    pomodoro = await create_ingredient(
+        db_session, name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
+    )
+    verifica = await match_name(db_session, "pomodorini")
+    assert verifica.certain is False
+    assert verifica.ingredient_id == pomodoro.id  # è comunque il vicino più simile
+
+    (termine_pomodorini,) = await aggiungi(db_session, termine("Pomodorini", "k-pomodorini"))
+    finto = ScriptedLlm({"Pomodorini": llm_create("pomodorini", "Pomodorini", "verdura")})
+
+    esito = await decide_terms(db_session, [termine_pomodorini], client=finto)
+
+    assert esito.created == 1
+    assert termine_pomodorini.ingredient_id != pomodoro.id
+    nuovo = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "pomodorini"))
+    ).scalar_one()
+    assert termine_pomodorini.ingredient_id == nuovo.id
 
 
 async def test_un_create_che_e_gia_un_alias_diventa_una_mappatura(db_session, base):
