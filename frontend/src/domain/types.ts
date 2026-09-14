@@ -108,6 +108,7 @@ export interface DraftIngredient {
   ingredient_id: string | null;
   matched_name: string | null;
   confident: boolean;
+  proposed_category: string | null;
 }
 
 // La bozza di ricetta restituita da POST /recipes/ai-draft. Non salva nulla da
@@ -141,20 +142,33 @@ export interface ImportTerm {
   occurrences: number;
   suggestion: TermSuggestion | null;
   waiting_titles: string[];
-}
-
-export type TermAction = "map" | "create" | "ignore";
-
-export interface TermProposal {
-  term_id: string;
-  action: TermAction;
-  ingredient_id: string | null;
-  name: string | null;
-  display_name: string | null;
-  category: string | null;
+  /** Valorizzati solo per un termine già deciso, cioè solo nell'elenco della
+   * revisione: la coda da decidere li ha sempre nulli. */
+  decided_by: string | null;
+  // Solo "map" o "ignored": non esiste un terzo valore "created". Nessun fatto
+  // scritto oggi distingue un `map` che ha usato un ingrediente già in anagrafica
+  // da uno che l'ha creato — vedi `_decided_action` in `backend/app/api/imports.py`
+  // per il perché, compreso perché la deduzione che sembra ovvia è sbagliata.
+  decided_action: "map" | "ignored" | null;
+  decided_name: string | null;
 }
 
 export interface TermDecisionResult {
   unlocked: number;
+  remaining_terms: number;
+}
+
+export interface DecideResult {
+  applied: number;
+  created: number;
+  ignored: number;
+  still_pending: number;
+  unlocked: number;
+  remaining_terms: number;
+}
+
+export interface UndoResult {
+  recipes_requeued: number;
+  ingredient_deleted: boolean;
   remaining_terms: number;
 }

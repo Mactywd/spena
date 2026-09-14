@@ -29,23 +29,38 @@ class TermOut(BaseModel):
     # qualche titolo in attesa: «Scorza di limone» si giudica diversamente in una
     # torta e in un arrosto
     waiting_titles: list[str]
+    # Valorizzati solo per un termine già deciso. Servono all'elenco della revisione,
+    # che deve dire in una riga cosa è stato fatto: «Rigatoni → pasta», «Acqua →
+    # ignorato». `decided_action` distingue solo "map" da "ignored": non esiste un
+    # terzo valore "created", perché nessun fatto scritto oggi permette di dedurre se
+    # l'ingrediente di un "map" esisteva già o è nato con questa decisione (vedi
+    # `_decided_action` in `app/api/imports.py`, che spiega perché e perché la
+    # deduzione che sembra ovvia è sbagliata). "map" quindi copre entrambi i casi.
+    decided_by: str | None = None
+    decided_action: Literal["map", "ignored"] | None = None
+    decided_name: str | None = None
 
 
-class ProposalsRequest(BaseModel):
-    term_ids: list[uuid.UUID] = Field(min_length=1, max_length=40)
+class DecideRequest(BaseModel):
+    """`term_ids` assente significa «tutti quelli in coda».
+
+    È il caso normale: il bottone della schermata non ha una selezione da mandare, e
+    obbligarlo a costruirla lo farebbe sbagliare appena la coda si accorcia sotto di
+    lui. La lista esiste per chi vuole insistere su un termine preciso.
+    """
+
+    term_ids: list[uuid.UUID] | None = Field(default=None, max_length=200)
 
 
-class ProposalOut(BaseModel):
-    term_id: uuid.UUID
-    action: Literal["map", "create", "ignore"]
-    ingredient_id: uuid.UUID | None = None
-    name: str | None = None
-    display_name: str | None = None
-    category: str | None = None
-
-
-class ProposalsOut(BaseModel):
-    proposals: list[ProposalOut]
+class DecideOut(BaseModel):
+    applied: int
+    created: int
+    ignored: int
+    still_pending: int
+    # le ricette entrate grazie a queste decisioni: è il numero che rende il
+    # riconoscimento un lavoro con un risultato visibile
+    unlocked: int
+    remaining_terms: int
 
 
 class TermDecisionIn(BaseModel):
@@ -65,4 +80,20 @@ class TermDecisionIn(BaseModel):
 
 class DecisionOut(BaseModel):
     unlocked: int
+    remaining_terms: int
+
+
+class UndoRequest(BaseModel):
+    """`force` è la conferma sullo storico di cottura, non un interruttore generale.
+
+    Serve solo a superare il 409 che avvisa che una delle ricette da rifare è già
+    stata cucinata, e che lo storico perderebbe il collegamento.
+    """
+
+    force: bool = False
+
+
+class UndoOut(BaseModel):
+    recipes_requeued: int
+    ingredient_deleted: bool
     remaining_terms: int

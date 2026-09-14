@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { AiDraftScreen } from "./AiDraftScreen";
 import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
+import type { DraftIngredient } from "../../domain/types";
 
 const DRAFT = {
   title: "Pasta al pomodoro", description: "Svelta",
@@ -65,6 +66,34 @@ function postedRecipe(spy: ReturnType<typeof vi.fn>) {
     ([url, init]) => String(url).endsWith("/recipes") && init?.method === "POST"
   );
   return JSON.parse(post![1].body);
+}
+
+// Apparato per il Task 14: finge una bozza con gli ingredienti passati e la
+// mostra in pagina, riusando `proposeDraft`/`draftLanded`. Lo spy resta
+// disponibile a `ultimoCorpoDiPost`, che legge l'ultima POST verso un dato
+// percorso — qui serve per leggere cosa il salvataggio manda a `/recipes`.
+let ultimoFetchSpy: ReturnType<typeof vi.fn> | null = null;
+
+async function mostraBozzaCon(ingredients: DraftIngredient[]) {
+  const bozza = { ...DRAFT, ingredients };
+  const spy = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify(bozza), { status: 200 }))
+    .mockResolvedValue(new Response(CREATED, { status: 201 }));
+  vi.stubGlobal("fetch", spy);
+  ultimoFetchSpy = spy;
+  renderScreen();
+  await proposeDraft();
+  await draftLanded();
+}
+
+function ultimoCorpoDiPost(pathSuffix: string) {
+  const spy = ultimoFetchSpy;
+  if (spy === null) throw new Error("nessuno spy: chiama prima mostraBozzaCon");
+  const posts = spy.mock.calls.filter(
+    ([url, init]) => String(url).endsWith(pathSuffix) && init?.method === "POST"
+  );
+  const last = posts[posts.length - 1];
+  return JSON.parse(last[1].body);
 }
 
 function saveButton() {
@@ -457,6 +486,82 @@ describe("AiDraftScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito a salvare/i);
     // la bozza resta in pagina, pronta per un altro tentativo
     expect(screen.getByDisplayValue("Pasta al pomodoro")).toBeDefined();
+  });
+
+  it("un ingrediente ignoto si crea salvando, con la categoria modificabile", async () => {
+    // usa l'apparato già presente in questo file per fingere la bozza: cerca come i
+    // test esistenti servono POST /recipes/ai-draft e riusa quello
+    await mostraBozzaCon([
+      {
+        raw_name: "speck", role: "primary", quantity_text: "100 g",
+        ingredient_id: null, matched_name: null, confident: false,
+        proposed_category: "carne",
+      },
+    ]);
+
+    expect(await screen.findByText(/lo creo io salvando/i)).toBeInTheDocument();
+    const categoria = screen.getByLabelText(/categoria per «speck»/i);
+    expect(categoria).toHaveValue("carne");
+
+    await userEvent.selectOptions(categoria, "pesce");
+    await userEvent.click(screen.getByRole("button", { name: /salva/i }));
+
+    // il corpo mandato porta nome e categoria, non un ingredient_id nullo che il
+    // backend rifiuterebbe con un 422
+    const corpo = ultimoCorpoDiPost("/recipes");
+    expect(corpo.ingredients[0]).toMatchObject({ name: "speck", category: "pesce" });
+    expect(corpo.ingredients[0].ingredient_id).toBeUndefined();
+  });
+
+  // Fix round 1: una riga "da creare salvando" parte inclusa ma non aveva NESSUNA
+  // casella con cui escluderla — il modello può proporre lo stesso `raw_name` due
+  // volte (vedi il commento su `lineFromDraft`), e due righe così collidono sullo
+  // stesso ingrediente appena create, dando un 409 che il messaggio d'errore dice
+  // di risolvere togliendo la spunta a una delle due. Senza casella quel consiglio
+  // era un vicolo cieco. L'assert è sul CORPO della POST, non sul DOM: una riga
+  // tolta dalla vista ma ancora mandata al backend supererebbe un test che guarda
+  // solo lo schermo.
+  it("un ingrediente da creare si esclude con la sua casella, e resta fuori dal corpo salvato", async () => {
+    await mostraBozzaCon([
+      {
+        raw_name: "speck", role: "primary", quantity_text: "100 g",
+        ingredient_id: null, matched_name: null, confident: false,
+        proposed_category: "carne",
+      },
+    ]);
+
+    const casella = await screen.findByLabelText(/includi speck/i);
+    expect(casella).toBeChecked();
+
+    await userEvent.click(casella);
+    expect(casella).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: /salva/i }));
+
+    const corpo = ultimoCorpoDiPost("/recipes");
+    expect(corpo.ingredients).toHaveLength(0);
+  });
+
+  // Fix round 2: il campo Quantità era condizionato su `ingredientId !== null`,
+  // la stessa condizione già corretta una volta per la casella di inclusione — una
+  // riga "da creare salvando" (`ingredientId: null`, `proposedCategory` valorizzato)
+  // non aveva NESSUN campo con cui scrivere "100 g". L'assert è sul CORPO della
+  // POST, non sul render dell'input: un campo che compare ma la cui digitazione
+  // non arriva al salvataggio supererebbe un test che guarda solo il DOM.
+  it("un ingrediente da creare porta la sua quantità nel corpo salvato", async () => {
+    await mostraBozzaCon([
+      {
+        raw_name: "speck", role: "primary", quantity_text: null,
+        ingredient_id: null, matched_name: null, confident: false,
+        proposed_category: "carne",
+      },
+    ]);
+
+    const quantita = await screen.findByLabelText("Quantità per speck");
+    await userEvent.type(quantita, "100 g");
+    await userEvent.click(screen.getByRole("button", { name: /salva/i }));
+
+    const corpo = ultimoCorpoDiPost("/recipes");
+    expect(corpo.ingredients[0]).toMatchObject({ name: "speck", quantity_text: "100 g" });
   });
 });
 

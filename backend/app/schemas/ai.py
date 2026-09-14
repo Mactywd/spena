@@ -16,6 +16,7 @@ class DraftIngredientOut(BaseModel):
     ingredient_id: uuid.UUID | None
     matched_name: str | None
     confident: bool
+    proposed_category: str | None = None
 
 
 class DraftOut(BaseModel):

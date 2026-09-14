@@ -1,16 +1,37 @@
 import uuid
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe import RecipeSource
 from app.domain.rules import Availability, IngredientRole
 
 
 class RecipeIngredientIn(BaseModel):
-    ingredient_id: uuid.UUID
+    """Un ingrediente esistente, o uno da creare salvando.
+
+    Le due forme stanno in un modello solo perché il salvataggio è uno: due schemi
+    separati significherebbero due rotte, o un `Union` che il frontend deve scegliere
+    riga per riga. Il validatore è ciò che tiene onesta la scelta.
+    """
+
+    ingredient_id: uuid.UUID | None = None
+    name: str | None = Field(default=None, max_length=120)
+    category: IngredientCategory | None = None
     role: IngredientRole
     quantity_text: str | None = Field(default=None, max_length=100)
     note: str | None = Field(default=None, max_length=300)
+
+    @model_validator(mode="after")
+    def _one_of_the_two(self) -> "RecipeIngredientIn":
+        if self.ingredient_id is not None:
+            return self
+        if not self.name:
+            raise ValueError("serve `ingredient_id`, oppure `name` con `category`")
+        if self.category is None:
+            # indovinare «altro» popolerebbe il registro di voci che nessuno correggerà
+            raise ValueError("per creare un ingrediente serve anche `category`")
+        return self
 
 
 class RecipeCreate(BaseModel):

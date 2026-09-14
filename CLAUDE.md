@@ -16,7 +16,7 @@ cook a recipe → whatever ran out goes back on the list.
 does; the code is now the authority on what it does. `README.md` covers running,
 testing and deploying.
 
-Six things reviews here kept rediscovering, written down so the next person does
+Seven things reviews here kept rediscovering, written down so the next person does
 not pay for them again:
 
 - **A test that builds its own object is not testing the one production uses.**
@@ -30,6 +30,13 @@ not pay for them again:
   97 characters arrive as 62) and login then fails always. Both compose files use
   the long form with `format: raw`, which needs Compose 2.30 or newer, and a test
   parses them to keep it that way. Do not "simplify" it.
+- **A `docker compose` without `-f` replaces production with the dev stack.** Both
+  files share the project name `spena`, so `docker compose up -d` on the server
+  swaps the prod containers for the dev ones — same volume, no data lost, and no
+  Traefik labels, so the domain silently stops resolving to the app. Nothing logs
+  an error anywhere: the PWA service worker keeps serving its cached shell while
+  every API call fails, which looks exactly like a broken feature. Deploy is
+  `docker compose -f docker-compose.prod.yml up -d --build --wait`, always.
 - **A CSS selector is not a test surface, and no unit test will tell you.** The
   base-layer rule that styles every text field was first written
   `input[type="text"]`, which matches nothing when the element has no `type`
@@ -101,8 +108,11 @@ port a wrapper rather than a rewrite.
 
 Two external dependencies, each behind its own service with a narrow interface:
 `OpenFoodFactsClient` for barcodes and `EmbeddingProvider` for semantic search.
-Claude (`claude-sonnet-5`) is used only to draft recipes and to propose ingredient
-matches. It never produces nutrient values.
+An LLM (`google/gemma-4-26b-a4b-it`, reached through OpenRouter via
+`services/llm.py`) drafts recipes and decides the import's unknown ingredient
+terms. It never produces nutrient values. There is one provider and one client
+on purpose: a second implementation behind a config switch would never run in
+production, which is the first defect listed above.
 
 ## Conventions worth knowing
 
@@ -112,7 +122,7 @@ matches. It never produces nutrient values.
   continue, never facing an error page.
 - **Tests run on real Postgres**, started through Compose. Not SQLite: the schema
   needs `vector` and `pg_trgm`. No network calls in the suite; Open Food Facts and
-  Claude run against recorded fixtures.
+  the LLM run against recorded fixtures.
 - **e5 embeddings need their prefixes.** `query: ` for searches, `passage: ` for
   documents. Omitting them raises no error and silently degrades result quality.
 - **Missing nutrients stay missing.** Never default an unknown nutrient to zero:
@@ -129,8 +139,14 @@ matches. It never produces nutrient values.
   is finer than the ingredient registry: `Rigatoni` becomes an alias of `pasta`,
   decided once in `import_terms` and written into `ingredient_aliases`. There is
   no second mapping table, and a wrong decision is corrected from the ingredient
-  registry. The spec is
-  `docs/superpowers/specs/2026-09-12-import-ricette-design.md`.
+  registry. **The LLM decides these terms and the queue is the review**: every
+  decision carries `decided_by = "ai"` and has an undo that puts the term, the
+  alias, the created ingredient and the materialized recipes back. A response
+  that cannot be verified against the real registry is never applied — the term
+  stays in the queue. Specs are
+  `docs/superpowers/specs/2026-09-12-import-ricette-design.md` and
+  `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`; the second
+  reverses §8.2 of the first.
 
 ## Roadmap beyond v1
 

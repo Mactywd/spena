@@ -5,6 +5,17 @@
 **Spec madre:** `docs/superpowers/specs/2026-09-11-spena-design.md`, §4 «Fase 2 — ingressi avanzati»
 **Fonte del primo import:** GialloZafferano (`ricette.giallozafferano.it`), deciso dall'utente
 
+> **Nota d'emendamento, 2026-09-13.** Le parti di questo documento su *chi decide*
+> i termini dell'import — che fosse sempre una decisione umana, che Claude si
+> limitasse a proporre, e la rotta `POST /terms/proposals` che quel modello usava —
+> sono superate da
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`: l'AI decide, la coda
+> ne è la revisione, e ogni decisione ha un annullamento. Il testo originale resta
+> sotto com'era, a memoria di cosa si è progettato il 12 settembre; i passaggi
+> superati sono segnalati dove compaiono, con un rimando puntuale. Quel che
+> sopravvive intatto, e che il codice nuovo riusa così com'era: la verifica di ogni
+> risposta contro l'anagrafica vera, prima di applicarla.
+
 ## 1. Obiettivo
 
 Il ricettario contiene 26 ricette, seminate a mano. La domanda su cui è costruita
@@ -27,6 +38,11 @@ Criteri di riuscita, in ordine:
    si conferma. Si può interrompere in qualsiasi momento senza perdere nulla.
 4. L'anagrafica cresce in modo coerente: `pasta` resta `pasta`, e `Rigatoni`
    diventa un suo alias, non un quindicesimo cereale.
+
+> **Superato il 2026-09-13**, criterio 3. La revisione non è più un tocco di
+> conferma su una proposta: l'AI decide da sé, verificata contro l'anagrafica, e il
+> tocco umano resta solo per correggere o per i termini che l'AI non decide. Vedi
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §2.
 
 ## 2. La decisione che governa tutto: il catalogo della fonte è più fine del nostro
 
@@ -53,6 +69,10 @@ stiamo importando.
 Più della metà dei termini compare una volta sola, quindi la coda **non si
 esaurisce da sé** crescendo il corpus: cresce con esso, più lentamente.
 
+> **Superato il 2026-09-13.** «Decisione umana» non è più esatto: decide l'AI, per
+> ogni termine, verificata contro l'anagrafica. Vedi
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §2.
+
 **La decisione presa:** ogni termine distinto della fonte è una decisione umana,
 presa una volta sola e riusata per sempre. Una ricetta che contiene un termine non
 ancora deciso resta scaricata e fuori dal ricettario, finché quel termine non ha
@@ -71,6 +91,11 @@ una decisione. Le alternative scartate, con il motivo:
 che ogni riga arriva con una proposta già scritta, e che decidere un termine
 smaterializza subito le ricette che lo aspettavano. La revisione non è un modulo
 da compilare: è una serie di conferme con un risultato visibile a ogni tocco.
+
+> **Superato il 2026-09-13.** La coda non è più una serie di conferme: l'AI decide
+> da sé la maggior parte dei termini, e resta una coda di conferme solo per quel
+> che l'AI lascia in `pending`. Vedi
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §2.
 
 **Dove vive la decisione presa:** in `ingredient_aliases`, che esiste già. Collegare
 il termine `Rigatoni` all'ingrediente `pasta` scrive l'alias `rigatoni` con
@@ -166,6 +191,10 @@ sitemap ──► [1 scarico] ──► recipe_imports (pending)
                                   └──► [4 materializzazione] ◄┘ ──► recipes + recipe_ingredients
 ```
 
+> **Superato il 2026-09-13.** Lo stadio 3 non riceve più «proposte»: l'AI decide e
+> applica, la revisione è la coda di quel che ha deciso. Vedi
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §2.
+
 Ogni stadio è idempotente, come il seme di oggi: rieseguirlo non duplica nulla.
 
 **1. Scarico** — `python -m app.cli.import_gz --limit N` dentro il container del
@@ -188,6 +217,10 @@ arrivano dal più frequente al più raro. Per ognuno, tre azioni possibili: coll
 un ingrediente esistente, crea un ingrediente nuovo con la sua categoria, ignora.
 Claude pre-compila la proposta; l'utente conferma o corregge. **La proposta non si
 applica mai da sé**: è il principio della spec madre, Claude propone e non decide.
+
+> **Superato il 2026-09-13.** Il principio si è rovesciato: l'AI decide e applica da
+> sé, verificata contro l'anagrafica; la coda mostra cosa ha deciso e permette di
+> annullare. Vedi `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §2.
 
 **4. Materializzazione** — dopo ogni decisione, ogni riga `pending` di
 `recipe_imports` i cui termini sono tutti decisi diventa una `Recipe` vera, con le
@@ -238,7 +271,7 @@ Una riga per ingrediente del catalogo della fonte. È il dizionario.
 | `decision` | varchar(20) | `pending` \| `mapped` \| `ignored` |
 | `ingredient_id` | uuid null | FK `ingredients(id)`, `ON DELETE RESTRICT` |
 | `role_override` | varchar(20) null | `primary` \| `secondary`, §9 |
-| `decided_by` | varchar(20) null | `auto` \| `human` |
+| `decided_by` | varchar(20) null | `auto` \| `human` \| `ai` (dal 2026-09-13) |
 | `decided_at` | timestamptz null | |
 
 Vincoli: `UNIQUE (source, key)`, indice su `(decision, occurrences DESC)`, check su
@@ -353,6 +386,13 @@ Oggi `_match` marca incerto `pomodori pelati` che è un alias esplicito di
 
 ### 8.2 Le proposte di Claude
 
+> **Emendato il 2026-09-13.** Questa sezione diceva «Claude propone e non decide».
+> Non vale più: il fornitore è OpenRouter con `google/gemma-4-26b-a4b-it`, e l'AI
+> **decide**, con la coda che diventa la revisione e un annullamento per ogni
+> decisione. Vedi `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §2.
+> Quel che resta valido di questa sezione è la verifica di ogni risposta contro
+> l'anagrafica vera, che il codice nuovo riusa intatta.
+
 `app/services/recipe_import/terms.py::propose_decisions(session, terms)`
 
 Una chiamata per lotto di termini (massimo 40), modello `claude-sonnet-5`. Riceve i
@@ -399,6 +439,11 @@ Tre regole non ovvie:
    di entrare vuota. Una ricetta senza ingredienti è sempre cucinabile, che è la
    bugia del criterio 1 nella sua forma peggiore.
 
+> **Superato il 2026-09-13**, regola 2. Ignorare non è più solo una scelta umana:
+> è una delle azioni che l'AI stessa può decidere per un termine (`action: "ignore"`
+> in `backend/app/services/recipe_import/decide.py`), sempre annullabile dalla coda.
+> Vedi `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §2.
+
 Il vettore si calcola come già fa il seme, sullo stesso testo (`titolo. descrizione`),
 e la sua assenza non blocca niente.
 
@@ -437,8 +482,15 @@ a mano e quelle dell'AI continuano a dichiarare il ruolo per riga, come oggi.
 |---|---|
 | `GET /status` | `{fetched, pending_recipes, imported, skipped, pending_terms}` |
 | `GET /terms?limit=20` | i termini `pending`, dal più frequente: `{id, display_name, occurrences, suggestion, waiting_titles}` |
-| `POST /terms/proposals` | corpo `{term_ids: [...]}` → `{proposals: [...]}`; `503` se Claude non risponde |
+| ~~`POST /terms/proposals`~~ | **cancellata.** Corpo `{term_ids: [...]}` → `{proposals: [...]}`; `503` se Claude non risponde |
 | `POST /terms/{id}/decision` | corpo `{action, ...}` → `{unlocked, remaining_terms}` |
+
+> **Superato il 2026-09-13.** `POST /terms/proposals` non esiste più — la prova è
+> `backend/tests/api/test_imports_decide.py::test_la_vecchia_rotta_delle_proposte_non_esiste_piu`,
+> che verifica il 404. Al suo posto decide e applica `POST /terms/decide`; quel che
+> ha deciso si rilegge da `GET /terms?decided_by=ai` e si annulla da
+> `POST /terms/{id}/undo`. Vedi
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §5.
 
 `suggestion` è l'aggancio testuale (`{ingredient_id, name, certain}`) oppure nullo.
 `waiting_titles` sono al massimo tre titoli di ricette in attesa di quel termine:
@@ -458,6 +510,11 @@ anagrafica, col messaggio che dice di collegare invece di creare. Le proposte
 stanno in una rotta separata dall'elenco di proposito: la coda deve caricarsi
 subito, e il fallimento di Claude non deve poter svuotare una schermata che
 funziona anche senza.
+
+> **Superato il 2026-09-13.** Non c'è più una rotta di sole proposte da tenere
+> separata: `POST /terms/decide` decide e applica, e un `503` del fornitore lascia
+> comunque la coda manuale intatta — lo stesso principio, ottenuto senza quella
+> rotta. Vedi `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §5.
 
 ### 10.2 Schermate
 
@@ -562,6 +619,11 @@ Cosa difende ogni test:
 | coda (frontend) | un termine mostra proposta, ricette in attesa e tre azioni |
 | coda (frontend) | Claude non disponibile: la coda funziona e lo dichiara |
 | ricettario (frontend) | foto, tempo e filtro per categoria; una ricetta senza foto non si rompe |
+
+> **Superato il 2026-09-13**, riga «Claude non disponibile». Il fornitore è
+> OpenRouter, non Claude, e l'indisponibilità (`LlmUnavailable`, `503`) lascia la
+> coda manuale intatta esattamente come qui previsto. Vedi
+> `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`, §3.1 e §5.
 
 I test girano su Postgres vero, avviato da Compose, come tutto il resto.
 
