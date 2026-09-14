@@ -30,12 +30,14 @@ class TermOut(BaseModel):
     # torta e in un arrosto
     waiting_titles: list[str]
     # Valorizzati solo per un termine già deciso. Servono all'elenco della revisione,
-    # che deve dire in una riga cosa è stato fatto: «Rigatoni → pasta», «Speck →
-    # creato, carne», «Acqua → ignorato». `decided_action` distingue "map" da
-    # "created" perché disfare un ingrediente creato ha una conseguenza in più —
-    # l'ingrediente si cancella — e chi legge deve saperlo prima di toccare.
+    # che deve dire in una riga cosa è stato fatto: «Rigatoni → pasta», «Acqua →
+    # ignorato». `decided_action` distingue solo "map" da "ignored": non esiste un
+    # terzo valore "created", perché nessun fatto scritto oggi permette di dedurre se
+    # l'ingrediente di un "map" esisteva già o è nato con questa decisione (vedi
+    # `_decided_action` in `app/api/imports.py`, che spiega perché e perché la
+    # deduzione che sembra ovvia è sbagliata). "map" quindi copre entrambi i casi.
     decided_by: str | None = None
-    decided_action: Literal["map", "created", "ignored"] | None = None
+    decided_action: Literal["map", "ignored"] | None = None
     decided_name: str | None = None
 
 

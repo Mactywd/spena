@@ -111,15 +111,27 @@ async def read_terms(
 
 
 def _decided_action(term: ImportTerm) -> str | None:
-    """«map» o «created» non si distinguono guardando il termine, e non serve.
+    """«map» o «creato» non si distinguono, e non è una lacuna che si può colmare qui.
 
-    `import_terms` non registra chi ha creato l'ingrediente, e aggiungere una colonna
-    per dirlo violerebbe la regola «nessuna migrazione». Si deduce da un fatto vero e
-    già scritto: un ingrediente il cui unico alias dell'import è il nome di questo
-    termine è nato con questa decisione. Il caso ambiguo — due termini sullo stesso
-    ingrediente — ricade su «map», che è la descrizione prudente: dice meno, non dice
-    il falso, e l'annullamento sa comunque cosa fare perché il controllo sugli usi è
-    suo e non di questa etichetta.
+    `import_terms` non registra se la decisione ha creato l'ingrediente o ne ha usato
+    uno già in anagrafica: quel fatto esiste solo nell'istante di `decide_terms`
+    (o della decisione umana) e non è mai scritto da nessuna parte. Distinguerlo
+    vorrebbe una colonna, e questo piano vieta ogni migrazione — quindi la
+    distinzione non si calcola, si rinuncia a promettere di poterla fare.
+
+    Non è nemmeno vero che si possa dedurre da un fatto già scritto. Sembra che si
+    possa: «un ingrediente il cui unico alias dell'import è il nome di questo
+    termine è nato con questa decisione». Non regge. «Rigatoni» che diventa un `map`
+    su «pasta», ingrediente esistente da prima, scrive comunque l'alias `rigatoni`
+    con `source="import"` (vedi `decide_terms`): se quello è l'unico alias «import»
+    di pasta, la deduzione chiamerebbe «creato» un ingrediente che esisteva già.
+    L'alias non distingue le due storie, perché entrambe lo scrivono allo stesso
+    modo.
+
+    Il valore che segue, quindi, è "map" per ogni decisione che punta a un
+    ingrediente — creato o già esistente che sia — e "ignored" per chi non tiene
+    l'ingrediente in dispensa. Chi deve sapere se un annullamento cancellerà un
+    ingrediente lo scopre da cosa fa `undo_decision`, non da questa etichetta.
     """
     if term.decision == TermDecision.IGNORED:
         return "ignored"
