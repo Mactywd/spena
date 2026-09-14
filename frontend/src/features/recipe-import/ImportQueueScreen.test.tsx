@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { ImportQueueScreen } from "./ImportQueueScreen";
+import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import type { ImportTerm } from "../../domain/types";
 
 const TERMINI: ImportTerm[] = [
@@ -31,7 +32,14 @@ const TERMINI: ImportTerm[] = [
 
 const STATO_NORMALE = { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 };
 
-function renderScreen(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+// Il predicato vero di App.tsx, non un `retry: false` di comodo: CLAUDE.md lo dice
+// verbatim (primo punto) — un client che si costruisce da sé non prova niente sul
+// client vero. Con successi ovunque (il caso della quasi totalità dei test di
+// questo file) non cambia niente: il predicato conta solo quando una query fallisce
+// per davvero, ed è lì che deve essere questo e non un altro.
+function renderScreen(
+  client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } })
+) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -297,15 +305,24 @@ describe("coda di revisione dell'import", () => {
     ).toBeInTheDocument();
   });
 
-  it("se la coda non risponde lo dice insieme a cosa resta possibile", async () => {
-    stubFetch((path) => {
-      if (path.includes("/imports/terms")) return [{ detail: "rotto" }, 500];
-      return [{}, 500];
-    });
-    renderScreen();
+  it(
+    "se la coda non risponde lo dice insieme a cosa resta possibile",
+    async () => {
+      stubFetch((path) => {
+        if (path.includes("/imports/terms")) return [{ detail: "rotto" }, 500];
+        return [{}, 500];
+      });
+      renderScreen();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/ricettario/i);
-  });
+      // Con il predicato vero (sopra) un 500 permanente si vede solo dopo i due
+      // tentativi che quel predicato concede, non al primo giro: il timeout più
+      // lungo copre quell'attesa reale, non la nasconde.
+      expect(await screen.findByRole("alert", {}, { timeout: 8000 })).toHaveTextContent(
+        /ricettario/i
+      );
+    },
+    10000
+  );
 
   it("mostra l'elenco di quel che l'AI ha deciso, con il suo annulla", async () => {
     // il finto di questo file serve già /imports/terms: aggiungi la risposta per
@@ -396,6 +413,117 @@ describe("coda di revisione dell'import", () => {
     });
   });
 
+  it("un 409 sull'annullamento che torna anche dopo `force` è un rifiuto: il dialogo si chiude", async () => {
+    // Il termine è già in coda (PENDING): il backend controlla questo *prima* di
+    // guardare `force`, quindi "Rifai comunque" non lo supera mai. Se questo 409
+    // fosse letto come il primo (quello che chiede conferma), il dialogo
+    // resterebbe aperto per sempre: l'anello infinito che `force` esiste per
+    // evitare, raggiunto da un'altra porta. Un test che guardasse solo l'alert
+    // passerebbe anche col dialogo ancora lì: la prova vera è che sparisca.
+    const decisi: ImportTerm[] = [
+      {
+        id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+        waiting_titles: [], decided_by: "ai", decided_action: "map",
+        decided_name: "pasta",
+      },
+    ];
+    stubFetch((path, method) => {
+      if (path.includes("/undo") && method === "POST") {
+        return [
+          { detail: "«Rigatoni» è già in coda: non c'è nessuna decisione da disfare." },
+          409,
+        ];
+      }
+      if (path.includes("decided_by=ai")) return [decisi, 200];
+      if (path.includes("/imports/terms")) return [[], 200];
+      if (path.includes("/imports/status")) return [STATO_NORMALE, 200];
+      return [{}, 404];
+    });
+    renderScreen();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
+    );
+    await screen.findByRole("alertdialog");
+
+    await userEvent.click(screen.getByRole("button", { name: /rifai comunque/i }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(
+      await screen.findByText(/«Rigatoni» è già in coda: non c'è nessuna decisione da disfare\./)
+    ).toBeInTheDocument();
+  });
+
+  it("un 500 sull'annullamento si vede, invece di sembrare un tocco ignorato", async () => {
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "pasta",
+        },
+      ],
+      undoStatus: 500,
+      undoDetail: "rotto",
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
+    );
+
+    expect(
+      await screen.findByText(
+        /Non sono riuscito ad annullare la decisione\. Niente è andato perso: riprova\./
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("un annullamento riuscito dice quante ricette sono tornate in coda", async () => {
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "pasta",
+        },
+      ],
+      undoStatus: 200,
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
+    );
+
+    // `UndoOut` porta `recipes_requeued` e `ingredient_deleted`: la revisione
+    // dell'annullamento (l'unica conferma distruttiva della feature) non dice
+    // cosa ha distrutto se questi due numeri restano non mostrati.
+    expect(
+      await screen.findByText("Nessuna ricetta è tornata in coda.")
+    ).toBeInTheDocument();
+  });
+
+  it("l'elenco «Deciso dall'AI» avvisa che annullare può cancellare l'ingrediente creato", async () => {
+    // `decided_action` non distingue "map" da "creato" (nessun fatto scritto lo
+    // permette): la promessa che questo lascia cadere si sostituisce con qualcosa
+    // di sempre vero, invece di sparire e basta.
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "pasta",
+        },
+      ],
+    });
+
+    await screen.findByText("Rigatoni");
+    expect(screen.getByText(/l'annullamento lo cancella/i)).toBeInTheDocument();
+  });
+
   it("chiedere all'AI applica la coda e dice cosa ha sbloccato", async () => {
     const spy = renderQueue({
       askAiResult: [
@@ -431,5 +559,48 @@ describe("coda di revisione dell'import", () => {
     ).not.toBeInTheDocument();
     // i controlli a mano restano lì, invariati dal fallimento dell'AI
     expect(screen.getByRole("button", { name: /Forse «pasta»/i })).toBeEnabled();
+  });
+
+  it("un giro dell'AI che non decide niente lo dice, nominando il lavoro rimasto", async () => {
+    // Il caso che conta: `applied: 0` è un 200, non un guasto — il backend assorbe
+    // ogni modello giù per termine e risponde comunque. Letto come "non è successo
+    // niente" invece che "l'AI ha rinunciato su tutto", l'utente ripreme il
+    // bottone: un'altra chiamata a pagamento. Il messaggio deve nominare i termini
+    // rimasti, non fermarsi alla frase sull'sbloccato (che qui varrebbe zero
+    // comunque e non distinguerebbe i due casi).
+    renderQueue({
+      askAiResult: [
+        { applied: 0, created: 0, ignored: 0, still_pending: 2, unlocked: 0, remaining_terms: 2 },
+        200,
+      ],
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+
+    expect(
+      await screen.findByText(/non ha deciso nessuno dei 2 termini/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/si decidono a mano qui sotto/i)).toBeInTheDocument();
+    expect(screen.getByText(/costa un'altra chiamata al modello/i)).toBeInTheDocument();
+  });
+
+  it("una decisione a mano dopo un giro dell'AI non mostra più i contatori dell'AI", async () => {
+    // Lo stato è condiviso fra `askAi` e `decide`: senza distinguerli, un tocco a
+    // mano dopo un giro dell'AI o resterebbe sulla frase dell'AI, o (peggio)
+    // mostrerebbe i SUOI numeri come se fossero l'esito del tocco.
+    renderQueue({
+      askAiResult: [
+        { applied: 1, created: 0, ignored: 0, still_pending: 1, unlocked: 3, remaining_terms: 1 },
+        200,
+      ],
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+    await screen.findByText(/L'AI ha deciso/i);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Forse «pasta»/i }));
+
+    await waitFor(() => expect(screen.getByText("Sbloccate 12 ricette.")).toBeInTheDocument());
+    expect(screen.queryByText(/L'AI ha deciso/i)).not.toBeInTheDocument();
   });
 });
