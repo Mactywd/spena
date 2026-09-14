@@ -287,7 +287,7 @@ export function AiDraftScreen() {
           {propose.isPending ? "Propongo…" : "Proponi"}
         </button>
         <p className="text-xs text-ink-soft">
-          Chiedere a Claude è facoltativo: precompila il modulo qui sotto, che funziona anche da
+          Chiedere all'AI è facoltativo: precompila il modulo qui sotto, che funziona anche da
           solo.
         </p>
 
@@ -392,7 +392,12 @@ export function AiDraftScreen() {
                   </div>
                 )}
 
-                {line.ingredientId !== null && (
+                {/* Stessa condizione di `savable` e della casella di inclusione qui
+                    sopra: una riga "da creare salvando" non ha un `ingredientId`
+                    ancora, ma è comunque salvabile, e senza questo campo non
+                    poteva portare "100 g" — l'unico modo per scriverla era già
+                    fissata dalla bozza, non modificabile. */}
+                {(line.ingredientId !== null || line.proposedCategory !== null) && (
                   <div className="flex items-end gap-2">
                     <label className="flex-1 text-xs text-ink-soft">
                       Quantità

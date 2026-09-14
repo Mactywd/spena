@@ -540,6 +540,29 @@ describe("AiDraftScreen", () => {
     const corpo = ultimoCorpoDiPost("/recipes");
     expect(corpo.ingredients).toHaveLength(0);
   });
+
+  // Fix round 2: il campo Quantità era condizionato su `ingredientId !== null`,
+  // la stessa condizione già corretta una volta per la casella di inclusione — una
+  // riga "da creare salvando" (`ingredientId: null`, `proposedCategory` valorizzato)
+  // non aveva NESSUN campo con cui scrivere "100 g". L'assert è sul CORPO della
+  // POST, non sul render dell'input: un campo che compare ma la cui digitazione
+  // non arriva al salvataggio supererebbe un test che guarda solo il DOM.
+  it("un ingrediente da creare porta la sua quantità nel corpo salvato", async () => {
+    await mostraBozzaCon([
+      {
+        raw_name: "speck", role: "primary", quantity_text: null,
+        ingredient_id: null, matched_name: null, confident: false,
+        proposed_category: "carne",
+      },
+    ]);
+
+    const quantita = await screen.findByLabelText("Quantità per speck");
+    await userEvent.type(quantita, "100 g");
+    await userEvent.click(screen.getByRole("button", { name: /salva/i }));
+
+    const corpo = ultimoCorpoDiPost("/recipes");
+    expect(corpo.ingredients[0]).toMatchObject({ name: "speck", quantity_text: "100 g" });
+  });
 });
 
 // La chiave `["recipes"]` invalida per prefisso ogni voce `["recipes", termine,
