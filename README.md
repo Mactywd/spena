@@ -376,6 +376,13 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `OPENROUTER_PROVIDER_ONLY` | vuoto | vuoto: instradamento per prezzo scelto da OpenRouter. Valorizzata (es. `darkbloom`): pinni il provider a mano, e perdi la caduta automatica sul successivo |
 | `LLM_TIMEOUT_SECONDS` | `60` | oltre il quale una chiamata al modello si considera persa |
 | `LLM_MAX_CONCURRENCY` | `8` | quante domande in volo nel riconoscimento parallelo dei termini |
+| `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
+| `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
+| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale; cambiandolo va rimisurata `SEMANTIC_MAX_DISTANCE` (vedi sotto) |
+| `EMBEDDING_ENDPOINT` | vuoto | solo con `EMBEDDING_BACKEND=http` |
+| `OFF_BASE_URL` | api ufficiale di Open Food Facts | sovrascrivibile nei test |
+| `OFF_TIMEOUT_SECONDS` | `3` | oltre il quale si degrada all'inserimento manuale |
+| `SPENA_HOST` | nessuno | solo in produzione: host pubblicato da Traefik |
 
 **Quanto costa ogni pezzo dell'app** non lo dicono i log di OpenRouter. Per loro
 un'app è un indirizzo — `HTTP-Referer` è l'identificatore, `X-Title` ne cambia solo il
@@ -384,13 +391,6 @@ di spesa separate, ma una sola app con il nome che sfarfalla. La divisione la ti
 tabella `llm_calls`: una riga per chiamata, con la sezione che l'ha fatta e il costo
 che OpenRouter dichiara in `usage.cost` nella risposta stessa. I fallimenti si
 registrano come tali, perché un modello giù è spesa sprecata che si vuole vedere.
-| `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
-| `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
-| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale; cambiandolo va rimisurata `SEMANTIC_MAX_DISTANCE` (vedi sotto) |
-| `EMBEDDING_ENDPOINT` | vuoto | solo con `EMBEDDING_BACKEND=http` |
-| `OFF_BASE_URL` | api ufficiale di Open Food Facts | sovrascrivibile nei test |
-| `OFF_TIMEOUT_SECONDS` | `3` | oltre il quale si degrada all'inserimento manuale |
-| `SPENA_HOST` | nessuno | solo in produzione: host pubblicato da Traefik |
 
 Nessuna di queste, mancando, porta a un vicolo cieco nell'interfaccia: senza
 `OPENROUTER_API_KEY` la ricetta si scrive a mano e i termini dell'import si decidono
