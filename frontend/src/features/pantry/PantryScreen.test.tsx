@@ -425,8 +425,12 @@ describe("PantryScreen", () => {
       const fetchMock = stubRoutedFetch((path, init) => {
         if (init?.method === "PATCH") {
           const id = path.split("/").pop()!;
-          if (JSON.parse(String(init.body)).archived) archived.add(id);
-          else archived.delete(id);
+          // solo `archived` decide: il server vero non disarchivia per una PATCH
+          // che parla d'altro (il cursore), e uno stub che lo facesse mentirebbe
+          // al primo test che qui muovesse un cursore
+          const corpo = JSON.parse(String(init.body));
+          if (corpo.archived === true) archived.add(id);
+          else if (corpo.archived === false) archived.delete(id);
           return [ITEMS.find((item) => item.id === id)!, 200];
         }
         return [ITEMS.filter((item) => !archived.has(item.id)), 200];

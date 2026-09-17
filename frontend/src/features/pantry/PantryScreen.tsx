@@ -195,6 +195,12 @@ export function PantryScreen() {
   // doppio clic non deve mandare due PATCH di annulla (innocuo perché la PATCH
   // è idempotente, ma inutile) né due POST di restock (quello non è idempotente,
   // e `shopping_list_items` non ha un vincolo unico che lo rimedi a valle).
+  // Quel che l'insieme NON copre: `variables` tiene solo l'ultima invocazione di
+  // ciascuna mutazione, quindi due righe che lanciano la STESSA mutazione insieme
+  // lasciano sbloccata la prima. Servirebbe un conteggio per id (useMutationState);
+  // oggi non lo facciamo perché richiede due gesti in righe diverse entro la
+  // durata di una richiesta, ma il caso esiste e questa riga esiste per non
+  // lasciar credere il contrario.
   const busyIds = new Set<string>();
   if (change.isPending) busyIds.add(change.variables.id);
   if (archive.isPending) busyIds.add(archive.variables.id);
