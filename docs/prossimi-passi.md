@@ -35,8 +35,12 @@ Sezioni primarie di oggi: **Lista, Dispensa, Ricette** (tre schede in
 
 **Le cinque voci indipendenti di Parte VIII** — S1, S2, R1, R3, e in parte T1 —
 sono implementate, verdi, **entrate in `master` e distribuite** il 2026-09-17
-(migrazione `0006` applicata in produzione). Dove questo file dice «FATTO
-2026-09-17» qui sotto, intende codice che gira.
+(migrazione `0006` applicata in produzione). Nello stesso giorno, e con un secondo
+deploy, sono andati in produzione anche i due ritocchi che seguirono la verifica a
+mano: la domanda del rientro in lista estesa al giallo (S2) e il filtro per
+ingrediente rifatto al plurale (R3), quest'ultimo **senza migrazioni**. Dove questo
+file dice «FATTO 2026-09-17» qui sotto, intende codice che gira su
+`spena.mattiagirellini.com`, non codice fermo in un ramo.
 
 ---
 
