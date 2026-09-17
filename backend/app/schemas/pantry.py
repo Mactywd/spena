@@ -32,3 +32,6 @@ class PantryItemPatch(BaseModel):
     # annullabile, e non `bool = False`: «non l'ho detto» e «mettilo a falso» sono
     # due richieste diverse, e la seconda è l'annulla della X rossa
     archived: bool | None = None
+    # dove il dito ha lasciato il cursore. Lo stato non si manda: lo ricava il
+    # dominio, ed è l'unico modo perché i due non possano contraddirsi
+    fill_percent: int | None = Field(default=None, ge=0, le=100)

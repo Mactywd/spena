@@ -1,3 +1,4 @@
+import pytest
 import pytest_asyncio
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
@@ -228,3 +229,56 @@ async def test_disarchiviare_una_voce_inesistente_e_404(logged_client):
         f"/api/v1/pantry/{uuid.uuid4()}", json={"archived": False}
     )
     assert risposta.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "posizione, stato_atteso",
+    [(0, "finished"), (15, "low"), (30, "low"), (31, "available"), (100, "available")],
+)
+async def test_la_posizione_arriva_con_lo_stato_gia_ricavato(
+    logged_client, db_session, dispensa, posizione, stato_atteso
+):
+    """Il client manda dove ha lasciato il dito; lo stato lo decide il dominio.
+
+    È la riga che tiene la regola dalla parte giusta: se lo stato lo calcolasse il
+    frontend, due schermi potrebbero non essere d'accordo su cosa vuol dire «quasi
+    finito», e la cucinabilità delle ricette dipenderebbe da quale dei due ha
+    scritto per ultimo.
+    """
+    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+
+    risposta = await logged_client.patch(
+        f"/api/v1/pantry/{item.id}", json={"fill_percent": posizione}
+    )
+    assert risposta.status_code == 200
+    assert risposta.json()["fill_percent"] == posizione
+    assert risposta.json()["status"] == stato_atteso
+
+
+async def test_una_posizione_fuori_scala_e_422(logged_client, db_session, dispensa):
+    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+    risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"fill_percent": 101})
+    assert risposta.status_code == 422
+
+
+async def test_cambiare_lo_stato_a_mano_azzera_la_posizione(
+    logged_client, db_session, dispensa
+):
+    """Una posizione lasciata lì sarebbe una bugia.
+
+    Il foglio di cottura cambia lo stato senza toccare nessun cursore: se la
+    posizione restasse a 80 mentre lo stato è «finito», la dispensa mostrerebbe un
+    barattolo pieno per qualcosa che non c'è più. Sconosciuta è la verità.
+    """
+    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+    await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"fill_percent": 80})
+
+    risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"status": "finished"})
+    assert risposta.json()["status"] == "finished"
+    assert risposta.json()["fill_percent"] is None

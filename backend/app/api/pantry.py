@@ -14,6 +14,7 @@ from app.repositories.pantry import (
     archive_item,
     availability_map,
     list_pantry,
+    set_fill,
     set_status,
     unarchive_item,
 )
@@ -97,6 +98,10 @@ async def patch(
                 if payload.archived
                 else await unarchive_item(session, item_id)
             )
+        elif payload.fill_percent is not None:
+            # prima dello stato: una richiesta che porta entrambi viene dal cursore,
+            # e lì lo stato è una conseguenza, non una seconda opinione
+            item = await set_fill(session, item_id, payload.fill_percent)
         elif payload.status is not None:
             item = await set_status(session, item_id, payload.status)
         else:
