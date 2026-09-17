@@ -332,3 +332,50 @@ async def test_una_decisione_umana_resiste_a_un_nuovo_sync(
     await db_session.refresh(termine)
     assert termine.decision == TermDecision.MAPPED
     assert termine.ingredient_id == pasta.id
+
+
+async def test_collegare_un_termine_a_una_voce_non_alimentare_e_un_422(
+    logged_client, db_session, in_attesa
+):
+    from app.repositories.ingredients import create_ingredient
+
+    sapone = await create_ingredient(db_session, "sapone", "Sapone", "igiene")
+    termine = (
+        await db_session.execute(
+            select(ImportTerm).where(ImportTerm.display_name == "Bottarga")
+        )
+    ).scalars().one()
+
+    response = await logged_client.post(
+        f"/api/v1/imports/terms/{termine.id}/decision",
+        json={"action": "map", "ingredient_id": str(sapone.id)},
+    )
+
+    assert response.status_code == 422
+    assert "Sapone" in response.json()["detail"]
+    await db_session.refresh(termine)
+    assert termine.decision == TermDecision.PENDING
+
+
+async def test_creare_una_voce_non_alimentare_da_un_termine_e_un_422(
+    logged_client, db_session, in_attesa
+):
+    termine = (
+        await db_session.execute(
+            select(ImportTerm).where(ImportTerm.display_name == "Bottarga")
+        )
+    ).scalars().one()
+
+    response = await logged_client.post(
+        f"/api/v1/imports/terms/{termine.id}/decision",
+        json={"action": "create", "name": "sapone", "display_name": "Sapone",
+              "category": "igiene"},
+    )
+
+    assert response.status_code == 422
+    creati = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "sapone"))
+    ).scalars().all()
+    assert creati == []
+    await db_session.refresh(termine)
+    assert termine.decision == TermDecision.PENDING

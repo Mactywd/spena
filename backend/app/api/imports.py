@@ -23,6 +23,7 @@ from app.core.db import get_session
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
+from app.domain.rules import NON_FOOD_CATEGORIES, IngredientKind
 from app.repositories.imports import (
     counts,
     decided_terms,
@@ -216,11 +217,30 @@ async def decide(
             ingredient = await session.get(Ingredient, payload.ingredient_id)
             if ingredient is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente")
+            # Presto, e non alla materializzazione: questa rotta chiama
+            # materialize_ready nella stessa richiesta, e quel ciclo non protegge
+            # le singole ricette — una riga non alimentare farebbe fallire tutto
+            # il lotto pronto, non solo la ricetta colpevole, con la decisione già
+            # scritta. Un rifiuto a fine lotto è il vicolo cieco peggiore.
+            if ingredient.kind == IngredientKind.NON_FOOD:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    f"«{ingredient.display_name}» non è un alimento: un termine di "
+                    "ricetta non può collegarsi a una voce non alimentare. "
+                    "Scegline un'altra, oppure ignora il termine.",
+                )
         else:
             if not payload.name or payload.category is None:
                 raise HTTPException(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     "per creare un ingrediente servono nome e categoria",
+                )
+            if payload.category in NON_FOOD_CATEGORIES:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    f"«{payload.category}» non è un reparto alimentare: un termine "
+                    "di ricetta non può creare una voce non alimentare. "
+                    "Scegli un altro reparto, oppure ignora il termine.",
                 )
             existing = (
                 await session.execute(
