@@ -57,6 +57,32 @@ def is_cookable(requirements: Iterable[tuple[IngredientRole, Availability]]) -> 
     return missing_count(requirements) == 0
 
 
+# Il secondo pallino del cursore della dispensa: fin qui è «quasi finito», oltre è
+# «disponibile». 30 e non 50: la zona gialla deve dire «comincia a mancare», non
+# «siamo a metà».
+#
+# È una soglia display con una conseguenza che display non è: `low` è l'unico stato
+# che cambia la risposta a «questa ricetta si può cucinare?» (vedi `is_satisfied`),
+# quindi spostare questo numero sposta quali ricette risultano cucinabili. Va fatto
+# sapendolo, e non in un foglio di stile.
+LOW_MAX_FILL = 30
+
+
+def status_for_fill(fill_percent: int) -> PantryStatus:
+    """Dove sta il cursore → quale dei tre stati è la verità.
+
+    La posizione è un'indicazione a occhio, utile in negozio per ricordarsi quanto
+    ne resta; lo stato è l'unico giudizio su cui il resto dell'app ragiona. Vive qui
+    e non nel frontend per la ragione di ogni altra regola di questo modulo: il
+    client chiede, non calcola.
+    """
+    if fill_percent <= 0:
+        return PantryStatus.FINISHED
+    if fill_percent <= LOW_MAX_FILL:
+        return PantryStatus.LOW
+    return PantryStatus.AVAILABLE
+
+
 # Le categorie i cui ingredienti si riducono senza snaturare il piatto. Sono valori
 # di IngredientCategory, scritti come stringhe perché questo modulo è puro e non
 # importa i modelli; un test del dominio li confronta con l'enum per impedire

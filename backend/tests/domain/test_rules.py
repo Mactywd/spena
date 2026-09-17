@@ -2,15 +2,17 @@ import pytest
 
 from app.db.models.ingredient import IngredientCategory
 from app.domain.rules import (
+    LOW_MAX_FILL,
     Availability,
-    SECONDARY_CATEGORIES,
     IngredientRole,
     PantryStatus,
+    SECONDARY_CATEGORIES,
     availability_of,
     default_role,
     is_cookable,
     is_satisfied,
     missing_count,
+    status_for_fill,
 )
 
 AVAILABLE, LOW, FINISHED = PantryStatus.AVAILABLE, PantryStatus.LOW, PantryStatus.FINISHED
@@ -129,3 +131,31 @@ def test_le_categorie_secondarie_esistono_in_anagrafica():
     diventare nomi di categorie che non esistono più, e la deduzione smetterebbe
     di funzionare senza che nessun test se ne accorga."""
     assert SECONDARY_CATEGORIES <= {str(value) for value in IngredientCategory}
+
+
+@pytest.mark.parametrize(
+    "posizione, atteso",
+    [
+        (0, PantryStatus.FINISHED),
+        (1, PantryStatus.LOW),
+        (15, PantryStatus.LOW),
+        (LOW_MAX_FILL, PantryStatus.LOW),
+        (LOW_MAX_FILL + 1, PantryStatus.AVAILABLE),
+        (100, PantryStatus.AVAILABLE),
+    ],
+)
+def test_la_posizione_del_cursore_decide_lo_stato(posizione, atteso):
+    assert status_for_fill(posizione) is atteso
+
+
+def test_le_tre_zone_coprono_tutto_e_non_tornano_indietro():
+    """Nessun buco fra 0 e 100, e nessuna inversione.
+
+    Una soglia scritta con un `<` al posto di un `<=` lascia un valore scoperto o
+    crea un'isola gialla dentro il verde, e un test a campione può non passarci
+    sopra. Qui si controllano tutti e 101 i valori.
+    """
+    ordine = {PantryStatus.FINISHED: 0, PantryStatus.LOW: 1, PantryStatus.AVAILABLE: 2}
+    gradini = [ordine[status_for_fill(posizione)] for posizione in range(0, 101)]
+    assert gradini == sorted(gradini)
+    assert set(gradini) == {0, 1, 2}
