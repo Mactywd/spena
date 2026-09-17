@@ -64,8 +64,13 @@ export function PantryRow({
     setRestockFailed(false);
     try {
       const updated = await onFill(percent);
-      // «finito» lo dice il server, non una soglia ricopiata qui
-      setAsking(updated.status === "finished");
+      // Quali stati chiedono lo dice il server, non una soglia ricopiata qui.
+      // Chiede anche il giallo, e non solo lo zero: «quasi finito» è il momento in
+      // cui ricomprare è ancora in tempo, mentre allo zero te ne accorgi in cucina.
+      // I due stati sono scritti per esteso invece di «diverso da disponibile»:
+      // se un giorno ne nascesse un quarto, questa riga deve smettere di compilare
+      // e non decidere da sé che anche quello vuole la domanda.
+      setAsking(updated.status === "finished" || updated.status === "low");
     } catch {
       // il guasto lo mostra già lo schermo, accanto a questa riga
       setAsking(false);

@@ -544,6 +544,24 @@ describe("PantryScreen", () => {
     expect(screen.getByRole("button", { name: "No" })).toBeDefined();
   });
 
+  it("anche il giallo chiede se rimettere la voce in lista, non solo lo zero", async () => {
+    // «quasi finito» è il momento buono per ricomprare: aspettare lo zero vuol dire
+    // accorgersene in cucina invece che in corsia. Lo stato lo dice il server, come
+    // per «finito» — la soglia delle tre zone non si ricopia qui.
+    stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "low", fill_percent: 20 }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "20" } });
+    fireEvent.pointerUp(cursore);
+
+    expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Sì" })).toBeDefined();
+  });
+
   it("finire una voce non scrive in lista da sé: solo il sì lo fa", async () => {
     // è il punto della decisione: nessuna sezione ne modifica un'altra in silenzio
     const fetchMock = stubRoutedFetch((_path, init) => {
