@@ -18,7 +18,8 @@ from app.repositories.pantry import (
     set_status,
     unarchive_item,
 )
-from app.schemas.pantry import PantryItemCreate, PantryItemOut, PantryItemPatch
+from app.schemas.pantry import PantryItemCreate, PantryItemOut, PantryItemPatch, RestockOut
+from app.services.restock import restock
 
 router = APIRouter(
     prefix="/api/v1/pantry", tags=["pantry"], dependencies=[Depends(require_session)]
@@ -111,3 +112,21 @@ async def patch(
     await session.commit()
     await session.refresh(item, ["ingredient", "product"])
     return _to_out(item)
+
+
+@router.post("/{item_id}/restock", response_model=RestockOut)
+async def restock_item(
+    item_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> RestockOut:
+    """Rimette in lista quel che è finito, se non c'è già.
+
+    Una rotta sua e non un campo della PATCH: spostare un cursore e comprare una
+    cosa sono due gesti, e l'utente ne compie il secondo rispondendo a una domanda.
+    Nessuna sezione ne modifica un'altra in silenzio.
+    """
+    item = await session.get(PantryItem, item_id)
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "voce inesistente")
+    added = await restock(session, item)
+    await session.commit()
+    return RestockOut(added=added)

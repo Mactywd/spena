@@ -282,3 +282,29 @@ async def test_cambiare_lo_stato_a_mano_azzera_la_posizione(
     risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"status": "finished"})
     assert risposta.json()["status"] == "finished"
     assert risposta.json()["fill_percent"] is None
+
+
+async def test_la_rotta_di_rientro_scrive_in_lista_e_lo_dice(
+    logged_client, db_session, dispensa
+):
+    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.FINISHED)
+    db_session.add(item)
+    await db_session.flush()
+
+    risposta = await logged_client.post(f"/api/v1/pantry/{item.id}/restock")
+    assert risposta.status_code == 200
+    assert risposta.json() == {"added": True}
+
+    lista = (await logged_client.get("/api/v1/shopping-list")).json()
+    assert [voce["raw_text"] for voce in lista] == ["pomodoro"]
+
+    # una seconda volta non duplica, e lo dice invece di fingere di aver scritto
+    ancora = await logged_client.post(f"/api/v1/pantry/{item.id}/restock")
+    assert ancora.json() == {"added": False}
+
+
+async def test_il_rientro_di_una_voce_inesistente_e_404(logged_client):
+    import uuid
+
+    risposta = await logged_client.post(f"/api/v1/pantry/{uuid.uuid4()}/restock")
+    assert risposta.status_code == 404

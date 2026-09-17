@@ -106,6 +106,29 @@ async def test_no_restock_means_no_list_entry(logged_client, db_session, scenari
     assert items == []
 
 
+async def test_cooking_azzera_la_posizione_del_cursore(logged_client, db_session, scenario):
+    """Uno stato deciso qui non deve lasciare il cursore a mentire.
+
+    Prima della cottura il barattolo era a 80; la cottura lo dichiara «finito»
+    scrivendo lo stato direttamente, non passando da `set_status`. Se
+    `fill_percent` restasse a 80, la dispensa mostrerebbe un barattolo pieno per
+    qualcosa che non c'è più.
+    """
+    scenario["pomodoro_item"].fill_percent = 80
+    await db_session.flush()
+
+    await logged_client.post(
+        f"/api/v1/recipes/{scenario['recipe'].id}/cook",
+        json={"transitions": [
+            {"pantry_item_id": str(scenario["pomodoro_item"].id), "to_status": "finished",
+             "restock": False},
+        ]},
+    )
+
+    await db_session.refresh(scenario["pomodoro_item"])
+    assert scenario["pomodoro_item"].fill_percent is None
+
+
 async def test_already_in_list_is_not_duplicated(logged_client, db_session, scenario):
     """Se il pomodoro è già in lista, cucinare non deve aggiungerlo due volte."""
     await logged_client.post(

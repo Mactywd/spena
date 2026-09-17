@@ -8,13 +8,13 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.pantry import PantryItem
 from app.db.models.recipe import CookingEvent, Recipe
-from app.db.models.shopping import ShoppingListItem, ShoppingReason, ShoppingStatus
+from app.db.models.shopping import ShoppingReason
 from app.domain.rules import PantryStatus
+from app.services.restock import restock
 
 # il motivo con cui la voce rientra in lista dipende da come l'hai lasciata.
 # Finito e basso hanno ciascuno il loro motivo di cottura; tutto il resto è
@@ -30,14 +30,6 @@ class Transition:
     pantry_item_id: uuid.UUID
     to_status: PantryStatus
     restock: bool
-
-
-async def _already_in_list(session: AsyncSession, ingredient_id: uuid.UUID) -> bool:
-    statement = select(ShoppingListItem.id).where(
-        ShoppingListItem.ingredient_id == ingredient_id,
-        ShoppingListItem.status.in_([ShoppingStatus.PENDING, ShoppingStatus.CHECKED]),
-    )
-    return (await session.execute(statement)).first() is not None
 
 
 async def cook(
@@ -62,22 +54,17 @@ async def cook(
 
         previous = item.status
         item.status = transition.to_status
+        # la posizione del cursore non sopravvive a uno stato deciso qui: restare a
+        # 80 mentre lo stato dice «finito» mostrerebbe un barattolo pieno per
+        # qualcosa che non c'è più (stesso motivo di `set_status`)
+        item.fill_percent = None
         item.status_changed_at = now
 
-        if transition.restock and not await _already_in_list(session, item.ingredient_id):
-            await session.refresh(item, ["ingredient", "product"])
-            # la marca che avevi comprato è l'informazione più utile in negozio
-            label = item.product.name if item.product else item.ingredient.name
-            session.add(
-                ShoppingListItem(
-                    raw_text=label,
-                    ingredient_id=item.ingredient_id,
-                    status=ShoppingStatus.PENDING,
-                    reason=_RESTOCK_REASON.get(
-                        transition.to_status, ShoppingReason.MANUAL
-                    ),
-                )
-            )
+        if transition.restock and await restock(
+            session,
+            item,
+            reason=_RESTOCK_REASON.get(transition.to_status, ShoppingReason.MANUAL),
+        ):
             restocked += 1
 
         snapshot.append({

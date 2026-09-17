@@ -35,3 +35,9 @@ class PantryItemPatch(BaseModel):
     # dove il dito ha lasciato il cursore. Lo stato non si manda: lo ricava il
     # dominio, ed è l'unico modo perché i due non possano contraddirsi
     fill_percent: int | None = Field(default=None, ge=0, le=100)
+
+
+class RestockOut(BaseModel):
+    """`added` falso non è un errore: la voce era già da comprare."""
+
+    added: bool
