@@ -148,6 +148,7 @@ async def test_la_ricerca_filtra_per_kind_solo_se_glielo_chiedi(logged_client, d
 
     solo_cibo = (await logged_client.get("/api/v1/ingredients/search?q=deter&kind=food")).json()
     assert "Detersivo per i piatti" not in [i["display_name"] for i in solo_cibo]
+    assert "Dado" in [i["display_name"] for i in solo_cibo], "il filtro deve mantenere i cibi, non svuotare il risultato"
 
 
 async def test_la_ricerca_dice_il_kind_di_ogni_voce(logged_client, db_session):
