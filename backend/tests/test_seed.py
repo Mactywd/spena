@@ -157,6 +157,31 @@ def test_il_seme_porta_i_non_alimentari():
     assert {"detersivo per i piatti", "carta igienica", "sacchi per la spazzatura"} <= nomi
 
 
+async def test_il_seme_scrive_il_kind_corretto_nel_database(db_session):
+    """`load_ingredients` costruisce `Ingredient(...)` a mano: nessun test finora
+    rileggeva `.kind` da un ingrediente caricato così, quindi se il validator
+    `_deduce_kind` smettesse di scattare proprio su questa via, questo test se
+    ne accorgerebbe da solo, mentre gli altri due test del seme (che leggono
+    solo il file JSON) resterebbero verdi lo stesso.
+
+    Rilegge davvero dal database con una `select` nuova, non si fida
+    dell'oggetto Python già in mano, che potrebbe non riflettere quanto scritto.
+    """
+    from app.domain.rules import IngredientKind
+
+    await load_ingredients(db_session, DATA / "ingredients_seed.json")
+
+    non_alimentare = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "candeggina"))
+    ).scalar_one()
+    assert non_alimentare.kind == IngredientKind.NON_FOOD
+
+    alimentare = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "pomodoro"))
+    ).scalar_one()
+    assert alimentare.kind == IngredientKind.FOOD
+
+
 def test_nessun_alias_del_seme_e_ripetuto_fra_due_voci():
     """L'invariante che `remember_alias` difende a runtime — «un alias già preso da
     un altro ingrediente non si ruba» — ma il seme scrive gli alias direttamente,
