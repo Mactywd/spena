@@ -137,14 +137,16 @@ async def decide_one(
     una firma diversa per ognuno dei tre passi renderebbe il fan-out più difficile da
     leggere di quanto valga.
     """
-    payload = await complete_json(
-        system=TERM_SYSTEM_PROMPT,
-        user=_question(term, registry),
-        schema=TERM_SCHEMA,
-        schema_name="decisione_termine",
-        max_tokens=TERM_MAX_TOKENS,
-        client=client,
-    )
+    payload = (
+        await complete_json(
+            system=TERM_SYSTEM_PROMPT,
+            user=_question(term, registry),
+            schema=TERM_SCHEMA,
+            schema_name="decisione_termine",
+            max_tokens=TERM_MAX_TOKENS,
+            client=client,
+        )
+    ).data
 
     action = payload.get("action")
 
@@ -277,14 +279,16 @@ async def collapse_creates(
     )
 
     try:
-        payload = await complete_json(
-            system=COLLAPSE_SYSTEM_PROMPT,
-            user=question,
-            schema=COLLAPSE_SCHEMA,
-            schema_name="collasso_ingredienti",
-            max_tokens=COLLAPSE_MAX_TOKENS,
-            client=client,
-        )
+        payload = (
+            await complete_json(
+                system=COLLAPSE_SYSTEM_PROMPT,
+                user=question,
+                schema=COLLAPSE_SCHEMA,
+                schema_name="collasso_ingredienti",
+                max_tokens=COLLAPSE_MAX_TOKENS,
+                client=client,
+            )
+        ).data
     except LlmUnavailable:
         return list(proposals)
 

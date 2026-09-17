@@ -92,14 +92,16 @@ class RecipeDraft:
 async def draft_recipe(
     session: AsyncSession, prompt: str, client: object | None = None
 ) -> RecipeDraft:
-    payload = await complete_json(
-        system=SYSTEM_PROMPT,
-        user=prompt,
-        schema=DRAFT_SCHEMA,
-        schema_name="bozza_ricetta",
-        max_tokens=DRAFT_MAX_TOKENS,
-        client=client,
-    )
+    payload = (
+        await complete_json(
+            system=SYSTEM_PROMPT,
+            user=prompt,
+            schema=DRAFT_SCHEMA,
+            schema_name="bozza_ricetta",
+            max_tokens=DRAFT_MAX_TOKENS,
+            client=client,
+        )
+    ).data
     raw_ingredients = payload.get("ingredients") or []
     if not isinstance(raw_ingredients, list):
         raise LlmUnavailable("la lista degli ingredienti ha una forma inutilizzabile")
