@@ -123,3 +123,17 @@ async def archive_item(session: AsyncSession, item_id: uuid.UUID) -> PantryItem:
     item.archived_at = datetime.now(UTC)
     await session.flush()
     return item
+
+
+async def unarchive_item(session: AsyncSession, item_id: uuid.UUID) -> PantryItem:
+    """L'annulla della X rossa: la voce torna in dispensa com'era.
+
+    Lo stato non si tocca — chi archivia una voce «quasi finita» e si pente la
+    rivuole quasi finita, non riportata a un valore scelto da noi.
+    """
+    item = await session.get(PantryItem, item_id)
+    if item is None:
+        raise KeyError(item_id)
+    item.archived_at = None
+    await session.flush()
+    return item

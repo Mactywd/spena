@@ -15,6 +15,7 @@ from app.repositories.pantry import (
     availability_map,
     list_pantry,
     set_status,
+    unarchive_item,
 )
 from app.schemas.pantry import PantryItemCreate, PantryItemOut, PantryItemPatch
 
@@ -89,8 +90,12 @@ async def patch(
     session: AsyncSession = Depends(get_session),
 ) -> PantryItemOut:
     try:
-        if payload.archived:
-            item = await archive_item(session, item_id)
+        if payload.archived is not None:
+            item = (
+                await archive_item(session, item_id)
+                if payload.archived
+                else await unarchive_item(session, item_id)
+            )
         elif payload.status is not None:
             item = await set_status(session, item_id, payload.status)
         else:

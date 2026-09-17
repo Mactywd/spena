@@ -28,4 +28,6 @@ class PantryItemCreate(BaseModel):
 
 class PantryItemPatch(BaseModel):
     status: PantryStatus | None = None
-    archived: bool = False
+    # annullabile, e non `bool = False`: «non l'ho detto» e «mettilo a falso» sono
+    # due richieste diverse, e la seconda è l'annulla della X rossa
+    archived: bool | None = None

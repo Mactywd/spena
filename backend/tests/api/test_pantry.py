@@ -172,3 +172,59 @@ async def test_creating_with_a_dangling_ingredient_is_404_not_500(logged_client)
     })
     assert response.status_code == 404
     assert "inesistente" in response.json()["detail"]
+
+
+async def test_un_archiviato_torna_in_dispensa(logged_client, db_session, dispensa):
+    """L'annulla della X rossa. Archiviare era già reversibile, mancava come chiederlo."""
+    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+
+    await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"archived": True})
+    elenco = (await logged_client.get("/api/v1/pantry")).json()
+    assert all(voce["id"] != str(item.id) for voce in elenco)
+
+    risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"archived": False})
+    assert risposta.status_code == 200
+    elenco = (await logged_client.get("/api/v1/pantry")).json()
+    assert any(voce["id"] == str(item.id) for voce in elenco)
+
+
+async def test_cambiare_stato_non_disarchivia_per_sbaglio(logged_client, db_session, dispensa):
+    """`archived` era un bool con default False: ogni PATCH ne portava uno.
+
+    Ora è annullabile, e «non l'ho detto» deve restare diverso da «mettilo a falso».
+    Senza questa distinzione una PATCH di solo stato riporterebbe in dispensa una
+    voce che l'utente aveva tolto.
+    """
+    from datetime import UTC, datetime
+
+    item = PantryItem(
+        ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE,
+        archived_at=datetime.now(UTC),
+    )
+    db_session.add(item)
+    await db_session.flush()
+
+    risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"status": "low"})
+    assert risposta.status_code == 200
+    await db_session.refresh(item)
+    assert item.archived_at is not None
+
+
+async def test_una_patch_vuota_resta_un_400(logged_client, db_session, dispensa):
+    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+
+    risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={})
+    assert risposta.status_code == 400
+
+
+async def test_disarchiviare_una_voce_inesistente_e_404(logged_client):
+    import uuid
+
+    risposta = await logged_client.patch(
+        f"/api/v1/pantry/{uuid.uuid4()}", json={"archived": False}
+    )
+    assert risposta.status_code == 404
