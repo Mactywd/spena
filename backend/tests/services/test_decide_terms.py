@@ -17,7 +17,9 @@ from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecisio
 from app.repositories.ingredients import create_ingredient
 from app.services.ingredient_match import match_name
 from app.services.recipe_import.decide import decide_terms
-from llm_fakes import LLM_IGNORE, ScriptedLlm, llm_create, llm_map
+from app.db.models.llm_call import LlmCall
+from app.services.llm import LlmCallSite
+from llm_fakes import COSTO_FINTO, LLM_IGNORE, ScriptedLlm, llm_create, llm_map
 
 
 @pytest.fixture(autouse=True)
@@ -504,3 +506,30 @@ async def test_le_domande_partono_insieme_e_il_semaforo_le_tiene(db_session, bas
     assert finto.max_in_flight > 1
     # e non oltre il limite: senza semaforo misurerebbe 6
     assert finto.max_in_flight <= limite
+
+
+async def test_ogni_domanda_allai_finisce_nello_storico_delle_spese(db_session, base):
+    """Una riga per chiamata, nessuna esclusa.
+
+    È l'asserzione che conta: non «ci sono delle righe», ma «tante quante le domande
+    fatte». Registrarne una su due darebbe una torta delle spese che sembra giusta e
+    sottostima, che è peggio di non averla.
+    """
+    rigatoni, speck = await aggiungi(
+        db_session, termine("Rigatoni", "k-rigatoni"), termine("Speck", "k-speck")
+    )
+    finto = ScriptedLlm({
+        "Rigatoni": llm_map("pasta"),
+        "Speck": llm_create("speck", "Speck", "carne"),
+    })
+
+    await decide_terms(db_session, [rigatoni, speck], client=finto)
+
+    righe = (await db_session.execute(select(LlmCall))).scalars().all()
+    assert len(righe) == finto.calls
+    assert {r.call_site for r in righe} <= {
+        LlmCallSite.TERM_DECISION, LlmCallSite.TERM_COLLAPSE
+    }
+    assert LlmCallSite.TERM_DECISION in {r.call_site for r in righe}
+    assert all(r.ok for r in righe)
+    assert sum(r.cost_usd for r in righe) == pytest.approx(finto.calls * COSTO_FINTO)

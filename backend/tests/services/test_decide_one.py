@@ -50,7 +50,7 @@ async def test_map_verso_un_ingrediente_esistente(db_session, anagrafica):
 
     finto = FakeLlm({"action": "map", "ingredient": "pasta", "name": None,
                      "display_name": None, "category": None})
-    proposta = await decide_one(db_session, term, anagrafica, client=finto)
+    proposta = (await decide_one(db_session, term, anagrafica, client=finto)).proposal
 
     assert proposta is not None
     assert proposta.action == "map"
@@ -67,7 +67,7 @@ async def test_create_con_categoria_valida(db_session, anagrafica):
 
     finto = FakeLlm({"action": "create", "ingredient": None, "name": "speck",
                      "display_name": "Speck", "category": "carne"})
-    proposta = await decide_one(db_session, term, anagrafica, client=finto)
+    proposta = (await decide_one(db_session, term, anagrafica, client=finto)).proposal
 
     assert proposta is not None
     assert (proposta.action, proposta.name, proposta.category) == ("create", "speck", "carne")
@@ -80,7 +80,7 @@ async def test_ignore(db_session, anagrafica):
 
     finto = FakeLlm({"action": "ignore", "ingredient": None, "name": None,
                      "display_name": None, "category": None})
-    proposta = await decide_one(db_session, term, anagrafica, client=finto)
+    proposta = (await decide_one(db_session, term, anagrafica, client=finto)).proposal
     assert proposta is not None and proposta.action == "ignore"
 
 
@@ -91,7 +91,7 @@ async def test_un_map_verso_un_ingrediente_inesistente_non_e_una_proposta(db_ses
 
     finto = FakeLlm({"action": "map", "ingredient": "pasta integrale di kamut",
                      "name": None, "display_name": None, "category": None})
-    assert await decide_one(db_session, term, anagrafica, client=finto) is None
+    assert (await decide_one(db_session, term, anagrafica, client=finto)).proposal is None
 
 
 async def test_una_categoria_inventata_non_e_una_proposta(db_session, anagrafica):
@@ -101,7 +101,7 @@ async def test_una_categoria_inventata_non_e_una_proposta(db_session, anagrafica
 
     finto = FakeLlm({"action": "create", "ingredient": None, "name": "speck",
                      "display_name": "Speck", "category": "salumi"})
-    assert await decide_one(db_session, term, anagrafica, client=finto) is None
+    assert (await decide_one(db_session, term, anagrafica, client=finto)).proposal is None
 
 
 async def test_un_create_di_un_nome_che_esiste_diventa_un_map(db_session, anagrafica):
@@ -118,7 +118,7 @@ async def test_un_create_di_un_nome_che_esiste_diventa_un_map(db_session, anagra
 
     finto = FakeLlm({"action": "create", "ingredient": None, "name": "pasta",
                      "display_name": "Pasta", "category": "cereali"})
-    proposta = await decide_one(db_session, term, anagrafica, client=finto)
+    proposta = (await decide_one(db_session, term, anagrafica, client=finto)).proposal
 
     assert proposta is not None
     assert proposta.action == "map"
@@ -132,7 +132,7 @@ async def test_unazione_sconosciuta_non_e_una_proposta(db_session, anagrafica):
 
     finto = FakeLlm({"action": "forse", "ingredient": None, "name": None,
                      "display_name": None, "category": None})
-    assert await decide_one(db_session, term, anagrafica, client=finto) is None
+    assert (await decide_one(db_session, term, anagrafica, client=finto)).proposal is None
 
 
 async def test_un_guasto_del_modello_risale(db_session, anagrafica):

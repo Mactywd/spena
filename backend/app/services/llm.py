@@ -13,11 +13,71 @@ uno schema, torna un dizionario. È ciò che permette di provarlo per intero con
 """
 
 import json
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 import httpx
 
 from app.core.config import get_settings
+
+
+class LlmCallSite(StrEnum):
+    """Da dove parte la chiamata: è la fetta della torta delle spese.
+
+    Sta qui e non fra i modelli perché è vocabolario del client, non dello schema, e
+    `llm.py` non deve conoscere il database. `complete_json` lo pretende **senza
+    default**: una sezione nuova che dimenticasse di dichiararsi finirebbe zitta in un
+    secchio chiamato «altro», ed è così che un tracciamento smette di servire.
+    """
+
+    TERM_DECISION = "term_decision"
+    TERM_COLLAPSE = "term_collapse"
+    RECIPE_DRAFT = "recipe_draft"
+
+
+@dataclass(frozen=True)
+class LlmUsage:
+    """Quanto è costata una chiamata, secondo OpenRouter.
+
+    Ogni campo è annullabile perché ogni campo può davvero mancare: `cost` è
+    dichiarato nullable nella loro stessa risposta, e una risposta malformata può non
+    portare `usage` affatto. Un costo sconosciuto resta sconosciuto — metterci zero
+    sarebbe un'affermazione, e l'assenza è la verità (vedi CLAUDE.md sui nutrienti:
+    è la stessa regola).
+    """
+
+    generation_id: str | None = None
+    model: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None
+
+
+@dataclass(frozen=True)
+class LlmResult:
+    """La risposta e quel che è costata, insieme.
+
+    Stanno insieme perché separarle vorrebbe dire una seconda chiamata di rete per
+    sapere quanto è costata la prima: il consumo arriva nello stesso corpo, e buttarlo
+    via è stato il difetto che ha reso «Unknown» ogni voce di spesa per mesi.
+    """
+
+    data: dict[str, Any]
+    usage: LlmUsage
+    call_site: LlmCallSite
+
+
+def read_usage(body: dict[str, Any]) -> LlmUsage:
+    """Il consumo dichiarato nel corpo, senza inventare quel che non c'è."""
+    usage = body.get("usage") or {}
+    return LlmUsage(
+        generation_id=body.get("id"),
+        model=body.get("model"),
+        prompt_tokens=usage.get("prompt_tokens"),
+        completion_tokens=usage.get("completion_tokens"),
+        cost_usd=usage.get("cost"),
+    )
 
 
 class LlmUnavailable(Exception):
@@ -72,13 +132,14 @@ def build_provider_preferences() -> dict[str, Any]:
 
 async def complete_json(
     *,
+    call_site: LlmCallSite,
     system: str,
     user: str,
     schema: dict[str, Any],
     schema_name: str,
     max_tokens: int,
     client: httpx.AsyncClient | None = None,
-) -> dict[str, Any]:
+) -> LlmResult:
     """Una risposta JSON conforme a `schema`, o `LlmUnavailable`.
 
     Lo schema stretto è ciò che rende inutile qualunque scrostatore di blocchi di
@@ -116,11 +177,12 @@ async def complete_json(
             raise LlmUnavailable(
                 f"OpenRouter ha risposto {response.status_code}: {response.text[:200]}"
             )
-        content = response.json()["choices"][0]["message"]["content"]
+        body = response.json()
+        content = body["choices"][0]["message"]["content"]
         parsed = json.loads(content)
         if not isinstance(parsed, dict):
             raise LlmUnavailable("la risposta non è un oggetto JSON")
-        return parsed
+        return LlmResult(data=parsed, usage=read_usage(body), call_site=call_site)
     except LlmUnavailable:
         raise
     except Exception as exc:  # rete, timeout, corpo senza choices, JSON malformato
