@@ -318,13 +318,14 @@ e i sostituti. Brainstorming suo, a valle di tutto.
 ## H1. Expense Tracker **[TBD]** ↳ T2
 Spesa totale su OpenRouter nel periodo scelto, con una torta di come si divide.
 
-**Dipendenza non ovvia:** la torta ha fette solo se le chiamate sono già attribuite
-per sezione. Senza T2, è una torta con una fetta sola. T2 va fatto prima, e
-idealmente subito, perché ogni giorno senza attribuzione è un giorno di storico che
-non si potrà più dividere.
+**Dipendenza sciolta il 2026-09-17:** T2 è fatto, quindi `llm_calls` sta già
+accumulando una riga per chiamata con sezione e costo reale. Lo storico parte da quel
+giorno: prima non c'è niente da dividere, e non ci sarà mai.
 
-TBD: brainstorming su cosa mostrare — da `llm_prices` c'è già la tabella dei prezzi
-per provider e il costo di un lotto.
+TBD: brainstorming su cosa mostrare. La materia prima è `llm_calls` (costo per
+sezione, per giorno, riusciti e falliti); `python -m app.cli.llm_prices` stampa invece
+i prezzi di listino per provider, che è un'altra cosa e serve semmai a scegliere il
+modello.
 
 ## H2. Connettore Samsung Health **[TBD]**
 Serve a Pasti: l'attività fisica cambia il fabbisogno, e inserirla a mano non si fa.
@@ -351,21 +352,36 @@ Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.
 
 TBD: serve un logo. Non esiste.
 
-## T2. Attribuzione delle chiamate su OpenRouter **[D]** — *da fare presto*
-Nei log di OpenRouter la colonna «App» è sempre «Unknown», quindi non si sa quanto
-costa ogni pezzo.
+## T2. Attribuzione delle chiamate su OpenRouter **[FATTO 2026-09-17]**
+Fatto e in produzione (merge `b7b842f`). Com'è finita, perché non è come era scritta
+qui sopra:
 
-**Diagnosi più probabile, da confermare per prima cosa:** `HTTP-Referer` viene
-inviata solo se `OPENROUTER_APP_URL` è valorizzata, e il default è stringa vuota
-(`backend/app/core/config.py:41`); OpenRouter identifica l'app soprattutto da quella.
-Va controllato se è impostata nel `.env` del server.
+**La richiesta originale non era costruibile.** Per OpenRouter un'app *è* un
+indirizzo: `HTTP-Referer` è l'identificatore, `X-Title` cambia solo il nome
+visualizzato e da solo non crea nessuna app. Mandare un titolo diverso per sezione
+avrebbe prodotto **una sola app con il nome che sfarfalla**, non cinque voci di spesa.
 
-Poi la vera aggiunta: `X-Title` oggi è **un valore unico e statico**
-(`"Spena Import Ricette"` per tutto, `config.py:40`). Deve diventare **per punto di
-chiamata** — decisione dei termini, stesura ricetta, stima nutrienti, modifica AI,
-calcolo sostituti — così ogni voce di spesa ha un nome.
+**Quel che è stato costruito invece:** la divisione per sezione la teniamo noi, nella
+tabella `llm_calls` — una riga per chiamata con `call_site`, modello, `generation_id`,
+token e **il costo che OpenRouter dichiara in `usage.cost` nella risposta stessa**.
+Non è una stima: è la cifra addebitata, e la buttavamo via da mesi leggendo solo
+`choices[0].message.content`. I fallimenti si registrano con `ok = false` e costo
+`NULL` (non zero: di una richiesta rifiutata non sappiamo se ci è stata addebitata) —
+un modello giù è spesa sprecata, ed è il giro che paga e non conclude che una torta
+delle spese esiste per scoprire.
 
-↳ H1 dipende da questo.
+`call_site` è oggi `TERM_DECISION`, `TERM_COLLAPSE`, `RECIPE_DRAFT`. Ogni punto di
+chiamata nuovo ne aggiunge uno: `complete_json` lo pretende come argomento
+obbligatorio, e `tests/test_llm_spend_is_recorded.py` legge i sorgenti e fallisce se un
+modulo chiama l'LLM senza registrare. Serve perché la dimenticanza qui non rompe
+niente e non si vede: si vede mesi dopo, come un conto che sembra giusto e sottostima.
+
+**`OPENROUTER_APP_URL` è valorizzata nel `.env` del server** dal 2026-09-17
+(`https://spena.mattiagirellini.com`): da qui in avanti la colonna «App» nei loro log
+smette di essere «Unknown». Resta da guardare, alla prossima azione AI, che compaia
+davvero.
+
+↳ H1 ora è sbloccata: da oggi lo storico si può dividere.
 
 ---
 
@@ -374,7 +390,7 @@ calcolo sostituti — così ogni voce di spesa ha un nome.
 Non è un impegno, è quel che le dipendenze permettono.
 
 **Subito, perché sbloccano o smettono di perdere dati**
-T2 (ogni giorno senza attribuzione è storico perso), e le tre decisioni D1–D3.
+T2 è fatto (2026-09-17). Restano le tre decisioni D1–D3.
 
 **Poi, indipendenti e piccole** — si possono fare in qualunque momento e non
 aspettano nessuno: S1, S2, R1, R3, T1.
@@ -441,6 +457,11 @@ layout a 375px.
 - **La regola di permesso `Bash(ssh hetznerserver:*)`** in `.claude/settings.local.json`
   è larga quanto tutta la macchina, concessa per un deploy finito. Da restringere.
 - **`ANTHROPIC_API_KEY` è ancora nel `.env` del server** e non la usa più niente.
+- **Nel `.env` locale `OPENROUTER_APP_URL` non c'è** (quel file non lo tocca Claude,
+  per accordo). Le chiamate fatte in sviluppo restano quindi senza attribuzione. Se
+  un giorno danno fastidio, valorizzarla con qualcosa di diverso dal dominio vero —
+  `http://localhost` — le separa dalla produzione nei log di OpenRouter invece di
+  mescolarcisi; lasciarla vuota è l'altra scelta legittima, e oggi è quella in atto.
 - **Due file non tracciati sul server**, in `~/sites/spena`: `.env.bak` e
   `imposta-password.sh`.
 - **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
