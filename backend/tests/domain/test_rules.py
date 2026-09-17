@@ -123,10 +123,8 @@ def test_ogni_categoria_e_decisa():
         IngredientCategory.BEVANDE: IngredientRole.PRIMARY,
         IngredientCategory.DOLCI: IngredientRole.PRIMARY,
         IngredientCategory.ALTRO: IngredientRole.PRIMARY,
-        # Non ci arrivano mai: nessuna riga di ricetta può nominare una voce non
-        # alimentare (la guardia sta in create_recipe). Stanno qui perché la mappa
-        # è totale per costruzione, e perché se un giorno ci arrivassero il ruolo
-        # che otterrebbero è questo.
+        # Non raggiungono qui oggi: la guardia che li fermerà arriva in create_recipe
+        # (Task 5). Stanno qui per integrità della mappa e per il ruolo corretto se mai vi arrivassero.
         IngredientCategory.CASA: IngredientRole.PRIMARY,
         IngredientCategory.IGIENE: IngredientRole.PRIMARY,
     }
