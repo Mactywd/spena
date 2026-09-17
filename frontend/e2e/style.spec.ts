@@ -51,7 +51,16 @@ test("un campo di testo si vede: ha fondo e bordo", async ({ page }) => {
 // che non serve, o l'intestazione coprirebbe la prima riga. Questo è l'unico task
 // che apre un browser vero: è il posto giusto per un controllo che nessun altro
 // può fare.
-test("l'intestazione è sempre visibile e la pagina non scorre in orizzontale", async ({
+//
+// Rilievo di revisione: le prime due asserzioni (banner visibile a freddo,
+// nessun scorrimento *orizzontale*) non provano quell'aritmetica — se le due
+// misure divergessero lo scorrimento in più sarebbe verticale, e nessuna delle
+// due lo vedrebbe. Ora il test controlla anche `scrollHeight`/`clientHeight`, e
+// prova lo `sticky` per davvero: ridotto il viewport e aperte le ricette del
+// seme (26, più che sufficienti a far scorrere anche una pagina bassa), scorre e
+// controlla che il banner sia ancora lì — prima di scorrere non c'è nessuna prova
+// che sia "sempre" visibile, solo che lo sia a pagina appena caricata.
+test("l'intestazione è sempre visibile, anche scorrendo, e la pagina non scorre di suo in nessuna direzione", async ({
   page,
 }) => {
   await expect(page.getByRole("banner")).toBeVisible();
@@ -61,6 +70,18 @@ test("l'intestazione è sempre visibile e la pagina non scorre in orizzontale", 
   const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
   const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+
+  const scrollHeight = await page.evaluate<number>("document.documentElement.scrollHeight");
+  const clientHeight = await page.evaluate<number>("document.documentElement.clientHeight");
+  expect(scrollHeight).toBeLessThanOrEqual(clientHeight);
+
+  // la prova dello `sticky`: senza uno scroll vero, "sempre visibile" è solo "visibile
+  // a pagina appena caricata". Un viewport basso e le 26 ricette del seme bastano a
+  // garantire contenuto più alto della finestra.
+  await page.setViewportSize({ width: 390, height: 400 });
+  await page.getByRole("link", { name: "Ricette" }).click();
+  await page.mouse.wheel(0, 2000);
+  await expect(page.getByRole("banner")).toBeVisible();
 });
 
 test("il cursore della dispensa è un bersaglio da pollice, e le zone si vedono", async ({
@@ -72,6 +93,12 @@ test("il cursore della dispensa è un bersaglio da pollice, e le zone si vedono"
 
   // il seme non popola la dispensa: senza una voce non c'è nessun cursore da
   // provare. L'ingresso diretto (spec §8.3) evita di passare dalla lista.
+  //
+  // Dipendenza dall'ordine non scritta altrove: questa voce resta in dispensa ad
+  // ogni esecuzione (non viene mai archiviata), e `cooking.spec.ts` cerca un `li`
+  // con testo «pomodoro» prendendo il primo. Non si rompe solo perché Playwright
+  // ordina i file alfabeticamente e `cooking` gira prima di `style` — non risolto
+  // qui, la pulizia resta per la revisione finale.
   await page.getByLabel("Aggiungi in dispensa").fill("pomodo");
   await page.getByRole("option", { name: /Pomodoro/ }).click();
 

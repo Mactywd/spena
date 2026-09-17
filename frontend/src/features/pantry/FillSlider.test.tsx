@@ -49,4 +49,37 @@ describe("FillSlider", () => {
     rerender(<FillSlider value={0} label="mela" onCommit={() => {}} />);
     expect((screen.getByRole("slider") as HTMLInputElement).value).toBe("0");
   });
+
+  it("un secondo evento sulla stessa posizione non manda una seconda PATCH mentre il server non ha ancora risposto", () => {
+    // il difetto: la guardia confrontava `position` con `value` (la verità del
+    // server), non con l'ultima posizione già inviata. Finché il refetch dopo la
+    // prima PATCH non è arrivato, `value` resta quello vecchio — e un secondo
+    // evento (un'altra riga toccata, un Tab) rilancia una scrittura che l'utente
+    // non ha chiesto una seconda volta.
+    const onCommit = vi.fn();
+    render(<FillSlider value={70} label="mela" onCommit={onCommit} />);
+    const cursore = screen.getByRole("slider");
+
+    fireEvent.change(cursore, { target: { value: "40" } });
+    fireEvent.pointerUp(cursore);
+    expect(onCommit).toHaveBeenCalledTimes(1);
+
+    // `value` è ancora 70 (il server non ha risposto): senza guardia sulla
+    // posizione già inviata, questo blur rilancerebbe onCommit(40) una seconda
+    // volta
+    fireEvent.blur(cursore);
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("il blur da solo scrive, anche se il dito non si è mai alzato", () => {
+    // aggravante segnalata in revisione: cancellando `onBlur` dal componente i
+    // test restavano tutti verdi. Questo fallisce se `onBlur` non c'è più.
+    const onCommit = vi.fn();
+    render(<FillSlider value={70} label="mela" onCommit={onCommit} />);
+    const cursore = screen.getByRole("slider");
+
+    fireEvent.change(cursore, { target: { value: "40" } });
+    fireEvent.blur(cursore);
+    expect(onCommit).toHaveBeenCalledWith(40);
+  });
 });

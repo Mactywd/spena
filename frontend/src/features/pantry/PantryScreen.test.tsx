@@ -95,6 +95,10 @@ describe("PantryScreen", () => {
 
     await waitFor(() => {
       const patch = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "PATCH");
+      // ITEMS[2] (mela) ha id "p3": senza questa riga il ramo PATCH dello stub
+      // sarebbe decorativo, perché nessuna asserzione lo distinguerebbe da una
+      // PATCH mandata per la voce sbagliata
+      expect(String(patch![0])).toContain("/pantry/p3");
       expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ fill_percent: 15 });
     });
   });

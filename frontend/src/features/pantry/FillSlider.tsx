@@ -1,15 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LOW_MAX_FILL } from "./fillZones";
 
 // Le tre zone dipinte sulla traccia. I colori sono token (`var(--color-…)`), non
 // valori grezzi: il rosso è lo stesso di ogni rifiuto, l'ambra lo stesso di «quasi
 // finito», il verde lo stesso del marchio. Il primo tratto è corto di proposito —
 // lo zero è un punto, non una zona in cui si atterra per caso.
+//
+// Il verde comincia a `LOW_MAX_FILL + 1`, non a `LOW_MAX_FILL`: `status_for_fill`
+// in backend/app/domain/rules.py dice `<= LOW_MAX_FILL` è ancora `low`, quindi 30
+// deve cadere nel giallo. Attaccare il verde esattamente a 30 metterebbe la cucitura
+// fra i due colori proprio sul valore che, col passo di 5, il cursore raggiunge —
+// e la pastiglia accanto direbbe ancora «Quasi finito» su un pallino già verde.
 const ZONES =
   "linear-gradient(to right," +
   " var(--color-danger) 0 3%," +
-  ` var(--color-low-tint) 3% ${LOW_MAX_FILL}%,` +
-  ` var(--color-brand-tint) ${LOW_MAX_FILL}% 100%)`;
+  ` var(--color-low-tint) 3% ${LOW_MAX_FILL + 1}%,` +
+  ` var(--color-brand-tint) ${LOW_MAX_FILL + 1}% 100%)`;
 
 /** Quanto ne resta, a occhio.
  *
@@ -31,13 +37,24 @@ export function FillSlider({
   onCommit: (percent: number) => void;
 }) {
   const [position, setPosition] = useState(value);
+  // l'ultima posizione già inviata, non la verità del server: `value` cambia solo
+  // al refetch, che arriva dopo. Confrontare con `value` (com'era) lascia una
+  // finestra in cui un secondo evento — un'altra riga toccata, un Tab — rilancia
+  // in silenzio la stessa scrittura una seconda volta.
+  const sent = useRef(value);
 
   // quando la verità cambia da fuori — l'annulla, una ricarica, una cottura — è
   // quella a comandare, non dove il dito aveva lasciato il cursore
-  useEffect(() => setPosition(value), [value]);
+  useEffect(() => {
+    setPosition(value);
+    sent.current = value;
+  }, [value]);
 
   const commit = () => {
-    if (position !== value) onCommit(position);
+    if (position !== sent.current) {
+      sent.current = position;
+      onCommit(position);
+    }
   };
 
   return (
