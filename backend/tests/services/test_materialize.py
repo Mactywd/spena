@@ -249,6 +249,53 @@ async def test_la_materializzazione_e_rieseguibile(db_session, anagrafica):
     assert len((await db_session.execute(select(Recipe))).scalars().all()) == 1
 
 
+async def test_una_pagina_con_riga_non_alimentare_si_scarta_senza_fermare_il_lotto(
+    db_session, anagrafica
+):
+    """`create_recipe` è l'ultima linea di difesa e solleva `NonFoodInRecipe`: senza
+    una protezione per pagina, quella riga avrebbe fatto fallire con un errore non
+    gestito la materializzazione di tutto il lotto pronto, buona ricetta compresa —
+    il vicolo cieco che questo task chiude.
+    """
+    sapone = Ingredient(
+        name="sapone", display_name="Sapone", category=IngredientCategory.IGIENE
+    )
+    db_session.add(sapone)
+    await db_session.flush()
+    db_session.add(
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key="detersivo", display_name="Detersivo",
+            occurrences=1, decision=TermDecision.MAPPED, ingredient_id=sapone.id,
+            decided_by="human",
+        )
+    )
+    await db_session.flush()
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/torta-al-sapone.html",
+        payload=payload("Torta al sapone", [("farina-00", "Farina 00", "500 g"),
+                                             ("detersivo", "Detersivo", "1 tappo")]),
+    )
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/pane.html",
+        payload=payload("Pane", [("farina-00", "Farina 00", "500 g")]),
+    )
+
+    esito = await materialize_ready(db_session)
+
+    assert (esito.created, esito.skipped) == (1, 1)
+    pagina_cattiva = (
+        await db_session.execute(
+            select(RecipeImport).where(
+                RecipeImport.url == "https://esempio/torta-al-sapone.html"
+            )
+        )
+    ).scalars().one()
+    assert pagina_cattiva.state == ImportState.SKIPPED
+    assert "Sapone" in pagina_cattiva.skipped_reason
+    ricette = (await db_session.execute(select(Recipe))).scalars().all()
+    assert [r.title for r in ricette] == ["Pane"]
+
+
 async def test_una_categoria_troppo_lunga_viene_troncata(db_session, anagrafica):
     """Una categoria più lunga di 60 caratteri viene troncata senza errore."""
     long_category = "Categoria molto lunga che sicuramente supera il limite di sessanta caratteri"

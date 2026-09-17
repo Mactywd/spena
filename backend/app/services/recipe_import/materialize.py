@@ -19,7 +19,7 @@ from app.db.models.recipe import RecipeSource
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportState, TermDecision
 from app.domain.rules import IngredientRole, default_role
 from app.repositories.imports import pending_pages, terms_by_key
-from app.repositories.recipes import create_recipe
+from app.repositories.recipes import NonFoodInRecipe, create_recipe
 from app.services.embeddings import (
     EmbeddingUnavailable,
     get_embedding_provider,
@@ -115,20 +115,36 @@ async def materialize_ready(
             embedding = None
             log_degradation_once(exc)
 
-        recipe = await create_recipe(
-            session,
-            title=str(page.payload.get("title") or "Senza titolo")[:200],
-            description=page.payload.get("description"),
-            instructions=str(page.payload.get("instructions") or ""),
-            servings=page.payload.get("servings"),
-            source=RecipeSource.DATASET,
-            source_ref=page.url,
-            ingredients=[
-                (ingredient_id, role, quantity, None)
-                for ingredient_id, (role, quantity) in collapsed.items()
-            ],
-            embedding=embedding,
-        )
+        try:
+            recipe = await create_recipe(
+                session,
+                title=str(page.payload.get("title") or "Senza titolo")[:200],
+                description=page.payload.get("description"),
+                instructions=str(page.payload.get("instructions") or ""),
+                servings=page.payload.get("servings"),
+                source=RecipeSource.DATASET,
+                source_ref=page.url,
+                ingredients=[
+                    (ingredient_id, role, quantity, None)
+                    for ingredient_id, (role, quantity) in collapsed.items()
+                ],
+                embedding=embedding,
+            )
+        except NonFoodInRecipe as exc:
+            # Per pagina, non per lotto: `create_recipe` è l'ultima linea di difesa e
+            # solleva forte apposta (vedi la sua docstring). Senza questo `except`,
+            # una sola riga non alimentare — arrivata qui solo perché una guardia più
+            # a monte ha un buco — farebbe fallire con un errore non gestito la
+            # materializzazione di tutte le pagine pronte di questa chiamata, buone
+            # comprese, e senza che nessuna delle loro scritture venisse salvata. La
+            # pagina resta visibile e recuperabile: SKIPPED col nome della voce
+            # incriminata, non un buco silenzioso.
+            page.state = ImportState.SKIPPED
+            page.skipped_reason = (
+                f"riga non alimentare: «{exc.display_name}»"[:200]
+            )
+            skipped += 1
+            continue
         recipe.category = (page.payload.get("category") or None) and str(page.payload["category"])[:60]
         recipe.image_url = (page.payload.get("image_url") or None) and str(page.payload["image_url"])[:500]
         recipe.prep_minutes = page.payload.get("prep_minutes")
