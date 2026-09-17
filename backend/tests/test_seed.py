@@ -144,3 +144,31 @@ def test_un_seme_assente_dice_cosa_manca_e_come_rimediare(tmp_path):
     # Compose devono restare d'accordo, ed è l'unica cosa che chi semina ha in mano.
     assert "./data:/data" in message, "il messaggio deve dire dove va montata data/"
     assert "docker-compose" in message
+
+
+def test_il_seme_porta_i_non_alimentari():
+    from app.domain.rules import NON_FOOD_CATEGORIES
+
+    voci = json.loads((DATA / "ingredients_seed.json").read_text())
+    non_alimentari = [v for v in voci if v["category"] in NON_FOOD_CATEGORIES]
+
+    assert len(non_alimentari) >= 18
+    nomi = {v["name"] for v in non_alimentari}
+    assert {"detersivo per i piatti", "carta igienica", "sacchi per la spazzatura"} <= nomi
+
+
+def test_nessun_alias_del_seme_e_ripetuto_fra_due_voci():
+    """L'invariante che `remember_alias` difende a runtime — «un alias già preso da
+    un altro ingrediente non si ruba» — ma il seme scrive gli alias direttamente,
+    senza passare di lì. Due voci che rispondono alla stessa parola sono un
+    autocomplete che dà due risposte a una domanda sola.
+    """
+    import collections
+
+    voci = json.loads((DATA / "ingredients_seed.json").read_text())
+    conteggio = collections.Counter(
+        alias for voce in voci for alias in voce.get("aliases", [])
+    )
+    ripetuti = {alias: n for alias, n in conteggio.items() if n > 1}
+
+    assert ripetuti == {}, f"alias su più voci: {ripetuti}"

@@ -5,6 +5,7 @@ Eseguire con `python -m app.cli.seed` dentro il container del backend.
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -140,9 +141,18 @@ async def load_recipes(session: AsyncSession, path: Path) -> RecipesLoaded:
 
 
 async def main() -> None:
+    # `--solo-ingredienti` per la messa in produzione di un'anagrafica allargata:
+    # il seme è idempotente e salta per titolo anche le ricette, ma «salta quelle
+    # che ci sono» non è «non ne rimette»: una ricetta del seme cancellata a mano
+    # tornerebbe. R4 prevede proprio di cancellarle, quindi la trappola è vicina.
+    solo_ingredienti = "--solo-ingredienti" in sys.argv
     data_dir = find_data_dir()
     async with SessionLocal() as session:
         ingredients = await load_ingredients(session, data_dir / INGREDIENTS_FILE)
+        if solo_ingredienti:
+            await session.commit()
+            print(f"caricati {ingredients} ingredienti (ricette non toccate)")
+            return
         recipes = await load_recipes(session, data_dir / RECIPES_FILE)
         await session.commit()
     print(f"caricati {ingredients} ingredienti e {recipes.created} ricette")
