@@ -603,4 +603,12 @@ describe("coda di revisione dell'import", () => {
     await waitFor(() => expect(screen.getByText("Sbloccate 12 ricette.")).toBeInTheDocument());
     expect(screen.queryByText(/L'AI ha deciso/i)).not.toBeInTheDocument();
   });
+
+  it("dalla coda dell'import si torna alle ricette con un tasto", async () => {
+    // stessi stub del test accanto: qui interessa solo l'uscita
+    renderQueue();
+
+    expect((await screen.findByRole("link", { name: "Ricette" })).getAttribute("href"))
+      .toBe("/ricette");
+  });
 });

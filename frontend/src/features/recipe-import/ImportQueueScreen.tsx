@@ -220,7 +220,7 @@ export function ImportQueueScreen() {
   });
 
   return (
-    <Screen title="Ingredienti da abbinare">
+    <Screen title="Ingredienti da abbinare" back={{ to: "/ricette", label: "Ricette" }}>
       <p className="text-sm text-ink-soft">
         Ogni nome deciso vale per sempre, e le ricette che lo aspettavano entrano nel
         ricettario da sé.

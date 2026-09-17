@@ -196,4 +196,15 @@ describe("RecipeDetailScreen", () => {
     expect(await screen.findByText("Pasta al pomodoro")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /originale/i })).not.toBeInTheDocument();
   });
+
+  it("da una ricetta aperta si torna al ricettario con un tasto", async () => {
+    // in una PWA su iOS il tasto indietro del telefono non c'è: senza questo
+    // collegamento l'unica uscita è la barra in basso
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(DETAIL), { status: 200 })
+    ));
+    renderScreen();
+    expect((await screen.findByRole("link", { name: "Ricette" })).getAttribute("href"))
+      .toBe("/ricette");
+  });
 });

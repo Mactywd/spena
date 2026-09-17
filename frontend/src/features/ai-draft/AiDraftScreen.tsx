@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { createRecipe, draftRecipe } from "../recipes/api";
 import { IngredientPicker } from "../../components/IngredientPicker";
+import { BackLink } from "../../components/BackLink";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { INGREDIENT_CATEGORIES } from "../../domain/categories";
 import type {
@@ -266,6 +267,7 @@ export function AiDraftScreen() {
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-5 pb-4">
+      <BackLink to="/ricette" label="Ricette" />
       <h1 className="text-2xl font-semibold tracking-tight">Scrivi una ricetta</h1>
 
       <div className="flex flex-col gap-2">

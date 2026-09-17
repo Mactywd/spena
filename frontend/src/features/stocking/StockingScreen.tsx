@@ -11,6 +11,7 @@ import { OTHER_INGREDIENT } from "./wording";
 import { ApiError } from "../../api/client";
 import type { Ingredient, Product, ShoppingItem } from "../../domain/types";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import { BackLink } from "../../components/BackLink";
 
 type Resolution =
   | { kind: "loose" }
@@ -325,6 +326,7 @@ export function StockingScreen() {
 
   return (
     <div className="p-4">
+      <BackLink to="/lista" label="Lista" />
       <h1 className="pb-3 text-xl font-semibold">Sistema la spesa</h1>
 
       {isLoading && <p className="text-ink-soft">Carico…</p>}
