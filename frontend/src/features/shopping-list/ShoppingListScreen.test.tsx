@@ -68,7 +68,22 @@ describe("ShoppingListScreen", () => {
 
   it("offre di sistemare la spesa quando c'è almeno una voce spuntata", async () => {
     renderScreen();
-    expect(await screen.findByRole("link", { name: "Sistema la spesa" })).toBeDefined();
+    // la scheda è sempre presente: si aspetta che il conteggio arrivi, non il link
+    await screen.findByText("1 voce spuntata da mettere via");
+    expect(screen.getByRole("link", { name: /Sistema la spesa/ })).toHaveClass("bg-low-tint");
+  });
+
+  it("l'ingresso a «Sistema la spesa» resta anche senza voci spuntate", async () => {
+    // stub: la lista risponde con voci tutte `pending`
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(ITEMS.map((i) => ({ ...i, status: "pending" }))), { status: 200 })
+    ));
+    renderScreen();
+    // si aspetta che la lista sia arrivata, non solo lo stato iniziale a zero
+    await screen.findByText("cosa verde");
+    const link = screen.getByRole("link", { name: /Sistema la spesa/ });
+    expect(link.getAttribute("href")).toBe("/sistema");
+    expect(screen.getByText("Niente di spuntato, per ora")).toBeDefined();
   });
 
   // M1: senza questo comando una voce scritta per sbaglio resta in lista per la vita

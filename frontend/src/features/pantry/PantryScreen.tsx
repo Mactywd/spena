@@ -5,8 +5,10 @@ import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
 import { Card } from "../../components/ui/Card";
 import { Screen } from "../../components/ui/Screen";
+import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { addPantryItem, fetchPantry, patchPantryItem } from "./api";
+import { fetchShoppingList } from "../shopping-list/api";
 import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
 
 function groupByCategory(items: PantryItem[]): [string, PantryItem[]][] {
@@ -23,6 +25,16 @@ export function PantryScreen() {
     queryKey: ["pantry"],
     queryFn: fetchPantry,
   });
+
+  // la stessa chiave dello schermo Lista: la cache è una sola, e aprire la dispensa
+  // dopo la lista non ricarica niente. Se non risponde non si mostra un conteggio
+  // sbagliato — la scheda resta, con una nota che non promette nulla: l'ingresso
+  // alla sottosezione non deve dipendere da una seconda chiamata
+  const { data: shopping, isError: isShoppingError } = useQuery({
+    queryKey: ["shopping-list"],
+    queryFn: () => fetchShoppingList(),
+  });
+  const checkedCount = (shopping ?? []).filter((item) => item.status === "checked").length;
 
   // quale voce ha rifiutato l'ultima modifica. Il messaggio va accanto a quella
   // voce e non in cima: la dispensa è lunga e si scorre, un avviso fuori schermo
@@ -71,6 +83,21 @@ export function PantryScreen() {
 
   return (
     <Screen title="Dispensa">
+      <SectionEntryCard
+        to="/sistema"
+        title="Sistema la spesa"
+        note={
+          isShoppingError || shopping === undefined
+            ? "Metti via quello che hai comprato"
+            : checkedCount === 0
+              ? "Niente di spuntato, per ora"
+              : checkedCount === 1
+                ? "1 voce spuntata da mettere via"
+                : `${checkedCount} voci spuntate da mettere via`
+        }
+        pending={checkedCount > 0}
+      />
+
       <Card>
         <IngredientPicker
           label="Aggiungi in dispensa"

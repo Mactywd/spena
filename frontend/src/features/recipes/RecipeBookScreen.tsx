@@ -7,6 +7,7 @@ import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
+import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
 
 const DEBOUNCE_MS = 180;
 
@@ -103,23 +104,19 @@ export function RecipeBookScreen() {
         </Link>
       }
     >
-      {importStatus && importStatus.pending_terms > 0 && (
-        <Link
-          to="/ricette/importa"
-          className="mb-3 flex min-h-11 items-center justify-between rounded-card bg-low-tint px-3.5 py-3 text-sm text-low"
-        >
-          <span>
-            {importStatus.pending_terms === 1
-              ? "1 ingrediente da abbinare"
-              : `${importStatus.pending_terms} ingredienti da abbinare`}
-            ,{" "}
-            {importStatus.pending_recipes === 1
-              ? "1 ricetta in attesa"
-              : `${importStatus.pending_recipes} ricette in attesa`}
-          </span>
-          <span aria-hidden="true">›</span>
-        </Link>
-      )}
+      <SectionEntryCard
+        to="/ricette/importa"
+        title="Ingredienti da abbinare"
+        note={
+          importStatus === undefined
+            ? "Le decisioni dell'import, da rivedere"
+            : importStatus.pending_terms === 0
+              ? "Niente in attesa: qui si rivedono le decisioni già prese"
+              : `${importStatus.pending_terms === 1 ? "1 ingrediente" : `${importStatus.pending_terms} ingredienti`}, ` +
+                `${importStatus.pending_recipes === 1 ? "1 ricetta in attesa" : `${importStatus.pending_recipes} ricette in attesa`}`
+        }
+        pending={(importStatus?.pending_terms ?? 0) > 0}
+      />
 
       <label htmlFor="recipe-search" className="sr-only">Cerca nel ricettario</label>
       <input

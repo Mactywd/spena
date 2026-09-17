@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { AddItemField } from "./AddItemField";
 import { addShoppingItem, fetchShoppingList, patchShoppingItem } from "./api";
 import { Alert } from "../../components/ui/Alert";
 import { Card } from "../../components/ui/Card";
+import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
 import { SectionHeading } from "../../components/ui/SectionHeading";
-import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { ShoppingItem } from "../../domain/types";
 
 // Parziale e tipizzato sull'unione: "manual" non ha nota perché non c'è niente da
@@ -89,23 +88,22 @@ export function ShoppingListScreen() {
 
       <AddItemField onAdd={(text, id) => add.mutateAsync({ text, id })} />
 
-      {checkedCount > 0 && (
-        <div className="px-4 pb-2">
-          <Link to="/sistema" className={buttonClasses("primary", "block")}>
-            Sistema la spesa
-            {/* il numero sta nel bersaglio e non accanto: è la ragione per cui si
-                tocca, e da telefono quel che sta accanto si legge dopo. `aria-hidden`
-                perché il nome del link deve restare ciò che il link fa, e il conteggio
-                a uno screen reader arriva già dalle caselle spuntate della lista */}
-            <span
-              aria-hidden="true"
-              className="rounded-full bg-white/20 px-2 py-0.5 text-sm"
-            >
-              {checkedCount}
-            </span>
-          </Link>
-        </div>
-      )}
+      {/* sempre presente, anche a zero spuntate: «sistema la spesa» è una
+          sottosezione, non un avviso. Vedi D3 in docs/prossimi-passi.md */}
+      <div className="px-4 pb-1">
+        <SectionEntryCard
+          to="/sistema"
+          title="Sistema la spesa"
+          note={
+            checkedCount === 0
+              ? "Niente di spuntato, per ora"
+              : checkedCount === 1
+                ? "1 voce spuntata da mettere via"
+                : `${checkedCount} voci spuntate da mettere via`
+          }
+          pending={checkedCount > 0}
+        />
+      </div>
 
       {isLoading && <p className="px-4 py-3 text-ink-soft">Carico…</p>}
       {/* un caricamento fallito non è una lista vuota: dirlo sarebbe una bugia su

@@ -29,8 +29,8 @@ function renderScreen(queryCache?: QueryCache) {
   );
 }
 
-// Nessun ingrediente in attesa: la riga d'ingresso verso la coda non deve
-// comparire nei test che non la riguardano.
+// Nessun ingrediente in attesa: la scheda d'ingresso verso la coda resta (D3), ma
+// tranquilla — senza ambra né conteggio in sospeso — nei test che non la riguardano.
 const NESSUN_IMPORT_IN_CORSO = {
   fetched: 0, pending_recipes: 0, imported: 0, skipped: 0, pending_terms: 0,
 };
@@ -282,9 +282,9 @@ describe("RecipeBookScreen", () => {
     expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
   });
 
-  // Task 14: il ricettario apre la porta verso la coda di revisione, ma solo
-  // quando c'è davvero qualcosa da decidere: una riga che compare sempre sarebbe
-  // rumore, una che non compare mai nasconderebbe ricette scaricate e mai entrate.
+  // Task 14, poi D3 (Task 3 di cinque-voci): la porta verso la coda di revisione
+  // è sempre presente — vedi il test più sotto — e quando c'è davvero qualcosa da
+  // decidere prende il fondo ambra e il conteggio nella nota.
   it("quando ci sono ingredienti da abbinare, apre la porta verso la coda", async () => {
     const spy = vi.fn((url: unknown) => {
       const path = String(url);
@@ -306,7 +306,9 @@ describe("RecipeBookScreen", () => {
     vi.stubGlobal("fetch", spy);
     renderScreen();
 
-    const link = await screen.findByRole("link", { name: /5 ingredienti da abbinare/ });
+    await screen.findByText(/5 ingredienti,/);
+    const link = screen.getByRole("link", { name: /Ingredienti da abbinare/ });
+    expect(link).toHaveClass("bg-low-tint");
     expect(link).toHaveTextContent(/3 ricette in attesa/);
     expect(link).toHaveAttribute("href", "/ricette/importa");
   });
@@ -335,16 +337,23 @@ describe("RecipeBookScreen", () => {
     vi.stubGlobal("fetch", spy);
     renderScreen();
 
-    const link = await screen.findByRole("link", { name: /1 ingrediente da abbinare/ });
-    expect(link).toHaveTextContent("1 ingrediente da abbinare, 1 ricetta in attesa");
+    await screen.findByText("1 ingrediente, 1 ricetta in attesa");
+    expect(screen.getByRole("link", { name: /Ingredienti da abbinare/ })).toHaveTextContent(
+      "1 ingrediente, 1 ricetta in attesa"
+    );
   });
 
-  it("senza ingredienti in attesa non mostra la porta verso la coda", async () => {
+  it("l'ingresso agli ingredienti da abbinare resta anche con la coda vuota", async () => {
+    // prima spariva: la revisione delle decisioni già prese diventava irraggiungibile
+    // proprio quando non c'era più niente da decidere
     stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
 
     await screen.findByText("Pasta al pomodoro");
-    expect(screen.queryByRole("link", { name: /da abbinare/ })).toBeNull();
+    const link = screen.getByRole("link", { name: /Ingredienti da abbinare/ });
+    expect(link.getAttribute("href")).toBe("/ricette/importa");
+    expect(link).not.toHaveClass("bg-low-tint");
+    expect(link).toHaveTextContent("Niente in attesa: qui si rivedono le decisioni già prese");
   });
 
   it("non riordina: l'ordine è quello che decide il backend", async () => {

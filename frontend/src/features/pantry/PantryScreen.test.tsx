@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { PantryScreen } from "./PantryScreen";
 
 const ITEMS = [
@@ -34,7 +35,9 @@ function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <PantryScreen />
+      <MemoryRouter>
+        <PantryScreen />
+      </MemoryRouter>
     </QueryClientProvider>
   );
 }
