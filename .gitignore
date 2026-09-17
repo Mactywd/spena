@@ -7,3 +7,4 @@ dist/
 .superpowers/
 *.egg-info/
 .pytest_cache/
+.worktrees/
