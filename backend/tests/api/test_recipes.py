@@ -323,3 +323,18 @@ async def test_la_scheda_porta_foto_tempo_e_categoria(logged_client, db_session)
 
     # la rotta delle categorie non deve essere letta come un id di ricetta
     assert (await logged_client.get("/api/v1/recipes/categories")).status_code == 200
+
+
+async def test_la_ricerca_accetta_un_ingrediente(logged_client, db_session):
+    """La rotta passa il filtro al servizio, e un id inventato non è un errore.
+
+    Una PWA con la cache vecchia può mandare l'id di un ingrediente che non c'è più:
+    la risposta giusta è «nessuna ricetta», non un muro.
+    """
+    import uuid
+
+    risposta = await logged_client.get(
+        "/api/v1/recipes/search", params={"ingredient_id": str(uuid.uuid4())}
+    )
+    assert risposta.status_code == 200
+    assert risposta.json() == []

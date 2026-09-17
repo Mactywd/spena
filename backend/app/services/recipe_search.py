@@ -251,12 +251,35 @@ async def _requirements_by_recipe(
     return requirements
 
 
+def _with_primary_ingredient(statement, ingredient_id: uuid.UUID):
+    """«Ho questo, cosa ci faccio»: solo dove l'ingrediente è principale.
+
+    Un secondario non caratterizza il piatto — la regola primario/secondario di
+    `domain/rules.py` vista dall'altro capo — e un filtro che li accettasse
+    risponderebbe «tutto» a chi ha in casa il sale.
+
+    Un EXISTS e non una join: la join moltiplicherebbe le righe per ogni
+    ingrediente corrispondente, e il limite più avanti conterebbe righe invece di
+    ricette.
+    """
+    return statement.where(
+        select(RecipeIngredient.recipe_id)
+        .where(
+            RecipeIngredient.recipe_id == Recipe.id,
+            RecipeIngredient.ingredient_id == ingredient_id,
+            RecipeIngredient.role == IngredientRole.PRIMARY,
+        )
+        .exists()
+    )
+
+
 async def search_recipes(
     session: AsyncSession,
     query: str | None = None,
     only_cookable: bool = False,
     limit: int = 30,
     category: str | None = None,
+    ingredient_id: uuid.UUID | None = None,
 ) -> list[RecipeSearchResult]:
     if query and query.strip():
         semantic = await _semantic_ranking(session, query)
@@ -273,6 +296,8 @@ async def search_recipes(
         statement = select(Recipe.id).order_by(Recipe.created_at.desc(), Recipe.id.desc())
         if category is not None:
             statement = statement.where(Recipe.category == category)
+        if ingredient_id is not None:
+            statement = _with_primary_ingredient(statement, ingredient_id)
         # Senza `only_cookable` la piscina basta: è uno scorrimento, e cento ricette
         # recenti sono più di quante se ne guardino. Con `only_cookable` no: il
         # filtro lavora sul risultato, quindi limitare prima significa filtrare
@@ -294,6 +319,10 @@ async def search_recipes(
         # vale anche sul percorso con le parole cercate: lì i candidati arrivano dal
         # riordino, e far cadere fuori i fuori-categoria qui costa zero query
         recipe_statement = recipe_statement.where(Recipe.category == category)
+    if ingredient_id is not None:
+        # vale anche quando i candidati arrivano dal riordino: far cadere fuori chi
+        # non ha quell'ingrediente costa zero query
+        recipe_statement = _with_primary_ingredient(recipe_statement, ingredient_id)
     recipes = {
         r.id: r
         for r in (await session.execute(recipe_statement)).unique().scalars()

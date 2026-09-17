@@ -155,3 +155,67 @@ async def test_senza_parole_la_piscina_dei_candidati_e_stabile(db_session):
     risultati = await search_recipes(db_session, limit=CANDIDATE_POOL)
 
     assert [r.recipe.id for r in risultati] == attesi
+
+
+async def test_il_filtro_per_ingrediente_sceglie_in_sql(db_session):
+    """Sesta lezione di CLAUDE.md: un filtro dietro a un limite guarda un campione.
+
+    Con il catalogo intero, filtrare dopo aver preso le cento più recenti
+    risponderebbe «con il pomodoro non ci fai niente» solo perché le ricette col
+    pomodoro sono più vecchie di ieri.
+    """
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import CANDIDATE_POOL, search_recipes
+
+    pomodoro = Ingredient(
+        name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
+    )
+    farina = Ingredient(
+        name="farina", display_name="Farina", category=IngredientCategory.CEREALI
+    )
+    db_session.add_all([pomodoro, farina])
+    await db_session.flush()
+
+    voluta = await create_recipe(
+        db_session, title="Pomodori al riso", description="Con il pomodoro",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(pomodoro.id, "primary", "6", None)], embedding=None,
+    )
+    assert voluta is not None
+    for numero in range(CANDIDATE_POOL + 5):
+        await create_recipe(
+            db_session, title=f"Pane {numero}", description="Senza pomodoro",
+            instructions="Inforna.", servings=2, source="dataset", source_ref=None,
+            ingredients=[(farina.id, "primary", "500 g", None)], embedding=None,
+        )
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session, ingredient_id=pomodoro.id)
+
+    assert [r.recipe.title for r in risultati] == ["Pomodori al riso"]
+
+
+async def test_un_ingrediente_secondario_non_fa_trovare_la_ricetta(db_session):
+    """Un secondario non caratterizza il piatto: «cosa faccio col sale» non è una domanda."""
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import search_recipes
+
+    sale = Ingredient(name="sale", display_name="Sale", category=IngredientCategory.CONDIMENTI)
+    pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    db_session.add_all([sale, pasta])
+    await db_session.flush()
+
+    await create_recipe(
+        db_session, title="Pasta in bianco", description="Solo pasta",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(pasta.id, "primary", "320 g", None), (sale.id, "secondary", "q.b.", None)],
+        embedding=None,
+    )
+    await db_session.flush()
+
+    assert await search_recipes(db_session, ingredient_id=sale.id) == []
+    assert [r.recipe.title for r in await search_recipes(db_session, ingredient_id=pasta.id)] == [
+        "Pasta in bianco"
+    ]

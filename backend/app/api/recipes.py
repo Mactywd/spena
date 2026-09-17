@@ -81,10 +81,13 @@ async def search(
     q: str | None = None,
     only_cookable: bool = False,
     category: str | None = None,
+    ingredient_id: uuid.UUID | None = None,
     limit: int = Query(default=30, le=100),
     session: AsyncSession = Depends(get_session),
 ) -> list[RecipeSummaryOut]:
-    results = await search_recipes(session, q, only_cookable, limit, category=category)
+    results = await search_recipes(
+        session, q, only_cookable, limit, category=category, ingredient_id=ingredient_id
+    )
     return [
         RecipeSummaryOut(
             id=r.recipe.id, title=r.recipe.title, description=r.recipe.description,
