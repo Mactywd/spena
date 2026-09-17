@@ -236,4 +236,19 @@ describe("PantryScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     expect(screen.queryByText(/Dispensa vuota/)).toBeNull();
   });
+
+  // D3/CLAUDE.md, «mai un vicolo cieco»: un conteggio che non arriva toglie la
+  // nota, non la strada. La dispensa risponde normalmente, solo la lista fallisce.
+  it("se il conteggio della lista non arriva, l'ingresso a «Sistema la spesa» resta con una nota generica", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list") ? [{ detail: "giù" }, 500] : [ITEMS, 200]
+    );
+    renderScreen();
+
+    await screen.findByText("Total 0%"); // la dispensa è arrivata
+    const link = screen.getByRole("link", { name: /Sistema la spesa/ });
+    expect(link.getAttribute("href")).toBe("/sistema");
+    expect(link).not.toHaveClass("bg-low-tint");
+    expect(screen.getByText("Metti via quello che hai comprato")).toBeDefined();
+  });
 });

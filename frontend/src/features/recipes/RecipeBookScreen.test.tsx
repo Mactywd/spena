@@ -356,6 +356,32 @@ describe("RecipeBookScreen", () => {
     expect(link).toHaveTextContent("Niente in attesa: qui si rivedono le decisioni già prese");
   });
 
+  // D3/CLAUDE.md, «mai un vicolo cieco»: un conteggio che non arriva toglie la
+  // nota, non la strada. La ricerca risponde normalmente, solo /imports/status
+  // fallisce con un 500.
+  it("se lo stato dell'import non arriva, la porta alla coda resta con una nota generica", async () => {
+    const spy = vi.fn((url: unknown) => {
+      const path = String(url);
+      if (path.includes("/imports/status")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ detail: "giù" }), { status: 500 })
+        );
+      }
+      if (path.includes("/recipes/categories")) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(RESULTS), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    await screen.findByText("Pasta al pomodoro"); // la ricerca è arrivata comunque
+    const link = screen.getByRole("link", { name: /Ingredienti da abbinare/ });
+    expect(link.getAttribute("href")).toBe("/ricette/importa");
+    expect(link).not.toHaveClass("bg-low-tint");
+    expect(link).toHaveTextContent("Le decisioni dell'import, da rivedere");
+  });
+
   it("non riordina: l'ordine è quello che decide il backend", async () => {
     // L'ordinamento nasce da `recipe_search.py`, che mette davanti ciò a cui manca
     // meno. Una ricetta non cucinabile prima di una cucinabile è quindi un ordine
