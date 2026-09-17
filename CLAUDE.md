@@ -72,7 +72,15 @@ not pay for them again:
 dates. An ingredient is `available`, `low`, or `finished`. This is deliberate, not
 an omission: it removes unit conversion and the daily upkeep that makes apps like
 this get abandoned. `recipe_ingredients.quantity_text` is free text for display and
-must never enter a calculation. The consequence is that nutrition cannot be derived
+must never enter a calculation.
+
+> **A narrowing is decided but not yet built (2026-09-17).** Recipes — and only
+> recipes — will gain optional structured quantities beside that text, so a recipe can
+> be rescaled and its nutrition computed; see `docs/prossimi-passi.md`, D1. **The
+> pantry keeps this rule whole**: no amounts, no units, no expiry, because that is
+> where the rule bought what it was meant to buy. Until that work lands, the paragraph
+> above describes the code exactly. When it lands, amend this paragraph and §2 of the
+> mother spec together. The consequence is that nutrition cannot be derived
 from stock levels, which is why nutrition tracking is phase 3 on its own track.
 
 **2. Generic ingredient and specific product are different things.** `yogurt greco`
@@ -150,8 +158,15 @@ production, which is the first defect listed above.
 
 ## Roadmap beyond v1
 
-Phase 2 adds receipt scanning, nutrient estimation from a label photo, and bulk
-import of an external recipe dataset. Phase 3 adds the food diary and
-micronutrients. Phase 4 adds the suggestion engine. The `cooking_events` table
-exists in v1 with no consumer precisely so phase 3 has a history to build on.
-Details are in §4 of the spec.
+Phase 2 was three things; bulk import of an external recipe dataset is done, so
+what remains is receipt scanning and nutrient estimation from a label photo.
+Phase 3 adds the food diary and micronutrients. Phase 4 adds the suggestion
+engine. Two footings for phase 3 are already in place: the `cooking_events`
+table exists with no consumer precisely so it has a history to build on, and
+`products.nutrients` is already populated from Open Food Facts. Details are in
+§4 of the spec.
+
+**`docs/prossimi-passi.md` is the single list of what is open** — the manual
+verification of v1 that no test can do, the small loose ends, and the phase
+ordering. Read it before starting anything new, and keep it current: everything
+in it existed only in one conversation before it was written down.

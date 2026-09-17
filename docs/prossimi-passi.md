@@ -1,0 +1,463 @@
+# Spena — prossimi passi
+
+Aggiornato il 2026-09-17.
+
+Questo file è **l'unico posto dove sta la lista**. La roadmap per fasi della spec
+madre (`docs/superpowers/specs/2026-09-11-spena-design.md`, §4) resta il documento
+d'origine, ma da qui in avanti è superata in ampiezza: quel che segue è la cornice
+completa di quel che l'app deve diventare.
+
+Non è una spec e non vuole esserlo. È la cornice: serve a vedere tutto insieme, a
+sapere cosa dipende da cosa, e a decidere l'ordine. Ogni blocco diventerà una spec
+sua, dopo un brainstorming suo.
+
+**Legenda**
+
+- **[D]** deciso, si può scrivere la spec quando tocca
+- **[?]** domanda aperta che cambia la forma di altre cose: va chiusa prima
+- **TBD** da approfondire in un brainstorming dedicato, prima della spec
+- **↳** dipende da
+
+---
+
+## Stato di oggi
+
+v1 completa (24 task), import massivo da GialloZafferano, LLM su OpenRouter che
+decide i termini dell'import. Tutto in `master`, tutto in produzione su
+`spena.mattiagirellini.com`. Verifica manuale del giro completo fatta il 2026-09-15,
+nessun difetto riportato; `import anthropic` fallisce nell'immagine costruita, come
+deve.
+
+Sezioni primarie di oggi: **Lista, Dispensa, Ricette** (tre schede in
+`TabBar.tsx`). Tutto quel che segue si innesta su queste.
+
+---
+
+# Parte I — Le decisioni che bloccano il resto
+
+Sono quattro, e **le prime tre sono chiuse il 2026-09-17**. Stanno qui perché
+cambiano la forma di molte cose a valle: chi apre una spec di Parte II, III o IV parte
+da queste. La quarta è una proposta che considero già buona, segnalata solo perché
+tocca una decisione fondante.
+
+## D1. Le quantità nelle ricette **[D — deciso il 2026-09-17]**
+
+> **Decisione: sì, e solo nelle ricette.** La proposta qui sotto è quella adottata.
+> La dispensa non cambia. Quando questa voce verrà implementata, vanno emendate
+> `CLAUDE.md` (decisione fondante 1) e la spec madre §2, che oggi dicono che
+> `quantity_text` non deve **mai** entrare in un calcolo.
+
+**Il problema.** La decisione fondante numero 1 dice «niente quantità, da nessuna
+parte», e che `recipe_ingredients.quantity_text` è testo libero che **non deve mai
+entrare in un calcolo**. Ma tre voci della lista nuova chiedono esattamente un
+calcolo su quel campo: *riporziona*, *stima nutrienti di una ricetta*, *NutriScore*.
+Senza una decisione esplicita qui, quelle tre voci fanno deragliare l'app per
+inerzia, un pezzo alla volta.
+
+**Come.** Restringere la decisione fondante a dove serviva davvero — **la
+dispensa** — e dare alle ricette quantità strutturate accanto al testo:
+
+- `quantity_text` resta la verità da mostrare, non viene mai riscritto né perso;
+- si affiancano `quantity_value` e `quantity_unit`, **entrambi annullabili**;
+- il riempimento è al meglio possibile: «400 g» → `(400, g)`; «q.b.» → `(NULL,
+  NULL)`; «2 cucchiai» → `(2, cucchiaio)` con una tabella di conversione dichiarata
+  approssimata;
+- **la dispensa non cambia di una riga.** Niente quantità, niente unità, niente
+  scadenze: è lì che quella decisione ha comprato quel che doveva comprare, cioè
+  nessuna manutenzione giornaliera;
+- chi non ha parsato non scala e non conta: «q.b.» resta «q.b.» dopo il riporziona —
+  ed è giusto — e la nutrizione dichiara la sua copertura («calcolato sull'82% degli
+  ingredienti») invece di fingere lo zero, coerente con «i nutrienti mancanti restano
+  mancanti».
+
+**Perché non l'alternativa.** Quantità vere anche in dispensa avrebbero sbloccato
+conti più precisi, ma avrebbero reintrodotto la manutenzione giornaliera che la
+decisione fondante esisteva per evitare — la cosa che fa abbandonare le app come
+questa. E dire di no del tutto avrebbe fatto cadere riporziona, la nutrizione delle
+ricette, il NutriScore e il motore di suggerimento: cioè le Parti IV e V intere.
+
+↳ da questa dipendono: riporziona, nutrizione delle ricette, NutriScore, motore di
+suggerimento.
+
+## D2. Cucinare e mangiare sono la stessa azione? **[D — deciso il 2026-09-17]**
+
+> **Decisione: sì, cucinare crea il pasto.** La proposta qui sotto è quella adottata.
+
+Oggi «cucina» aggiorna la dispensa e registra un `cooking_event`. La lista nuova
+aggiunge «crea un pasto», che compone un pasto da più ricette. Se restano due azioni
+scollegate, cucinare e poi registrare la cena sono due registrazioni della stessa
+cena, e il diario mente o raddoppia.
+
+**Come.** Cucinare **è** mangiare, salvo dire il contrario: la scheda di
+cottura chiede il tipo di pasto e il pasto nasce da lì. Alimentazione permette
+comunque di aggiungere un pasto che non è nato da una cottura — il ristorante, lo
+spuntino, la foto di un piatto — e di togliere dal pasto una ricetta che hai cucinato
+per qualcun altro.
+
+**Perché non l'alternativa.** Tenerli separati avrebbe dato più controllo al prezzo
+di inserire la stessa cena due volte: è il doppio lavoro che in un mese fa smettere
+di compilare un diario. Lasciare un pasto «da assegnare» non chiede niente mentre
+cucini, ma costruisce un arretrato — e un arretrato in un'app di casa non si smaltisce
+mai.
+
+↳ da questa dipendono: la forma della scheda di cottura, il modello dei pasti,
+`cooking_events`.
+
+## D3. Cosa sta nella navbar, e come si raggiungono le sottosezioni **[D — deciso il 2026-09-17]**
+
+> **Decisione: quattro schede, la quarta «Pasti».** La proposta qui sotto è quella
+> adottata, nome compreso.
+
+Oggi tre schede. La lista aggiunge una sezione primaria (Alimentazione) e chiede che
+le sottosezioni — «sistema la spesa», «ingredienti da abbinare» — **siano sempre
+raggiungibili con un tasto**, anche quando non c'è niente da fare.
+
+**Come.**
+
+- Quattro schede in basso: **Lista, Dispensa, Ricette, Pasti**;
+- ogni sottosezione vive come **scheda d'ingresso fissa in cima alla sezione madre**
+  — «Sistema la spesa» in cima a Lista e a Dispensa, «Ingredienti da abbinare» in
+  cima a Ricette — sempre presente, con un pallino di avviso e un fondo diverso solo
+  quando c'è davvero qualcosa da fare;
+- l'**hamburger** in alto a destra è l'indice completo: ci trovi le sottosezioni
+  *e* le sezioni secondarie (Spese, Profilo, Connettori).
+
+**Il nome.** La spec madre la chiama «diario dei pasti»; in navbar è **«Pasti»**,
+corto e concreto. «Alimentazione» copriva anche punteggio e fabbisogni, ma è lungo per
+una navbar da quattro su 375px. Il NutriScore vive **dentro** Pasti come seconda
+vista, non come scheda sua.
+
+**Perché non cinque schede.** Un hub azioni separato avrebbe reso tutte le
+sottosezioni visibili allo stesso livello, ma cinque icone su 375px lasciano ~75px
+l'una e la navbar sarebbe diventata il punto stretto dell'app. Le schede d'ingresso in
+cima alla sezione madre ottengono la stessa visibilità senza pagare quel prezzo.
+
+↳ da questa dipendono: header globale, hamburger, tasto indietro, tutte le schede
+d'ingresso, e il fatto che `TabBar.tsx` passi da `grid-cols-3` a `grid-cols-4`.
+
+## D4. Il non alimentare — proposta, non domanda **[D salvo obiezione]**
+
+Detersivo e carta igienica devono stare in lista e in dispensa senza una seconda
+lista. La via più economica è **un campo sull'anagrafica esistente** (`kind:
+food | non_food`, categoria «Non alimentari»), non una tabella nuova: la lista, la
+dispensa e l'autocomplete continuano a fare una join sola.
+
+Ne discendono tre guardie da scrivere: una ricetta non può puntare a un non
+alimentare, la nutrizione lo ignora, e le decisioni dell'AI sull'import non ne creano
+mai. La parola «ingrediente» resta nel codice; nell'interfaccia, dove serve, si dice
+«voce».
+
+---
+
+# Parte II — Spesa e dispensa
+
+## S1. La X rossa **[D]**
+«Togli dalla dispensa» diventa una X rossa. Attenzione a «mai un vicolo cieco»: una X
+che cancella senza ritorno è un dito storto su un telefono. TBD se serve un annulla.
+Piccola, indipendente.
+
+## S2. Lo slider a tre zone **[D]**
+`o--o------o`: primo pallino rosso = finito, tratto giallo fino al secondo = quasi
+finito, verde dopo = disponibile. Indicativo, e utile soprattutto **in negozio**, per
+capire quanto ne resta di qualcosa; serve anche a seguire un prodotto che si consuma
+ma non finisce mai.
+
+**Il dominio non cambia**: la posizione è display, lo stato resta la verità, e la
+regola primario/secondario in `domain/rules.py` non si tocca. L'unica aggiunta è
+salvare la posizione (0–100) accanto allo stato, perché altrimenti si perde a ogni
+lettura. Verde all'inizio o alla fine è sempre `available`.
+
+TBD: cosa fa lo slider quando arriva a zero — mette la voce in lista da sé, come fa
+oggi il passaggio a `finished`?
+
+## S3. Ingresso diretto in dispensa, alla pari di «sistema la spesa» **[D]**
+Oggi i due schermi non offrono le stesse strade. L'ingresso diretto deve dare tutte
+quelle che dà l'altro: scegliere fra i prodotti già scansionati, scansionare un
+codice a barre, **scansionare uno scontrino**, o inserire a mano.
+
+↳ la scansione dello scontrino è la fase 2 della spec madre e **non esiste ancora**:
+questa voce la tira dentro. Va deciso se la parità si fa subito senza scontrino e si
+completa dopo, o se aspetta.
+
+## S4. Valori nutrizionali molto più ampi **[D, con TBD dentro]**
+Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero
+nella forma ma povero nel contenuto.
+
+- **TODO (sottoagente):** ricerca su quali macro e micronutrienti servono davvero per
+  una dieta bilanciata, con le unità e i riferimenti giornalieri. È il lavoro che
+  definisce i campi, e va fatto prima della spec.
+- **TBD strutturale:** i nutrienti servono su **due** livelli, non uno. Sul prodotto
+  (esatti, di marca, da Open Food Facts) e sull'**ingrediente generico** (medi, dalle
+  tabelle di composizione tipo CREA), perché le ricette puntano agli ingredienti e non
+  ai prodotti. Sono due sorgenti con due affidabilità, e vanno distinte.
+- **Tasto «Stima» [D]:** fa partire l'AI che, dall'oggetto e dai suoi ingredienti,
+  propone tutti i valori. Terza provenienza, e va marcata come tale: una stima non
+  deve mai sembrare una lettura d'etichetta.
+- **TBD modello:** se Gemma basta, o serve un modello più forte, o l'accesso al web.
+  OpenRouter offre una via per dare la ricerca web a un modello qualsiasi — **da
+  verificare com'è fatta oggi e quanto costa**, prima di progettarci sopra.
+
+## S5. Non alimentari in lista e dispensa **[D]**
+Vedi D4. Nessuna informazione nutrizionale, solo la voce con il suo slider.
+
+---
+
+# Parte III — Ricette
+
+## R1. La foto dentro la ricetta **[D]**
+Oggi la foto delle ricette importate si vede solo nell'elenco. Va mostrata anche nella
+scheda aperta. Attenzione al difetto già corretto una volta (`6a2175b`): una foto che
+non carica non deve lasciare un buco.
+
+## R2. Riporziona **[D]** ↳ D1
+Due modi, e il secondo è quello che manca a tutte le app: per **numero di porzioni**,
+e per **quantità assoluta di un ingrediente** — «la ricetta è per 400 g di pasta, io
+ne faccio 150 g», indipendentemente dalle porzioni. Il secondo implica scegliere
+l'ingrediente su cui ancorare la scala.
+
+TBD: se il riporziona è solo una vista o si può salvare; cosa succede alle righe non
+parsate (proposta: restano identiche e si vedono come tali).
+
+## R3. Filtra per ingrediente **[D]**
+«Ho questo, cosa ci faccio» — vale **solo sugli ingredienti primari**, perché un
+ingrediente secondario non caratterizza il piatto. Indipendente, piccola, e non
+richiede niente di nuovo nel modello.
+
+## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[D, con un blocco]**
+L'obiettivo è tutto il catalogo. Strategia proposta: **prima uno scarico locale
+completo**, poi la messa online e il parsing a ondate.
+
+> **VINCOLO ATTIVO: massimo ~100 ricette totali** finché i volumi Docker non stanno
+> su uno storage esterno più capiente. Me lo dirai tu quando è fatto. Fino ad allora
+> nessun import di massa, e questo vincolo vale anche per ogni altra voce di questo
+> file.
+
+## R5. Sostituisci ingrediente **[D, con TBD pesante]**
+Dentro la ricetta, accanto a ogni ingrediente, un tasto «Sostituisci». Tre esiti, e
+sono tre cose diverse:
+1. **uno o più sostituti** (pollo → tacchino);
+2. **si può omettere** — una spezia il cui sapore non si emula ma che non rompe il
+   piatto;
+3. **insostituibile** — la farina nel pane.
+
+**Precalcolato**, non chiesto all'AI ogni volta: finito l'import avremo un'anagrafica
+molto ampia, e si fa girare il calcolo una volta e si salva.
+
+TBD grosso, da affrontare prima della spec: quante coppie sono, quanto costano con il
+tetto di 1$/giorno, se la sostituibilità dipende dalla ricetta o solo dalla coppia di
+ingredienti (il burro nella besciamella non è il burro nei biscotti), e come si
+corregge una risposta sbagliata.
+↳ R4 (serve l'anagrafica ampia).
+
+## R6. Filtra per ricette cucinabili **con sostituti** **[D]** ↳ R5
+Oggi si filtra per «cucinabile». Serve anche «cucinabile usando quel che ho al posto
+di quel che manca».
+
+## R7. Cerca ricette con al massimo *n* ingredienti mancanti **[D]**
+Due usi in uno: «tanto devo andare a fare la spesa, ammetto 3 cose da comprare», e
+**svuotafrigo** — parto dagli avanzi e allargo di poco la scelta.
+
+⚠️ Attenzione alla sesta lezione di `CLAUDE.md`: *un filtro che lavora sul risultato
+non può stare dietro a un limite*. `recipe_search.py` ha già preso questo difetto una
+volta. Con il catalogo intero di GialloZafferano è la stessa trappola, moltiplicata.
+
+## R8. Modifica con AI **[D]**
+Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
+(«sostituisci lo zucchero con dolcificante», che obbliga a ribilanciare il resto).
+**Il salvataggio crea una ricetta nuova**, non tocca l'originale.
+
+TBD: se la nuova ricetta tiene un legame con quella da cui nasce, e se si vede.
+
+---
+
+# Parte IV — Pasti (sezione primaria nuova) ↳ D1, D2, D3
+
+## P1. Creazione di un pasto **[D]**
+Si sceglie il tipo — Colazione, Pranzo, Merenda, Cena, Spuntino — e l'app mostra
+ricette adatte **senza nascondere il resto**: a colazione la bistecca non sta fra i
+primi risultati, ma l'elenco completo resta raggiungibile. Si scelgono più ricette, o
+se ne inserisce una nuova, o **si fotografa un piatto per la stima calorica**.
+
+TBD: la stima da foto è un pezzo suo, con la stessa domanda sul modello di S4.
+
+## P2. NutriScore **[D, con TBD]**
+Per il periodo scelto — pasto, giorno, settimana — confronta quel che si doveva
+mangiare con quel che si è mangiato, e dà un punteggio.
+
+- i fabbisogni vengono da **peso, altezza e il resto**, che vanno inseriti da qualche
+  parte: serve una **sezione Profilo** (proposta: nell'hamburger);
+- il punteggio è 100 se tutto torna, e cala **in modo non lineare**: 500 calorie in
+  più o in meno su una settimana devono restare 100. **TBD: la funzione.** È la scelta
+  che decide se il punteggio è utile o se diventa un numero che si ignora dopo tre
+  giorni;
+- con «i nutrienti mancanti restano mancanti», un punteggio calcolato su dati parziali
+  deve dire di esserlo.
+
+↳ P1 per i dati mangiati, S4 per i nutrienti, D1 per le quantità.
+
+---
+
+# Parte V — Motori
+
+## M1. Motore di suggerimento ricette **[TBD]** ↳ P2, S4
+Chiamato ogni volta che l'app propone ricette. Tiene conto di:
+- tipo di pasto;
+- calorie e nutrienti già mangiati, **sia sull'ultimo giorno che sull'ultima
+  settimana** — se oggi ho mangiato pochi carboidrati ma nella settimana tanti, non
+  deve spingermi comunque sui carboidrati;
+- disponibilità in dispensa (c'è già, `recipe_search.py`);
+- sostituibilità (↳ R5), stagionalità, ripetizione recente: **da decidere insieme**.
+
+È l'ultimo pezzo in ordine di dipendenze: ha bisogno che esistano i pasti, i nutrienti
+e i sostituti. Brainstorming suo, a valle di tutto.
+
+---
+
+# Parte VI — Sezioni secondarie (hamburger)
+
+## H1. Expense Tracker **[TBD]** ↳ T2
+Spesa totale su OpenRouter nel periodo scelto, con una torta di come si divide.
+
+**Dipendenza non ovvia:** la torta ha fette solo se le chiamate sono già attribuite
+per sezione. Senza T2, è una torta con una fetta sola. T2 va fatto prima, e
+idealmente subito, perché ogni giorno senza attribuzione è un giorno di storico che
+non si potrà più dividere.
+
+TBD: brainstorming su cosa mostrare — da `llm_prices` c'è già la tabella dei prezzi
+per provider e il costo di un lotto.
+
+## H2. Connettore Samsung Health **[TBD]**
+Serve a Pasti: l'attività fisica cambia il fabbisogno, e inserirla a mano non si fa.
+
+**TODO (sottoagente):** verificare se esiste una via praticabile. L'SDK ufficiale
+chiede di diventare partner e non conviene; da capire se ci sono strade alternative
+davvero utilizzabili. **Finché non c'è una risposta, il fabbisogno calorico di P2 non
+può dipendere dall'attività**: va progettato per funzionare senza, e migliorare se
+arriva.
+
+## H3. Profilo **[D]** ↳ P2
+Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.
+
+---
+
+# Parte VII — Trasversali
+
+## T1. Navigazione **[D dopo D3]**
+- **Header globale** «Spena» con logo, hamburger a destra.
+- **Tasto indietro** dentro le sottosezioni. Oggi si torna indietro solo con la navbar
+  in basso o col tasto del telefono — che su iOS in PWA non c'è.
+- **Schede d'ingresso sempre presenti** per le sottosezioni, con avviso quando c'è da
+  fare. Il caso «non ho spesa da mettere a posto» non deve far sparire il tasto.
+
+TBD: serve un logo. Non esiste.
+
+## T2. Attribuzione delle chiamate su OpenRouter **[D]** — *da fare presto*
+Nei log di OpenRouter la colonna «App» è sempre «Unknown», quindi non si sa quanto
+costa ogni pezzo.
+
+**Diagnosi più probabile, da confermare per prima cosa:** `HTTP-Referer` viene
+inviata solo se `OPENROUTER_APP_URL` è valorizzata, e il default è stringa vuota
+(`backend/app/core/config.py:41`); OpenRouter identifica l'app soprattutto da quella.
+Va controllato se è impostata nel `.env` del server.
+
+Poi la vera aggiunta: `X-Title` oggi è **un valore unico e statico**
+(`"Spena Import Ricette"` per tutto, `config.py:40`). Deve diventare **per punto di
+chiamata** — decisione dei termini, stesura ricetta, stima nutrienti, modifica AI,
+calcolo sostituti — così ogni voce di spesa ha un nome.
+
+↳ H1 dipende da questo.
+
+---
+
+# Parte VIII — Ordine consigliato
+
+Non è un impegno, è quel che le dipendenze permettono.
+
+**Subito, perché sbloccano o smettono di perdere dati**
+T2 (ogni giorno senza attribuzione è storico perso), e le tre decisioni D1–D3.
+
+**Poi, indipendenti e piccole** — si possono fare in qualunque momento e non
+aspettano nessuno: S1, S2, R1, R3, T1.
+
+**Poi, il blocco strutturale**: D4/S5 (non alimentari), S4 (nutrienti ampi), D1
+applicata (quantità nelle ricette). Da qui in avanti serve la spec.
+
+**Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
+
+**Ultimo, quel che ha bisogno di tutto il resto**: Pasti (P1, P2), M1, H1, H2.
+
+---
+
+# Parte IX — Lavoro già impegnato: i controlli end-to-end
+
+Lo stile è l'unica parte dell'app che Vitest non può vedere: Tailwind genera il CSS
+alla costruzione e jsdom non lo calcola. Girano sullo stack `spena-e2e`, che ha una
+password finta e nota in `.env.e2e`: nessuna credenziale vera, nessuna chiave,
+nessuna rete.
+
+```bash
+E2E="docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml"
+$E2E up -d --build --wait
+$E2E exec -T backend python -m app.cli.seed
+(cd frontend && E2E_BASE_URL=http://localhost:5174 npm run e2e)
+$E2E down -v
+```
+
+**a. Il contrasto misurato, non calcolato a mano** — in `frontend/e2e/style.spec.ts`.
+Leggere dal browser il colore calcolato e il fondo dietro, calcolare il rapporto in
+pagina, asserire ≥ 4.5. Oggi `index.css` *afferma* che `ink-faint` è «il più chiaro
+che regge 4.5:1 sul fondo» e non lo verifica niente.
+
+| Token | Colore | Su `--color-page` `#eef1ee` | Margine |
+|---|---|---|---|
+| `--color-low` | `#9a5f0c` | 4.60:1 | +2% |
+| `--color-ink-faint` | `#636e66` | 4.58:1 | +2% |
+
+Entrambi in `text-xs`, dove la soglia è 4.5 e non 3.
+
+**b. Le schermate della revisione** — nuovo `frontend/e2e/import-review.spec.ts`,
+senza stub di rete: seminare i termini decisi passando dal codice vero e lasciare che
+il browser chiami l'endpoint vero. Controlla la sezione «Deciso dall'AI», il
+comportamento **a 375px** di un nome lungo in `truncate` dentro un `justify-between`,
+e il riquadro di conferma dell'annullamento.
+
+**c. La riga «da creare salvando»** — con `page.route`, e con un commento che dichiari
+il limite: è un test che si costruisce l'oggetto da sé, quindi vale solo per il
+layout a 375px.
+
+---
+
+# Parte X — Piccole cose aperte
+
+- **Il gate a password resta** — deciso il 2026-09-15. `SESSION_MAX_AGE` è già **un
+  anno** (`backend/app/core/security.py:9`): in produzione la password si digita una
+  volta per browser e poi mai più. Senza gate, `POST /api/v1/imports/...` diventerebbe
+  un endpoint pubblico che fa scaricare GialloZafferano dal nostro server su richiesta
+  anonima, e il tetto di 1$/giorno non copre quello.
+- **In locale l'app non parte**, e non è il login: `SESSION_SECRET` nel `.env` è un
+  segnaposto e `main.py:42` rifiuta di avviarsi. Si risolve una volta sola generando
+  un segreto con `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`.
+  (Quel file non lo tocca Claude, per accordo.)
+- **La regola di permesso `Bash(ssh hetznerserver:*)`** in `.claude/settings.local.json`
+  è larga quanto tutta la macchina, concessa per un deploy finito. Da restringere.
+- **`ANTHROPIC_API_KEY` è ancora nel `.env` del server** e non la usa più niente.
+- **Due file non tracciati sul server**, in `~/sites/spena`: `.env.bak` e
+  `imposta-password.sh`.
+- **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
+  `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.
+
+---
+
+# Parte XI — Note operative
+
+- Il repo sul server è in **`~/sites/spena`** su `hetznerserver`.
+- Deploy: `git pull --ff-only` e poi
+  `docker compose -f docker-compose.prod.yml up -d --build --wait`. **Il `-f` non è
+  opzionale** — terza lezione di `CLAUDE.md`.
+- La suite vera gira **sull'host, non in Docker**: `cd backend && .venv/bin/python -m
+  pytest` con Postgres su da `docker compose up -d db`; per il frontend
+  `npx vitest run`, `npm run typecheck`, `npm run build`. L'immagine del backend non
+  contiene pytest, e `tsc --noEmit` non è il type check di questo progetto (settima
+  lezione di `CLAUDE.md`).
+- **Tetto di spesa: 1$/giorno su OpenRouter.** Ogni voce che fa girare l'AI su tutto
+  il catalogo (R5, S4 di massa) deve fare i conti con questo prima della spec.
