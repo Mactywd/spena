@@ -8,18 +8,21 @@ export function searchRecipes({
   query = "",
   onlyCookable = false,
   category = "",
-  ingredientId = "",
+  ingredientIds = [],
 }: {
   query?: string;
   onlyCookable?: boolean;
   category?: string;
-  ingredientId?: string;
+  ingredientIds?: string[];
 } = {}) {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
   if (onlyCookable) params.set("only_cookable", "true");
   if (category) params.set("category", category);
-  if (ingredientId) params.set("ingredient_id", ingredientId);
+  // `append` e non `set`: il parametro si ripete, una volta per ingrediente, e il
+  // backend li vuole tutti e due. Con `set` sopravviverebbe solo l'ultimo, e
+  // l'elenco a video sarebbe più largo di quanto il filtro dichiara.
+  for (const id of ingredientIds) params.append("ingredient_id", id);
   return apiFetch<RecipeSummary[]>(`/recipes/search?${params.toString()}`);
 }
 

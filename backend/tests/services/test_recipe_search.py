@@ -191,13 +191,25 @@ async def test_il_filtro_per_ingrediente_sceglie_in_sql(db_session):
         )
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, ingredient_id=pomodoro.id)
+    risultati = await search_recipes(db_session, ingredient_ids=[pomodoro.id])
 
     assert [r.recipe.title for r in risultati] == ["Pomodori al riso"]
 
 
-async def test_un_ingrediente_secondario_non_fa_trovare_la_ricetta(db_session):
-    """Un secondario non caratterizza il piatto: «cosa faccio col sale» non è una domanda."""
+async def test_un_ingrediente_secondario_fa_trovare_la_ricetta(db_session):
+    """«Contiene» vuol dire contiene, qualunque sia il ruolo.
+
+    Fino al 2026-09-17 questo filtro guardava solo i principali, e la ragione era
+    buona per la domanda di allora: si chiamava «cosa hai in casa», cioè «ho questo,
+    cosa ci faccio», e un secondario non caratterizza il piatto — «cosa faccio col
+    sale» non è una domanda, e accettarlo avrebbe risposto «tutto».
+
+    La domanda di oggi è un'altra: il filtro si chiama «contiene ingredienti» e si
+    combina. Chi chiede le ricette col sale le vuole davvero tutte, e per restringere
+    aggiunge il secondo ingrediente invece di sperare in un ruolo che non ha scelto
+    lui. Con questa domanda escludere i secondari nasconderebbe ricette che
+    quell'ingrediente ce l'hanno eccome: è una risposta sbagliata, non una prudenza.
+    """
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
     from app.services.recipe_search import search_recipes
@@ -215,7 +227,60 @@ async def test_un_ingrediente_secondario_non_fa_trovare_la_ricetta(db_session):
     )
     await db_session.flush()
 
-    assert await search_recipes(db_session, ingredient_id=sale.id) == []
-    assert [r.recipe.title for r in await search_recipes(db_session, ingredient_id=pasta.id)] == [
+    assert [r.recipe.title for r in await search_recipes(db_session, ingredient_ids=[sale.id])] == [
         "Pasta in bianco"
     ]
+    assert [
+        r.recipe.title for r in await search_recipes(db_session, ingredient_ids=[pasta.id])
+    ] == ["Pasta in bianco"]
+
+
+async def test_piu_ingredienti_devono_esserci_tutti(db_session):
+    """Il plurale è una congiunzione, non un elenco di alternative.
+
+    Chi sceglie due ingredienti sta restringendo: una ricetta che ne ha uno solo è
+    esattamente ciò che il secondo ingrediente serve a togliere di mezzo. Con l'OR il
+    secondo tocco allargherebbe l'elenco invece di stringerlo, cioè farebbe il
+    contrario di quello che il gesto promette.
+    """
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import search_recipes
+
+    pomodoro = Ingredient(
+        name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
+    )
+    basilico = Ingredient(
+        name="basilico", display_name="Basilico", category=IngredientCategory.VERDURA
+    )
+    pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    db_session.add_all([pomodoro, basilico, pasta])
+    await db_session.flush()
+
+    await create_recipe(
+        db_session, title="Pasta al pomodoro e basilico", description="D'estate",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[
+            (pasta.id, "primary", "320 g", None),
+            (pomodoro.id, "primary", "6", None),
+            # secondario di proposito: il filtro chiede che ci sia, non che comandi
+            (basilico.id, "secondary", "q.b.", None),
+        ],
+        embedding=None,
+    )
+    await create_recipe(
+        db_session, title="Pasta al pomodoro", description="Di sempre",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(pasta.id, "primary", "320 g", None), (pomodoro.id, "primary", "6", None)],
+        embedding=None,
+    )
+    await create_recipe(
+        db_session, title="Pesto", description="Al mortaio",
+        instructions="Pesta.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(basilico.id, "primary", "50 g", None)], embedding=None,
+    )
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session, ingredient_ids=[pomodoro.id, basilico.id])
+
+    assert [r.recipe.title for r in risultati] == ["Pasta al pomodoro e basilico"]

@@ -120,6 +120,36 @@ async def test_only_cookable_filter_hides_the_rest(logged_client, db_session, cu
     assert [r["title"] for r in body] == ["Pasta all'aglio"]
 
 
+async def test_search_filtra_su_tutti_gli_ingredienti_ripetuti(logged_client, cucina):
+    """Il parametro si ripete, e ogni ripetizione stringe.
+
+    È la forma del filo, e la difende solo un test come questo: il servizio riceve
+    già una lista, ma chi scrive `?ingredient_id=a&ingredient_id=b` e si vede
+    rispondere con una sola delle due condizioni non ha modo di accorgersene se non
+    contando le ricette.
+    """
+    await _create_recipe(logged_client, cucina, title="Pasta al pomodoro")
+    await _create_recipe(
+        logged_client, cucina, title="Pasta in bianco", primary=("pasta",), secondary=()
+    )
+    pasta, pomodoro = cucina["pasta"].id, cucina["pomodoro"].id
+
+    tutte = (await logged_client.get(f"/api/v1/recipes/search?ingredient_id={pasta}")).json()
+    assert sorted(r["title"] for r in tutte) == ["Pasta al pomodoro", "Pasta in bianco"]
+
+    # In tutti e due gli ordini, e non è pignoleria: con un parametro non ripetibile
+    # Starlette tiene l'ultimo valore, quindi metà delle scritture passerebbe lo
+    # stesso e il filo sembrerebbe a posto per il motivo sbagliato. La congiunzione è
+    # simmetrica: solo chiederla nei due versi distingue «tutti e due» da «l'ultimo
+    # che arriva» — o dal primo.
+    for filo in (
+        f"ingredient_id={pasta}&ingredient_id={pomodoro}",
+        f"ingredient_id={pomodoro}&ingredient_id={pasta}",
+    ):
+        strette = (await logged_client.get(f"/api/v1/recipes/search?{filo}")).json()
+        assert [r["title"] for r in strette] == ["Pasta al pomodoro"], filo
+
+
 async def test_search_without_a_query_lists_the_whole_book(logged_client, cucina):
     await _create_recipe(logged_client, cucina, title="Pasta al pomodoro")
     body = (await logged_client.get("/api/v1/recipes/search")).json()

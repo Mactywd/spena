@@ -7,6 +7,16 @@ import { RecipeBookScreen } from "./RecipeBookScreen";
 import { UnauthorizedError } from "../../api/client";
 
 const POMODORO = { id: "i9", name: "pomodoro", display_name: "Pomodoro", category: "verdura" };
+const BASILICO = { id: "i7", name: "basilico", display_name: "Basilico", category: "verdura" };
+
+/** L'ultima richiesta di ricerca partita davvero: il filtro cambia la query, e
+ * guardare la prima chiamata vorrebbe dire guardare lo schermo prima del gesto. */
+function ultimaRicerca(fetchMock: { mock: { calls: unknown[][] } }): string {
+  return fetchMock.mock.calls
+    .map(([url]) => String(url))
+    .filter((u) => u.includes("/recipes/search?"))
+    .pop()!;
+}
 
 const RESULTS = [
   { id: "r1", title: "Pasta all'aglio", description: "Svelta", source: "dataset",
@@ -484,7 +494,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
-    await userEvent.type(await screen.findByLabelText("Cosa hai in casa"), "pomo");
+    await userEvent.type(await screen.findByLabelText("Contiene ingredienti"), "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
 
     await waitFor(() => {
@@ -504,7 +514,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
-    await userEvent.type(await screen.findByLabelText("Cosa hai in casa"), "pomo");
+    await userEvent.type(await screen.findByLabelText("Contiene ingredienti"), "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Togli il filtro su Pomodoro" }));
 
@@ -524,11 +534,97 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
-    await userEvent.type(await screen.findByLabelText("Cosa hai in casa"), "pomo");
+    await userEvent.type(await screen.findByLabelText("Contiene ingredienti"), "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
 
     expect(
-      await screen.findByText(/Nessuna ricetta che abbia «Pomodoro» fra gli ingredienti principali/)
+      await screen.findByText(/Nessuna ricetta che contenga «Pomodoro»/)
     ).toBeDefined();
+  });
+
+  it("due ingredienti li chiede tutti e due, non solo l'ultimo scelto", async () => {
+    // il parametro si ripete, e `set` al posto di `append` lascerebbe passare solo
+    // l'ultimo: l'elenco a video sarebbe più largo di quello che il filtro promette,
+    // e nessuno avrebbe modo di accorgersene se non contando le ricette
+    const fetchMock = stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO, BASILICO], 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
+    renderScreen();
+
+    const campo = await screen.findByLabelText("Contiene ingredienti");
+    await userEvent.type(campo, "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    await userEvent.type(campo, "basi");
+    await userEvent.click(await screen.findByRole("option", { name: /Basilico/ }));
+
+    await waitFor(() => {
+      const ultima = ultimaRicerca(fetchMock);
+      expect(ultima).toContain(`ingredient_id=${POMODORO.id}`);
+      expect(ultima).toContain(`ingredient_id=${BASILICO.id}`);
+    });
+  });
+
+  it("togliere un ingrediente lascia in piedi gli altri", async () => {
+    const fetchMock = stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO, BASILICO], 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
+    renderScreen();
+
+    const campo = await screen.findByLabelText("Contiene ingredienti");
+    await userEvent.type(campo, "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    await userEvent.type(campo, "basi");
+    await userEvent.click(await screen.findByRole("option", { name: /Basilico/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Togli il filtro su Pomodoro" }));
+
+    await waitFor(() => {
+      const ultima = ultimaRicerca(fetchMock);
+      expect(ultima).not.toContain(POMODORO.id);
+      expect(ultima).toContain(`ingredient_id=${BASILICO.id}`);
+    });
+  });
+
+  it("lo stesso ingrediente scelto due volte resta uno", async () => {
+    // due volte lo stesso non stringe niente: sarebbe una pastiglia doppia da
+    // togliere due volte, e una condizione ripetuta a vuoto nella query
+    stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO], 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
+    renderScreen();
+
+    const campo = await screen.findByLabelText("Contiene ingredienti");
+    await userEvent.type(campo, "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    await userEvent.type(campo, "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    expect(screen.getAllByRole("button", { name: "Togli il filtro su Pomodoro" })).toHaveLength(1);
+  });
+
+  it("senza risultati nomina tutti gli ingredienti chiesti, e dice che stringono", async () => {
+    stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO, BASILICO], 200];
+      if (path.includes("/recipes/search")) return [[], 200];
+      return [[], 200];
+    });
+    renderScreen();
+
+    const campo = await screen.findByLabelText("Contiene ingredienti");
+    await userEvent.type(campo, "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    await userEvent.type(campo, "basi");
+    await userEvent.click(await screen.findByRole("option", { name: /Basilico/ }));
+
+    // entrambi nominati, e la via d'uscita è quella vera: togliere, non aggiungere
+    expect(
+      await screen.findByText(/Nessuna ricetta che contenga «Pomodoro» e «Basilico»/)
+    ).toBeDefined();
+    expect(screen.getByText(/togli un ingrediente/)).toBeDefined();
   });
 });

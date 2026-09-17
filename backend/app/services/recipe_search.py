@@ -251,26 +251,37 @@ async def _requirements_by_recipe(
     return requirements
 
 
-def _with_primary_ingredient(statement, ingredient_id: uuid.UUID):
-    """«Ho questo, cosa ci faccio»: solo dove l'ingrediente è principale.
+def _containing_all(statement, ingredient_ids: list[uuid.UUID]):
+    """«Contiene questi ingredienti»: tutti quanti, in qualunque ruolo.
 
-    Un secondario non caratterizza il piatto — la regola primario/secondario di
-    `domain/rules.py` vista dall'altro capo — e un filtro che li accettasse
-    risponderebbe «tutto» a chi ha in casa il sale.
+    La congiunzione è il punto del filtro al plurale: un EXISTS per ciascun
+    ingrediente, in AND, così ogni ingrediente aggiunto restringe. Con l'OR il
+    secondo tocco allargherebbe l'elenco, cioè farebbe il contrario di quel che il
+    gesto promette.
 
     Un EXISTS e non una join: la join moltiplicherebbe le righe per ogni
     ingrediente corrispondente, e il limite più avanti conterebbe righe invece di
     ricette.
+
+    Il ruolo non entra, e fino al 2026-09-17 entrava. La ragione di allora era buona
+    per la domanda di allora: il filtro si chiamava «cosa hai in casa», cioè «ho
+    questo, cosa ci faccio», e lì un secondario non caratterizza il piatto — col sale
+    avrebbe risposto «tutto», che non è una risposta. La domanda di oggi è un'altra e
+    si combina: chi vuole restringere aggiunge il secondo ingrediente, e nascondergli
+    una ricetta che quell'ingrediente ce l'ha davvero sarebbe una risposta sbagliata,
+    non una prudenza. La regola primario/secondario resta intera dove serve, cioè
+    nel decidere se una ricetta si può cucinare (`domain/rules.py`).
     """
-    return statement.where(
-        select(RecipeIngredient.recipe_id)
-        .where(
-            RecipeIngredient.recipe_id == Recipe.id,
-            RecipeIngredient.ingredient_id == ingredient_id,
-            RecipeIngredient.role == IngredientRole.PRIMARY,
+    for ingredient_id in ingredient_ids:
+        statement = statement.where(
+            select(RecipeIngredient.recipe_id)
+            .where(
+                RecipeIngredient.recipe_id == Recipe.id,
+                RecipeIngredient.ingredient_id == ingredient_id,
+            )
+            .exists()
         )
-        .exists()
-    )
+    return statement
 
 
 async def search_recipes(
@@ -279,7 +290,7 @@ async def search_recipes(
     only_cookable: bool = False,
     limit: int = 30,
     category: str | None = None,
-    ingredient_id: uuid.UUID | None = None,
+    ingredient_ids: list[uuid.UUID] | None = None,
 ) -> list[RecipeSearchResult]:
     if query and query.strip():
         semantic = await _semantic_ranking(session, query)
@@ -296,8 +307,8 @@ async def search_recipes(
         statement = select(Recipe.id).order_by(Recipe.created_at.desc(), Recipe.id.desc())
         if category is not None:
             statement = statement.where(Recipe.category == category)
-        if ingredient_id is not None:
-            statement = _with_primary_ingredient(statement, ingredient_id)
+        if ingredient_ids:
+            statement = _containing_all(statement, ingredient_ids)
         # Senza `only_cookable` la piscina basta: è uno scorrimento, e cento ricette
         # recenti sono più di quante se ne guardino. Con `only_cookable` no: il
         # filtro lavora sul risultato, quindi limitare prima significa filtrare
@@ -319,26 +330,28 @@ async def search_recipes(
         # vale anche sul percorso con le parole cercate: lì i candidati arrivano dal
         # riordino, e far cadere fuori i fuori-categoria qui costa zero query
         recipe_statement = recipe_statement.where(Recipe.category == category)
-    if ingredient_id is not None:
+    if ingredient_ids:
         # vale anche quando i candidati arrivano dal riordino: far cadere fuori chi
-        # non ha quell'ingrediente costa zero query.
+        # non li ha tutti costa zero query.
         #
         # Qui sta il limite, scritto dove esiste. Sul ramo senza parole cercate il
-        # filtro è già in SQL prima della piscina (vedi `_with_primary_ingredient`
-        # sopra) e vede tutto il ricettario. Su QUESTO ramo no: i candidati sono al
-        # massimo i primi CANDIDATE_POOL di ciascuna graduatoria, e il filtro lavora
-        # dentro quel campione — una ricetta col pomodoro principale che non entra
-        # nella piscina delle parole cercate non compare.
+        # filtro è già in SQL prima della piscina (vedi `_containing_all` sopra) e
+        # vede tutto il ricettario. Su QUESTO ramo no: i candidati sono al massimo i
+        # primi CANDIDATE_POOL di ciascuna graduatoria, e il filtro lavora dentro
+        # quel campione — una ricetta che contiene il pomodoro ma non entra nella
+        # piscina delle parole cercate non compare.
         #
         # Si accetta perché le parole cercate sono già un ordinamento: «fra le
-        # ricette che parlano di questo, quelle in cui il pomodoro è principale» è
+        # ricette che parlano di questo, quelle che contengono anche il pomodoro» è
         # una domanda sul risultato della ricerca, non sul ricettario intero — non è
         # il caso della sesta lezione di CLAUDE.md, dove il filtro era l'unico
         # criterio e la piscina un taglio arbitrario. Ma è una scelta, non un fatto
         # provato: nessun test ha più ricette pertinenti di CANDIDATE_POOL, quindi
-        # nessuno vedrebbe il giorno in cui smettesse di andare bene. Se il
-        # ricettario cresce, è questo il punto da rimisurare.
-        recipe_statement = _with_primary_ingredient(recipe_statement, ingredient_id)
+        # nessuno vedrebbe il giorno in cui smettesse di andare bene. Il filtro al
+        # plurale stringe più di quello singolo, quindi il caso è semmai meno
+        # frequente di prima, non di più. Se il ricettario cresce, è questo il punto
+        # da rimisurare.
+        recipe_statement = _containing_all(recipe_statement, ingredient_ids)
     recipes = {
         r.id: r
         for r in (await session.execute(recipe_statement)).unique().scalars()

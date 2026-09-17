@@ -126,3 +126,32 @@ test("il cursore della dispensa è un bersaglio da pollice, e le zone si vedono"
   await riga.getByRole("button", { name: "Togli cipolla dalla dispensa" }).click();
   await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
 });
+
+test("la X di una pastiglia del filtro è un bersaglio da pollice, e la pastiglia si vede", async ({
+  page,
+}) => {
+  // Stesso motivo del cursore: una pastiglia troppo piccola o senza fondo la vede
+  // solo un browser. Questo filtro si usa in piedi in corsia, con il pollice, e
+  // togliere un ingrediente è il gesto con cui si esce da un elenco vuoto — se la
+  // X si manca, l'unica via d'uscita dal filtro è ricaricare la pagina.
+  //
+  // Non scrive niente: il filtro vive nello schermo, non sul server.
+  await page.getByRole("link", { name: "Ricette" }).click();
+  await page.getByLabel("Contiene ingredienti").fill("pomodo");
+  await page.getByRole("option", { name: /^Pomodoro\b/ }).click();
+
+  const togli = page.getByRole("button", { name: "Togli il filtro su Pomodoro" });
+  const box = await togli.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(40);
+  expect(box!.width).toBeGreaterThanOrEqual(40);
+
+  // il fondo della pastiglia è un token del tema: senza, resterebbe una scritta
+  // appoggiata sulla pagina, indistinguibile da un'etichetta qualsiasi
+  // la pastiglia è quella che contiene la SUA X, non «un li che dice Pomodoro»:
+  // anche le schede delle ricette sono `li` e una di loro si chiama «Pasta al
+  // pomodoro», quindi il filtro per testo pescava una scheda e la trovava
+  // trasparente — un test verde per il motivo sbagliato sarebbe stato peggio
+  const pastiglia = page.locator("li").filter({ has: togli });
+  // --color-brand-tint: #e4efe8
+  await expect(pastiglia).toHaveCSS("background-color", "rgb(228, 239, 232)");
+});

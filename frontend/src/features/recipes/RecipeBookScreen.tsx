@@ -13,7 +13,16 @@ import type { Ingredient } from "../../domain/types";
 
 const DEBOUNCE_MS = 180;
 
-/** Perché non c'è niente da mostrare: parole cercate e filtro, quattro casi.
+/** «A», «B» e «C»: la virgola fra i primi e la «e» prima dell'ultimo, come si
+ * scrive un elenco. Con «e» dappertutto tre ingredienti si leggono come una
+ * filastrocca, e questo messaggio è già lungo di suo. */
+function elenco(names: string[]): string {
+  const quoted = names.map((name) => `«${name}»`);
+  if (quoted.length <= 1) return quoted.join("");
+  return `${quoted.slice(0, -1).join(", ")} e ${quoted[quoted.length - 1]}`;
+}
+
+/** Perché non c'è niente da mostrare: le parole cercate e i filtri, un caso per ciascuno.
  *
  * «Nessuna ricetta» è un verdetto sul ricettario, e il ricettario del seme ne ha 26:
  * con la soglia semantica di `recipe_search.py` una risposta vuota è diventata
@@ -25,20 +34,24 @@ function emptyMessage({
   query,
   onlyCookable,
   category,
-  ingredientName,
+  ingredientNames,
 }: {
   query: string;
   onlyCookable: boolean;
   category: string;
-  ingredientName: string | null;
+  ingredientNames: string[];
 }): string {
   const searched = query.trim() !== "";
-  if (ingredientName) {
+  if (ingredientNames.length > 0) {
     return (
-      `Nessuna ricetta che abbia «${ingredientName}» fra gli ingredienti principali` +
+      `Nessuna ricetta che contenga ${elenco(ingredientNames)}` +
       `${searched ? " con queste parole" : ""}${category ? ` in «${category}»` : ""}` +
       `${onlyCookable ? " fra quelle che puoi cucinare adesso" : ""}: ` +
-      "togli il filtro, o provane un altro."
+      // la via d'uscita è quella vera, e al plurale non è la stessa: ogni
+      // ingrediente in più stringe, quindi si esce togliendone uno, non cambiandoli
+      (ingredientNames.length === 1
+        ? "togli il filtro, o provane un altro."
+        : "togli un ingrediente — devono esserci tutti perché una ricetta compaia.")
     );
   }
   if (category) {
@@ -71,10 +84,11 @@ export function RecipeBookScreen() {
   const [query, setQuery] = useState("");
   const [onlyCookable, setOnlyCookable] = useState(false);
   const [category, setCategory] = useState("");
-  // l'ingrediente scelto, non solo il suo id: il nome serve al riquadro del filtro e
-  // al messaggio di elenco vuoto, e una seconda chiamata per riaverlo sarebbe un
-  // giro in rete per qualcosa che l'utente ha appena toccato
-  const [ingredient, setIngredient] = useState<Ingredient | null>(null);
+  // gli ingredienti scelti, non solo i loro id: i nomi servono alle pastiglie del
+  // filtro e al messaggio di elenco vuoto, e una seconda chiamata per riaverli
+  // sarebbe un giro in rete per qualcosa che l'utente ha appena toccato
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const ingredientIds = ingredients.map((i) => i.id);
   const debouncedQuery = useDebounced(query, DEBOUNCE_MS);
 
   // Il termine sta dentro la chiave, e questo fa due cose che una ricerca scritta
@@ -85,13 +99,13 @@ export function RecipeBookScreen() {
   // diventare un "ricerca fallita" permanente su uno schermo che non funzionerà
   // mai più. La prima versione di questo schermo sbagliava esattamente lì.
   const { data: recipes = [], isLoading, isError } = useQuery({
-    queryKey: ["recipes", debouncedQuery, onlyCookable, category, ingredient?.id ?? ""],
+    queryKey: ["recipes", debouncedQuery, onlyCookable, category, ingredientIds],
     queryFn: () =>
       searchRecipes({
         query: debouncedQuery,
         onlyCookable,
         category,
-        ingredientId: ingredient?.id ?? "",
+        ingredientIds,
       }),
   });
 
@@ -113,6 +127,15 @@ export function RecipeBookScreen() {
     queryFn: fetchSearchMode,
     staleTime: Infinity,
   });
+
+  // Scegliere due volte lo stesso non stringe niente: sarebbe una pastiglia doppia
+  // da togliere due volte e una condizione ripetuta a vuoto nella query. Tornando
+  // `current` immutato React non ridisegna e nessuna ricerca riparte.
+  function addIngredient(picked: Ingredient) {
+    setIngredients((current) =>
+      current.some((i) => i.id === picked.id) ? current : [...current, picked]
+    );
+  }
 
   // Fuori dalla chiave ["recipes"]: questa non cambia cercando, cambia quando si
   // decide un termine o si scarica un lotto. Se la rotta non risponde non si mostra
@@ -196,26 +219,48 @@ export function RecipeBookScreen() {
         </label>
       )}
 
-      {ingredient === null ? (
-        <IngredientPicker
-          label="Cosa hai in casa"
-          failureNote="Puoi comunque cercare per parole qui sopra."
-          onPick={setIngredient}
-        />
-      ) : (
-        <div className="flex items-center justify-between gap-2 rounded-card bg-brand-tint px-3 py-2">
-          <span className="min-w-0 truncate text-sm text-brand">
-            Solo con {ingredient.display_name}
-          </span>
-          <button
-            type="button"
-            aria-label={`Togli il filtro su ${ingredient.display_name}`}
-            onClick={() => setIngredient(null)}
-            className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand"
-          >
-            Togli
-          </button>
-        </div>
+      {/* il campo resta a video anche con qualcosa già scelto: gli ingredienti si
+          sommano, e un campo che sparisce al primo tocco direbbe il contrario */}
+      <IngredientPicker
+        label="Contiene ingredienti"
+        failureNote="Puoi comunque cercare per parole qui sopra."
+        onPick={addIngredient}
+      />
+
+      {ingredients.length > 0 && (
+        <ul className="flex flex-wrap items-center gap-2">
+          {ingredients.map((chosen) => (
+            <li
+              key={chosen.id}
+              className="flex items-center gap-1 rounded-card bg-brand-tint pr-1 pl-3"
+            >
+              <span className="min-w-0 truncate text-sm text-brand">{chosen.display_name}</span>
+              {/* la stessa X con cui si toglie una voce dalla dispensa, e per la
+                  stessa ragione il nome accessibile nomina l'ingrediente: su tre
+                  pastiglie «Togli» ripetuto identico non dice quale si sta togliendo */}
+              <button
+                type="button"
+                aria-label={`Togli il filtro su ${chosen.display_name}`}
+                onClick={() =>
+                  setIngredients((current) => current.filter((i) => i.id !== chosen.id))
+                }
+                className="flex size-11 shrink-0 items-center justify-center rounded-full text-brand"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  className="size-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
       {isLoading && <p className="pt-4 text-ink-soft">Cerco…</p>}
@@ -232,7 +277,7 @@ export function RecipeBookScreen() {
             query: debouncedQuery,
             onlyCookable,
             category,
-            ingredientName: ingredient?.display_name ?? null,
+            ingredientNames: ingredients.map((i) => i.display_name),
           })}
         </p>
       )}

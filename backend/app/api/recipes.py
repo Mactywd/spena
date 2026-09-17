@@ -81,12 +81,18 @@ async def search(
     q: str | None = None,
     only_cookable: bool = False,
     category: str | None = None,
-    ingredient_id: uuid.UUID | None = None,
+    # ripetibile: `?ingredient_id=a&ingredient_id=b` vuol dire «che li contenga
+    # tutti e due». Il nome resta al singolare — è il nome di ogni ripetizione, non
+    # dell'insieme — e questo ha un secondo effetto utile: una copia vecchia del
+    # frontend, servita dal service worker dalla sua cache, manda ancora un solo
+    # `ingredient_id` e continua a filtrare bene, invece di vedersi ignorare il
+    # parametro e mostrare il ricettario intero sotto l'etichetta di un filtro acceso.
+    ingredient_id: list[uuid.UUID] = Query(default=[]),
     limit: int = Query(default=30, le=100),
     session: AsyncSession = Depends(get_session),
 ) -> list[RecipeSummaryOut]:
     results = await search_recipes(
-        session, q, only_cookable, limit, category=category, ingredient_id=ingredient_id
+        session, q, only_cookable, limit, category=category, ingredient_ids=ingredient_id
     )
     return [
         RecipeSummaryOut(
