@@ -1,7 +1,8 @@
 # Spena — prossimi passi
 
 Aggiornato il 2026-09-17 (le cinque voci indipendenti di Parte VIII: S1, S2, R1,
-R3, T1).
+R3, T1; poi, lo stesso giorno, la domanda del rientro in lista estesa al giallo e
+il filtro per ingrediente rifatto al plurale).
 
 Questo file è **l'unico posto dove sta la lista**. La roadmap per fasi della spec
 madre (`docs/superpowers/specs/2026-09-11-spena-design.md`, §4) resta il documento
@@ -33,9 +34,9 @@ Sezioni primarie di oggi: **Lista, Dispensa, Ricette** (tre schede in
 `TabBar.tsx`). Tutto quel che segue si innesta su queste.
 
 **Le cinque voci indipendenti di Parte VIII** — S1, S2, R1, R3, e in parte T1 —
-sono implementate e verdi sul ramo `cinque-voci`, non ancora su `master`: dove
-questo file dice «FATTO 2026-09-17» qui sotto, intende quello. Merge e distribuzione
-si decidono a parte.
+sono implementate, verdi, **entrate in `master` e distribuite** il 2026-09-17
+(migrazione `0006` applicata in produzione). Dove questo file dice «FATTO
+2026-09-17» qui sotto, intende codice che gira.
 
 ---
 
@@ -206,6 +207,14 @@ con due chiamanti — la cottura e il cursore — che non duplica una voce già 
 lista, e la rotta `POST /api/v1/pantry/{item_id}/restock` che il cursore chiama
 quando la risposta è sì.
 
+**Dal 2026-09-17 la domanda arriva anche nel giallo, non solo a zero.** «Quasi
+finito» è il momento in cui ricomprare è ancora in tempo; allo zero te ne accorgi in
+cucina, non in corsia. Quali stati chiedano continua a dirlo il server — la riga in
+`PantryRow.tsx` guarda lo `status` che torna dalla `PATCH`, e la soglia delle tre
+zone non è ricopiata nel frontend — e i due stati sono scritti per esteso invece di
+«diverso da disponibile», così un eventuale quarto stato dovrà essere deciso e non
+ereditato per caso.
+
 ## S3. Ingresso diretto in dispensa, alla pari di «sistema la spesa» **[D]**
 Oggi i due schermi non offrono le stesse strade. L'ingresso diretto deve dare tutte
 quelle che dà l'altro: scegliere fra i prodotti già scansionati, scansionare un
@@ -256,18 +265,42 @@ l'ingrediente su cui ancorare la scala.
 TBD: se il riporziona è solo una vista o si può salvare; cosa succede alle righe non
 parsate (proposta: restano identiche e si vedono come tali).
 
-## R3. Filtra per ingrediente **[FATTO 2026-09-17]**
-«Ho questo, cosa ci faccio» — `GET /api/v1/recipes/search?ingredient_id=…`, filtrato
-in SQL **prima** del limite **nel ramo senza parole cercate** (sesta lezione di
-`CLAUDE.md`: un filtro che lavora sul risultato non può stare dietro a un limite).
+## R3. Filtra per ingrediente **[FATTO 2026-09-17, rifatto lo stesso giorno]**
+«Contiene questi ingredienti» — `GET /api/v1/recipes/search?ingredient_id=…&ingredient_id=…`.
+Il parametro **si ripete, e ogni ripetizione stringe**: un `EXISTS` per ciascuno, in
+AND. Con l'OR il secondo tocco allargherebbe l'elenco, cioè farebbe il contrario di
+quel che il gesto promette. Il campo è quello dell'anagrafica, con il suo
+autocomplete, e **resta a video anche a filtro acceso**: gli ingredienti scelti si
+sommano e stanno sotto come pastiglie, ciascuna con la sua X (bersaglio da 44px,
+difeso in `frontend/e2e/style.spec.ts` perché una X piccola la vede solo un browser).
+Lo stesso ingrediente scelto due volte resta uno.
+
+**Il ruolo non entra più, e prima entrava.** La prima stesura guardava i soli
+primari, e la ragione era buona per la domanda di allora: il filtro si chiamava
+«cosa hai in casa», cioè «ho questo, cosa ci faccio», e lì un secondario non
+caratterizza il piatto — col sale avrebbe risposto «tutto», che non è una risposta.
+La domanda di oggi è un'altra e si combina: chi vuole restringere aggiunge il secondo
+ingrediente, e nascondergli una ricetta che quell'ingrediente ce l'ha davvero sarebbe
+una risposta sbagliata, non una prudenza. **La regola primario/secondario resta
+intera dove serve**, cioè nel decidere se una ricetta si può cucinare
+(`domain/rules.py`): questo filtro non la tocca.
+
+Filtrato in SQL **prima** del limite **nel ramo senza parole cercate** (sesta lezione
+di `CLAUDE.md`: un filtro che lavora sul risultato non può stare dietro a un limite).
 Con una ricerca testuale, invece, il filtro si applica **dopo** la piscina dei
 candidati della fusione RRF (`CANDIDATE_POOL` per graduatoria): comportamento
 accettabile, perché lì le parole cercate sono già un ordinamento e la domanda è sul
 risultato della ricerca — ma è una scelta, non un fatto provato, e nessun test ha più
-ricette pertinenti della piscina. Il limite è dichiarato nel commento accanto al
-filtro in `backend/app/services/recipe_search.py`. Vale **solo sugli ingredienti
-primari**, perché un secondario non caratterizza il piatto. Il selettore vive nel
+ricette pertinenti della piscina. Il filtro al plurale stringe più di quello singolo,
+quindi il caso è semmai meno frequente di prima. Il limite è dichiarato nel commento
+accanto al filtro in `backend/app/services/recipe_search.py`. Il selettore vive nel
 ricettario. Non ha richiesto niente di nuovo nel modello.
+
+Il nome del parametro **resta al singolare** perché è il nome di ogni ripetizione, e
+questo ha un secondo effetto utile: una copia vecchia del frontend, servita dal
+service worker dalla sua cache, ne manda ancora uno solo e continua a filtrare bene,
+invece di vedersi ignorare il parametro e mostrare il ricettario intero sotto
+l'etichetta di un filtro acceso.
 
 ## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[D, con un blocco]**
 L'obiettivo è tutto il catalogo. Strategia proposta: **prima uno scarico locale
@@ -522,6 +555,13 @@ layout a 375px.
   `imposta-password.sh`.
 - **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
   `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.
+- **Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
+  «finito»** (`frontend/src/features/cooking/CookSheet.tsx`), mentre in dispensa la
+  domanda arriva anche nel giallo dal 2026-09-17. Non è un difetto: là la casella c'è
+  sempre e visibile per ogni riga, quindi pre-spuntarla è un valore di partenza, non
+  un'offerta che appare o non appare. Ma le due sezioni ora rispondono in modo
+  diverso alla stessa domanda — «quasi finito va ricomprato?» — e vale la pena
+  deciderlo una volta invece di riscoprirlo.
 - **`PantryRow.tsx` è il file più affollato dell'app** (oltre 170 righe, tre stati
   locali oltre alle prop). Estrarre la domanda del rientro in lista («Lo rimetto in
   lista?», con la sua lapide e il suo esito) come componente a sé è il taglio
