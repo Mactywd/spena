@@ -140,9 +140,7 @@ async def materialize_ready(
             # pagina resta visibile e recuperabile: SKIPPED col nome della voce
             # incriminata, non un buco silenzioso.
             page.state = ImportState.SKIPPED
-            page.skipped_reason = (
-                f"riga non alimentare: «{exc.display_name}»"[:200]
-            )
+            page.skipped_reason = f"riga non alimentare: «{exc.display_name}»"[:200]
             skipped += 1
             continue
         recipe.category = (page.payload.get("category") or None) and str(page.payload["category"])[:60]
