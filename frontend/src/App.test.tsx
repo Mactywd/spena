@@ -51,4 +51,15 @@ describe("App", () => {
     },
     20_000
   );
+
+  it("l'intestazione sta sopra le schermate, non dentro una di loro", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(ITEMS), { status: 200 })
+    ));
+
+    render(<App />);
+
+    expect(await screen.findByRole("banner")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Spena" })).toBeDefined();
+  });
 });

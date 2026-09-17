@@ -14,6 +14,7 @@ import { ImportQueueScreen } from "./features/recipe-import/ImportQueueScreen";
 import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
+import { AppHeader } from "./components/AppHeader";
 import { TabBar } from "./components/TabBar";
 import { UnauthorizedError } from "./api/client";
 import { defaultQueryRetryPredicate } from "./lib/queryRetry";
@@ -48,10 +49,14 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <AppHeader />
         {/* max-w-md: l'app è pensata per un telefono, e su uno schermo largo una
             lista che attraversa 1400px non si legge. pb-24 tiene l'ultima riga
-            sopra la barra delle schede, che è fissa e coprirebbe un bersaglio. */}
-        <main className="mx-auto min-h-dvh max-w-md pb-24">
+            sopra la barra delle schede, che è fissa e coprirebbe un bersaglio.
+            L'altezza minima toglie i 3rem dell'intestazione: con `min-h-dvh`
+            pieno la pagina sarebbe sempre più alta dello schermo di quei 3rem,
+            e ogni schermata avrebbe una barra di scorrimento che non serve. */}
+        <main className="mx-auto min-h-[calc(100dvh-3rem)] max-w-md pb-24">
           <Routes>
             <Route path="/" element={<Navigate to="/lista" replace />} />
             <Route path="/lista" element={<ShoppingListScreen />} />
