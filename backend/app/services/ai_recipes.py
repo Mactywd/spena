@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.rules import IngredientRole
 from app.services.ingredient_match import match_name
-from app.services.llm import LlmUnavailable, complete_json
+from app.repositories.llm_calls import record_llm_call
+from app.services.llm import LlmCallSite, LlmUnavailable, LlmUsage, complete_json
 from app.services.recipe_import.decide import CATEGORIES
 
 DRAFT_MAX_TOKENS = 2000
@@ -92,8 +93,9 @@ class RecipeDraft:
 async def draft_recipe(
     session: AsyncSession, prompt: str, client: object | None = None
 ) -> RecipeDraft:
-    payload = (
-        await complete_json(
+    try:
+        esito = await complete_json(
+            call_site=LlmCallSite.RECIPE_DRAFT,
             system=SYSTEM_PROMPT,
             user=prompt,
             schema=DRAFT_SCHEMA,
@@ -101,7 +103,12 @@ async def draft_recipe(
             max_tokens=DRAFT_MAX_TOKENS,
             client=client,
         )
-    ).data
+    except LlmUnavailable:
+        await _record_spend(session, LlmUsage(), ok=False)
+        raise
+
+    await _record_spend(session, esito.usage, ok=True)
+    payload = esito.data
     raw_ingredients = payload.get("ingredients") or []
     if not isinstance(raw_ingredients, list):
         raise LlmUnavailable("la lista degli ingredienti ha una forma inutilizzabile")
@@ -146,3 +153,17 @@ async def draft_recipe(
         servings=payload.get("servings"),
         ingredients=ingredients,
     )
+
+
+async def _record_spend(session: AsyncSession, usage: LlmUsage, *, ok: bool) -> None:
+    """La spesa si committa anche se la bozza non si salva.
+
+    Questa rotta propone e non scrive: la sua sessione non viene committata da
+    nessuno. Ma la chiamata è avvenuta ed è stata pagata che l'utente salvi la ricetta
+    o la butti, e legarne la registrazione al salvataggio renderebbe invisibile
+    proprio il consumo più facile da fare per sbaglio — dieci bozze chieste e nessuna
+    tenuta. La commit è sicura perché su questo percorso non c'è nient'altro in sospeso
+    nella sessione.
+    """
+    await record_llm_call(session, call_site=LlmCallSite.RECIPE_DRAFT, usage=usage, ok=ok)
+    await session.commit()

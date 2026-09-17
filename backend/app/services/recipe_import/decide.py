@@ -31,7 +31,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientCategory
 from app.db.models.recipe_import import ImportTerm, TermDecision
-from app.services.llm import LlmUnavailable, build_headers, complete_json, open_client
+from app.repositories.llm_calls import record_llm_call
+from app.services.llm import (
+    LlmCallSite,
+    LlmUnavailable,
+    LlmUsage,
+    build_headers,
+    complete_json,
+    open_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,12 +127,35 @@ def _question(term: ImportTerm, registry: Registry) -> str:
     )
 
 
+@dataclass(frozen=True)
+class Spesa:
+    """Una chiamata avvenuta e quel che è costata. `ok` distingue il modello giù."""
+
+    call_site: LlmCallSite
+    usage: LlmUsage
+    ok: bool
+
+
+@dataclass(frozen=True)
+class TermAnswer:
+    """Quel che una domanda ha prodotto: la proposta, e quanto è costata.
+
+    Le due cose viaggiano insieme perché una risposta inapplicabile costa esattamente
+    come una buona: se l'uso tornasse solo con le proposte valide, la torta delle spese
+    nasconderebbe proprio i giri che si vogliono scoprire, quelli che pagano e non
+    concludono.
+    """
+
+    proposal: "TermDecisionProposal | None"
+    usage: LlmUsage
+
+
 async def decide_one(
     session: AsyncSession,
     term: ImportTerm,
     registry: Registry,
     client: object | None = None,
-) -> TermDecisionProposal | None:
+) -> TermAnswer:
     """Una decisione verificata per questo termine, o `None` se non è verificabile.
 
     `None` non è un guasto: è «il modello ha risposto qualcosa che non posso
@@ -137,17 +168,30 @@ async def decide_one(
     una firma diversa per ognuno dei tre passi renderebbe il fan-out più difficile da
     leggere di quanto valga.
     """
-    payload = (
-        await complete_json(
-            system=TERM_SYSTEM_PROMPT,
-            user=_question(term, registry),
-            schema=TERM_SCHEMA,
-            schema_name="decisione_termine",
-            max_tokens=TERM_MAX_TOKENS,
-            client=client,
-        )
-    ).data
+    esito = await complete_json(
+        call_site=LlmCallSite.TERM_DECISION,
+        system=TERM_SYSTEM_PROMPT,
+        user=_question(term, registry),
+        schema=TERM_SCHEMA,
+        schema_name="decisione_termine",
+        max_tokens=TERM_MAX_TOKENS,
+        client=client,
+    )
+    return TermAnswer(
+        proposal=_verified_proposal(esito.data, term, registry), usage=esito.usage
+    )
 
+
+def _verified_proposal(
+    payload: dict, term: ImportTerm, registry: Registry
+) -> TermDecisionProposal | None:
+    """La proposta che questa risposta autorizza, o `None`.
+
+    Separata dalla domanda perché sono due cose diverse: una fa rete e costa, l'altra
+    è pura e si prova senza. La verifica contro l'anagrafica vera è la regola che
+    sopravvive intatta dalla spec del 2026-09-12: una risposta che non si può
+    verificare non si applica.
+    """
     action = payload.get("action")
 
     if action == "ignore":
@@ -232,8 +276,12 @@ async def collapse_creates(
     proposals: list[TermDecisionProposal],
     registry: Registry,
     client: object | None = None,
-) -> list[TermDecisionProposal]:
+) -> tuple[list[TermDecisionProposal], Spesa | None]:
     """Unisce i `create` che sono lo stesso ingrediente. Non scrive niente.
+
+    Torna anche la spesa della chiamata, o `None` quando non ne ha fatta nessuna: un
+    collasso saltato non deve comparire nella torta come un costo a zero, perché non
+    è un costo — è un'assenza di chiamata.
 
     Copre due rischi in una chiamata: nuovo contro nuovo (che nessuna delle chiamate
     parallele poteva vedere) e nuovo contro esistente (che `decide_one` avrebbe dovuto
@@ -258,7 +306,7 @@ async def collapse_creates(
 
     creates = [p for p in proposals if p.action == "create" and p.name]
     if not creates:
-        return list(proposals)
+        return list(proposals), None
 
     proposed = {p.name: p for p in creates if p.name}
     neighbours: dict[str, list[str]] = {}
@@ -267,7 +315,7 @@ async def collapse_creates(
         neighbours[name] = [ingredient.name for ingredient in found]
 
     if len(proposed) < 2 and not any(neighbours.values()):
-        return list(proposals)  # niente con cui collassare, né fra i nuovi né in anagrafica
+        return list(proposals), None  # niente con cui collassare, né fra i nuovi né in anagrafica
 
     question = json.dumps(
         {
@@ -279,22 +327,23 @@ async def collapse_creates(
     )
 
     try:
-        payload = (
-            await complete_json(
-                system=COLLAPSE_SYSTEM_PROMPT,
-                user=question,
-                schema=COLLAPSE_SCHEMA,
-                schema_name="collasso_ingredienti",
-                max_tokens=COLLAPSE_MAX_TOKENS,
-                client=client,
-            )
-        ).data
+        esito = await complete_json(
+            call_site=LlmCallSite.TERM_COLLAPSE,
+            system=COLLAPSE_SYSTEM_PROMPT,
+            user=question,
+            schema=COLLAPSE_SCHEMA,
+            schema_name="collasso_ingredienti",
+            max_tokens=COLLAPSE_MAX_TOKENS,
+            client=client,
+        )
     except LlmUnavailable:
-        return list(proposals)
+        return list(proposals), Spesa(LlmCallSite.TERM_COLLAPSE, LlmUsage(), ok=False)
 
+    spesa = Spesa(LlmCallSite.TERM_COLLAPSE, esito.usage, ok=True)
+    payload = esito.data
     groups = payload.get("groups")
     if not isinstance(groups, list):
-        return list(proposals)
+        return list(proposals), spesa
 
     # Chiave per `term_id`, non per nome: due termini distinti possono proporre lo
     # stesso `create` («Salmone selvaggio» e «Filetto di salmone selvaggio» riducono
@@ -351,7 +400,7 @@ async def collapse_creates(
     for proposal in proposals:
         replacement = merged.get(proposal.term_id) if proposal.action == "create" else None
         out.append(replacement if replacement is not None else proposal)
-    return out
+    return out, spesa
 
 
 # `ingredients.name` e `ingredients.display_name` sono `String(NAME_MAX_LENGTH)`. Non è
@@ -405,11 +454,18 @@ async def decide_terms(
     # assurdo degrada a una domanda per volta: lento, ma finisce e si vede.
     semaphore = asyncio.Semaphore(max(1, get_settings().llm_max_concurrency))
 
+    # Raccolte durante il fan-out, scritte nella passata sequenziale più sotto. Una
+    # `append` non fa I/O, quindi non si interlaccia con le altre coroutine; scrivere
+    # sulla sessione da qui invece romperebbe l'invariante dichiarata in testa al
+    # modulo, cioè che il fan-out non scrive.
+    spese: list[Spesa] = []
+
     async def ask(term: ImportTerm, api: object) -> TermDecisionProposal | None:
         async with semaphore:
             try:
-                return await decide_one(session, term, registry, client=api)
+                answer = await decide_one(session, term, registry, client=api)
             except LlmUnavailable as exc:
+                spese.append(Spesa(LlmCallSite.TERM_DECISION, LlmUsage(), ok=False))
                 # questo termine resta in coda; gli altri non ne sanno niente. Il
                 # livello resta warning e non error: un modello giù è un evento
                 # atteso (timeout, 429), non un difetto nostro — ma deve pur
@@ -420,6 +476,8 @@ async def decide_terms(
                     term.display_name, term.id, exc,
                 )
                 return None
+            spese.append(Spesa(LlmCallSite.TERM_DECISION, answer.usage, ok=True))
+            return answer.proposal
 
     owned = client is None
     api = client if client is not None else open_client()
@@ -445,10 +503,23 @@ async def decide_terms(
                     term.display_name, term.id, exc_info=esito,
                 )
         proposals = [p for p in raw if isinstance(p, TermDecisionProposal)]
-        proposals = await collapse_creates(session, proposals, registry, client=api)
+        proposals, spesa_collasso = await collapse_creates(
+            session, proposals, registry, client=api
+        )
+        if spesa_collasso is not None:
+            spese.append(spesa_collasso)
     finally:
         if owned:
             await api.aclose()
+
+    # Prima riga della passata sequenziale: lo storico della spesa si scrive comunque,
+    # anche se nessuna decisione risulterà applicabile. Le chiamate sono avvenute e
+    # sono state pagate — legarle all'esito le nasconderebbe proprio nel caso che si
+    # vuole scoprire, cioè un giro che costa e non conclude.
+    for spesa in spese:
+        await record_llm_call(
+            session, call_site=spesa.call_site, usage=spesa.usage, ok=spesa.ok
+        )
 
     by_id = {term.id: term for term in terms}
     applied = created = ignored = 0

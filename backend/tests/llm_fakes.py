@@ -14,6 +14,22 @@ import json as _json
 
 import httpx
 
+# Il consumo che OpenRouter allega a ogni risposta vera. Sta anche nei finti perché
+# senza, la suite proverebbe la registrazione delle spese contro un corpo che non
+# somiglia a quello che arriva in produzione — e un finto più povero del vero è il
+# modo in cui un test smette di provare quel che crede.
+COSTO_FINTO = 0.00004
+USAGE_FINTO = {"prompt_tokens": 300, "completion_tokens": 20, "cost": COSTO_FINTO}
+
+
+def _corpo(testo: str) -> dict:
+    return {
+        "id": "gen-finta",
+        "model": "google/gemma-4-26b-a4b-it",
+        "choices": [{"message": {"content": testo}}],
+        "usage": dict(USAGE_FINTO),
+    }
+
 
 class FakeLlm:
     """Risponde una cosa per volta, nell'ordine dato. Registra i corpi mandati.
@@ -32,11 +48,7 @@ class FakeLlm:
         if isinstance(payload, Exception):
             raise payload
         text = payload if isinstance(payload, str) else _json.dumps(payload)
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": text}}]},
-            request=httpx.Request("POST", url),
-        )
+        return httpx.Response(200, json=_corpo(text), request=httpx.Request("POST", url))
 
     async def aclose(self):
         return None
@@ -70,9 +82,7 @@ class ScriptedLlm:
         if isinstance(payload, Exception):
             raise payload
         return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": _json.dumps(payload)}}]},
-            request=httpx.Request("POST", url),
+            200, json=_corpo(_json.dumps(payload)), request=httpx.Request("POST", url)
         )
 
     async def aclose(self):

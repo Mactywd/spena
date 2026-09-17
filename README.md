@@ -371,11 +371,19 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `OPENROUTER_API_KEY` | vuoto | stesura ricette con l'AI e decisione dei termini incerti nell'import |
 | `OPENROUTER_MODEL` | `google/gemma-4-26b-a4b-it` | il modello; cambiarlo è come passare a uno più grosso (es. `anthropic/claude-sonnet-5`) |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | endpoint dell'API, sovrascrivibile nei test |
-| `OPENROUTER_APP_TITLE` | `Spena Import Ricette` | header `X-Title` mandato a OpenRouter |
-| `OPENROUTER_APP_URL` | vuoto | header `HTTP-Referer`; vuota, l'header si omette |
+| `OPENROUTER_APP_TITLE` | `Spena Import Ricette` | header `X-Title`: per OpenRouter è solo il **nome visualizzato**, e da solo non attribuisce niente |
+| `OPENROUTER_APP_URL` | vuoto | header `HTTP-Referer`, **la chiave con cui OpenRouter riconosce l'app**. Vuota, l'header si omette e i log mostrano «Unknown» qualunque titolo si mandi. Mettici il dominio dell'installazione |
 | `OPENROUTER_PROVIDER_ONLY` | vuoto | vuoto: instradamento per prezzo scelto da OpenRouter. Valorizzata (es. `darkbloom`): pinni il provider a mano, e perdi la caduta automatica sul successivo |
 | `LLM_TIMEOUT_SECONDS` | `60` | oltre il quale una chiamata al modello si considera persa |
 | `LLM_MAX_CONCURRENCY` | `8` | quante domande in volo nel riconoscimento parallelo dei termini |
+
+**Quanto costa ogni pezzo dell'app** non lo dicono i log di OpenRouter. Per loro
+un'app è un indirizzo — `HTTP-Referer` è l'identificatore, `X-Title` ne cambia solo il
+nome visualizzato — quindi mandare un titolo diverso per sezione non produrrebbe voci
+di spesa separate, ma una sola app con il nome che sfarfalla. La divisione la tiene la
+tabella `llm_calls`: una riga per chiamata, con la sezione che l'ha fatta e il costo
+che OpenRouter dichiara in `usage.cost` nella risposta stessa. I fallimenti si
+registrano come tali, perché un modello giù è spesa sprecata che si vuole vedere.
 | `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
 | `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale; cambiandolo va rimisurata `SEMANTIC_MAX_DISTANCE` (vedi sotto) |

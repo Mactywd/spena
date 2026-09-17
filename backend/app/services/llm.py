@@ -14,11 +14,26 @@ uno schema, torna un dizionario. È ciò che permette di provarlo per intero con
 
 import json
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 import httpx
 
 from app.core.config import get_settings
+
+
+class LlmCallSite(StrEnum):
+    """Da dove parte la chiamata: è la fetta della torta delle spese.
+
+    Sta qui e non fra i modelli perché è vocabolario del client, non dello schema, e
+    `llm.py` non deve conoscere il database. `complete_json` lo pretende **senza
+    default**: una sezione nuova che dimenticasse di dichiararsi finirebbe zitta in un
+    secchio chiamato «altro», ed è così che un tracciamento smette di servire.
+    """
+
+    TERM_DECISION = "term_decision"
+    TERM_COLLAPSE = "term_collapse"
+    RECIPE_DRAFT = "recipe_draft"
 
 
 @dataclass(frozen=True)
@@ -50,6 +65,7 @@ class LlmResult:
 
     data: dict[str, Any]
     usage: LlmUsage
+    call_site: LlmCallSite
 
 
 def read_usage(body: dict[str, Any]) -> LlmUsage:
@@ -116,6 +132,7 @@ def build_provider_preferences() -> dict[str, Any]:
 
 async def complete_json(
     *,
+    call_site: LlmCallSite,
     system: str,
     user: str,
     schema: dict[str, Any],
@@ -165,7 +182,7 @@ async def complete_json(
         parsed = json.loads(content)
         if not isinstance(parsed, dict):
             raise LlmUnavailable("la risposta non è un oggetto JSON")
-        return LlmResult(data=parsed, usage=read_usage(body))
+        return LlmResult(data=parsed, usage=read_usage(body), call_site=call_site)
     except LlmUnavailable:
         raise
     except Exception as exc:  # rete, timeout, corpo senza choices, JSON malformato

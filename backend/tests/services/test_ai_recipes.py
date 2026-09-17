@@ -1,3 +1,4 @@
+import httpx
 import pytest
 import pytest_asyncio
 from llm_fakes import FakeLlm
@@ -207,3 +208,56 @@ async def test_ingrediente_noto_non_propone_categoria_anche_se_valida(db_session
     assert pasta.ingredient_id is not None  # esiste in anagrafica
     assert pasta.matched_name == "pasta"
     assert pasta.proposed_category is None  # non si propone nulla
+
+
+async def test_una_bozza_chiesta_e_buttata_resta_comunque_nelle_spese(db_session):
+    """La chiamata è pagata che la ricetta si salvi o no.
+
+    Questa rotta propone e non scrive, quindi la sua sessione non la committa nessuno:
+    senza una commit esplicita la riga della spesa sparirebbe. Ed è proprio il consumo
+    più facile da fare per sbaglio — dieci bozze chieste e nessuna tenuta — cioè quello
+    che una torta delle spese esiste per mostrare.
+    """
+    from sqlalchemy import select
+
+    from app.db.models.llm_call import LlmCall
+    from app.services.llm import LlmCallSite
+    from llm_fakes import COSTO_FINTO, FakeLlm
+
+    finto = FakeLlm({
+        "title": "Pasta al pomodoro", "description": None, "instructions": "Cuoci.",
+        "servings": 2, "ingredients": [],
+    })
+    await draft_recipe(db_session, "pasta veloce", client=finto)
+
+    # Prima di qualunque interrogazione: una `select` farebbe scattare l'autoflush e
+    # renderebbe visibile anche una riga solo aggiunta e mai committata — cioè una
+    # riga che in produzione andrebbe persa, perché questa rotta non salva e nessuno
+    # committa la sua sessione. `session.new` vuoto è la prova che l'unità di lavoro
+    # è stata chiusa e non soltanto preparata. Misurato: senza questa riga, togliere
+    # la commit dal codice lascia il test verde.
+    assert not db_session.new, "la spesa è solo in sospeso: senza commit andrebbe persa"
+
+    riga = (await db_session.execute(select(LlmCall))).scalar_one()
+    assert riga.call_site == LlmCallSite.RECIPE_DRAFT
+    assert riga.ok is True
+    assert riga.cost_usd == pytest.approx(COSTO_FINTO)
+
+
+async def test_un_modello_giu_durante_la_stesura_e_spesa_registrata_come_fallita(db_session):
+    """Un guasto va nello storico, altrimenti i giri che pagano e non concludono sono
+    invisibili proprio nello strumento che dovrebbe scoprirli."""
+    from sqlalchemy import select
+
+    from app.db.models.llm_call import LlmCall
+    from llm_fakes import FakeLlm
+
+    finto = FakeLlm(httpx.ReadTimeout("troppo lento"))
+    with pytest.raises(LlmUnavailable):
+        await draft_recipe(db_session, "pasta veloce", client=finto)
+
+    assert not db_session.new, "la spesa è solo in sospeso: senza commit andrebbe persa"
+
+    riga = (await db_session.execute(select(LlmCall))).scalar_one()
+    assert riga.ok is False
+    assert riga.cost_usd is None

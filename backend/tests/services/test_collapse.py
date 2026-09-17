@@ -52,7 +52,7 @@ async def test_due_nomi_vicini_diventano_uno_e_laltro_un_alias(db_session, anagr
     salmone, selvaggio = crea("salmone"), crea("salmone selvaggio")
     finto = FakeLlm({"groups": [{"canonical": "salmone", "merge": ["salmone selvaggio"]}]})
 
-    risultato = await collapse_creates(
+    risultato, _ = await collapse_creates(
         db_session, [salmone, selvaggio], anagrafica, client=finto
     )
 
@@ -81,7 +81,7 @@ async def test_il_merge_porta_etichetta_e_categoria_del_vincitore_non_del_perden
     )
     finto = FakeLlm({"groups": [{"canonical": "salmone", "merge": ["salmone selvaggio"]}]})
 
-    risultato = await collapse_creates(
+    risultato, _ = await collapse_creates(
         db_session, [salmone, selvaggio], anagrafica, client=finto
     )
 
@@ -99,7 +99,7 @@ async def test_il_merge_su_canonico_gia_in_anagrafica_usa_il_nome_capitalizzato(
     fresca = crea("pasta fresca", categoria="cereali", display_name="Pasta fresca")
     finto = FakeLlm({"groups": [{"canonical": "pasta", "merge": ["pasta fresca"]}]})
 
-    risultato = await collapse_creates(db_session, [fresca], anagrafica, client=finto)
+    risultato, _ = await collapse_creates(db_session, [fresca], anagrafica, client=finto)
 
     accorpato = next(p for p in risultato if p.action == "merge")
     assert accorpato.display_name == "Pasta"
@@ -115,7 +115,7 @@ async def test_un_canonico_che_nessuno_ha_proposto_fa_scartare_il_gruppo(db_sess
     salmone, selvaggio = crea("salmone"), crea("salmone selvaggio")
     finto = FakeLlm({"groups": [{"canonical": "pesce", "merge": ["salmone", "salmone selvaggio"]}]})
 
-    risultato = await collapse_creates(
+    risultato, _ = await collapse_creates(
         db_session, [salmone, selvaggio], anagrafica, client=finto
     )
     assert sorted(p.name for p in risultato if p.action == "create") == [
@@ -128,7 +128,7 @@ async def test_un_nome_da_accorpare_che_nessuno_ha_proposto_si_ignora(db_session
     salmone = crea("salmone")
     finto = FakeLlm({"groups": [{"canonical": "salmone", "merge": ["tonno"]}]})
 
-    risultato = await collapse_creates(db_session, [salmone], anagrafica, client=finto)
+    risultato, _ = await collapse_creates(db_session, [salmone], anagrafica, client=finto)
     assert [p.name for p in risultato if p.action == "create"] == ["salmone"]
     assert not [p for p in risultato if p.action == "merge"]
 
@@ -142,7 +142,7 @@ async def test_un_canonico_che_esiste_gia_in_anagrafica_e_valido(db_session, ana
     fresca = crea("pasta fresca", categoria="cereali")
     finto = FakeLlm({"groups": [{"canonical": "pasta", "merge": ["pasta fresca"]}]})
 
-    risultato = await collapse_creates(db_session, [fresca], anagrafica, client=finto)
+    risultato, _ = await collapse_creates(db_session, [fresca], anagrafica, client=finto)
     assert not [p for p in risultato if p.action == "create"]
     accorpato = next(p for p in risultato if p.action == "merge")
     assert accorpato.ingredient_id == anagrafica.by_name["pasta"]
@@ -156,7 +156,7 @@ async def test_senza_create_non_si_chiama_nessuno(db_session, anagrafica):
         ingredient_id=anagrafica.by_name["pasta"], name="pasta",
     )
     finto = FakeLlm()
-    risultato = await collapse_creates(db_session, [solo_map], anagrafica, client=finto)
+    risultato, _ = await collapse_creates(db_session, [solo_map], anagrafica, client=finto)
     assert risultato == [solo_map]
     assert finto.bodies == []
 
@@ -169,7 +169,7 @@ async def test_un_solo_create_non_si_chiama_nessuno(db_session, anagrafica):
     scoprire niente di nuovo.
     """
     finto = FakeLlm()
-    risultato = await collapse_creates(db_session, [crea("speck", "carne")], anagrafica, client=finto)
+    risultato, _ = await collapse_creates(db_session, [crea("speck", "carne")], anagrafica, client=finto)
     assert [p.name for p in risultato] == ["speck"]
     assert finto.bodies == []
 
@@ -191,7 +191,7 @@ async def test_due_termini_con_lo_stesso_nome_da_creare_sopravvivono_entrambi(
     selvaggio_b = crea("salmone selvaggio")  # da "Filetto di salmone selvaggio"
     finto = FakeLlm({"groups": [{"canonical": "salmone", "merge": ["salmone selvaggio"]}]})
 
-    risultato = await collapse_creates(
+    risultato, _ = await collapse_creates(
         db_session, [salmone, selvaggio_a, selvaggio_b], anagrafica, client=finto
     )
 
@@ -217,7 +217,7 @@ async def test_un_guasto_del_modello_non_perde_le_proposte(db_session, anagrafic
     salmone, selvaggio = crea("salmone"), crea("salmone selvaggio")
     finto = FakeLlm(httpx.ReadTimeout("lento"))
 
-    risultato = await collapse_creates(
+    risultato, _ = await collapse_creates(
         db_session, [salmone, selvaggio], anagrafica, client=finto
     )
     assert sorted(p.name for p in risultato if p.action == "create") == [

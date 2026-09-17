@@ -15,7 +15,7 @@ import respx
 
 from app.core.config import get_settings
 from app.services.ai_recipes import DRAFT_SCHEMA
-from app.services.llm import LlmUnavailable, complete_json
+from app.services.llm import LlmCallSite, LlmUnavailable, complete_json
 from app.services.recipe_import.decide import COLLAPSE_SCHEMA, TERM_SCHEMA
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -59,6 +59,7 @@ async def test_la_risposta_porta_il_consumo_dichiarato_da_openrouter(con_chiave)
     async with respx.mock:
         respx.post(URL).mock(return_value=httpx.Response(200, json=corpo))
         esito = await complete_json(
+            call_site=LlmCallSite.TERM_DECISION,
             system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
         )
 
@@ -74,6 +75,7 @@ async def test_una_risposta_valida_torna_il_dizionario(con_chiave):
     async with respx.mock:
         respx.post(URL).mock(return_value=risposta({"esito": "va bene"}))
         esito = await complete_json(
+            call_site=LlmCallSite.TERM_DECISION,
             system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
         )
     assert esito.data == {"esito": "va bene"}
@@ -89,6 +91,7 @@ async def test_un_corpo_senza_usage_lascia_il_costo_sconosciuto(con_chiave):
     async with respx.mock:
         respx.post(URL).mock(return_value=risposta({"esito": "va bene"}))
         esito = await complete_json(
+            call_site=LlmCallSite.TERM_DECISION,
             system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
         )
     assert esito.data == {"esito": "va bene"}
@@ -100,6 +103,7 @@ async def test_la_richiesta_porta_attribuzione_schema_e_instradamento(con_chiave
     async with respx.mock:
         route = respx.post(URL).mock(return_value=risposta({"esito": "ok"}))
         await complete_json(
+            call_site=LlmCallSite.TERM_DECISION,
             system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
         )
 
@@ -132,6 +136,7 @@ async def test_app_url_vuota_omette_lheader_invece_di_mandarlo_vuoto(monkeypatch
         async with respx.mock:
             route = respx.post(URL).mock(return_value=risposta({"esito": "ok"}))
             await complete_json(
+                call_site=LlmCallSite.TERM_DECISION,
                 system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
             )
         assert "http-referer" not in route.calls.last.request.headers
@@ -147,6 +152,7 @@ async def test_provider_only_valorizzata_pinna_e_non_ordina(monkeypatch):
         async with respx.mock:
             route = respx.post(URL).mock(return_value=risposta({"esito": "ok"}))
             await complete_json(
+                call_site=LlmCallSite.TERM_DECISION,
                 system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
             )
         corpo = json.loads(route.calls.last.request.content)
@@ -166,6 +172,7 @@ async def test_senza_chiave_non_parte_nessuna_richiesta(monkeypatch):
             route = respx.post(URL).mock(return_value=risposta({"esito": "ok"}))
             with pytest.raises(LlmUnavailable, match="OPENROUTER_API_KEY"):
                 await complete_json(
+                    call_site=LlmCallSite.TERM_DECISION,
                     system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
                 )
             assert route.call_count == 0
@@ -179,6 +186,7 @@ async def test_ogni_codice_derrore_diventa_llm_unavailable(con_chiave, codice):
         respx.post(URL).mock(return_value=httpx.Response(codice, text="no"))
         with pytest.raises(LlmUnavailable, match=str(codice)):
             await complete_json(
+                call_site=LlmCallSite.TERM_DECISION,
                 system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
             )
 
@@ -188,6 +196,7 @@ async def test_un_corpo_senza_choices_diventa_llm_unavailable(con_chiave):
         respx.post(URL).mock(return_value=httpx.Response(200, json={"error": "boh"}))
         with pytest.raises(LlmUnavailable):
             await complete_json(
+                call_site=LlmCallSite.TERM_DECISION,
                 system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
             )
 
@@ -202,6 +211,7 @@ async def test_un_contenuto_non_json_diventa_llm_unavailable(con_chiave):
         )
         with pytest.raises(LlmUnavailable):
             await complete_json(
+                call_site=LlmCallSite.TERM_DECISION,
                 system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
             )
 
@@ -215,6 +225,7 @@ async def test_un_json_che_non_e_un_oggetto_diventa_llm_unavailable(con_chiave):
         )
         with pytest.raises(LlmUnavailable, match="oggetto JSON"):
             await complete_json(
+                call_site=LlmCallSite.TERM_DECISION,
                 system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
             )
 
@@ -224,6 +235,7 @@ async def test_un_timeout_diventa_llm_unavailable(con_chiave):
         respx.post(URL).mock(side_effect=httpx.ReadTimeout("troppo lento"))
         with pytest.raises(LlmUnavailable):
             await complete_json(
+                call_site=LlmCallSite.TERM_DECISION,
                 system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
             )
 
