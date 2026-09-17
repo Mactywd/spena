@@ -72,7 +72,11 @@ not pay for them again:
 dates. An ingredient is `available`, `low`, or `finished`. This is deliberate, not
 an omission: it removes unit conversion and the daily upkeep that makes apps like
 this get abandoned. `recipe_ingredients.quantity_text` is free text for display and
-must never enter a calculation.
+must never enter a calculation. `pantry_items.fill_percent` (0–100, nullable) is not
+an exception: it is a slider *position* — no unit, no expiry — read only by
+`status_for_fill` to pick one of the three statuses, which stays the only truth the
+rest of the app reasons on. The reasoning is in the note under D1 of
+`docs/prossimi-passi.md`; read it before citing this column as a precedent.
 
 > **A narrowing is decided but not yet built (2026-09-17).** Recipes — and only
 > recipes — will gain optional structured quantities beside that text, so a recipe can
