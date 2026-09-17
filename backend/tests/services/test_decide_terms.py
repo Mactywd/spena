@@ -285,6 +285,43 @@ async def test_una_risposta_non_verificabile_lascia_il_termine_in_coda(db_sessio
     assert speck.decided_by is None
 
 
+def test_le_categorie_offerte_allai_sono_solo_alimentari():
+    """Asserito sull'insieme vero, quello che il modulo usa davvero.
+
+    Una copia scritta qui passerebbe anche il giorno in cui la produzione
+    smettesse di filtrare: è la prima lezione di CLAUDE.md, un test che guarda
+    un oggetto che nessuno chiama.
+    """
+    from app.services.recipe_import.decide import CATEGORIES
+
+    assert "casa" not in CATEGORIES
+    assert "igiene" not in CATEGORIES
+    assert "verdura" in CATEGORIES
+
+
+async def test_una_categoria_non_alimentare_proposta_dallai_resta_in_coda(db_session, base):
+    """«igiene» è un reparto vero, e qui sta la differenza con il test qui sopra.
+
+    Là la risposta è rifiutata perché «salumi» non esiste; qui è rifiutata perché
+    non è cibo. Finché `CATEGORIES` conteneva l'enum intero questa sarebbe stata
+    una decisione **applicata**, con una voce non alimentare nata da un ricettario
+    e nessuno ad accorgersene.
+    """
+    (sapone,) = await aggiungi(db_session, termine("Sapone", "k-sapone"))
+    finto = ScriptedLlm({"Sapone": llm_create("sapone", "Sapone", "igiene")})
+
+    esito = await decide_terms(db_session, [sapone], client=finto)
+
+    assert esito.applied == 0
+    assert esito.still_pending == 1
+    assert sapone.decision == TermDecision.PENDING
+    assert sapone.decided_by is None
+    creati = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "sapone"))
+    ).scalars().all()
+    assert creati == [], "nessuna voce non alimentare deve nascere da un ricettario"
+
+
 async def test_un_nome_piu_lungo_della_colonna_resta_in_coda(db_session, base):
     """`ingredients.name` è `String(120)`: oltre, l'insert è un errore, non una decisione.
 

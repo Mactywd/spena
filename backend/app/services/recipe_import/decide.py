@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientCategory
 from app.db.models.recipe_import import ImportTerm, TermDecision
+from app.domain.rules import IngredientKind, kind_for_category
 from app.repositories.llm_calls import record_llm_call
 from app.services.llm import (
     LlmCallSite,
@@ -73,7 +74,17 @@ TERM_SCHEMA = {
     "additionalProperties": False,
 }
 
-CATEGORIES = frozenset(str(value) for value in IngredientCategory)
+# Solo alimentari: questo modulo decide i termini di un ricettario, e una voce non
+# alimentare qui sarebbe un ingrediente che nessuna ricetta potrà mai usare (la
+# guardia sta in create_recipe). L'elenco si restringe qui, dove è già costruito,
+# e non nel prompt: la stessa costante è insieme l'offerta al modello (riga 124) e
+# il controllo della risposta (riga 213), e due elenchi separati si scollerebbero —
+# a scollarsi per prima sarebbe la validazione, cioè la metà che protegge.
+CATEGORIES = frozenset(
+    str(value)
+    for value in IngredientCategory
+    if kind_for_category(str(value)) is IngredientKind.FOOD
+)
 
 
 @dataclass(frozen=True)
