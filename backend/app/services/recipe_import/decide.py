@@ -599,6 +599,23 @@ async def decide_terms(
                 ingredient_id = ingredient.id
                 created += 1
 
+            # Collo di bottiglia comune alle due rotte che scavalcano
+            # `_mapped_proposal`: il `merge` del collasso (`existing_id` preso da
+            # `registry.by_name` senza controllo di kind) e il `create` che qui sopra
+            # `match_name` ha appena risolto su un **alias**, cosa che
+            # `registry.by_name` non vede mai perché è costruito solo su
+            # `Ingredient.name`. Un id appena creato in questa stessa passata (il
+            # ramo subito sopra) non è ancora in `category_by_id` — `load_registry`
+            # l'ha letto prima che il fan-out partisse — e il `.get(..., "")` che
+            # segue lo tratta come alimentare per costruzione, che è quel che è:
+            # la sua categoria è già passata da `CATEGORIES` nel `create` originale.
+            if kind_for_category(
+                registry.category_by_id.get(ingredient_id, "")
+            ) is IngredientKind.NON_FOOD:
+                # si rifiuta come ogni altra risposta non verificabile: il termine
+                # resta `pending` e lo raccoglie la coda umana
+                continue
+
             term.decision = TermDecision.MAPPED
             term.ingredient_id = ingredient_id
             # `import_terms.display_name` è `String(200)` e `alias` è `String(120)`: un

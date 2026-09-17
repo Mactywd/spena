@@ -350,6 +350,94 @@ async def test_una_mappatura_su_una_voce_non_alimentare_resta_in_coda(db_session
     assert alias == []
 
 
+async def test_un_create_che_risolve_su_un_alias_non_alimentare_resta_in_coda(db_session, base):
+    """Rotta B del finding round 1: `create` non passa mai da `_mapped_proposal`.
+
+    La categoria dichiarata dall'AI è alimentare e il nome non è in
+    `registry.by_name` (costruito solo su `Ingredient.name`), quindi
+    `_verified_proposal` lo lascia passare come `create` vero — proprio perché il
+    suo nome non è nell'anagrafica sotto quella forma. Solo al fan-in, `match_name`
+    lo risolve sull'**alias** di una voce non alimentare, cosa che `by_name` non
+    può vedere. Senza una guardia lì, il termine diventerebbe `MAPPED` per sempre
+    su «detersivo» e ci scriverebbe pure un alias nuovo — esattamente lo scenario
+    concreto del finding.
+    """
+    from app.repositories.ingredients import add_alias
+
+    detersivo = await create_ingredient(
+        db_session, name="detersivo", display_name="Detersivo", category=IngredientCategory.IGIENE
+    )
+    await add_alias(db_session, detersivo.id, "detersivo piatti", source="seed")
+    (termine_detersivo,) = await aggiungi(
+        db_session, termine("Detersivo per i piatti", "k-detersivo-piatti")
+    )
+    finto = ScriptedLlm({
+        "Detersivo per i piatti": llm_create("detersivo piatti", "Detersivo piatti", "condimenti")
+    })
+
+    esito = await decide_terms(db_session, [termine_detersivo], client=finto)
+
+    assert esito.applied == 0
+    assert esito.created == 0
+    assert esito.still_pending == 1
+    assert termine_detersivo.decision == TermDecision.PENDING
+    assert termine_detersivo.decided_by is None
+    assert termine_detersivo.ingredient_id is None
+    creati = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "detersivo piatti"))
+    ).scalars().all()
+    assert creati == [], "nessuna voce non alimentare deve nascere da un ricettario"
+    alias = (
+        await db_session.execute(
+            select(IngredientAlias.alias).where(IngredientAlias.ingredient_id == detersivo.id)
+        )
+    ).scalars().all()
+    assert alias == ["detersivo piatti"], "nessun alias nuovo deve aggiungersi"
+
+
+async def test_un_merge_del_collasso_su_una_voce_non_alimentare_resta_in_coda(db_session, base):
+    """Rotta A del finding round 1: il `merge` che nasce nel collasso.
+
+    `collapse_creates` prende `existing_id = registry.by_name.get(canonical)` e lo
+    mette in una proposta `merge` senza nessun controllo di kind: `search_ingredients`,
+    che trova i vicini, non filtra per kind, e al modello del collasso arrivano solo i
+    nomi, mai la categoria. Un `create` proposto per «detersivo per piatti», con
+    «detersivo» (non alimentare) come vicino di trigrammi, può quindi collassare sullo
+    stesso ingrediente non alimentare — scavalcando `_mapped_proposal`, che il `merge`
+    non attraversa mai. La stessa guardia al fan-in, a valle di entrambe le rotte, lo
+    chiude comunque.
+    """
+    detersivo = await create_ingredient(
+        db_session, name="detersivo", display_name="Detersivo", category=IngredientCategory.IGIENE
+    )
+    (termine_detersivo,) = await aggiungi(
+        db_session, termine("Detersivo per piatti", "k-detersivo-piatti")
+    )
+    finto = ScriptedLlm(
+        {
+            "Detersivo per piatti": llm_create(
+                "detersivo per piatti", "Detersivo per piatti", "condimenti"
+            )
+        },
+        collapse={"groups": [{"canonical": "detersivo", "merge": ["detersivo per piatti"]}]},
+    )
+
+    esito = await decide_terms(db_session, [termine_detersivo], client=finto)
+
+    assert esito.applied == 0
+    assert esito.created == 0
+    assert esito.still_pending == 1
+    assert termine_detersivo.decision == TermDecision.PENDING
+    assert termine_detersivo.decided_by is None
+    assert termine_detersivo.ingredient_id is None
+    alias = (
+        await db_session.execute(
+            select(IngredientAlias).where(IngredientAlias.ingredient_id == detersivo.id)
+        )
+    ).scalars().all()
+    assert alias == [], "nessun alias nuovo deve nascere sulla voce non alimentare"
+
+
 async def test_un_nome_piu_lungo_della_colonna_resta_in_coda(db_session, base):
     """`ingredients.name` è `String(120)`: oltre, l'insert è un errore, non una decisione.
 
