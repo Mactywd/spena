@@ -6,7 +6,7 @@ import { createRecipe, draftRecipe } from "../recipes/api";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { BackLink } from "../../components/BackLink";
 import { buttonClasses } from "../../components/ui/buttonClasses";
-import { INGREDIENT_CATEGORIES } from "../../domain/categories";
+import { FOOD_CATEGORIES } from "../../domain/categories";
 import type {
   DraftIngredient,
   Ingredient,
@@ -384,7 +384,7 @@ export function AiDraftScreen() {
                         }
                         className="mt-1"
                       >
-                        {INGREDIENT_CATEGORIES.map((category) => (
+                        {FOOD_CATEGORIES.map((category) => (
                           <option key={category} value={category}>
                             {category}
                           </option>

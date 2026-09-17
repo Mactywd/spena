@@ -31,6 +31,12 @@ class IngredientCategory(StrEnum):
     BEVANDE = "bevande"
     DOLCI = "dolci"
     ALTRO = "altro"
+    # I due reparti non alimentari. Stanno nello stesso enum e non in uno separato
+    # perché sono corsie di supermercato come le altre, e la lista li raggruppa
+    # allo stesso modo; a separarli è `kind_for_category` nel dominio, che è
+    # l'unica cosa che le guardie leggono.
+    CASA = "casa"
+    IGIENE = "igiene"
 
 
 class Ingredient(UUIDMixin, TimestampMixin, Base):

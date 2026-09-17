@@ -4,13 +4,16 @@ from app.db.models.ingredient import IngredientCategory
 from app.domain.rules import (
     LOW_MAX_FILL,
     Availability,
+    IngredientKind,
     IngredientRole,
+    NON_FOOD_CATEGORIES,
     PantryStatus,
     SECONDARY_CATEGORIES,
     availability_of,
     default_role,
     is_cookable,
     is_satisfied,
+    kind_for_category,
     missing_count,
     status_for_fill,
 )
@@ -120,6 +123,12 @@ def test_ogni_categoria_e_decisa():
         IngredientCategory.BEVANDE: IngredientRole.PRIMARY,
         IngredientCategory.DOLCI: IngredientRole.PRIMARY,
         IngredientCategory.ALTRO: IngredientRole.PRIMARY,
+        # Non ci arrivano mai: nessuna riga di ricetta può nominare una voce non
+        # alimentare (la guardia sta in create_recipe). Stanno qui perché la mappa
+        # è totale per costruzione, e perché se un giorno ci arrivassero il ruolo
+        # che otterrebbero è questo.
+        IngredientCategory.CASA: IngredientRole.PRIMARY,
+        IngredientCategory.IGIENE: IngredientRole.PRIMARY,
     }
     assert set(ruoli_attesi) == set(IngredientCategory)
     for category, expected in ruoli_attesi.items():
@@ -159,3 +168,40 @@ def test_le_tre_zone_coprono_tutto_e_non_tornano_indietro():
     gradini = [ordine[status_for_fill(posizione)] for posizione in range(0, 101)]
     assert gradini == sorted(gradini)
     assert set(gradini) == {0, 1, 2}
+
+
+def test_kind_for_category_su_ogni_reparto():
+    """Ogni valore dell'enum, non un campione: è la mappa che decide le guardie.
+
+    Scritta per esteso e non come «tutto quel che non è in NON_FOOD_CATEGORIES»,
+    che sarebbe la stessa frase della produzione ricopiata nel test — e un test
+    che ripete l'implementazione non può vederla sbagliata.
+    """
+    atteso = {
+        IngredientCategory.VERDURA: IngredientKind.FOOD,
+        IngredientCategory.FRUTTA: IngredientKind.FOOD,
+        IngredientCategory.CARNE: IngredientKind.FOOD,
+        IngredientCategory.PESCE: IngredientKind.FOOD,
+        IngredientCategory.LATTICINI: IngredientKind.FOOD,
+        IngredientCategory.CEREALI: IngredientKind.FOOD,
+        IngredientCategory.LEGUMI: IngredientKind.FOOD,
+        IngredientCategory.CONDIMENTI: IngredientKind.FOOD,
+        IngredientCategory.SPEZIE: IngredientKind.FOOD,
+        IngredientCategory.BEVANDE: IngredientKind.FOOD,
+        IngredientCategory.DOLCI: IngredientKind.FOOD,
+        IngredientCategory.ALTRO: IngredientKind.FOOD,
+        IngredientCategory.CASA: IngredientKind.NON_FOOD,
+        IngredientCategory.IGIENE: IngredientKind.NON_FOOD,
+    }
+
+    assert set(atteso) == set(IngredientCategory), (
+        "un reparto nuovo è nato senza che nessuno decidesse da che parte sta"
+    )
+    for categoria, kind in atteso.items():
+        assert kind_for_category(str(categoria)) is kind, categoria
+
+
+def test_i_reparti_non_alimentari_esistono_davvero():
+    """Come per SECONDARY_CATEGORIES: un nome scritto male qui non è un errore
+    visibile, è una guardia che smette di scattare in silenzio."""
+    assert NON_FOOD_CATEGORIES <= {str(value) for value in IngredientCategory}

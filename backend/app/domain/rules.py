@@ -26,6 +26,17 @@ class IngredientRole(StrEnum):
     SECONDARY = "secondary"
 
 
+class IngredientKind(StrEnum):
+    """Se una voce dell'anagrafica è cibo o no.
+
+    Non lo sceglie nessuno a mano: discende dal reparto, e l'unico posto che lo
+    calcola è `kind_for_category` qui sotto.
+    """
+
+    FOOD = "food"
+    NON_FOOD = "non_food"
+
+
 def availability_of(statuses: Iterable[PantryStatus]) -> Availability:
     """Più voci di dispensa possono riferirsi allo stesso ingrediente.
 
@@ -88,6 +99,27 @@ def status_for_fill(fill_percent: int) -> PantryStatus:
 # importa i modelli; un test del dominio li confronta con l'enum per impedire
 # che diventino nomi di categorie che non esistono più.
 SECONDARY_CATEGORIES = frozenset({"spezie", "condimenti"})
+
+# I reparti che non sono cibo. La partizione è dichiarata su questa metà e non
+# sull'altra perché è la metà che cresce: un reparto alimentare nuovo è cibo per
+# omissione, ed è la risposta giusta. Stringhe e non valori dell'enum, come
+# SECONDARY_CATEGORIES qui sotto e per la stessa ragione: questo modulo è puro e
+# non importa i modelli delle tabelle.
+NON_FOOD_CATEGORIES = frozenset({"casa", "igiene"})
+
+
+def kind_for_category(category: str) -> IngredientKind:
+    """A quale mondo appartiene una voce, dedotto dalla sua corsia.
+
+    Il reparto lo sceglie la persona; questo asse discende, e non c'è quindi modo
+    di creare una riga che dica insieme «igiene» e «è cibo». Stessa forma di
+    `status_for_fill`: là una posizione del cursore si proietta nei tre stati su
+    cui ragiona il resto dell'app, qui una corsia del supermercato si proietta
+    nell'asse su cui ragionano le guardie delle ricette.
+    """
+    if category in NON_FOOD_CATEGORIES:
+        return IngredientKind.NON_FOOD
+    return IngredientKind.FOOD
 
 
 def default_role(category: str, quantity_text: str | None) -> IngredientRole:

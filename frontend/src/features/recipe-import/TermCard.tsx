@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Card } from "../../components/ui/Card";
 import { buttonClasses } from "../../components/ui/buttonClasses";
-import { INGREDIENT_CATEGORIES } from "../../domain/categories";
+import { FOOD_CATEGORIES } from "../../domain/categories";
 import type { ImportTerm } from "../../domain/types";
 
 export type Decision = {
@@ -119,7 +119,7 @@ export function TermCard({
               onChange={(e) => setNewCategory(e.target.value)}
               className="mt-1.5"
             >
-              {INGREDIENT_CATEGORIES.map((category) => (
+              {FOOD_CATEGORIES.map((category) => (
                 <option key={category} value={category}>
                   {category}
                 </option>
