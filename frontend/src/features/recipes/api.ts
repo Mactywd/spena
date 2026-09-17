@@ -1,11 +1,25 @@
 import { apiFetch } from "../../api/client";
 import type { CookResult, RecipeDetail, RecipeDraft, RecipeSummary } from "../../domain/types";
 
-export function searchRecipes(query: string, onlyCookable: boolean, category: string) {
+/** I filtri del ricettario, per nome e non per posizione: con quattro argomenti di
+ * cui due stringhe, scambiare «categoria» e «parole cercate» è un difetto che il
+ * compilatore non può vedere. */
+export function searchRecipes({
+  query = "",
+  onlyCookable = false,
+  category = "",
+  ingredientId = "",
+}: {
+  query?: string;
+  onlyCookable?: boolean;
+  category?: string;
+  ingredientId?: string;
+} = {}) {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
   if (onlyCookable) params.set("only_cookable", "true");
   if (category) params.set("category", category);
+  if (ingredientId) params.set("ingredient_id", ingredientId);
   return apiFetch<RecipeSummary[]>(`/recipes/search?${params.toString()}`);
 }
 

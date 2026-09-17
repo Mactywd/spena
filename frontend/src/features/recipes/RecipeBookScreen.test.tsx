@@ -6,6 +6,8 @@ import { MemoryRouter } from "react-router-dom";
 import { RecipeBookScreen } from "./RecipeBookScreen";
 import { UnauthorizedError } from "../../api/client";
 
+const POMODORO = { id: "i9", name: "pomodoro", display_name: "Pomodoro", category: "verdura" };
+
 const RESULTS = [
   { id: "r1", title: "Pasta all'aglio", description: "Svelta", source: "dataset",
     missing: 0, cookable: true, image_url: "https://example.com/aglio.jpg",
@@ -470,5 +472,63 @@ describe("RecipeBookScreen", () => {
 
     await screen.findByText("Pasta all'aglio");
     expect(screen.queryByLabelText("Categoria")).not.toBeInTheDocument();
+  });
+
+  it("scegliere un ingrediente filtra il ricettario su di lui", async () => {
+    const fetchMock = stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO], 200];
+      // altrimenti il fallback finirebbe anche sotto /recipes/categories, e il
+      // <select> tenterebbe di renderizzare ricette come opzioni
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
+    renderScreen();
+
+    await userEvent.type(await screen.findByLabelText("Cosa hai in casa"), "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    await waitFor(() => {
+      const ultima = fetchMock.mock.calls.map(([url]) => String(url)).filter((u) => u.includes("/recipes/search")).pop();
+      expect(ultima).toContain(`ingredient_id=${POMODORO.id}`);
+    });
+    expect(screen.getByRole("button", { name: "Togli il filtro su Pomodoro" })).toBeDefined();
+  });
+
+  it("togliere il filtro riporta il ricettario intero", async () => {
+    const fetchMock = stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO], 200];
+      // altrimenti il fallback finirebbe anche sotto /recipes/categories, e il
+      // <select> tenterebbe di renderizzare ricette come opzioni
+      if (path.includes("/recipes/categories")) return [[], 200];
+      return [RESULTS, 200];
+    });
+    renderScreen();
+
+    await userEvent.type(await screen.findByLabelText("Cosa hai in casa"), "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Togli il filtro su Pomodoro" }));
+
+    await waitFor(() => {
+      const ultima = fetchMock.mock.calls.map(([url]) => String(url)).filter((u) => u.includes("/recipes/search")).pop();
+      expect(ultima).not.toContain("ingredient_id");
+    });
+  });
+
+  it("nessun risultato con un ingrediente dice che è il filtro, non il ricettario", async () => {
+    // stesso errore corretto in b6ed1d9 dall'altro lato dell'app: «nessuna ricetta»
+    // è un verdetto sul ricettario, e quasi sempre riguarda il filtro
+    stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO], 200];
+      if (path.includes("/recipes/search")) return [[], 200];
+      return [[], 200];
+    });
+    renderScreen();
+
+    await userEvent.type(await screen.findByLabelText("Cosa hai in casa"), "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    expect(
+      await screen.findByText(/Nessuna ricetta che abbia «Pomodoro» fra gli ingredienti principali/)
+    ).toBeDefined();
   });
 });

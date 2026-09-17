@@ -8,6 +8,8 @@ import { useDebounced } from "../../hooks/useDebounced";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
 import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
+import { IngredientPicker } from "../../components/IngredientPicker";
+import type { Ingredient } from "../../domain/types";
 
 const DEBOUNCE_MS = 180;
 
@@ -19,8 +21,26 @@ const DEBOUNCE_MS = 180;
  * filtro, non il ricettario. È lo stesso errore che b6ed1d9 ha corretto nel pannello
  * del catalogo («con queste parole», non «in catalogo»), dall'altro lato dell'app.
  */
-function emptyMessage(query: string, onlyCookable: boolean, category: string): string {
+function emptyMessage({
+  query,
+  onlyCookable,
+  category,
+  ingredientName,
+}: {
+  query: string;
+  onlyCookable: boolean;
+  category: string;
+  ingredientName: string | null;
+}): string {
   const searched = query.trim() !== "";
+  if (ingredientName) {
+    return (
+      `Nessuna ricetta che abbia «${ingredientName}» fra gli ingredienti principali` +
+      `${searched ? " con queste parole" : ""}${category ? ` in «${category}»` : ""}` +
+      `${onlyCookable ? " fra quelle che puoi cucinare adesso" : ""}: ` +
+      "togli il filtro, o provane un altro."
+    );
+  }
   if (category) {
     const withSearchFragment = searched ? " con queste parole" : "";
     const onlyCookableFragment = onlyCookable ? " fra quelle che puoi cucinare adesso" : "";
@@ -51,6 +71,10 @@ export function RecipeBookScreen() {
   const [query, setQuery] = useState("");
   const [onlyCookable, setOnlyCookable] = useState(false);
   const [category, setCategory] = useState("");
+  // l'ingrediente scelto, non solo il suo id: il nome serve al riquadro del filtro e
+  // al messaggio di elenco vuoto, e una seconda chiamata per riaverlo sarebbe un
+  // giro in rete per qualcosa che l'utente ha appena toccato
+  const [ingredient, setIngredient] = useState<Ingredient | null>(null);
   const debouncedQuery = useDebounced(query, DEBOUNCE_MS);
 
   // Il termine sta dentro la chiave, e questo fa due cose che una ricerca scritta
@@ -61,8 +85,14 @@ export function RecipeBookScreen() {
   // diventare un "ricerca fallita" permanente su uno schermo che non funzionerà
   // mai più. La prima versione di questo schermo sbagliava esattamente lì.
   const { data: recipes = [], isLoading, isError } = useQuery({
-    queryKey: ["recipes", debouncedQuery, onlyCookable, category],
-    queryFn: () => searchRecipes(debouncedQuery, onlyCookable, category),
+    queryKey: ["recipes", debouncedQuery, onlyCookable, category, ingredient?.id ?? ""],
+    queryFn: () =>
+      searchRecipes({
+        query: debouncedQuery,
+        onlyCookable,
+        category,
+        ingredientId: ingredient?.id ?? "",
+      }),
   });
 
   // le categorie presenti, non tutte quelle possibili: un filtro che offre voci
@@ -166,6 +196,28 @@ export function RecipeBookScreen() {
         </label>
       )}
 
+      {ingredient === null ? (
+        <IngredientPicker
+          label="Cosa hai in casa"
+          failureNote="Puoi comunque cercare per parole qui sopra."
+          onPick={setIngredient}
+        />
+      ) : (
+        <div className="flex items-center justify-between gap-2 rounded-card bg-brand-tint px-3 py-2">
+          <span className="min-w-0 truncate text-sm text-brand">
+            Solo con {ingredient.display_name}
+          </span>
+          <button
+            type="button"
+            aria-label={`Togli il filtro su ${ingredient.display_name}`}
+            onClick={() => setIngredient(null)}
+            className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand"
+          >
+            Togli
+          </button>
+        </div>
+      )}
+
       {isLoading && <p className="pt-4 text-ink-soft">Cerco…</p>}
 
       {!isLoading && isError && (
@@ -175,7 +227,14 @@ export function RecipeBookScreen() {
       )}
 
       {!isLoading && !isError && recipes.length === 0 && (
-        <p className="pt-4 text-ink-soft">{emptyMessage(debouncedQuery, onlyCookable, category)}</p>
+        <p className="pt-4 text-ink-soft">
+          {emptyMessage({
+            query: debouncedQuery,
+            onlyCookable,
+            category,
+            ingredientName: ingredient?.display_name ?? null,
+          })}
+        </p>
       )}
 
       {!isLoading && !isError && recipes.length > 0 && (
