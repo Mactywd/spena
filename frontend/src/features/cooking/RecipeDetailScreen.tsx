@@ -82,7 +82,7 @@ export function RecipeDetailScreen() {
   ];
 
   return (
-    <div className="px-4 pt-5 pb-4">
+    <div className="px-4 pt-2 pb-4">
       <BackLink to="/ricette" label="Ricette" />
       <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
       {recipe.description && <p className="pt-1 text-ink-soft">{recipe.description}</p>}

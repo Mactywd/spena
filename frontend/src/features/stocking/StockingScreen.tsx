@@ -324,8 +324,10 @@ export function StockingScreen() {
     setSearchingFor(null);
   }
 
+  // pt-2, non pt-4: il ritorno porta già la sua altezza da bersaglio,
+  // combacia con quel che Screen fa da sé quando c'è un back
   return (
-    <div className="p-4">
+    <div className="px-4 pt-2 pb-4">
       <BackLink to="/lista" label="Lista" />
       <h1 className="pb-3 text-xl font-semibold">Sistema la spesa</h1>
 
