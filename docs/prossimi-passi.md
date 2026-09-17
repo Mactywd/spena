@@ -1,6 +1,7 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-17.
+Aggiornato il 2026-09-17 (le cinque voci indipendenti di Parte VIII: S1, S2, R1,
+R3, T1).
 
 Questo file è **l'unico posto dove sta la lista**. La roadmap per fasi della spec
 madre (`docs/superpowers/specs/2026-09-11-spena-design.md`, §4) resta il documento
@@ -30,6 +31,11 @@ deve.
 
 Sezioni primarie di oggi: **Lista, Dispensa, Ricette** (tre schede in
 `TabBar.tsx`). Tutto quel che segue si innesta su queste.
+
+**Le cinque voci indipendenti di Parte VIII** — S1, S2, R1, R3, e in parte T1 —
+sono implementate e verdi sul ramo `cinque-voci`, non ancora su `master`: dove
+questo file dice «FATTO 2026-09-17» qui sotto, intende quello. Merge e distribuzione
+si decidono a parte.
 
 ---
 
@@ -69,6 +75,13 @@ dispensa** — e dare alle ricette quantità strutturate accanto al testo:
   ed è giusto — e la nutrizione dichiara la sua copertura («calcolato sull'82% degli
   ingredienti») invece di fingere lo zero, coerente con «i nutrienti mancanti restano
   mancanti».
+
+> **Nota 2026-09-17.** `pantry_items.fill_percent` esiste già (S2 in Parte II): è la
+> posizione di un cursore, 0–100, annullabile. Non è un'eccezione al punto sopra
+> perché è una **posizione**, non una quantità — non entra in nessun calcolo, non ha
+> unità, non scade. La decisione fondante numero 1 resta intera. Chi implementerà D1
+> e toccherà `CLAUDE.md` deve sapere che questa colonna c'è, e perché non conta come
+> precedente.
 
 **Perché non l'alternativa.** Quantità vere anche in dispensa avrebbero sbloccato
 conti più precisi, ma avrebbero reintrodotto la manutenzione giornaliera che la
@@ -151,24 +164,46 @@ mai. La parola «ingrediente» resta nel codice; nell'interfaccia, dove serve, s
 
 # Parte II — Spesa e dispensa
 
-## S1. La X rossa **[D]**
-«Togli dalla dispensa» diventa una X rossa. Attenzione a «mai un vicolo cieco»: una X
-che cancella senza ritorno è un dito storto su un telefono. TBD se serve un annulla.
-Piccola, indipendente.
+## S1. La X rossa **[FATTO 2026-09-17]**
+«Togli dalla dispensa» è una X rossa. Il TBD sull'annulla era giustificato: l'annulla
+c'è, dura sei secondi, e si appoggia ad `archived_at`, che era già reversibile prima
+di questo lavoro. Al posto della voce resta una lapide («Tolta dalla dispensa —
+Annulla»): la riga sta dov'era invece di sparire, perché una lapide senza posto non
+si può annullare. Lato API è nato `unarchive_item`
+(`backend/app/repositories/pantry.py`) e la `PATCH /api/v1/pantry/{id}` accetta
+`{"archived": false}` oltre a `{"archived": true}`.
 
-## S2. Lo slider a tre zone **[D]**
+## S2. Lo slider a tre zone **[FATTO 2026-09-17]**
 `o--o------o`: primo pallino rosso = finito, tratto giallo fino al secondo = quasi
 finito, verde dopo = disponibile. Indicativo, e utile soprattutto **in negozio**, per
 capire quanto ne resta di qualcosa; serve anche a seguire un prodotto che si consuma
 ma non finisce mai.
 
-**Il dominio non cambia**: la posizione è display, lo stato resta la verità, e la
-regola primario/secondario in `domain/rules.py` non si tocca. L'unica aggiunta è
-salvare la posizione (0–100) accanto allo stato, perché altrimenti si perde a ogni
-lettura. Verde all'inizio o alla fine è sempre `available`.
+**Il dominio non è cambiato quanto previsto: la regola primario/secondario in
+`domain/rules.py` non si tocca**, ma è nata una seconda regola pura accanto a lei,
+`status_for_fill`, con la soglia `LOW_MAX_FILL = 30` (di proposito sotto la metà: la
+zona gialla deve dire «comincia a mancare», non «siamo a metà» — vedi il commento in
+`app/domain/rules.py`). La posizione vive in `pantry_items.fill_percent`
+(annullabile, 0–100, migrazione `0006`), la `PATCH` la accetta e risponde con lo
+stato già ricavato dal server — il client chiede, non calcola, come ogni altra
+regola di questo modulo. `backend/tests/test_frontend_fill_zones.py` legge la
+stessa soglia dal sorgente TypeScript e fallisce se i due linguaggi divergono
+(stesso schema di `test_frontend_categories.py`). Scrivere lo stato a mano (senza
+passare dal cursore) azzera la posizione: un `available` deciso altrove non deve
+mostrare un barattolo pieno che non c'è più. **`StatusToggle` è stato cancellato**:
+il cursore lo sostituisce, e `StatusChip` è rimasto l'unico posto in dispensa dove
+lo stato si vede.
 
-TBD: cosa fa lo slider quando arriva a zero — mette la voce in lista da sé, come fa
-oggi il passaggio a `finished`?
+**Il TBD era mal posto, e la frase sotto correggeva un'idea sbagliata, non un
+buco**: chiedeva se il cursore a zero dovesse rimettere la voce in lista «come fa
+oggi il passaggio a `finished`» — ma il passaggio a `finished` dalla dispensa
+**non lo faceva, né prima né dopo questo lavoro**: `set_status` cambia solo lo
+stato, e l'unico punto che scriveva in lista era `cook()`. Il cursore a zero segna
+`finished` e **chiede**, con una lapide propria («Lo rimetto in lista?»): non
+scrive in lista da sé. Per questo è nato `app/services/restock.py`, un solo posto
+con due chiamanti — la cottura e il cursore — che non duplica una voce già in
+lista, e la rotta `POST /api/v1/pantry/{item_id}/restock` che il cursore chiama
+quando la risposta è sì.
 
 ## S3. Ingresso diretto in dispensa, alla pari di «sistema la spesa» **[D]**
 Oggi i due schermi non offrono le stesse strade. L'ingresso diretto deve dare tutte
@@ -204,10 +239,12 @@ Vedi D4. Nessuna informazione nutrizionale, solo la voce con il suo slider.
 
 # Parte III — Ricette
 
-## R1. La foto dentro la ricetta **[D]**
-Oggi la foto delle ricette importate si vede solo nell'elenco. Va mostrata anche nella
-scheda aperta. Attenzione al difetto già corretto una volta (`6a2175b`): una foto che
-non carica non deve lasciare un buco.
+## R1. La foto dentro la ricetta **[FATTO 2026-09-17]**
+La foto si vede anche nella scheda aperta, non solo nell'elenco. Il ramo
+dell'immagine rotta — il difetto già corretto una volta (`6a2175b`) — ora sta in un
+componente solo, `RecipeImage` (`frontend/src/features/recipes/RecipeImage.tsx`),
+usato da entrambe le schermate: una seconda copia di quella logica si sarebbe
+scollata esattamente lì, dove nessuno guarda.
 
 ## R2. Riporziona **[D]** ↳ D1
 Due modi, e il secondo è quello che manca a tutte le app: per **numero di porzioni**,
@@ -218,10 +255,12 @@ l'ingrediente su cui ancorare la scala.
 TBD: se il riporziona è solo una vista o si può salvare; cosa succede alle righe non
 parsate (proposta: restano identiche e si vedono come tali).
 
-## R3. Filtra per ingrediente **[D]**
-«Ho questo, cosa ci faccio» — vale **solo sugli ingredienti primari**, perché un
-ingrediente secondario non caratterizza il piatto. Indipendente, piccola, e non
-richiede niente di nuovo nel modello.
+## R3. Filtra per ingrediente **[FATTO 2026-09-17]**
+«Ho questo, cosa ci faccio» — `GET /api/v1/recipes/search?ingredient_id=…`, filtrato
+in SQL **prima** del limite (sesta lezione di `CLAUDE.md`: un filtro che lavora sul
+risultato non può stare dietro a un limite), e vale **solo sugli ingredienti
+primari**, perché un secondario non caratterizza il piatto. Il selettore vive nel
+ricettario. Non ha richiesto niente di nuovo nel modello.
 
 ## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[D, con un blocco]**
 L'obiettivo è tutto il catalogo. Strategia proposta: **prima uno scarico locale
@@ -343,14 +382,21 @@ Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.
 
 # Parte VII — Trasversali
 
-## T1. Navigazione **[D dopo D3]**
-- **Header globale** «Spena» con logo, hamburger a destra.
-- **Tasto indietro** dentro le sottosezioni. Oggi si torna indietro solo con la navbar
-  in basso o col tasto del telefono — che su iOS in PWA non c'è.
-- **Schede d'ingresso sempre presenti** per le sottosezioni, con avviso quando c'è da
-  fare. Il caso «non ho spesa da mettere a posto» non deve far sparire il tasto.
+## T1. Navigazione **[FATTO IN PARTE 2026-09-17]**
+- **Header globale** «Spena», `AppHeader.tsx`: il TBD sul logo si è chiuso disegnando
+  il segno a mano, in SVG dentro il componente stesso (una pentola col vapore, solo
+  tratti, `currentColor`) — niente libreria di icone per un marchio solo.
+- **Tasto indietro** dentro le sottosezioni: `BackLink.tsx`, e `Screen`
+  (`frontend/src/components/ui/Screen.tsx`) accetta una prop `back` che dichiara la
+  destinazione, così il tasto non torna mai a un posto indovinato.
+- **Schede d'ingresso sempre presenti**: `SectionEntryCard.tsx`, con un pallino di
+  avviso e un fondo diverso solo quando c'è davvero qualcosa da fare. Il caso «non ho
+  spesa da mettere a posto» non fa sparire il tasto.
 
-TBD: serve un logo. Non esiste.
+**Resta aperto l'hamburger**, e non è una dimenticanza: è rinviato di proposito alla
+prima sezione secondaria vera (Pasti, Spese, Profilo, Connettori). Un indice che
+ripete le tre schede della navbar non è un indice — costruirlo ora avrebbe significato
+disegnare un menu che porta esattamente dove portano già Lista, Dispensa e Ricette.
 
 ## T2. Attribuzione delle chiamate su OpenRouter **[FATTO 2026-09-17]**
 Fatto e in produzione (merge `b7b842f`). Com'è finita, perché non è come era scritta
@@ -392,8 +438,11 @@ Non è un impegno, è quel che le dipendenze permettono.
 **Subito, perché sbloccano o smettono di perdere dati**
 T2 è fatto (2026-09-17). Restano le tre decisioni D1–D3.
 
-**Poi, indipendenti e piccole** — si possono fare in qualunque momento e non
-aspettano nessuno: S1, S2, R1, R3, T1.
+**Poi, indipendenti e piccole** — si potevano fare in qualunque momento e non
+aspettavano nessuno: **fatte il 2026-09-17** S1, S2, R1, R3, e in parte T1 (header,
+tasto indietro, schede d'ingresso). **Resta aperto** solo l'hamburger di T1,
+rinviato di proposito alla prima sezione secondaria vera — non c'è fretta, perché
+niente lo sblocca.
 
 **Poi, il blocco strutturale**: D4/S5 (non alimentari), S4 (nutrienti ampi), D1
 applicata (quantità nelle ricette). Da qui in avanti serve la spec.
@@ -466,6 +515,38 @@ layout a 375px.
   `imposta-password.sh`.
 - **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
   `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.
+- **`RecipeImage` non azzera lo stato «immagine fallita» quando cambia l'url.**
+  Nelle schede dell'elenco è innocuo perché ogni scheda ha la sua chiave React; la
+  ricetta aperta non è chiavata per id, quindi passando da una ricetta all'altra
+  senza smontaggio (per esempio con un link che cambia solo il parametro nell'URL)
+  un'immagine rotta sulla prima nasconderebbe l'immagine buona della seconda. Si
+  chiude con una riga: un `useEffect` che rimette `failed` a `false` quando `url`
+  cambia, in `frontend/src/features/recipes/RecipeImage.tsx`.
+- **`frontend/e2e/style.spec.ts` lascia un «Pomodoro» in dispensa a ogni
+  esecuzione** (non lo archivia mai), e `cooking.spec.ts` cerca il primo `li` con
+  quel testo assumendo di essere l'unico. Oggi non si rompe perché Playwright
+  ordina i file alfabeticamente e `cooking` gira prima di `style`; la dipendenza è
+  scritta in un commento in entrambi i file, ma la pulizia vera — dare alla voce di
+  `style.spec.ts` un nome che non collida, o archiviarla a fine test — non è stata
+  fatta.
+- **`PantryRow.tsx` è il file più affollato dell'app** (oltre 170 righe, tre stati
+  locali oltre alle prop). Estrarre la domanda del rientro in lista («Lo rimetto in
+  lista?», con la sua lapide e il suo esito) come componente a sé è il taglio
+  naturale, quando qualcuno ci tornerà.
+- **Restano riferimenti a `StatusToggle` in alcuni commenti**
+  (`frontend/src/components/ui/StatusChip.tsx`,
+  `frontend/src/features/cooking/CookSheet.test.tsx`,
+  `frontend/src/features/ai-draft/AiDraftScreen.tsx`), di un componente che questo
+  lavoro ha cancellato insieme al vecchio schema a tre pulsanti (S2, sopra). Non
+  rompono niente, ma nominano qualcosa che non esiste più.
+- **Prima di questo lavoro `StatusChip` non aveva un test suo**: il legame fra la
+  mappa dei colori (`STATUS_TONE`/`STATUS_LABELS`) e il componente lo provava solo
+  `StatusToggle.test.tsx`, cancellato con il resto di quel componente proprio in
+  questo lavoro. La copertura è stata ricostruita
+  (`frontend/src/components/ui/StatusChip.test.tsx`), ma vale la pena sapere che
+  prima non c'era: è lo stesso difetto della prima lezione di `CLAUDE.md` — una
+  mappa può essere giusta mentre il controllo che la gente tocca non la usa — e qui
+  è sopravvissuto abbastanza a lungo da valere una nota.
 
 ---
 
