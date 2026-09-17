@@ -107,7 +107,7 @@ async def test_create_ingredient_deduce_il_kind_dal_reparto(db_session):
     assert non_cibo.kind == IngredientKind.NON_FOOD
 
 
-async def test_reassigning_category_moves_kind_along(db_session):
+async def test_riassegnare_il_category_muove_il_kind(db_session):
     """Riassegnare la categoria di un ingrediente muove con sé il suo kind.
 
     La colonna `kind` è giustificata da questo comportamento: una riga creata in
