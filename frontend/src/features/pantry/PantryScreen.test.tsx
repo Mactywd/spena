@@ -327,4 +327,98 @@ describe("PantryScreen", () => {
     expect(await screen.findByText("Non sono riuscito a salvare la modifica. Riprova.")).toBeDefined();
     expect(screen.getByText("mela")).toBeDefined();
   });
+
+  // Rilievo di revisione (a) sul Task 5: un annulla che fallisce archiviava
+  // comunque la voce sul server. Invalidare a quel punto la faceva sparire dalla
+  // lista senza lasciare né un messaggio né un modo di riprovare — un vicolo
+  // cieco. La lapide deve restare, con l'errore dentro, e «Annulla» ripremibile.
+  it("l'annulla che fallisce lascia una lapide con l'errore, e si può riprovare", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const utente = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      const fetchMock = stubRoutedFetch((_path, init) => {
+        if (init?.method === "PATCH") {
+          const body = JSON.parse(String(init!.body));
+          if (body.archived === false) return [{ detail: "no" }, 500];
+          return [{ ...ITEMS[2] }, 200];
+        }
+        return [ITEMS, 200];
+      });
+      renderScreen();
+
+      await utente.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
+      expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
+
+      await utente.click(screen.getByRole("button", { name: "Annulla" }));
+
+      expect(await screen.findByText("Non sono riuscito a salvare la modifica. Riprova.")).toBeDefined();
+      // la lapide non è sparita: senza di lei l'annulla non avrebbe più un bersaglio
+      expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
+      expect(screen.getByRole("button", { name: "Annulla" })).toBeDefined();
+
+      // il timer si è spento con l'errore: farlo scorrere non deve far sparire la
+      // lapide mentre mostra l'errore, altrimenti sarebbe di nuovo un vicolo cieco
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
+
+      const corpi = fetchMock.mock.calls
+        .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
+        .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+      expect(corpi).toEqual([{ archived: true }, { archived: false }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Rilievo di revisione (b) sul Task 5: `removedId` era un solo id. Togliere una
+  // seconda voce prima che scadesse la lapide della prima spegneva il timer della
+  // prima (cleanup dello useEffect sulla dipendenza) e la faceva tornare viva
+  // nell'interfaccia pur essendo già archiviata sul server — una riga fantasma.
+  it("due rimozioni vicine non si calpestano: ognuna ha la sua lapide", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const utente = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      const fetchMock = stubRoutedFetch((path, init) => {
+        if (init?.method === "PATCH") {
+          if (path.includes("/p3")) return [{ ...ITEMS[2] }, 200];
+          if (path.includes("/p1")) return [{ ...ITEMS[0] }, 200];
+        }
+        return [ITEMS, 200];
+      });
+      renderScreen();
+
+      // A: la mela
+      await utente.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
+      expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
+
+      // B, prima che scadano i sei secondi della mela
+      await utente.click(await screen.findByRole("button", { name: "Togli Total 0% dalla dispensa" }));
+
+      // le due lapidi convivono, ognuna con il suo annulla
+      expect(screen.getAllByText("Tolta dalla dispensa")).toHaveLength(2);
+      expect(screen.getAllByRole("button", { name: "Annulla" })).toHaveLength(2);
+
+      // annullare la mela la riporta, senza toccare Total 0%
+      const melaTomba = screen.getByText("mela").closest("li")!;
+      await utente.click(within(melaTomba).getByRole("button", { name: "Annulla" }));
+
+      await waitFor(() => expect(screen.getAllByText("Tolta dalla dispensa")).toHaveLength(1));
+      const rimasta = screen.getByText("Tolta dalla dispensa").closest("li")!;
+      expect(within(rimasta).getByText("Total 0%")).toBeDefined();
+
+      const corpi = fetchMock.mock.calls
+        .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
+        .map(([url, init]) => ({
+          url: String(url),
+          body: JSON.parse(String((init as RequestInit).body)),
+        }));
+      expect(corpi).toEqual([
+        { url: expect.stringContaining("/p3"), body: { archived: true } },
+        { url: expect.stringContaining("/p1"), body: { archived: true } },
+        { url: expect.stringContaining("/p3"), body: { archived: false } },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

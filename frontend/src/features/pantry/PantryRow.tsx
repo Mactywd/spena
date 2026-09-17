@@ -12,7 +12,11 @@ export function itemLabel(item: PantryItem): string {
 /** Una riga della dispensa.
  *
  * `removed` è la lapide: la riga resta dov'era, con l'annulla dentro, per i secondi
- * in cui il gesto si può disfare. Sparisce da sé quando lo schermo ricarica.
+ * in cui il gesto si può disfare. Sparisce da sé quando lo schermo ricarica. Se
+ * `failed` è vero mentre la lapide è a video, è l'annulla stesso che ha fallito:
+ * il messaggio compare dentro la lapide (non ha più senso accanto a `StatusToggle`,
+ * che qui non c'è), e la lapide non scade da sola — solo un altro annulla, riuscito
+ * stavolta, la può togliere.
  */
 export function PantryRow({
   item,
@@ -33,17 +37,21 @@ export function PantryRow({
 }) {
   if (removed) {
     return (
-      <li className="flex min-h-14 items-center justify-between gap-3 p-3" role="status">
-        <span className="min-w-0 truncate text-ink-soft">
-          <span className="font-medium text-ink">{itemLabel(item)}</span> Tolta dalla dispensa
-        </span>
-        <button
-          type="button"
-          onClick={onUndo}
-          className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand"
-        >
-          Annulla
-        </button>
+      <li className="flex flex-col gap-2 p-3" role="status">
+        <div className="flex min-h-11 items-center justify-between gap-3">
+          <span className="min-w-0 truncate text-ink-soft">
+            <span className="font-medium text-ink">{itemLabel(item)}</span> Tolta dalla dispensa
+          </span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onUndo}
+            className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand disabled:opacity-40"
+          >
+            Annulla
+          </button>
+        </div>
+        {failed && <Alert>Non sono riuscito a salvare la modifica. Riprova.</Alert>}
       </li>
     );
   }
