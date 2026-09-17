@@ -132,3 +132,31 @@ async def test_duplicate_alias_is_still_409(logged_client):
     conflict = await logged_client.post(url, json=body)
     assert conflict.status_code == 409
     assert "alias" in conflict.json()["detail"]
+
+
+async def test_la_ricerca_filtra_per_kind_solo_se_glielo_chiedi(logged_client, db_session):
+    """Senza parametro si vede tutto: è la lista della spesa, dove il detersivo
+    deve comparire. Con `kind=food` no: è il ricettario."""
+    from app.repositories.ingredients import create_ingredient
+
+    await create_ingredient(db_session, "detersivo per i piatti", "Detersivo per i piatti", "casa")
+    await create_ingredient(db_session, "detersivo alimentare finto", "Dado", "condimenti")
+    await db_session.commit()
+
+    tutti = (await logged_client.get("/api/v1/ingredients/search?q=deter")).json()
+    assert "Detersivo per i piatti" in [i["display_name"] for i in tutti]
+
+    solo_cibo = (await logged_client.get("/api/v1/ingredients/search?q=deter&kind=food")).json()
+    assert "Detersivo per i piatti" not in [i["display_name"] for i in solo_cibo]
+
+
+async def test_la_ricerca_dice_il_kind_di_ogni_voce(logged_client, db_session):
+    """Il frontend non lo calcola: lo legge. La partizione dei reparti vive nel
+    backend, e ricopiarla nel client sarebbe la seconda copia che si scolla."""
+    from app.repositories.ingredients import create_ingredient
+
+    await create_ingredient(db_session, "candeggina", "Candeggina", "casa")
+    await db_session.commit()
+
+    trovati = (await logged_client.get("/api/v1/ingredients/search?q=cande")).json()
+    assert trovati[0]["kind"] == "non_food"

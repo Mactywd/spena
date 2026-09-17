@@ -12,6 +12,9 @@ class IngredientOut(BaseModel):
     name: str
     display_name: str
     category: str
+    # detto dal server e non calcolato dal client: la partizione dei reparti vive
+    # in `kind_for_category`, e una seconda copia nel frontend si scollerebbe
+    kind: str
 
 
 class IngredientCreate(BaseModel):

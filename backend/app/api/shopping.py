@@ -28,6 +28,7 @@ def _to_out(item: ShoppingListItem) -> ShoppingItemOut:
         ingredient_id=item.ingredient_id,
         ingredient_name=item.ingredient.name if item.ingredient else None,
         ingredient_category=item.ingredient.category if item.ingredient else None,
+        ingredient_kind=item.ingredient.kind if item.ingredient else None,
         status=item.status,
         reason=item.reason,
         created_at=item.created_at,

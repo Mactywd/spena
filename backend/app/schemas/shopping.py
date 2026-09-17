@@ -12,6 +12,7 @@ class ShoppingItemOut(BaseModel):
     ingredient_id: uuid.UUID | None
     ingredient_name: str | None
     ingredient_category: str | None
+    ingredient_kind: str | None
     status: str
     reason: str
     created_at: datetime

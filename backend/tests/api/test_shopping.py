@@ -195,3 +195,20 @@ async def test_resolving_to_a_dangling_ingredient_is_404_not_500(logged_client):
     })
     assert response.status_code == 404
     assert "inesistente" in response.json()["detail"]
+
+
+async def test_una_voce_di_lista_porta_il_kind_del_suo_ingrediente(logged_client, db_session):
+    """Serve alla sistemazione della spesa, che deve sapere se nascondere i campi
+    dei nutrienti — e deve saperlo senza ricalcolare la partizione nel client."""
+    from app.repositories.ingredients import create_ingredient
+
+    candeggina = await create_ingredient(db_session, "candeggina", "Candeggina", "casa")
+    await db_session.commit()
+
+    await logged_client.post(
+        "/api/v1/shopping-list",
+        json={"raw_text": "candeggina", "ingredient_id": str(candeggina.id)},
+    )
+    voci = (await logged_client.get("/api/v1/shopping-list")).json()
+
+    assert voci[0]["ingredient_kind"] == "non_food"

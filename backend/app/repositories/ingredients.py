@@ -5,12 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientAlias
 from app.db.models.shopping import ShoppingListItem
+from app.domain.rules import IngredientKind
 
 SIMILARITY_FLOOR = 0.15  # sotto questa soglia i suggerimenti diventano rumore
 
 
 async def search_ingredients(
-    session: AsyncSession, query: str, limit: int = 10
+    session: AsyncSession, query: str, limit: int = 10,
+    kind: IngredientKind | None = None,
 ) -> list[Ingredient]:
     """Autocomplete su nome e alias, tollerante agli errori di battitura.
 
@@ -51,6 +53,14 @@ async def search_ingredients(
         .outerjoin(IngredientAlias, IngredientAlias.ingredient_id == Ingredient.id)
         .outerjoin(purchases, purchases.c.ingredient_id == Ingredient.id)
         .group_by(Ingredient.id)
+    )
+    # `None` vuol dire «tutti», ed è il comportamento di sempre: il filtro lo
+    # chiede chi lo vuole. Un default che esclude sarebbe il modo in cui la lista
+    # della spesa smette di suggerire il detersivo senza che nessun test lo veda.
+    if kind is not None:
+        statement = statement.where(Ingredient.kind == kind)
+    statement = (
+        statement
         # Il prefisso esatto scavalca la soglia di somiglianza: su query di una o
         # due lettere la trigram similarity non è uno strumento utile (vedi
         # docstring), quindi non deve poter escludere un prefisso valido.

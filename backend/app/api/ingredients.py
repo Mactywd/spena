@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
+from app.domain.rules import IngredientKind
 from app.repositories.ingredients import add_alias, create_ingredient, search_ingredients
 from app.schemas.ingredient import AliasCreate, IngredientCreate, IngredientOut
 
@@ -17,9 +18,10 @@ router = APIRouter(
 @router.get("/search", response_model=list[IngredientOut])
 async def search(
     q: str = Query(min_length=1), limit: int = Query(default=10, le=50),
+    kind: IngredientKind | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> list[IngredientOut]:
-    found = await search_ingredients(session, q, limit)
+    found = await search_ingredients(session, q, limit, kind=kind)
     return [IngredientOut.model_validate(i) for i in found]
 
 
