@@ -90,4 +90,45 @@
   input[type="checkbox"] {
     accent-color: var(--color-brand);
   }
+
+  /* Il cursore della dispensa. Le tre zone le dipinge il componente su un elemento
+     dietro: qui c'è solo la forma, perché la traccia nativa non si colora allo
+     stesso modo nei due motori. Il pallino è 28px e la zona toccabile 44px, come
+     ogni altro bersaglio dell'app.
+
+     Niente di tutto questo lo vede jsdom: Tailwind compila il CSS e i test in
+     memoria non lo calcolano (quarta lezione di CLAUDE.md). La prova sta in
+     frontend/e2e/style.spec.ts. */
+  input[type="range"] {
+    appearance: none;
+    background-color: transparent;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 0.5rem;
+    background: transparent;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 0.5rem;
+    background: transparent;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-top: -0.625rem;
+    border-radius: 999px;
+    border: 2px solid var(--color-ink-soft);
+    background-color: var(--color-card);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 999px;
+    border: 2px solid var(--color-ink-soft);
+    background-color: var(--color-card);
+  }
 }

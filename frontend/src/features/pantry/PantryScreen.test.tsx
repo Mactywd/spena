@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -8,13 +8,13 @@ import { PantryScreen } from "./PantryScreen";
 const ITEMS = [
   { id: "p1", ingredient_id: "i1", product_id: "pr1", ingredient_name: "yogurt greco",
     ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
-    status: "available", note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
   { id: "p2", ingredient_id: "i1", product_id: "pr2", ingredient_name: "yogurt greco",
     ingredient_category: "latticini", product_name: "Pesca", product_brand: "Carrefour",
-    status: "low", note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
   { id: "p3", ingredient_id: "i2", product_id: null, ingredient_name: "mela",
     ingredient_category: "frutta", product_name: null, product_brand: null,
-    status: "available", note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
 ];
 
 const MELA = { id: "i2", name: "mela", display_name: "Mela", category: "frutta" };
@@ -80,35 +80,32 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Pesca")).toBeDefined();
   });
 
-  it("cambiare stato manda una PATCH con il nuovo valore e lo schermo lo rispecchia", async () => {
-    // la PATCH risponde con la riga, la GET successiva con la lista aggiornata:
-    // distinguerle è ciò che rende il test una copertura del ri-render e non solo
-    // della chiamata
-    const changed = [{ ...ITEMS[0], status: "low" }, ITEMS[1], ITEMS[2]];
-    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
-      if (init?.method === "PATCH") {
-        return Promise.resolve(
-          new Response(JSON.stringify({ ...ITEMS[0], status: "low" }), { status: 200 })
-        );
-      }
-      const body = spy.mock.calls.some(([, i]) => i?.method === "PATCH") ? changed : ITEMS;
-      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+  it("spostare il cursore manda la posizione, non lo stato", async () => {
+    // lo stato lo ricava il backend: mandarlo da qui vorrebbe dire avere due
+    // opinioni su cosa sia «quasi finito»
+    const fetchMock = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "low", fill_percent: 15 }, 200];
+      return [ITEMS, 200];
     });
-    vi.stubGlobal("fetch", spy);
-
     renderScreen();
-    const row = (await screen.findByText("Total 0%")).closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Quasi finito" }));
 
-    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(patch?.[0]).toContain("/pantry/p1");
-    expect(JSON.parse(patch?.[1].body)).toEqual({ status: "low" });
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "15" } });
+    fireEvent.pointerUp(cursore);
 
     await waitFor(() => {
-      const updated = screen.getByText("Total 0%").closest("li")!;
-      expect(within(updated).getByRole("button", { name: "Quasi finito" }))
-        .toHaveAttribute("aria-pressed", "true");
+      const patch = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "PATCH");
+      expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ fill_percent: 15 });
     });
+  });
+
+  it("una voce che non ha mai visto il cursore parte dalla zona del suo stato", async () => {
+    // `fill_percent` resta null: non si inventa una misura per riempire un buco
+    stubRoutedFetch(() => [ITEMS, 200]);
+    renderScreen();
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di Pesca" });
+    // ITEMS[1] è `low`: metà della zona gialla
+    expect((cursore as HTMLInputElement).value).toBe("15");
   });
 
   it("una modifica rifiutata lo dice, accanto alla voce giusta", async () => {
@@ -121,7 +118,9 @@ describe("PantryScreen", () => {
 
     renderScreen();
     const row = (await screen.findByText("Total 0%")).closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Quasi finito" }));
+    const cursore = within(row).getByRole("slider");
+    fireEvent.change(cursore, { target: { value: "10" } });
+    fireEvent.pointerUp(cursore);
 
     expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     const other = screen.getByText("Pesca").closest("li")!;
@@ -157,14 +156,14 @@ describe("PantryScreen", () => {
 
     renderScreen();
     const row = (await screen.findByText("Total 0%")).closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Quasi finito" }));
+    const cursore = within(row).getByRole("slider");
+    fireEvent.change(cursore, { target: { value: "10" } });
+    fireEvent.pointerUp(cursore);
 
-    await waitFor(() =>
-      expect(within(row).getByRole("button", { name: "Finito" })).toBeDisabled()
-    );
+    await waitFor(() => expect(within(row).getByRole("slider")).toBeDisabled());
     expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
     const other = screen.getByText("Pesca").closest("li")!;
-    expect(within(other).getByRole("button", { name: "Finito" })).not.toBeDisabled();
+    expect(within(other).getByRole("slider")).not.toBeDisabled();
   });
 
   // M2, spec §8.3: l'ingresso diretto. Senza, per mettere in dispensa una cosa

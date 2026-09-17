@@ -12,7 +12,10 @@ import { expect, test } from "@playwright/test";
  * su uno sfondo grigio — invisibili, senza che un solo test fallisse. Il campo provato
  * qui è di proposito uno senza `type`: provarne uno tipizzato non avrebbe visto niente.
  *
- * Non scrive niente e non legge lo stato: gira anche su uno stack già usato.
+ * I controlli sul colore e sui campi non scrivono niente e non leggono lo stato:
+ * girano anche su uno stack già usato. Il controllo sul cursore della dispensa fa
+ * eccezione — aggiunge una voce con l'ingresso diretto (spec §8.3) perché il seme
+ * non popola la dispensa, e senza una voce non c'è nessun cursore da provare.
  */
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
 
@@ -39,4 +42,47 @@ test("un campo di testo si vede: ha fondo e bordo", async ({ page }) => {
   await expect(field).toHaveCSS("border-top-width", "1px");
   // sotto i 16px iOS ingrandisce la pagina da solo quando il campo prende fuoco
   await expect(field).toHaveCSS("font-size", "16px");
+});
+
+// Decisione mia (non del brief del Task 9): il Task 1 ha reso l'intestazione
+// sticky con un'altezza fissa (`h-12`) e ha sottratto la stessa misura al `main`
+// (`min-h-[calc(100dvh-3rem)]`). Nessun test in jsdom calcola quell'aritmetica —
+// se le due misure divergessero l'app avrebbe una barra di scorrimento verticale
+// che non serve, o l'intestazione coprirebbe la prima riga. Questo è l'unico task
+// che apre un browser vero: è il posto giusto per un controllo che nessun altro
+// può fare.
+test("l'intestazione è sempre visibile e la pagina non scorre in orizzontale", async ({
+  page,
+}) => {
+  await expect(page.getByRole("banner")).toBeVisible();
+  // stringa e non funzione: questo file lo compila tsconfig.node.json, che non
+  // include la libreria DOM (page.evaluate gira nel browser, non in node), e
+  // `document` come identificatore tipato non esisterebbe in questo progetto
+  const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+  const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+});
+
+test("il cursore della dispensa è un bersaglio da pollice, e le zone si vedono", async ({
+  page,
+}) => {
+  // jsdom non calcola il CSS: che il pallino esista, si veda e si possa toccare
+  // non lo può dire nessun test in memoria (quarta lezione di CLAUDE.md)
+  await page.getByRole("link", { name: "Dispensa" }).click();
+
+  // il seme non popola la dispensa: senza una voce non c'è nessun cursore da
+  // provare. L'ingresso diretto (spec §8.3) evita di passare dalla lista.
+  await page.getByLabel("Aggiungi in dispensa").fill("pomodo");
+  await page.getByRole("option", { name: /Pomodoro/ }).click();
+
+  const cursore = page.getByRole("slider").first();
+  await expect(cursore).toBeVisible();
+
+  const box = await cursore.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(40);
+
+  // le tre zone stanno su un elemento dietro al cursore: se il gradiente non
+  // arrivasse, resterebbe un binario invisibile e il cursore non direbbe più nulla
+  const zone = page.locator("input[type='range']").first().locator("xpath=preceding-sibling::div[1]");
+  await expect(zone).toHaveCSS("background-image", /linear-gradient/);
 });

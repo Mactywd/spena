@@ -18,7 +18,7 @@ export function addPantryItem(ingredientId: string) {
 
 export function patchPantryItem(
   id: string,
-  body: { status?: PantryStatus; archived?: boolean }
+  body: { status?: PantryStatus; archived?: boolean; fill_percent?: number }
 ) {
   return apiFetch<PantryItem>(`/pantry/${id}`, {
     method: "PATCH",

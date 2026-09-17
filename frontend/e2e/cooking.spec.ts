@@ -40,11 +40,12 @@ test("il ciclo si chiude: lista, dispensa, cottura, ritorno in lista", async ({ 
   await page.getByRole("button", { name: /Sfuso.*pomodoro/i }).click();
   await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
 
-  // 3. la dispensa la mostra disponibile
+  // 3. la dispensa la mostra disponibile. Lo stato lo dice la pastiglia
+  // (StatusChip), non più tre pulsanti: il cursore a fianco è solo un'indicazione
+  // a occhio e non porta l'aria-pressed di un controllo scelto.
   await expect(page.getByRole("heading", { name: "Dispensa" })).toBeVisible();
   const pantryRow = page.locator("li", { hasText: "pomodoro" }).first();
-  const available = pantryRow.getByRole("button", { name: "Disponibile", exact: true });
-  await expect(available).toHaveAttribute("aria-pressed", "true");
+  await expect(pantryRow.getByText("Disponibile", { exact: true })).toBeVisible();
 
   // 4. apro una ricetta del seme e la cucino, dichiarando il pomodoro finito
   await page.getByRole("link", { name: "Ricette", exact: true }).click();

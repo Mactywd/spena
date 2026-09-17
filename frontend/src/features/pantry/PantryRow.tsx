@@ -1,6 +1,8 @@
-import { StatusToggle } from "./StatusToggle";
+import { FillSlider } from "./FillSlider";
+import { fillForStatus } from "./fillZones";
 import { Alert } from "../../components/ui/Alert";
-import type { PantryItem, PantryStatus } from "../../domain/types";
+import { StatusChip } from "../../components/ui/StatusChip";
+import type { PantryItem } from "../../domain/types";
 
 /** Il nome con cui l'utente chiama questa voce: la marca se c'è, l'ingrediente
  * altrimenti. Entra anche nel nome accessibile della X, perché «Togli dalla
@@ -14,8 +16,8 @@ export function itemLabel(item: PantryItem): string {
  * `removed` è la lapide: la riga resta dov'era, con l'annulla dentro, per i secondi
  * in cui il gesto si può disfare. Sparisce da sé quando lo schermo ricarica. Se
  * `failed` è vero mentre la lapide è a video, è l'annulla stesso che ha fallito:
- * il messaggio compare dentro la lapide (non ha più senso accanto a `StatusToggle`,
- * che qui non c'è), e la lapide non scade da sola — solo un altro annulla, riuscito
+ * il messaggio compare dentro la lapide (non ha più senso accanto al cursore, che
+ * qui non c'è), e la lapide non scade da sola — solo un altro annulla, riuscito
  * stavolta, la può togliere.
  */
 export function PantryRow({
@@ -23,7 +25,7 @@ export function PantryRow({
   busy,
   removed,
   failed,
-  onStatus,
+  onFill,
   onRemove,
   onUndo,
 }: {
@@ -31,7 +33,7 @@ export function PantryRow({
   busy: boolean;
   removed: boolean;
   failed: boolean;
-  onStatus: (status: PantryStatus) => void;
+  onFill: (percent: number) => void;
   onRemove: () => void;
   onUndo: () => void;
 }) {
@@ -94,7 +96,15 @@ export function PantryRow({
           </svg>
         </button>
       </div>
-      <StatusToggle value={item.status} disabled={busy} onChange={onStatus} />
+      <FillSlider
+        value={item.fill_percent ?? fillForStatus(item.status)}
+        label={itemLabel(item)}
+        disabled={busy}
+        onCommit={onFill}
+      />
+      {/* la verità sullo stato la dice il server, e questa pastiglia è l'unica cosa
+          nella riga a dirla: il cursore, da solo, è un'indicazione a occhio */}
+      <StatusChip status={item.status} />
       {failed && <Alert>Non sono riuscito a salvare la modifica. Riprova.</Alert>}
     </li>
   );

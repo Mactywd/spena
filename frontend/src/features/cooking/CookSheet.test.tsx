@@ -20,23 +20,23 @@ const RECIPE: RecipeDetail = {
 const PANTRY: PantryItem[] = [
   { id: "p1", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
     ingredient_category: "cereali", product_name: null, product_brand: null,
-    status: "available", note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
   { id: "p2", ingredient_id: "i2", product_id: "pr1", ingredient_name: "yogurt greco",
     ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
-    status: "available", note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
   { id: "p3", ingredient_id: "i2", product_id: "pr2", ingredient_name: "yogurt greco",
     ingredient_category: "latticini", product_name: "Pesca", product_brand: "Carrefour",
-    status: "low", note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
   // un secondo sacco di pasta senza codice a barre, quello che "sistema la spesa"
   // produce di routine: non ha né prodotto né marca, e si distingue dal primo solo
   // per la nota, lo stato e la data d'ingresso
   { id: "p4", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
     ingredient_category: "cereali", product_name: null, product_brand: null,
-    status: "low", note: "quella aperta", added_at: "2026-09-01T10:00:00Z" },
+    status: "low", fill_percent: null, note: "quella aperta", added_at: "2026-09-01T10:00:00Z" },
   // già finita e mai archiviata: GET /pantry la restituisce ancora
   { id: "p5", ingredient_id: "i2", product_id: "pr3", ingredient_name: "yogurt greco",
     ingredient_category: "latticini", product_name: "Greco 2%", product_brand: "Lidl",
-    status: "finished", note: null, added_at: "2026-09-10T10:00:00Z" },
+    status: "finished", fill_percent: null, note: null, added_at: "2026-09-10T10:00:00Z" },
 ];
 
 function renderSheet(
@@ -86,7 +86,7 @@ describe("CookSheet", () => {
     const bag = (id: string, addedAt: string): PantryItem => ({
       id, ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
       ingredient_category: "cereali", product_name: null, product_brand: null,
-      status: "available", note: null, added_at: addedAt,
+      status: "available", fill_percent: null, note: null, added_at: addedAt,
     });
     renderSheet(vi.fn(), undefined, [
       bag("pa", "2026-09-11T10:00:00Z"),
@@ -203,7 +203,7 @@ describe("CookSheet", () => {
       ...PANTRY,
       { id: "p6", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
         ingredient_category: "cereali", product_name: "Penne rigate", product_brand: "Barilla",
-        status: "available", note: null, added_at: "2026-09-12T10:00:00Z" },
+        status: "available", fill_percent: null, note: null, added_at: "2026-09-12T10:00:00Z" },
     ]);
 
     const row = screen.getByText("Penne rigate").closest("li")!;

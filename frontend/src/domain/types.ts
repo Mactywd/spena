@@ -44,6 +44,9 @@ export interface PantryItem {
   product_name: string | null;
   product_brand: string | null;
   status: PantryStatus;
+  /** Dove sta il cursore, 0–100. `null` per chi non l'ha mai mosso: è una posizione
+   * a occhio, non una quantità, e non esiste finché nessuno l'ha indicata. */
+  fill_percent: number | null;
   note: string | null;
   added_at: string;
 }

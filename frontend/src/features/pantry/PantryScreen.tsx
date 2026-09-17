@@ -9,7 +9,7 @@ import { SectionHeading } from "../../components/ui/SectionHeading";
 import { PantryRow } from "./PantryRow";
 import { addPantryItem, fetchPantry, patchPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
-import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
+import type { Ingredient, PantryItem } from "../../domain/types";
 
 // quanto dura l'annulla. Sei secondi: il tempo di accorgersi di aver sbagliato
 // riga senza che la dispensa resti mezza finta per mezzo minuto
@@ -59,12 +59,12 @@ export function PantryScreen() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["pantry"] });
 
   const change = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: PantryStatus }) =>
-      patchPantryItem(id, { status }),
+    mutationFn: ({ id, fill }: { id: string; fill: number }) =>
+      patchPantryItem(id, { fill_percent: fill }),
     onMutate: ({ id }) => clearFailed(id),
     onSuccess: invalidate,
-    // senza questo una PATCH fallita non dice niente: il controllo torna da sé al
-    // valore del server e l'utente resta convinto di aver cambiato stato
+    // senza questo una PATCH fallita non dice niente: il cursore torna da sé al
+    // valore del server e l'utente resta convinto di averlo spostato
     onError: (_error, { id }) => markFailed(id),
   });
 
@@ -233,7 +233,7 @@ export function PantryScreen() {
                     busy={busyId === item.id}
                     removed={removedIds.has(item.id)}
                     failed={failedIds.has(item.id)}
-                    onStatus={(status) => change.mutate({ id: item.id, status })}
+                    onFill={(percent) => change.mutate({ id: item.id, fill: percent })}
                     onRemove={() => archive.mutate(item.id)}
                     onUndo={() => undo.mutate(item.id)}
                   />
