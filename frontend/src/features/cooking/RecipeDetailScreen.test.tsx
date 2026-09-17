@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -8,7 +8,8 @@ import type { PantryItem } from "../../domain/types";
 
 const DETAIL = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
-  missing: 2, cookable: false, instructions: "Cuoci.", servings: 2, source_ref: null,
+  missing: 2, cookable: false, image_url: null as string | null, instructions: "Cuoci.",
+  servings: 2, source_ref: null,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
       note: null, availability: "available", satisfied: true },
@@ -56,6 +57,21 @@ function stubFetchWithSourceRef(sourceRef: string) {
         new Response(JSON.stringify({ ...DETAIL, source: "dataset", source_ref: sourceRef }), {
           status: 200,
         })
+      )
+    )
+  );
+}
+
+/** Lo stesso dettaglio del file, con delle proprietà sostituite.
+ *
+ * `mockImplementation` e non `mockResolvedValue`: la schermata fa più di una
+ * chiamata, e il corpo di una Response si legge una volta sola. */
+function stubFetch(overrides: Partial<typeof DETAIL>) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ ...DETAIL, ...overrides }), { status: 200 })
       )
     )
   );
@@ -206,5 +222,22 @@ describe("RecipeDetailScreen", () => {
     renderScreen();
     expect((await screen.findByRole("link", { name: "Ricette" })).getAttribute("href"))
       .toBe("/ricette");
+  });
+
+  it("la ricetta aperta mostra la sua foto", async () => {
+    // fino a ieri si vedeva solo nell'elenco: aprire la ricetta la faceva sparire
+    stubFetch({ image_url: "https://esempio.invalid/foto.jpg" });
+    renderScreen();
+    expect((await screen.findByRole("img", { name: "Pasta al pomodoro" })).getAttribute("src"))
+      .toBe("https://esempio.invalid/foto.jpg");
+  });
+
+  it("una foto che non carica non lascia un buco sopra il titolo", async () => {
+    stubFetch({ image_url: "https://esempio.invalid/rotta.jpg" });
+    renderScreen();
+    fireEvent.error(await screen.findByRole("img", { name: "Pasta al pomodoro" }));
+    expect(screen.queryByRole("img", { name: "Pasta al pomodoro" })).toBeNull();
+    // il resto della scheda resta al suo posto
+    expect(screen.getByRole("heading", { name: "Pasta al pomodoro" })).toBeDefined();
   });
 });
