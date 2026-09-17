@@ -3,10 +3,11 @@ from enum import StrEnum
 
 from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.core.db import Base
 from app.db.models.base import TimestampMixin, UUIDMixin
+from app.domain.rules import kind_for_category
 
 # La larghezza delle tre colonne che portano un nome di ingrediente: il nome canonico,
 # il nome visibile e un alias. Ha un nome perché chi scrive in quelle colonne deve
@@ -54,12 +55,35 @@ class Ingredient(UUIDMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), unique=True)
     display_name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH))
     category: Mapped[str] = mapped_column(String(20))
+    # Se questa voce è cibo. Derivata da `category` e mai scritta a mano: l'unico
+    # posto che la calcola è `kind_for_category` nel dominio, e l'unico che la
+    # scrive è il validator `_deduce_kind` qui sotto, che scatta su ogni
+    # assegnazione di `category` — nel costruttore quanto in una riassegnazione
+    # successiva, così spostare un ingrediente da un reparto alimentare a «casa»
+    # sposta con sé il suo kind. Memorizzata invece che calcolata a ogni lettura
+    # perché le guardie e i filtri sono SQL: `WHERE kind = 'food'` sta in un
+    # posto, mentre la partizione dei reparti ricopiata in ogni query si
+    # scollerebbe al terzo reparto.
+    kind: Mapped[str] = mapped_column(String(10))
     # popolato in fase 3, quando arrivano le tabelle di composizione
     composition_ref: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
     aliases: Mapped[list["IngredientAlias"]] = relationship(
         back_populates="ingredient", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    @validates("category")
+    def _deduce_kind(self, key: str, category: str) -> str:
+        """Fa in modo che `kind` discenda sempre da `category`, per ogni scrittore.
+
+        `create_ingredient` non passa un `kind`: lo deduce questo hook, che si
+        attiva su qualunque costruzione o riassegnazione di `category` — quindi
+        anche sul seme e sui test che costruiscono `Ingredient(...)` a mano,
+        nessuno dei quali conosce `kind_for_category`. Un secondo scrittore di
+        `kind` è la via con cui una riga «igiene ma è cibo» potrebbe nascere.
+        """
+        self.kind = kind_for_category(category)
+        return category
 
 
 class IngredientAlias(UUIDMixin, Base):

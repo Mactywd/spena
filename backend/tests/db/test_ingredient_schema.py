@@ -89,3 +89,19 @@ async def test_timestamp_columns_are_not_null_in_physical_schema(db_session):
         ("products", "created_at"): "NO",
         ("products", "updated_at"): "NO",
     }
+
+
+async def test_create_ingredient_deduce_il_kind_dal_reparto(db_session):
+    """Il kind non è un parametro: chi crea sceglie il reparto e basta.
+
+    Fallisce se qualcuno aggiunge un argomento `kind` alla firma, che è il modo
+    in cui una riga «igiene ma è cibo» potrebbe nascere.
+    """
+    from app.domain.rules import IngredientKind
+    from app.repositories.ingredients import create_ingredient
+
+    cibo = await create_ingredient(db_session, "zucchina", "Zucchina", "verdura")
+    non_cibo = await create_ingredient(db_session, "candeggina", "Candeggina", "casa")
+
+    assert cibo.kind == IngredientKind.FOOD
+    assert non_cibo.kind == IngredientKind.NON_FOOD
