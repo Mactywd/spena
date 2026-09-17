@@ -105,3 +105,33 @@ async def test_create_ingredient_deduce_il_kind_dal_reparto(db_session):
 
     assert cibo.kind == IngredientKind.FOOD
     assert non_cibo.kind == IngredientKind.NON_FOOD
+
+
+async def test_reassigning_category_moves_kind_along(db_session):
+    """Riassegnare la categoria di un ingrediente muove con sé il suo kind.
+
+    La colonna `kind` è giustificata da questo comportamento: una riga creata in
+    «verdura» che diventa «casa» deve diventare non-cibo, non rimanere cibo. Una
+    derivazione che girasse solo in `create_ingredient` non terrebbe questo
+    invariante al passo, e il test verifica che il modello lo mantiene.
+    """
+    from app.domain.rules import IngredientKind
+
+    ingredient = Ingredient(
+        name="pomodoro", display_name="Pomodoro",
+        category=IngredientCategory.VERDURA
+    )
+    db_session.add(ingredient)
+    await db_session.flush()
+
+    # Appena creato in un reparto alimentare è cibo
+    assert ingredient.kind == IngredientKind.FOOD
+
+    # Riassegnare il reparto a uno non alimentare lo rende non-cibo
+    ingredient.category = IngredientCategory.CASA
+    await db_session.flush()
+    assert ingredient.kind == IngredientKind.NON_FOOD
+
+    # Verificare che il valore persiste nel database
+    await db_session.refresh(ingredient)
+    assert ingredient.kind == IngredientKind.NON_FOOD
