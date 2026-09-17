@@ -24,4 +24,21 @@ describe("RecipeImage", () => {
     fireEvent.error(screen.getByRole("img", { name: "Carbonara" }));
     expect(container.firstChild).toBeNull();
   });
+
+  it("cambiando ricetta la foto nuova ha una possibilità: il guasto non si eredita", () => {
+    // le schede dell'elenco hanno ognuna la sua chiave React, ma lo schermo della
+    // ricetta non è chiavato per id: passando da una ricetta all'altra il
+    // componente non si smonta, e un `failed` che non si azzera nasconderebbe
+    // per sempre la foto buona della seconda
+    const { container, rerender } = render(
+      <RecipeImage url="https://esempio.invalid/rotta.jpg" alt="Carbonara" />
+    );
+    fireEvent.error(screen.getByRole("img", { name: "Carbonara" }));
+    expect(container.firstChild).toBeNull();
+
+    rerender(<RecipeImage url="https://esempio.invalid/buona.jpg" alt="Amatriciana" />);
+
+    const foto = screen.getByRole("img", { name: "Amatriciana" });
+    expect(foto.getAttribute("src")).toBe("https://esempio.invalid/buona.jpg");
+  });
 });

@@ -22,8 +22,12 @@ export function RecipeImage({
   alt: string;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
-  if (url === null || failed) return null;
+  // si ricorda QUALE indirizzo ha fallito, non un sì/no: le schede dell'elenco
+  // hanno ognuna la sua chiave React, ma lo schermo della ricetta non è chiavato
+  // per id, e passando da una ricetta all'altra senza smontaggio un guasto
+  // ereditato nasconderebbe la foto buona della seconda
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (url === null || failedUrl === url) return null;
 
   return (
     <img
@@ -31,7 +35,7 @@ export function RecipeImage({
       alt={alt}
       // duecento schede su un telefono sono duecento immagini
       loading="lazy"
-      onError={() => setFailed(true)}
+      onError={() => setFailedUrl(url)}
       className={className}
     />
   );

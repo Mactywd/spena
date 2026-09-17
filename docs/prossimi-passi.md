@@ -515,13 +515,6 @@ layout a 375px.
   `imposta-password.sh`.
 - **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
   `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.
-- **`RecipeImage` non azzera lo stato «immagine fallita» quando cambia l'url.**
-  Nelle schede dell'elenco è innocuo perché ogni scheda ha la sua chiave React; la
-  ricetta aperta non è chiavata per id, quindi passando da una ricetta all'altra
-  senza smontaggio (per esempio con un link che cambia solo il parametro nell'URL)
-  un'immagine rotta sulla prima nasconderebbe l'immagine buona della seconda. Si
-  chiude con una riga: un `useEffect` che rimette `failed` a `false` quando `url`
-  cambia, in `frontend/src/features/recipes/RecipeImage.tsx`.
 - **`frontend/e2e/style.spec.ts` lascia un «Pomodoro» in dispensa a ogni
   esecuzione** (non lo archivia mai), e `cooking.spec.ts` cerca il primo `li` con
   quel testo assumendo di essere l'unico. Oggi non si rompe perché Playwright
