@@ -202,8 +202,11 @@ export function PantryScreen() {
   if (restock.isPending) busyIds.add(restock.variables);
 
   // l'elenco a video: risposta del server più le lapidi che il server non manda
-  // più (vedi `withRemoved`)
-  const rows = withRemoved(items, removed);
+  // più (vedi `withRemoved`). Se il caricamento fallisce la risposta del server
+  // sparisce — sarebbe quella di prima, e nessuno saprebbe che è vecchia — ma le
+  // lapidi no: non vengono dal server, e senza di loro una voce appena tolta
+  // resta archiviata davvero senza più nessun tasto per riportarla indietro
+  const rows = withRemoved(isError ? [] : items, removed);
 
   return (
     <Screen title="Dispensa">
@@ -257,7 +260,7 @@ export function PantryScreen() {
         </p>
       )}
 
-      {!isLoading && !isError && rows.length > 0 &&
+      {!isLoading && rows.length > 0 &&
         groupByCategory(rows).map(([category, group]) => (
           <section key={category}>
             <SectionHeading>{category}</SectionHeading>

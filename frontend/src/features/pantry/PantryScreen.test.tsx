@@ -377,6 +377,41 @@ describe("PantryScreen", () => {
   // seconda voce prima che scadesse la lapide della prima spegneva il timer della
   // prima (cleanup dello useEffect sulla dipendenza) e la faceva tornare viva
   // nell'interfaccia pur essendo già archiviata sul server — una riga fantasma.
+  it("un ricaricamento fallito non si porta via la lapide, e l'annulla resta", async () => {
+    // il ramo lasciato aperto dalla correzione della lapide: l'elenco tornava dal
+    // server, quindi l'errore del server nascondeva l'elenco e con lui l'unico
+    // annulla che esista. La voce è già archiviata davvero: senza quel tasto non
+    // c'è nessun percorso nell'interfaccia per riportarla indietro.
+    const archived = new Set<string>();
+    let getFallisce = false;
+    stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        const id = path.split("/").pop()!;
+        const corpo = JSON.parse(String(init.body));
+        if (corpo.archived === true) archived.add(id);
+        else if (corpo.archived === false) archived.delete(id);
+        // muovere il cursore invalida l'elenco: è la mutazione altrui che porta
+        // lo schermo al ramo dell'errore mentre la lapide è a video
+        else getFallisce = true;
+        return [ITEMS.find((item) => item.id === id)!, 200];
+      }
+      if (getFallisce) return [{ detail: "boom" }, 500];
+      return [ITEMS.filter((item) => !archived.has(item.id)), 200];
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
+    expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
+
+    const cursore = screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" });
+    fireEvent.change(cursore, { target: { value: "15" } });
+    fireEvent.pointerUp(cursore);
+
+    expect(await screen.findByText(/Non sono riuscito a caricare la dispensa/)).toBeDefined();
+    expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Annulla" })).toBeDefined();
+  });
+
   it("due rimozioni vicine non si calpestano: ognuna ha la sua lapide", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const utente = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
