@@ -12,15 +12,11 @@ import { ApiError } from "../../api/client";
 import type { Ingredient, Product, ShoppingItem } from "../../domain/types";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { BackLink } from "../../components/BackLink";
+import { FOOD_CATEGORIES, NON_FOOD_CATEGORIES } from "../../domain/categories";
 
 type Resolution =
   | { kind: "loose" }
   | { kind: "product"; product: Product };
-
-// il reparto di un ingrediente nato da un testo libero non lo sappiamo, e
-// indovinarlo sarebbe una bugia: "altro" è il reparto che la lista mostra in
-// fondo, insieme alle altre voci da chiarire
-const UNKNOWN_CATEGORY = "altro";
 
 /**
  * Una voce spuntata ma senza ingrediente abbinato ("un ingrediente che risolve
@@ -45,12 +41,18 @@ function MatchIngredientField({
   // sotto 2 caratteri non vale la pena interrogare il backend, come in AddItemField
   const showSuggestions = query.trim().length >= 2;
 
+  // Il reparto non si indovina più: si chiede. Il commento che stava qui diceva
+  // «indovinarlo sarebbe una bugia», e aveva ragione — la correzione non è
+  // indovinare meglio. Parte da «altro», che è dove finiva d'ufficio: chi non ha
+  // niente da dire fa esattamente quello che faceva prima.
+  const [category, setCategory] = useState<string>("altro");
+
   const create = useMutation({
     mutationFn: (text: string) =>
       // name e display_name sono lo stesso testo: il backend normalizza il primo
       // (strip + lower), e inventare noi una forma canonica sarebbe logica di
       // dominio sul client
-      createIngredient({ name: text, display_name: text, category: UNKNOWN_CATEGORY }),
+      createIngredient({ name: text, display_name: text, category }),
     onSuccess: onMatched,
   });
 
@@ -121,8 +123,8 @@ function MatchIngredientField({
           sempre. Crearlo è l'unica uscita, e nessun task successivo la prevede. */}
       {showSuggestions && outcome === "searched" && suggestions.length === 0 && (
         <p className="text-sm text-low">
-          Nessun ingrediente corrisponde. Puoi crearlo adesso: finisce nel reparto «
-          {UNKNOWN_CATEGORY}» e la voce diventa sistemabile.
+          Nessun ingrediente corrisponde. Puoi crearlo adesso: scegli il reparto e la
+          voce diventa sistemabile.
         </p>
       )}
       {showSuggestions && outcome === "failed" && (
@@ -131,14 +133,36 @@ function MatchIngredientField({
         </p>
       )}
       {showSuggestions && outcome !== "searching" && suggestions.length === 0 && (
-        <button
-          type="button"
-          onClick={() => create.mutate(trimmed)}
-          disabled={create.isPending}
-          className={buttonClasses("warn")}
-        >
-          Crea l'ingrediente «{trimmed}»
-        </button>
+        <>
+          <label className="text-sm">
+            Reparto
+            <select
+              aria-label="Reparto"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="mt-1.5"
+            >
+              {FOOD_CATEGORIES.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+              {/* staccati, perché sono un'altra cosa: non è un reparto in più del
+                  supermercato, è la metà dell'anagrafica che le ricette non vedono */}
+              <optgroup label="Non alimentari">
+                {NON_FOOD_CATEGORIES.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </optgroup>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => create.mutate(trimmed)}
+            disabled={create.isPending}
+            className={buttonClasses("warn")}
+          >
+            Crea l'ingrediente «{trimmed}»
+          </button>
+        </>
       )}
       {create.isError && (
         <p role="alert" className="text-sm text-danger">

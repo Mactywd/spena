@@ -486,10 +486,12 @@ describe("StockingScreen", () => {
 
     expect(
       await screen.findByText(
-        "Nessun ingrediente corrisponde. Puoi crearlo adesso: finisce nel reparto «altro» e la " +
-          "voce diventa sistemabile."
+        "Nessun ingrediente corrisponde. Puoi crearlo adesso: scegli il reparto e la voce " +
+          "diventa sistemabile."
       )
     ).toBeDefined();
+    // non tocca il <select>: è la prova che chi non sceglie niente ottiene
+    // esattamente quel che otteneva prima, cioè "altro"
     await userEvent.click(screen.getByRole("button", { name: /Crea l'ingrediente/i }));
 
     expect(await screen.findByRole("button", { name: /Sfuso.*cosa strana/i })).toBeDefined();
@@ -497,6 +499,33 @@ describe("StockingScreen", () => {
       name: "cosa strana",
       display_name: "cosa strana",
       category: "altro",
+    });
+  });
+
+  it("il reparto di una voce nuova si sceglie, e fra i reparti c'è anche il non alimentare", async () => {
+    const spy = stubRoutedFetch((path, init) => {
+      if (path.includes("/ingredients/search")) return [[]];
+      if (path.endsWith("/ingredients") && init?.method === "POST") return [STRANGE, 201];
+      return [UNMATCHED];
+    });
+
+    renderScreen();
+    await screen.findByText("cosa strana");
+
+    const reparto = await screen.findByLabelText("Reparto");
+    // il non alimentare è offerto: è l'unico modo perché un detersivo entri in
+    // dispensa senza passare per «altro», che è il reparto delle cose da chiarire
+    expect(
+      [...(reparto as HTMLSelectElement).options].map((o) => o.value)
+    ).toContain("casa");
+
+    await userEvent.selectOptions(reparto, "casa");
+    await userEvent.click(screen.getByRole("button", { name: /Crea l'ingrediente/i }));
+
+    expect(postBody(spy, "/ingredients")).toEqual({
+      name: "cosa strana",
+      display_name: "cosa strana",
+      category: "casa",
     });
   });
 });
