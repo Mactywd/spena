@@ -322,6 +322,34 @@ async def test_una_categoria_non_alimentare_proposta_dallai_resta_in_coda(db_ses
     assert creati == [], "nessuna voce non alimentare deve nascere da un ricettario"
 
 
+async def test_una_mappatura_su_una_voce_non_alimentare_resta_in_coda(db_session, base):
+    """Il ramo `map` non aveva questa guardia: bastava che l'anagrafica avesse già una
+    voce non alimentare per farcela mappare sopra, senza passare da nessuna delle
+    verifiche di categoria che valgono per `create` (vedi il test qui sopra sulla
+    stessa cosa per `create`). Come là, si rifiuta come ogni altra risposta non
+    verificabile: il termine resta `pending` e non nasce nessun alias.
+    """
+    sapone = await create_ingredient(
+        db_session, name="sapone", display_name="Sapone", category=IngredientCategory.IGIENE
+    )
+    (detersivo,) = await aggiungi(db_session, termine("Detersivo per piatti", "k-detersivo"))
+    finto = ScriptedLlm({"Detersivo per piatti": llm_map("sapone")})
+
+    esito = await decide_terms(db_session, [detersivo], client=finto)
+
+    assert esito.applied == 0
+    assert esito.still_pending == 1
+    assert detersivo.decision == TermDecision.PENDING
+    assert detersivo.decided_by is None
+    assert detersivo.ingredient_id is None
+    alias = (
+        await db_session.execute(
+            select(IngredientAlias).where(IngredientAlias.ingredient_id == sapone.id)
+        )
+    ).scalars().all()
+    assert alias == []
+
+
 async def test_un_nome_piu_lungo_della_colonna_resta_in_coda(db_session, base):
     """`ingredients.name` è `String(120)`: oltre, l'insert è un errore, non una decisione.
 

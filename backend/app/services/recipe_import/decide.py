@@ -98,6 +98,11 @@ class Registry:
     by_name: dict[str, uuid.UUID]
     name_by_id: dict[uuid.UUID, str]
     entries: list[tuple[str, str]]  # (nome, categoria), ordinati per nome
+    # La stessa lettura che popola `entries`, indicizzata per id: serve a
+    # `_verified_proposal` per dedurre il `kind` di un ingrediente esistente senza
+    # un secondo giro sul database. Non un secondo elenco di reparti — la sola
+    # partizione vera resta `kind_for_category`.
+    category_by_id: dict[uuid.UUID, str]
 
 
 async def load_registry(session: AsyncSession) -> Registry:
@@ -114,6 +119,7 @@ async def load_registry(session: AsyncSession) -> Registry:
         by_name={name: ingredient_id for ingredient_id, name, _ in rows},
         name_by_id={ingredient_id: name for ingredient_id, name, _ in rows},
         entries=[(name, category) for _, name, category in rows],
+        category_by_id={ingredient_id: category for ingredient_id, _, category in rows},
     )
 
 
@@ -193,6 +199,26 @@ async def decide_one(
     )
 
 
+def _mapped_proposal(
+    term_id: uuid.UUID, ingredient_id: uuid.UUID, registry: Registry
+) -> TermDecisionProposal | None:
+    """La proposta «map» su un ingrediente esistente, o `None` se non è alimentare.
+
+    Punto unico per le due strade che finiscono su un ingrediente già in anagrafica:
+    il `map` diretto del modello, e il `create` che qui sotto si scopre essere un
+    doppione e si riscrive come `map`. Un `map` su una voce non alimentare non è
+    diverso da un `create` sotto un reparto non alimentare — è la stessa risposta
+    non verificabile, e la stessa regola di CLAUDE.md la rifiuta: il termine resta
+    in coda.
+    """
+    if kind_for_category(registry.category_by_id.get(ingredient_id, "")) is IngredientKind.NON_FOOD:
+        return None
+    return TermDecisionProposal(
+        term_id=term_id, action="map", ingredient_id=ingredient_id,
+        name=registry.name_by_id.get(ingredient_id),
+    )
+
+
 def _verified_proposal(
     payload: dict, term: ImportTerm, registry: Registry
 ) -> TermDecisionProposal | None:
@@ -213,10 +239,7 @@ def _verified_proposal(
         ingredient_id = registry.by_name.get(name)
         if ingredient_id is None:
             return None  # un ingrediente che non esiste non è una proposta
-        return TermDecisionProposal(
-            term_id=term.id, action="map", ingredient_id=ingredient_id,
-            name=registry.name_by_id.get(ingredient_id),
-        )
+        return _mapped_proposal(term.id, ingredient_id, registry)
 
     if action == "create":
         name = str(payload.get("name") or "").strip().lower()
@@ -229,10 +252,7 @@ def _verified_proposal(
             # ogni tentativo. Ma la carta verificata non è il `create` sbagliato, è il
             # `map` che il modello avrebbe dovuto scegliere — e id e nome canonico li
             # abbiamo già, dalla stessa ricerca che verifica un `map` vero.
-            return TermDecisionProposal(
-                term_id=term.id, action="map", ingredient_id=existing,
-                name=registry.name_by_id.get(existing),
-            )
+            return _mapped_proposal(term.id, existing, registry)
         return TermDecisionProposal(
             term_id=term.id, action="create", name=name,
             display_name=str(payload.get("display_name") or name).strip(),
