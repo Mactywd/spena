@@ -368,3 +368,23 @@ async def test_la_ricerca_accetta_un_ingrediente(logged_client, db_session):
     )
     assert risposta.status_code == 200
     assert risposta.json() == []
+
+
+async def test_salvare_una_ricetta_con_una_voce_non_alimentare_e_un_422(
+    logged_client, db_session
+):
+    from app.repositories.ingredients import create_ingredient
+
+    sapone = await create_ingredient(db_session, "sapone", "Sapone", "igiene")
+    await db_session.commit()
+
+    response = await logged_client.post("/api/v1/recipes", json={
+        "title": "Pasta al sapone", "instructions": "1. no", "servings": 2,
+        "source": "manual",
+        "ingredients": [{"ingredient_id": str(sapone.id), "role": "primary"}],
+    })
+
+    assert response.status_code == 422
+    # il messaggio nomina la voce: su una ricetta di dodici righe «una voce non
+    # alimentare» non dice quale togliere
+    assert "Sapone" in response.json()["detail"]

@@ -121,3 +121,31 @@ async def test_se_il_salvataggio_fallisce_nessun_ingrediente_resta_orfano(logged
         await db_session.execute(select(Ingredient).where(Ingredient.name == "speck"))
     ).scalars().all()
     assert trovati == []
+
+
+async def test_un_nome_che_e_alias_di_una_voce_non_alimentare_non_passa(
+    logged_client, db_session
+):
+    """Il buco vero, e il motivo per cui la guardia sta nell'imbuto.
+
+    Questa riga non *crea* niente — la creazione per nome usa sempre una categoria
+    alimentare — ma `match_name` la aggancia alla voce non alimentare tramite il
+    suo alias, e senza la guardia la ricetta si salverebbe.
+    """
+    from app.repositories.ingredients import add_alias, create_ingredient
+
+    sapone = await create_ingredient(
+        db_session, name="sapone per le mani", display_name="Sapone per le mani",
+        category="igiene",
+    )
+    await add_alias(db_session, sapone.id, "sapone", source="seed")
+    await db_session.commit()
+
+    response = await logged_client.post("/api/v1/recipes", json={
+        "title": "Pasta al sapone", "instructions": "1. no", "servings": 2,
+        "source": "ai",
+        "ingredients": [{"name": "sapone", "category": "condimenti", "role": "primary"}],
+    })
+
+    assert response.status_code == 422
+    assert "Sapone per le mani" in response.json()["detail"]

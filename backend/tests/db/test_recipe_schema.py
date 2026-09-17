@@ -123,3 +123,34 @@ async def test_not_null_columns_are_enforced_in_physical_schema(db_session):
         ("recipes", "search_tsv"): "NO",
         ("cooking_events", "cooked_at"): "NO",
     }
+
+
+async def test_una_ricetta_non_puo_nominare_una_voce_non_alimentare(db_session):
+    """La guardia sta nell'imbuto, quindi vale anche per il seme e per l'import.
+
+    E non scrive niente: se sollevasse dopo aver aggiunto la ricetta, resterebbe
+    un titolo senza ingredienti a seconda di dove il chiamante fa il commit.
+    """
+    import pytest
+    from sqlalchemy import select
+
+    from app.db.models.recipe import Recipe
+    from app.repositories.ingredients import create_ingredient
+    from app.repositories.recipes import NonFoodInRecipe, create_recipe
+
+    sapone = await create_ingredient(db_session, "sapone", "Sapone", "igiene")
+
+    with pytest.raises(NonFoodInRecipe) as caduta:
+        await create_recipe(
+            db_session,
+            title="Pasta al sapone", description=None, instructions="1. no",
+            servings=2, source="manual", source_ref=None,
+            ingredients=[(sapone.id, "primary", None, None)],
+            embedding=None,
+        )
+
+    assert caduta.value.display_name == "Sapone"
+    rimaste = (
+        await db_session.execute(select(Recipe).where(Recipe.title == "Pasta al sapone"))
+    ).scalars().all()
+    assert rimaste == []

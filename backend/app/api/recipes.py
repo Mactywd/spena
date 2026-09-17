@@ -17,7 +17,7 @@ from app.domain.rules import (
 )
 from app.repositories.ingredients import create_ingredient
 from app.repositories.pantry import availability_map
-from app.repositories.recipes import create_recipe, get_recipe
+from app.repositories.recipes import NonFoodInRecipe, create_recipe, get_recipe
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
 from app.schemas.recipe import (
     RecipeCreate,
@@ -186,6 +186,13 @@ async def create(
             embedding=embedding,
         )
         await session.commit()
+    except NonFoodInRecipe as exc:
+        await session.rollback()
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"«{exc.display_name}» non è un alimento: una ricetta non può averlo fra "
+            "gli ingredienti. Toglilo dalla riga, poi salva.",
+        ) from exc
     except IntegrityError as exc:
         await session.rollback()
         if is_missing_reference(exc):
