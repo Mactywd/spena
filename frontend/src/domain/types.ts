@@ -175,3 +175,9 @@ export interface UndoResult {
   ingredient_deleted: boolean;
   remaining_terms: number;
 }
+
+// L'esito di un rientro in lista. `added` falso non è un errore: la voce era già da
+// comprare, e dirlo è diverso dal far credere di aver aggiunto qualcosa.
+export interface RestockResult {
+  added: boolean;
+}

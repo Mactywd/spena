@@ -424,4 +424,142 @@ describe("PantryScreen", () => {
       vi.useRealTimers();
     }
   });
+
+  it("portato a zero il cursore chiede se rimettere la voce in lista", async () => {
+    stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "0" } });
+    fireEvent.pointerUp(cursore);
+
+    expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Sì" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "No" })).toBeDefined();
+  });
+
+  it("finire una voce non scrive in lista da sé: solo il sì lo fa", async () => {
+    // è il punto della decisione: nessuna sezione ne modifica un'altra in silenzio
+    const fetchMock = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
+      if (init?.method === "POST") return [{ added: true }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "0" } });
+    fireEvent.pointerUp(cursore);
+    await screen.findByText("Lo rimetto in lista?");
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit)?.method === "POST")).toBe(false);
+
+    await userEvent.click(screen.getByRole("button", { name: "Sì" }));
+
+    const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
+    expect(String(post![0])).toContain("/pantry/p3/restock");
+    expect(await screen.findByText("Rimesso in lista.")).toBeDefined();
+  });
+
+  it("se era già in lista lo dice, invece di far credere di aver aggiunto qualcosa", async () => {
+    stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
+      if (init?.method === "POST") return [{ added: false }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "0" } });
+    fireEvent.pointerUp(cursore);
+    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
+
+    expect(await screen.findByText("Era già in lista.")).toBeDefined();
+  });
+
+  it("il no chiude la domanda e non scrive niente", async () => {
+    const fetchMock = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "0" } });
+    fireEvent.pointerUp(cursore);
+    await userEvent.click(await screen.findByRole("button", { name: "No" }));
+
+    await waitFor(() => expect(screen.queryByText("Lo rimetto in lista?")).toBeNull());
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit)?.method === "POST")).toBe(false);
+  });
+
+  // «Mai un vicolo cieco»: un rientro in lista che fallisce deve dirlo accanto
+  // alla voce e lasciare una strada per riprovare, non sparire in silenzio.
+  it("un rientro in lista che fallisce lo dice accanto alla voce, e si può riprovare", async () => {
+    let tentativi = 0;
+    stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
+      if (init?.method === "POST") {
+        tentativi += 1;
+        return tentativi === 1 ? [{ detail: "no" }, 500] : [{ added: true }, 200];
+      }
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "0" } });
+    fireEvent.pointerUp(cursore);
+    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito a rimettere/i);
+    // la domanda torna, e il secondo tentativo va a buon fine
+    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
+    expect(await screen.findByText("Rimesso in lista.")).toBeDefined();
+  });
+
+  // due voci portate a zero in sequenza: la domanda è uno stato per riga, e non
+  // deve calpestarsi come faceva `removedId` (un solo id) prima della revisione
+  // del Task 5. Qui le voci sono due ingredienti diversi (mela e Total 0%): ogni
+  // riga tiene la sua domanda, e rispondere sull'una non deve toccare l'altra.
+  it("due voci portate a zero in sequenza non si calpestano: ognuna ha la sua domanda", async () => {
+    const fetchMock = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        if (path.includes("/p3")) return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
+        if (path.includes("/p1")) return [{ ...ITEMS[0], status: "finished", fill_percent: 0 }, 200];
+      }
+      if (init?.method === "POST") return [{ added: true }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    // A: la mela a zero
+    const cursoreMela = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursoreMela, { target: { value: "0" } });
+    fireEvent.pointerUp(cursoreMela);
+    await screen.findByText("Lo rimetto in lista?");
+
+    // B: Total 0% a zero, prima di aver risposto per la mela
+    const cursoreTotal = await screen.findByRole("slider", { name: "Quanto ne resta di Total 0%" });
+    fireEvent.change(cursoreTotal, { target: { value: "0" } });
+    fireEvent.pointerUp(cursoreTotal);
+
+    // le due domande convivono
+    await waitFor(() => expect(screen.getAllByText("Lo rimetto in lista?")).toHaveLength(2));
+
+    // rispondere no per la mela non tocca la domanda di Total 0%
+    const melaRow = screen.getByText("mela").closest("li")!;
+    await userEvent.click(within(melaRow).getByRole("button", { name: "No" }));
+
+    await waitFor(() => expect(screen.getAllByText("Lo rimetto in lista?")).toHaveLength(1));
+    const totalRow = screen.getByText("Total 0%").closest("li")!;
+    expect(within(totalRow).getByText("Lo rimetto in lista?")).toBeDefined();
+
+    // e rispondere sì per Total 0% scrive solo per quella voce
+    await userEvent.click(within(totalRow).getByRole("button", { name: "Sì" }));
+    const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
+    expect(String(post![0])).toContain("/pantry/p1/restock");
+  });
 });

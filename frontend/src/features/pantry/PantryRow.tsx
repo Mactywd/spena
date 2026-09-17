@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { FillSlider } from "./FillSlider";
 import { fillForStatus } from "./fillZones";
 import { Alert } from "../../components/ui/Alert";
 import { StatusChip } from "../../components/ui/StatusChip";
-import type { PantryItem } from "../../domain/types";
+import type { PantryItem, RestockResult } from "../../domain/types";
 
 /** Il nome con cui l'utente chiama questa voce: la marca se c'è, l'ingrediente
  * altrimenti. Entra anche nel nome accessibile della X, perché «Togli dalla
@@ -28,15 +29,50 @@ export function PantryRow({
   onFill,
   onRemove,
   onUndo,
+  onRestock,
 }: {
   item: PantryItem;
   busy: boolean;
   removed: boolean;
   failed: boolean;
-  onFill: (percent: number) => void;
+  onFill: (percent: number) => Promise<PantryItem>;
   onRemove: () => void;
   onUndo: () => void;
+  onRestock: () => Promise<RestockResult>;
 }) {
+  // la domanda vive qui e non nello schermo: riguarda questa riga, e fuori di qui
+  // sarebbe un avviso in cima a una dispensa lunga, cioè fuori schermo
+  const [asking, setAsking] = useState(false);
+  const [restocked, setRestocked] = useState<RestockResult | null>(null);
+  // mai un vicolo cieco: se il rientro in lista fallisce, la domanda torna a
+  // video (non resta chiusa su un errore muto) e «Sì» è di nuovo un modo di riprovare
+  const [restockFailed, setRestockFailed] = useState(false);
+
+  async function fill(percent: number) {
+    setRestocked(null);
+    setRestockFailed(false);
+    try {
+      const updated = await onFill(percent);
+      // «finito» lo dice il server, non una soglia ricopiata qui
+      setAsking(updated.status === "finished");
+    } catch {
+      // il guasto lo mostra già lo schermo, accanto a questa riga
+      setAsking(false);
+    }
+  }
+
+  async function askRestock() {
+    setAsking(false);
+    setRestockFailed(false);
+    try {
+      setRestocked(await onRestock());
+    } catch {
+      setRestocked(null);
+      setRestockFailed(true);
+      setAsking(true);
+    }
+  }
+
   if (removed) {
     return (
       <li className="flex flex-col gap-2 p-3" role="status">
@@ -100,12 +136,42 @@ export function PantryRow({
         value={item.fill_percent ?? fillForStatus(item.status)}
         label={itemLabel(item)}
         disabled={busy}
-        onCommit={onFill}
+        onCommit={fill}
       />
       {/* la verità sullo stato la dice il server, e questa pastiglia è l'unica cosa
           nella riga a dirla: il cursore, da solo, è un'indicazione a occhio */}
       <StatusChip status={item.status} />
       {failed && <Alert>Non sono riuscito a salvare la modifica. Riprova.</Alert>}
+
+      {asking && (
+        <div className="flex items-center justify-between gap-2 rounded-card bg-page px-3 py-2">
+          <span className="text-sm text-ink-soft">Lo rimetto in lista?</span>
+          <span className="flex shrink-0 gap-1">
+            <button
+              type="button"
+              onClick={askRestock}
+              className="min-h-11 rounded-full px-3 text-sm font-medium text-brand"
+            >
+              Sì
+            </button>
+            <button
+              type="button"
+              onClick={() => setAsking(false)}
+              className="min-h-11 rounded-full px-3 text-sm font-medium text-ink-soft"
+            >
+              No
+            </button>
+          </span>
+        </div>
+      )}
+
+      {restockFailed && <Alert>Non sono riuscito a rimettere la voce in lista. Riprova.</Alert>}
+
+      {restocked && (
+        <p role="status" className="text-sm text-ink-soft">
+          {restocked.added ? "Rimesso in lista." : "Era già in lista."}
+        </p>
+      )}
     </li>
   );
 }

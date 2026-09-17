@@ -7,7 +7,7 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { PantryRow } from "./PantryRow";
-import { addPantryItem, fetchPantry, patchPantryItem } from "./api";
+import { addPantryItem, fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import type { Ingredient, PantryItem } from "../../domain/types";
 
@@ -158,6 +158,13 @@ export function PantryScreen() {
     onError: () => setAddFailed(true),
   });
 
+  // il rientro in lista tocca la lista, non la dispensa: si invalida quella chiave,
+  // altrimenti tornando in Lista il numero della scheda d'ingresso resta vecchio
+  const restock = useMutation({
+    mutationFn: (id: string) => restockPantryItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping-list"] }),
+  });
+
   // `busy` disabilita anche «Annulla»: un doppio clic non deve mandare due PATCH
   // di annulla (innocuo perché la PATCH è idempotente, ma inutile)
   const busyId = change.isPending
@@ -233,9 +240,10 @@ export function PantryScreen() {
                     busy={busyId === item.id}
                     removed={removedIds.has(item.id)}
                     failed={failedIds.has(item.id)}
-                    onFill={(percent) => change.mutate({ id: item.id, fill: percent })}
+                    onFill={(percent) => change.mutateAsync({ id: item.id, fill: percent })}
                     onRemove={() => archive.mutate(item.id)}
                     onUndo={() => undo.mutate(item.id)}
+                    onRestock={() => restock.mutateAsync(item.id)}
                   />
                 ))}
               </ul>

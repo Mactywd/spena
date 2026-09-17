@@ -1,5 +1,5 @@
 import { apiFetch } from "../../api/client";
-import type { PantryItem, PantryStatus } from "../../domain/types";
+import type { PantryItem, PantryStatus, RestockResult } from "../../domain/types";
 
 export function fetchPantry() {
   return apiFetch<PantryItem[]>("/pantry");
@@ -24,4 +24,10 @@ export function patchPantryItem(
     method: "PATCH",
     body: JSON.stringify(body),
   });
+}
+
+/** Rimette in lista una voce di dispensa, se non c'è già. La decisione è
+ * dell'utente: questa chiamata parte solo da una risposta esplicita. */
+export function restockPantryItem(id: string) {
+  return apiFetch<RestockResult>(`/pantry/${id}/restock`, { method: "POST" });
 }
