@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FillSlider } from "./FillSlider";
 import { fillForStatus } from "./fillZones";
 import { Alert } from "../../components/ui/Alert";
@@ -48,6 +48,17 @@ export function PantryRow({
   // video (non resta chiusa su un errore muto) e «Sì» è di nuovo un modo di riprovare
   const [restockFailed, setRestockFailed] = useState(false);
 
+  // la riga non si smonta quando diventa una lapide (stessa chiave, stesso
+  // fiber): senza questo, la domanda risposta prima dell'archiviazione resta
+  // accesa in memoria e, al ritorno dall'annulla, si ripresenta da sola senza
+  // nessun gesto nuovo dell'utente. Il difetto è fra due rami della stessa riga,
+  // non fra due righe: si azzera qui, seguendo `removed`, in entrambe le direzioni.
+  useEffect(() => {
+    setAsking(false);
+    setRestocked(null);
+    setRestockFailed(false);
+  }, [removed]);
+
   async function fill(percent: number) {
     setRestocked(null);
     setRestockFailed(false);
@@ -62,14 +73,18 @@ export function PantryRow({
   }
 
   async function askRestock() {
-    setAsking(false);
+    // la domanda resta a video finché la richiesta è in volo (non si chiude
+    // subito, di ottimismo): è quello che permette a `busy` di disabilitare
+    // «Sì»/«No» sul serio, allo stesso modo in cui il resto del file disabilita
+    // il proprio controllo durante una mutazione, invece di farlo sparire prima
     setRestockFailed(false);
     try {
-      setRestocked(await onRestock());
+      const result = await onRestock();
+      setAsking(false);
+      setRestocked(result);
     } catch {
       setRestocked(null);
       setRestockFailed(true);
-      setAsking(true);
     }
   }
 
@@ -149,15 +164,17 @@ export function PantryRow({
           <span className="flex shrink-0 gap-1">
             <button
               type="button"
+              disabled={busy}
               onClick={askRestock}
-              className="min-h-11 rounded-full px-3 text-sm font-medium text-brand"
+              className="min-h-11 rounded-full px-3 text-sm font-medium text-brand disabled:opacity-40"
             >
               Sì
             </button>
             <button
               type="button"
+              disabled={busy}
               onClick={() => setAsking(false)}
-              className="min-h-11 rounded-full px-3 text-sm font-medium text-ink-soft"
+              className="min-h-11 rounded-full px-3 text-sm font-medium text-ink-soft disabled:opacity-40"
             >
               No
             </button>

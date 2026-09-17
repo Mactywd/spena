@@ -165,15 +165,19 @@ export function PantryScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping-list"] }),
   });
 
-  // `busy` disabilita anche «Annulla»: un doppio clic non deve mandare due PATCH
-  // di annulla (innocuo perché la PATCH è idempotente, ma inutile)
+  // `busy` disabilita anche «Annulla» e «Sì»/«No» del rientro in lista: un
+  // doppio clic non deve mandare due PATCH di annulla (innocuo perché la PATCH
+  // è idempotente, ma inutile) né due POST di restock (quello non è idempotente:
+  // due «Sì» ravvicinati manderebbero due richieste per la stessa voce)
   const busyId = change.isPending
     ? change.variables.id
     : archive.isPending
       ? archive.variables
       : undo.isPending
         ? undo.variables
-        : null;
+        : restock.isPending
+          ? restock.variables
+          : null;
 
   return (
     <Screen title="Dispensa">

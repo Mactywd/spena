@@ -562,4 +562,79 @@ describe("PantryScreen", () => {
     const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
     expect(String(post![0])).toContain("/pantry/p1/restock");
   });
+
+  // Rilievo 1 di revisione sul Task 11: `PantryRow` non si smonta quando `removed`
+  // diventa vero (stessa chiave, stesso fiber), quindi lo stato locale `asking`
+  // sopravvive sotto la lapide. Il difetto non è fra due righe diverse — è fra due
+  // rami della stessa riga: archiviare mentre la domanda è a video, e poi annullare,
+  // deve non far ricomparire la domanda da sola.
+  it("annullare un'archiviazione non fa ricomparire da sola la domanda del rientro in lista", async () => {
+    let finished = false;
+    let archived = false;
+    stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") {
+        const body = JSON.parse(String(init!.body));
+        if ("fill_percent" in body) {
+          finished = true;
+          return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
+        }
+        archived = body.archived;
+        return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
+      }
+      const list = ITEMS.map((item) =>
+        item.id === "p3" && finished ? { ...item, status: "finished", fill_percent: 0 } : item
+      );
+      return [archived ? list.filter((item) => item.id !== "p3") : list, 200];
+    });
+    renderScreen();
+
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "0" } });
+    fireEvent.pointerUp(cursore);
+    await screen.findByText("Lo rimetto in lista?");
+
+    // la domanda resta a video, ma «Togli dalla dispensa» resta cliccabile: non è
+    // disabilitato dalla domanda, ed è proprio questo il percorso del rilievo
+    await userEvent.click(screen.getByRole("button", { name: "Togli mela dalla dispensa" }));
+    await screen.findByText("Tolta dalla dispensa");
+
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+
+    await waitFor(() => expect(screen.queryByText("Tolta dalla dispensa")).toBeNull());
+    // la riga è tornata normale: la domanda non deve essere tornata da sola
+    expect(screen.queryByText("Lo rimetto in lista?")).toBeNull();
+  });
+
+  // Rilievo 2 di revisione sul Task 11: `change`, `archive` e `undo` passano
+  // tutte da `busyId` e disabilitano il loro controllo mentre sono in volo; il
+  // restock no, e la domanda si chiudeva da sé appena cliccato «Sì», prima
+  // ancora che la richiesta partisse davvero — cioè non c'era mai un istante in
+  // cui un secondo clic potesse trovare un bottone disabilitato. Ora la domanda
+  // resta a video mentre `restock` è in volo, e «Sì»/«No» sono `disabled`
+  // esattamente come lo sono il cursore e la X per le altre mutazioni della riga.
+  it("mentre il rientro in lista è in volo la domanda resta a video con «Sì» e «No» disabilitati", async () => {
+    const spy = vi.fn((_url: unknown, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ ...ITEMS[2], status: "finished", fill_percent: 0 }), { status: 200 })
+        );
+      }
+      if (init?.method === "POST") return new Promise<Response>(() => {}); // mai risolta: si resta "in volo"
+      return Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(cursore, { target: { value: "0" } });
+    fireEvent.pointerUp(cursore);
+    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
+
+    // la richiesta non risponde mai: la domanda deve restare a video (non sparire
+    // in anticipo sull'esito) e i suoi bottoni devono restare bloccati per tutto
+    // il tempo in cui quel tentativo è ancora in volo
+    expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sì" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "No" })).toBeDisabled();
+  });
 });
