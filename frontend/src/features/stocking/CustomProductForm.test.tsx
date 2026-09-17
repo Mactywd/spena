@@ -132,4 +132,19 @@ describe("CustomProductForm", () => {
 
     expect(screen.getByRole("heading", { name: /Nuovo prodotto per «mele»/ })).toBeDefined();
   });
+
+  it("per un non alimentare non chiede i nutrienti, e non ne manda", async () => {
+    // quattro campi senza senso su un detersivo, e un `nutrients: {}` che
+    // sarebbe un'affermazione su valori che non esistono
+    const spy = stubFetch();
+    renderForm({ itemLabel: "detersivo", isNonFood: true });
+
+    expect(screen.queryByLabelText("Calorie per 100 g")).toBeNull();
+    await userEvent.type(screen.getByLabelText("Nome"), "Dash");
+    await userEvent.click(screen.getByRole("button", { name: "Salva prodotto" }));
+
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    const body = bodyOf(spy);
+    expect(body).not.toHaveProperty("nutrients");
+  });
 });

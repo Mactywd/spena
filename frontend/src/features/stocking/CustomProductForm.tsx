@@ -48,6 +48,9 @@ export function CustomProductForm({
   itemLabel,
   barcode,
   suggestion,
+  /** Un detersivo non ha calorie: i quattro campi non si mostrano e `nutrients`
+   * resta assente. Assente, non a zero — zero sarebbe un'affermazione. */
+  isNonFood = false,
   onCreated,
   onCancel,
 }: {
@@ -55,6 +58,7 @@ export function CustomProductForm({
   itemLabel: string;
   barcode?: string;
   suggestion?: ProductSuggestion | null;
+  isNonFood?: boolean;
   onCreated: (product: Product) => void;
   onCancel: () => void;
 }) {
@@ -76,7 +80,7 @@ export function CustomProductForm({
         name,
         brand: brand || undefined,
         barcode: barcode || undefined,
-        nutrients: Object.keys(parsed).length > 0 ? parsed : undefined,
+        nutrients: isNonFood || Object.keys(parsed).length === 0 ? undefined : parsed,
         // un prodotto che viene da Open Food Facts non è "custom", e la sua
         // immagine non si recupera più da qui: entrambe si riportano adesso
         source: suggestion ? "openfoodfacts" : undefined,
@@ -110,26 +114,30 @@ export function CustomProductForm({
         <input value={brand} onChange={(e) => setBrand(e.target.value)}
                className="mt-1.5" />
       </label>
-      <div className="grid grid-cols-2 gap-2">
-        {FIELDS.map(([key, label]) => (
-          <label key={key} className="text-sm">
-            {label}
-            <input
-              type="number" inputMode="decimal" step="0.1" value={nutrients[key] ?? ""}
-              onChange={(e) => setNutrients((prev) => ({ ...prev, [key]: e.target.value }))}
-              className="mt-1.5"
-            />
-          </label>
-        ))}
-      </div>
-      <p className="text-xs text-ink-soft">
-        I valori sono facoltativi. Lasciarli vuoti è meglio che inventarli.
-      </p>
-      {carried.length > 0 && (
-        <p className="text-xs text-ink-soft">
-          Da Open Food Facts vengono salvati anche{" "}
-          {carried.map(([key]) => EXTRA_LABELS[key] ?? key).join(", ")}.
-        </p>
+      {!isNonFood && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            {FIELDS.map(([key, label]) => (
+              <label key={key} className="text-sm">
+                {label}
+                <input
+                  type="number" inputMode="decimal" step="0.1" value={nutrients[key] ?? ""}
+                  onChange={(e) => setNutrients((prev) => ({ ...prev, [key]: e.target.value }))}
+                  className="mt-1.5"
+                />
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-ink-soft">
+            I valori sono facoltativi. Lasciarli vuoti è meglio che inventarli.
+          </p>
+          {carried.length > 0 && (
+            <p className="text-xs text-ink-soft">
+              Da Open Food Facts vengono salvati anche{" "}
+              {carried.map(([key]) => EXTRA_LABELS[key] ?? key).join(", ")}.
+            </p>
+          )}
+        </>
       )}
       {create.isError && (
         <p role="alert" className="text-sm text-danger">

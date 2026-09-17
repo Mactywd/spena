@@ -235,6 +235,12 @@ export function StockingScreen() {
     return item.ingredient_id ?? matchedIngredient[item.id]?.id ?? null;
   }
 
+  // lo stesso ragionamento di effectiveIngredientId: la voce può avere il suo
+  // ingrediente dalla lista, oppure averlo appena abbinato qui dentro
+  function effectiveKind(item: ShoppingItem): "food" | "non_food" | null {
+    return item.ingredient_kind ?? matchedIngredient[item.id]?.kind ?? null;
+  }
+
   const stock = useMutation({
     mutationFn: () =>
       stockItems(
@@ -525,6 +531,7 @@ export function StockingScreen() {
             itemLabel={creatingFor.item.raw_text}
             barcode={creatingFor.barcode}
             suggestion={creatingFor.suggestion}
+            isNonFood={effectiveKind(creatingFor.item) === "non_food"}
             onCreated={(product) => {
               setResolved((prev) => ({
                 ...prev,
