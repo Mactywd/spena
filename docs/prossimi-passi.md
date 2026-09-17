@@ -515,13 +515,6 @@ layout a 375px.
   `imposta-password.sh`.
 - **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
   `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.
-- **`frontend/e2e/style.spec.ts` lascia un «Pomodoro» in dispensa a ogni
-  esecuzione** (non lo archivia mai), e `cooking.spec.ts` cerca il primo `li` con
-  quel testo assumendo di essere l'unico. Oggi non si rompe perché Playwright
-  ordina i file alfabeticamente e `cooking` gira prima di `style`; la dipendenza è
-  scritta in un commento in entrambi i file, ma la pulizia vera — dare alla voce di
-  `style.spec.ts` un nome che non collida, o archiviarla a fine test — non è stata
-  fatta.
 - **`PantryRow.tsx` è il file più affollato dell'app** (oltre 170 righe, tre stati
   locali oltre alle prop). Estrarre la domanda del rientro in lista («Lo rimetto in
   lista?», con la sua lapide e il suo esito) come componente a sé è il taglio

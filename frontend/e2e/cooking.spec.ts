@@ -44,11 +44,10 @@ test("il ciclo si chiude: lista, dispensa, cottura, ritorno in lista", async ({ 
   // (StatusChip), non più tre pulsanti: il cursore a fianco è solo un'indicazione
   // a occhio e non porta l'aria-pressed di un controllo scelto.
   //
-  // Dipendenza dall'ordine non scritta altrove: `.first()` qui e sotto presuppone
-  // che questo sia il primo (e unico) «pomodoro» in dispensa. `style.spec.ts` ne
-  // lascia un secondo («Pomodoro») a ogni sua esecuzione senza mai archiviarlo.
-  // Oggi non si rompe solo perché Playwright ordina i file alfabeticamente e questo
-  // file gira prima — non risolto qui, la pulizia resta per la revisione finale.
+  // `.first()` qui e sotto presuppone che questo sia l'unico «pomodoro» in
+  // dispensa, e su uno stack pulito (la guardia qui sopra) lo è: nessun altro file
+  // della suite nomina questo ingrediente, e `style.spec.ts` archivia la voce che
+  // si aggiunge. L'ordine alfabetico dei file non c'entra più niente.
   await expect(page.getByRole("heading", { name: "Dispensa" })).toBeVisible();
   const pantryRow = page.locator("li", { hasText: "pomodoro" }).first();
   await expect(pantryRow.getByText("Disponibile", { exact: true })).toBeVisible();

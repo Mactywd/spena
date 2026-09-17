@@ -15,7 +15,9 @@ import { expect, test } from "@playwright/test";
  * I controlli sul colore e sui campi non scrivono niente e non leggono lo stato:
  * girano anche su uno stack già usato. Il controllo sul cursore della dispensa fa
  * eccezione — aggiunge una voce con l'ingresso diretto (spec §8.3) perché il seme
- * non popola la dispensa, e senza una voce non c'è nessun cursore da provare.
+ * non popola la dispensa, e senza una voce non c'è nessun cursore da provare — ma
+ * la archivia prima di finire: questo file non lascia niente dietro di sé, e
+ * nessun altro file dipende dal proprio posto nell'ordine alfabetico.
  */
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
 
@@ -94,15 +96,20 @@ test("il cursore della dispensa è un bersaglio da pollice, e le zone si vedono"
   // il seme non popola la dispensa: senza una voce non c'è nessun cursore da
   // provare. L'ingresso diretto (spec §8.3) evita di passare dalla lista.
   //
-  // Dipendenza dall'ordine non scritta altrove: questa voce resta in dispensa ad
-  // ogni esecuzione (non viene mai archiviata), e `cooking.spec.ts` cerca un `li`
-  // con testo «pomodoro» prendendo il primo. Non si rompe solo perché Playwright
-  // ordina i file alfabeticamente e `cooking` gira prima di `style` — non risolto
-  // qui, la pulizia resta per la revisione finale.
-  await page.getByLabel("Aggiungi in dispensa").fill("pomodo");
-  await page.getByRole("option", { name: /Pomodoro/ }).click();
+  // La dispensa è stato condiviso fra i file e il database vive quanto lo stack,
+  // quindi questo test rimette le cose com'erano: sceglie una voce che nessun
+  // altro file nomina (`cooking.spec.ts` lavora su «pomodoro») e la archivia in
+  // fondo, con la X. Prima non lo faceva, e reggeva solo perché Playwright ordina
+  // i file alfabeticamente e `cooking` gira prima di `style`: un `--grep`, un file
+  // nuovo con un nome che viene prima, o più worker, e il `.first()` di
+  // `cooking.spec.ts` avrebbe trovato la voce lasciata qui.
+  await page.getByLabel("Aggiungi in dispensa").fill("cipoll");
+  await page.getByRole("option", { name: /^Cipolla\b/ }).click();
 
-  const cursore = page.getByRole("slider").first();
+  // il cursore di QUESTA voce, non il primo dello schermo: la dispensa può
+  // contenere anche quel che ha lasciato il resto della suite
+  const riga = page.locator("li", { hasText: "cipolla" });
+  const cursore = riga.getByRole("slider");
   await expect(cursore).toBeVisible();
 
   const box = await cursore.boundingBox();
@@ -110,6 +117,12 @@ test("il cursore della dispensa è un bersaglio da pollice, e le zone si vedono"
 
   // le tre zone stanno su un elemento dietro al cursore: se il gradiente non
   // arrivasse, resterebbe un binario invisibile e il cursore non direbbe più nulla
-  const zone = page.locator("input[type='range']").first().locator("xpath=preceding-sibling::div[1]");
+  const zone = riga.locator("input[type='range']").locator("xpath=preceding-sibling::div[1]");
   await expect(zone).toHaveCSS("background-image", /linear-gradient/);
+
+  // la pulizia: la X archivia davvero la voce sul server (la lapide che resta è
+  // solo l'annulla, a video). Senza questo la dispensa cresce di una riga a ogni
+  // esecuzione su uno stack riusato.
+  await riga.getByRole("button", { name: "Togli cipolla dalla dispensa" }).click();
+  await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
 });
