@@ -31,10 +31,11 @@ function groupByCategory(items: ShoppingItem[]): [string, ShoppingItem[]][] {
 
 export function ShoppingListScreen() {
   const queryClient = useQueryClient();
-  const { data: items = [], isLoading, isError } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["shopping-list"],
     queryFn: () => fetchShoppingList(),
   });
+  const items = data ?? [];
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["shopping-list"] });
   const add = useMutation({
@@ -95,11 +96,18 @@ export function ShoppingListScreen() {
           to="/sistema"
           title="Sistema la spesa"
           note={
-            checkedCount === 0
-              ? "Niente di spuntato, per ora"
-              : checkedCount === 1
-                ? "1 voce spuntata da mettere via"
-                : `${checkedCount} voci spuntate da mettere via`
+            // finché la lista non è arrivata — e dopo un errore — non si dice
+            // niente sul suo contenuto: `items` nasce vuoto, e «niente di
+            // spuntato» sarebbe la stessa bugia che due righe sotto ci si vieta.
+            // Stessa forma della gemella in PantryScreen: nota generica, strada
+            // aperta (D3/CLAUDE.md, «mai un vicolo cieco»)
+            isError || data === undefined
+              ? "Metti via quello che hai comprato"
+              : checkedCount === 0
+                ? "Niente di spuntato, per ora"
+                : checkedCount === 1
+                  ? "1 voce spuntata da mettere via"
+                  : `${checkedCount} voci spuntate da mettere via`
           }
           pending={checkedCount > 0}
         />

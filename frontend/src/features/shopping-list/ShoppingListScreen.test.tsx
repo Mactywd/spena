@@ -152,5 +152,14 @@ describe("ShoppingListScreen", () => {
 
     expect(await screen.findByRole("alert")).toBeDefined();
     expect(screen.queryByText(/Lista vuota/)).toBeNull();
+    // e nemmeno per lista senza niente di spuntato: la scheda d'ingresso contava
+    // su `items`, che nasce vuoto, e affermava «Niente di spuntato, per ora» due
+    // righe sopra il messaggio che dice di non aver potuto leggere la lista.
+    // Stessa forma della gemella in dispensa: la nota diventa generica, la strada
+    // resta aperta
+    expect(screen.queryByText("Niente di spuntato, per ora")).toBeNull();
+    expect(screen.getByText("Metti via quello che hai comprato")).toBeDefined();
+    const link = screen.getByRole("link", { name: /Sistema la spesa/ });
+    expect(link.getAttribute("href")).toBe("/sistema");
   });
 });
