@@ -598,22 +598,31 @@ async def decide_terms(
                 )
                 ingredient_id = ingredient.id
                 created += 1
+                # Nasce qui, non in `load_registry`: senza questa riga la guardia
+                # sotto non troverebbe il suo stesso id e rifiuterebbe un `create`
+                # onesto di questa stessa passata. È quel che rende vero, un rigo
+                # più sotto, che «assente da `category_by_id`» voglia dire proprio
+                # «né nel registro né nato qui» — e non più «nato qui e non ancora
+                # registrato».
+                registry.category_by_id[ingredient_id] = ingredient.category
 
             # Collo di bottiglia comune alle due rotte che scavalcano
             # `_mapped_proposal`: il `merge` del collasso (`existing_id` preso da
             # `registry.by_name` senza controllo di kind) e il `create` che qui sopra
             # `match_name` ha appena risolto su un **alias**, cosa che
             # `registry.by_name` non vede mai perché è costruito solo su
-            # `Ingredient.name`. Un id appena creato in questa stessa passata (il
-            # ramo subito sopra) non è ancora in `category_by_id` — `load_registry`
-            # l'ha letto prima che il fan-out partisse — e il `.get(..., "")` che
-            # segue lo tratta come alimentare per costruzione, che è quel che è:
-            # la sua categoria è già passata da `CATEGORIES` nel `create` originale.
-            if kind_for_category(
-                registry.category_by_id.get(ingredient_id, "")
-            ) is IngredientKind.NON_FOOD:
-                # si rifiuta come ogni altra risposta non verificabile: il termine
-                # resta `pending` e lo raccoglie la coda umana
+            # `Ingredient.name`. Un id assente da `category_by_id` a questo punto non
+            # è mai «nato in questa passata e non ancora registrato» — il ramo sopra
+            # lo registra nell'istante in cui nasce — quindi è un id che questa
+            # passata non ha mai visto: né nell'istantanea di `load_registry`, presa
+            # prima che il fan-out partisse, né tra le proprie creazioni. `match_name`
+            # rifà una SELECT dal vivo senza lock, quindi può risolvere su un
+            # ingrediente nato per una scrittura concorrente fra le due letture — e di
+            # quello questa passata non può dire il reparto. Si rifiuta come ogni
+            # risposta non verificabile: il termine resta `pending` e lo raccoglie la
+            # coda umana.
+            categoria = registry.category_by_id.get(ingredient_id)
+            if categoria is None or kind_for_category(categoria) is IngredientKind.NON_FOOD:
                 continue
 
             term.decision = TermDecision.MAPPED

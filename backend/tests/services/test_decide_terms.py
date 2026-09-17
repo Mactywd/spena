@@ -438,6 +438,82 @@ async def test_un_merge_del_collasso_su_una_voce_non_alimentare_resta_in_coda(db
     assert alias == [], "nessun alias nuovo deve nascere sulla voce non alimentare"
 
 
+class LlmCheDurantePostScriveSulDatabase:
+    """Un finto che, alla prima domanda, fa quel che nella race vera fa un'altra
+    richiesta: scrive in anagrafica *dopo* che `load_registry` ha già fatto
+    l'istantanea in testa a `decide_terms`, e *prima* che il fan-in richiami
+    `match_name`. `ScriptedLlm.post` non tocca il database; questo lo fa apposta,
+    nel solo punto del fan-out dove il test può inserirsi fra le due letture senza
+    inventare un secondo seam.
+    """
+
+    def __init__(self, session, inner: ScriptedLlm, scrivi) -> None:
+        self._session = session
+        self._inner = inner
+        self._scrivi = scrivi
+        self._fatto = False
+
+    async def post(self, url, json: dict, headers):  # noqa: A002
+        if not self._fatto:
+            self._fatto = True
+            await self._scrivi()
+        return await self._inner.post(url, json=json, headers=headers)
+
+    async def aclose(self):
+        return None
+
+
+async def test_un_id_sconosciuto_al_registro_resta_in_coda_invece_di_farsi_credere_alimentare(
+    db_session, base
+):
+    """Rotta C del finding round 2: un id che `category_by_id` non conosce affatto.
+
+    `load_registry` scatta l'istantanea una volta sola, in testa a `decide_terms`,
+    prima che parta il fan-out. `match_name`, nel fan-in, rifà invece una SELECT dal
+    vivo senza lock: una scrittura concorrente — un ingrediente non alimentare più
+    il suo alias, nati fra le due letture — produce un `ingredient_id` che
+    `category_by_id` non ha mai visto, né come voce del registro né come nato in
+    questa stessa passata. La guardia deve trattarlo come tratta ogni id non
+    alimentare noto: il termine resta in coda, non diventa alimentare per difetto.
+    """
+    from app.repositories.ingredients import add_alias
+
+    (termine_sgrassatore,) = await aggiungi(
+        db_session, termine("Sgrassatore forte", "k-sgrassatore-forte")
+    )
+    nato_durante_il_fan_out: list = []
+
+    async def scrivi_in_concorrenza():
+        sgrassatore = await create_ingredient(
+            db_session, name="sgrassatore", display_name="Sgrassatore",
+            category=IngredientCategory.IGIENE,
+        )
+        await add_alias(db_session, sgrassatore.id, "sgrassatore forte", source="race")
+        nato_durante_il_fan_out.append(sgrassatore.id)
+
+    finto = ScriptedLlm({
+        "Sgrassatore forte": llm_create("sgrassatore forte", "Sgrassatore forte", "condimenti")
+    })
+    client = LlmCheDurantePostScriveSulDatabase(db_session, finto, scrivi_in_concorrenza)
+
+    esito = await decide_terms(db_session, [termine_sgrassatore], client=client)
+
+    assert esito.applied == 0
+    assert esito.created == 0
+    assert esito.still_pending == 1
+    assert termine_sgrassatore.decision == TermDecision.PENDING
+    assert termine_sgrassatore.decided_by is None
+    assert termine_sgrassatore.ingredient_id is None
+    assert nato_durante_il_fan_out, "il finto deve aver eseguito la scrittura in concorrenza"
+    alias = (
+        await db_session.execute(
+            select(IngredientAlias.alias)
+            .where(IngredientAlias.ingredient_id == nato_durante_il_fan_out[0])
+        )
+    ).scalars().all()
+    assert alias == ["sgrassatore forte"], "nessun alias nuovo deve aggiungersi"
+
+
 async def test_un_nome_piu_lungo_della_colonna_resta_in_coda(db_session, base):
     """`ingredients.name` è `String(120)`: oltre, l'insert è un errore, non una decisione.
 
