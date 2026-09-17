@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,22 @@ from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCate
 from app.db.models.recipe import Recipe, RecipeIngredient
 
 DATA = Path(__file__).parent.parent.parent / "data"
+
+
+class _SessioneDiTest:
+    """Sostituisce `SessionLocal` nel modulo del seme: `main()` apre "una sessione"
+    e riceve invece quella della fixture `db_session`, dentro la stessa transazione
+    annullata a fine test. Non la chiude in `__aexit__`: la chiude la fixture.
+    """
+
+    def __init__(self, session):
+        self._session = session
+
+    async def __aenter__(self):
+        return self._session
+
+    async def __aexit__(self, *exc_info):
+        return False
 
 
 def test_seed_files_are_valid_and_substantial():
@@ -68,6 +85,41 @@ async def test_recipes_load_with_roles_and_aliases(db_session):
 
     recipes = list((await db_session.execute(select(Recipe))).scalars())
     assert all(r.source == "dataset" for r in recipes)
+
+
+async def test_main_con_solo_ingredienti_non_ricarica_le_ricette(db_session, monkeypatch):
+    """`main()` è la funzione vera invocata in produzione, non solo `load_ingredients`
+    e `load_recipes` chiamate a mano: nessun test la eseguiva, e decide se le
+    ricette vengono ricaricate su una macchina vera. `SessionLocal` viene sostituita
+    con la sessione di test, `sys.argv` con l'invocazione reale da riga di comando.
+    """
+    from app.cli import seed as modulo_seme
+
+    monkeypatch.setattr(modulo_seme, "SessionLocal", lambda: _SessioneDiTest(db_session))
+    monkeypatch.setattr(sys, "argv", ["app.cli.seed", "--solo-ingredienti"])
+
+    await modulo_seme.main()
+
+    ingredients = list((await db_session.execute(select(Ingredient))).scalars())
+    recipes = list((await db_session.execute(select(Recipe))).scalars())
+    assert len(ingredients) > 0
+    assert recipes == [], "con --solo-ingredienti le ricette non devono entrare"
+
+
+async def test_main_senza_flag_carica_anche_le_ricette(db_session, monkeypatch):
+    """Il gemello del test sopra: senza il flag, il seme resta comportarsi come
+    prima, ricette comprese."""
+    from app.cli import seed as modulo_seme
+
+    monkeypatch.setattr(modulo_seme, "SessionLocal", lambda: _SessioneDiTest(db_session))
+    monkeypatch.setattr(sys, "argv", ["app.cli.seed"])
+
+    await modulo_seme.main()
+
+    ingredients = list((await db_session.execute(select(Ingredient))).scalars())
+    recipes = list((await db_session.execute(select(Recipe))).scalars())
+    assert len(ingredients) > 0
+    assert len(recipes) > 0
 
 
 async def test_il_seme_conta_e_annuncia_le_ricette_salvate_senza_vettore(
