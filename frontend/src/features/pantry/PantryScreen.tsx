@@ -1,15 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { StatusToggle } from "./StatusToggle";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
 import { Card } from "../../components/ui/Card";
 import { Screen } from "../../components/ui/Screen";
 import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
 import { SectionHeading } from "../../components/ui/SectionHeading";
+import { PantryRow } from "./PantryRow";
 import { addPantryItem, fetchPantry, patchPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
+
+// quanto dura l'annulla. Sei secondi: il tempo di accorgersi di aver sbagliato
+// riga senza che la dispensa resti mezza finta per mezzo minuto
+const UNDO_MS = 6000;
 
 function groupByCategory(items: PantryItem[]): [string, PantryItem[]][] {
   const groups = new Map<string, PantryItem[]>();
@@ -52,15 +56,48 @@ export function PantryScreen() {
     onError: (_error, { id }) => setFailedId(id),
   });
 
+  // la voce appena tolta, finché l'annulla è possibile. La lista NON si invalida
+  // qui: invalidando, la voce sparirebbe dalla risposta del server e la lapide non
+  // avrebbe più un posto dov'essere
+  const [removedId, setRemovedId] = useState<string | null>(null);
+
   // Archiviare è l'unico modo di togliere qualcosa dalla dispensa: il backend
   // esclude le voci finite dalla disponibilità ma non dall'elenco, quindi senza
   // questo controllo lo schermo può soltanto crescere.
   const archive = useMutation({
     mutationFn: (id: string) => patchPantryItem(id, { archived: true }),
     onMutate: () => setFailedId(null),
-    onSuccess: invalidate,
+    onSuccess: (_data, id) => setRemovedId(id),
     onError: (_error, id) => setFailedId(id),
   });
+
+  const undo = useMutation({
+    mutationFn: (id: string) => patchPantryItem(id, { archived: false }),
+    onSuccess: () => {
+      setRemovedId(null);
+      invalidate();
+    },
+    // l'annulla fallito non può far finta di niente: la voce è archiviata davvero,
+    // quindi si ricarica (e sparisce) e si dice che non è tornata
+    onError: (_error, id) => {
+      setRemovedId(null);
+      setFailedId(id);
+      invalidate();
+    },
+  });
+
+  useEffect(() => {
+    if (removedId === null) return;
+    const timer = setTimeout(() => {
+      setRemovedId(null);
+      invalidate();
+    }, UNDO_MS);
+    return () => clearTimeout(timer);
+    // `invalidate` è ricreata a ogni render: metterla fra le dipendenze rifarebbe
+    // partire il conto alla rovescia da capo a ogni render, e la lapide non
+    // scadrebbe mai
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [removedId]);
 
   // Spec §4 e §8.3: l'ingresso diretto, cioè senza passare dalla lista. Serve a chi
   // torna a casa con una cosa che non aveva scritto, e a censire la dispensa la
@@ -140,40 +177,16 @@ export function PantryScreen() {
             <Card pad={false}>
               <ul className="divide-y divide-line">
                 {group.map((item) => (
-                  <li key={item.id} className="flex flex-col gap-2.5 p-3">
-                    <div>
-                      {/* la marca che hai comprato è più utile del nome generico */}
-                      <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
-                      {/* lo spazio è scritto a mano perché `ml-2` è un margine, non del
-                          testo: senza, il nome accessibile della riga si legge
-                          «Total 0%Fage» e chi usa uno screen reader sente una parola sola */}
-                      {item.product_brand && (
-                        <>
-                          {" "}
-                          <span className="text-sm text-ink-faint">{item.product_brand}</span>
-                        </>
-                      )}
-                    </div>
-                    <StatusToggle
-                      value={item.status}
-                      disabled={busyId === item.id}
-                      onChange={(status) => change.mutate({ id: item.id, status })}
-                    />
-                    {/* il testo è quello di prima: è anche il nome con cui si comanda
-                        a voce questo bersaglio, e accorciarlo sullo schermo lo
-                        scollerebbe da quel nome */}
-                    <button
-                      type="button"
-                      disabled={busyId === item.id}
-                      onClick={() => archive.mutate(item.id)}
-                      className="self-start py-2 text-xs text-ink-faint underline disabled:opacity-40"
-                    >
-                      Togli dalla dispensa
-                    </button>
-                    {failedId === item.id && (
-                      <Alert>Non sono riuscito a salvare la modifica. Riprova.</Alert>
-                    )}
-                  </li>
+                  <PantryRow
+                    key={item.id}
+                    item={item}
+                    busy={busyId === item.id}
+                    removed={removedId === item.id}
+                    failed={failedId === item.id}
+                    onStatus={(status) => change.mutate({ id: item.id, status })}
+                    onRemove={() => archive.mutate(item.id)}
+                    onUndo={() => undo.mutate(item.id)}
+                  />
                 ))}
               </ul>
             </Card>

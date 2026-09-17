@@ -138,7 +138,7 @@ describe("PantryScreen", () => {
 
     renderScreen();
     const row = (await screen.findByText("Total 0%")).closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Togli dalla dispensa" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" }));
 
     const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
     expect(patch?.[0]).toContain("/pantry/p1");
@@ -162,7 +162,7 @@ describe("PantryScreen", () => {
     await waitFor(() =>
       expect(within(row).getByRole("button", { name: "Finito" })).toBeDisabled()
     );
-    expect(within(row).getByRole("button", { name: "Togli dalla dispensa" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
     const other = screen.getByText("Pesca").closest("li")!;
     expect(within(other).getByRole("button", { name: "Finito" })).not.toBeDisabled();
   });
@@ -250,5 +250,81 @@ describe("PantryScreen", () => {
     expect(link.getAttribute("href")).toBe("/sistema");
     expect(link).not.toHaveClass("bg-low-tint");
     expect(screen.getByText("Metti via quello che hai comprato")).toBeDefined();
+  });
+
+  it("la X toglie la voce dalla dispensa e lascia un annulla al suo posto", async () => {
+    const fetchMock = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], id: "p3" }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
+
+    const patch = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "PATCH");
+    expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ archived: true });
+    expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Annulla" })).toBeDefined();
+  });
+
+  it("annullare la rimette in dispensa con una PATCH che disarchivia", async () => {
+    // il difetto che questo test difende: un annulla che si limita a nascondere la
+    // lapide lascerebbe la voce archiviata sul server, e l'utente scoprirebbe di
+    // averla persa solo al ricaricamento
+    const fetchMock = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [ITEMS[2], 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+
+    const corpi = fetchMock.mock.calls
+      .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(corpi).toEqual([{ archived: true }, { archived: false }]);
+    await waitFor(() => expect(screen.queryByText("Tolta dalla dispensa")).toBeNull());
+  });
+
+  it("passati i secondi dell'annulla la riga se ne va", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const utente = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      // la prima lettura deve avere la mela (altrimenti non c'è nulla da toccare);
+      // solo dopo la PATCH il server smette di mandarla, come nella riga vera
+      let archived = false;
+      stubRoutedFetch((_path, init) => {
+        if (init?.method === "PATCH") {
+          archived = true;
+          return [ITEMS[2], 200];
+        }
+        // dopo l'archiviazione il server non manda più la mela
+        return [archived ? ITEMS.filter((item) => item.id !== "p3") : ITEMS, 200];
+      });
+      renderScreen();
+      // la prima lettura è quella con la mela: la si aspetta prima di sostituirla
+      await utente.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
+      expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(6000);
+
+      await waitFor(() => expect(screen.queryByText("Tolta dalla dispensa")).toBeNull());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("una X che fallisce lo dice accanto alla voce, e la voce resta", async () => {
+    stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ detail: "no" }, 500];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
+
+    expect(await screen.findByText("Non sono riuscito a salvare la modifica. Riprova.")).toBeDefined();
+    expect(screen.getByText("mela")).toBeDefined();
   });
 });
