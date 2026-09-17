@@ -78,10 +78,11 @@ dispensa** — e dare alle ricette quantità strutturate accanto al testo:
 
 > **Nota 2026-09-17.** `pantry_items.fill_percent` esiste già (S2 in Parte II): è la
 > posizione di un cursore, 0–100, annullabile. Non è un'eccezione al punto sopra
-> perché è una **posizione**, non una quantità — non entra in nessun calcolo, non ha
-> unità, non scade. La decisione fondante numero 1 resta intera. Chi implementerà D1
-> e toccherà `CLAUDE.md` deve sapere che questa colonna c'è, e perché non conta come
-> precedente.
+> perché è una **posizione**, non una quantità — non ha unità, non scade, e l'unico
+> conto in cui entra è `status_for_fill`, che ne ricava `available`/`low`/`finished`:
+> una soglia, non un'aritmetica. Non si somma, non si scala, non nutre. La decisione
+> fondante numero 1 resta intera. Chi implementerà D1 e toccherà `CLAUDE.md` deve
+> sapere che questa colonna c'è, e perché non conta come precedente.
 
 **Perché non l'alternativa.** Quantità vere anche in dispensa avrebbero sbloccato
 conti più precisi, ma avrebbero reintrodotto la manutenzione giornaliera che la
