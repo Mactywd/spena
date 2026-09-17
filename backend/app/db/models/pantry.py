@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    SmallInteger,
+    String,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +30,9 @@ class PantryItem(UUIDMixin, Base):
     __tablename__ = "pantry_items"
     __table_args__ = (
         CheckConstraint("status IN ('available', 'low', 'finished')", name="ck_pantry_status"),
+        CheckConstraint(
+            "fill_percent BETWEEN 0 AND 100", name="ck_pantry_fill_percent"
+        ),
         # parziale: le query di disponibilità guardano solo le voci attive
         Index(
             "ix_pantry_active", "ingredient_id",
@@ -35,6 +47,12 @@ class PantryItem(UUIDMixin, Base):
         UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(20))
+    # Dove sta il cursore a tre zone, 0–100. È un'indicazione a occhio — utile in
+    # negozio, e per seguire qualcosa che si consuma senza mai finire — non una
+    # quantità: niente unità, niente conversioni, nessun conto la usa. Lo stato qui
+    # sopra resta la verità, e `status_for_fill` è ciò che li tiene d'accordo.
+    # NULL per chi non l'ha mai mosso.
+    fill_percent: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     note: Mapped[str | None] = mapped_column(String(300), nullable=True)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     status_changed_at: Mapped[datetime] = mapped_column(

@@ -94,3 +94,27 @@ async def test_timestamp_columns_are_not_null_in_physical_schema(db_session):
         ("pantry_items", "status_changed_at"): "NO",
         ("shopping_list_items", "created_at"): "NO",
     }
+
+
+async def test_una_voce_senza_posizione_resta_valida(db_session):
+    """Le voci già in dispensa non hanno mai visto un cursore.
+
+    NULL è quel che sappiamo di loro. Riempirle con 100 sarebbe un'affermazione —
+    «piena» — che nessuno ha mai fatto, e il cursore la mostrerebbe come una misura.
+    """
+    ingredient = await _ingredient(db_session, "mela")
+    item = PantryItem(ingredient_id=ingredient.id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+    assert item.fill_percent is None
+
+
+async def test_la_posizione_sta_fra_zero_e_cento(db_session):
+    ingredient = await _ingredient(db_session, "farina")
+    db_session.add(
+        PantryItem(
+            ingredient_id=ingredient.id, status=PantryStatus.AVAILABLE, fill_percent=101
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.flush()

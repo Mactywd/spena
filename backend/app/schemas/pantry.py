@@ -15,6 +15,7 @@ class PantryItemOut(BaseModel):
     product_name: str | None
     product_brand: str | None
     status: PantryStatus
+    fill_percent: int | None
     note: str | None
     added_at: datetime
 

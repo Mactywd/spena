@@ -34,6 +34,7 @@ def _to_out(item: PantryItem) -> PantryItemOut:
         product_name=item.product.name if item.product else None,
         product_brand=item.product.brand if item.product else None,
         status=item.status,
+        fill_percent=item.fill_percent,
         note=item.note,
         added_at=item.added_at,
     )
