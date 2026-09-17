@@ -381,12 +381,20 @@ describe("PantryScreen", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const utente = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     try {
+      // il server vero non manda le voci archiviate (`list_pantry` filtra
+      // `archived_at IS NULL`). Uno stub che le manda comunque finge che
+      // archiviare non tolga la riga dalla GET, e nasconde il difetto: la lapide
+      // viveva solo finché il server rimandava la sua riga, quindi la prima
+      // invalidazione altrui la faceva svanire senza dire niente.
+      const archived = new Set<string>();
       const fetchMock = stubRoutedFetch((path, init) => {
         if (init?.method === "PATCH") {
-          if (path.includes("/p3")) return [{ ...ITEMS[2] }, 200];
-          if (path.includes("/p1")) return [{ ...ITEMS[0] }, 200];
+          const id = path.split("/").pop()!;
+          if (JSON.parse(String(init.body)).archived) archived.add(id);
+          else archived.delete(id);
+          return [ITEMS.find((item) => item.id === id)!, 200];
         }
-        return [ITEMS, 200];
+        return [ITEMS.filter((item) => !archived.has(item.id)), 200];
       });
       renderScreen();
 
@@ -423,6 +431,62 @@ describe("PantryScreen", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // Rilievo della revisione finale: la lapide era resa dalla riga che arrivava dal
+  // server, e il server non manda le voci archiviate. L'archiviazione non invalida
+  // apposta, ma ogni ALTRA mutazione dello schermo sì: bastava muovere il cursore
+  // di un'altra riga e la lapide svaniva muta a metà dei sei secondi, portandosi
+  // via l'unico modo che l'interfaccia ha di disarchiviare.
+  it("la lapide sopravvive a una mutazione su un'altra riga, e l'annulla funziona ancora", async () => {
+    const archived = new Set<string>();
+    const fetchMock = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        const id = path.split("/").pop()!;
+        const body = JSON.parse(String(init.body));
+        if (body.archived !== undefined) {
+          if (body.archived) archived.add(id);
+          else archived.delete(id);
+        }
+        return [ITEMS.find((item) => item.id === id)!, 200];
+      }
+      return [ITEMS.filter((item) => !archived.has(item.id)), 200];
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
+    expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
+
+    // il cursore di un'altra riga: la sua PATCH invalida l'elenco, e la risposta
+    // nuova non contiene più la mela
+    const altra = screen.getByText("Total 0%").closest("li")!;
+    const cursore = within(altra).getByRole("slider");
+    fireEvent.change(cursore, { target: { value: "50" } });
+    fireEvent.pointerUp(cursore);
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(
+          ([, init]) => (init as RequestInit)?.method === undefined
+        ).length
+      ).toBeGreaterThan(2)
+    );
+
+    // la lapide è ancora lì, con il suo annulla
+    expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
+    const tomba = screen.getByText("mela").closest("li")!;
+    await userEvent.click(within(tomba).getByRole("button", { name: "Annulla" }));
+
+    await waitFor(() => expect(screen.queryByText("Tolta dalla dispensa")).toBeNull());
+    const corpi = fetchMock.mock.calls
+      .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
+      .map(([url, init]) => ({ url: String(url), body: JSON.parse(String((init as RequestInit).body)) }));
+    expect(corpi).toContainEqual({
+      url: expect.stringContaining("/p3"),
+      body: { archived: false },
+    });
+    // e la mela è tornata viva nell'elenco
+    expect(await screen.findByText("mela")).toBeDefined();
   });
 
   it("portato a zero il cursore chiede se rimettere la voce in lista", async () => {
@@ -636,5 +700,50 @@ describe("PantryScreen", () => {
     expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
     await waitFor(() => expect(screen.getByRole("button", { name: "Sì" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "No" })).toBeDisabled();
+  });
+
+  // Rilievo della revisione finale: `busyId` era un valore solo per tutto lo
+  // schermo, scelto per priorità fra le mutazioni. Con la PATCH del cursore
+  // della riga A in volo vinceva sempre A, e il «Sì» della riga B restava
+  // premibile anche mentre il suo POST di restock era in corso — POST che non è
+  // idempotente e che `shopping_list_items`, senza vincolo unico, non rimedia.
+  it("una mutazione su un'altra riga non sblocca il «Sì» di questa", async () => {
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      // il cursore della mela risponde: serve solo a far comparire la domanda
+      if (init?.method === "PATCH" && path.includes("/p3")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ ...ITEMS[2], status: "finished", fill_percent: 0 }), { status: 200 })
+        );
+      }
+      // il cursore di Total 0% resta in volo per sempre: è l'altra riga occupata
+      if (init?.method === "PATCH") return new Promise<Response>(() => {});
+      if (init?.method === "POST") return new Promise<Response>(() => {});
+      return Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    const mela = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    fireEvent.change(mela, { target: { value: "0" } });
+    fireEvent.pointerUp(mela);
+    await screen.findByText("Lo rimetto in lista?");
+
+    // riga A: una PATCH che non risponde mai
+    const altra = screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" });
+    fireEvent.change(altra, { target: { value: "50" } });
+    fireEvent.pointerUp(altra);
+    await waitFor(() =>
+      expect(screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" })).toBeDisabled()
+    );
+
+    // riga B: il «Sì» parte, e da quel momento non deve più essere premibile
+    const si = screen.getByRole("button", { name: "Sì" });
+    await userEvent.click(si);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sì" })).toBeDisabled());
+    await userEvent.click(screen.getByRole("button", { name: "Sì" }));
+
+    const posts = spy.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "POST");
+    expect(posts).toHaveLength(1);
   });
 });

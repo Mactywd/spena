@@ -15,6 +15,18 @@ import type { Ingredient, PantryItem } from "../../domain/types";
 // riga senza che la dispensa resti mezza finta per mezzo minuto
 const UNDO_MS = 6000;
 
+/** L'elenco da mostrare: quello del server più le istantanee delle voci appena
+ * tolte che il server non manda più. Le lapidi vivono qui e non nella risposta,
+ * perché la risposta le esclude e perché ogni invalidazione le cancellerebbe —
+ * e con loro l'unico annulla che l'interfaccia offre. Una voce tolta ma ancora
+ * presente nella risposta (l'archiviazione non invalida) resta al suo posto: la
+ * chiave `id` evita il doppione. */
+function withRemoved(items: PantryItem[], removed: Map<string, PantryItem>): PantryItem[] {
+  if (removed.size === 0) return items;
+  const present = new Set(items.map((item) => item.id));
+  return [...items, ...[...removed.values()].filter((item) => !present.has(item.id))];
+}
+
 function groupByCategory(items: PantryItem[]): [string, PantryItem[]][] {
   const groups = new Map<string, PantryItem[]>();
   for (const item of items) {
@@ -68,17 +80,22 @@ export function PantryScreen() {
     onError: (_error, { id }) => markFailed(id),
   });
 
-  // le voci appena tolte, finché il loro annulla è possibile. Un insieme, non un
+  // le voci appena tolte, finché il loro annulla è possibile. Una mappa, non un
   // solo id: togliere una seconda voce prima che scada la lapide della prima non
-  // deve spegnere quella della prima. La lista NON si invalida quando una voce si
-  // aggiunge qui: invalidando, la voce sparirebbe dalla risposta del server e la
-  // lapide non avrebbe più un posto dov'essere
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
-  const addRemoved = (id: string) => setRemovedIds((prev) => new Set(prev).add(id));
+  // deve spegnere quella della prima. E si tiene la VOCE, non solo il suo id,
+  // perché il server non manda più le voci archiviate (`list_pantry` filtra
+  // `archived_at IS NULL`): l'archiviazione di suo non invalida, ma ogni altra
+  // mutazione dello schermo sì, e una lapide che dipendesse dalla riga del
+  // server svanirebbe muta al primo cursore mosso altrove — con essa l'unico
+  // modo di disarchiviare che l'interfaccia abbia. L'istantanea qui dentro è
+  // quella che tiene in piedi la lapide, e `withRemoved` la unisce all'elenco.
+  const [removed, setRemoved] = useState<Map<string, PantryItem>>(new Map());
+  const addRemoved = (item: PantryItem) =>
+    setRemoved((prev) => new Map(prev).set(item.id, item));
   const clearRemoved = (id: string) =>
-    setRemovedIds((prev) => {
+    setRemoved((prev) => {
       if (!prev.has(id)) return prev;
-      const next = new Set(prev);
+      const next = new Map(prev);
       next.delete(id);
       return next;
     });
@@ -116,22 +133,26 @@ export function PantryScreen() {
 
   // Archiviare è l'unico modo di togliere qualcosa dalla dispensa: il backend
   // esclude le voci finite dalla disponibilità ma non dall'elenco, quindi senza
-  // questo controllo lo schermo può soltanto crescere.
+  // questo controllo lo schermo può soltanto crescere. Prende la voce intera e
+  // non il suo id: quello che entra in `removed` è l'istantanea della riga che
+  // l'utente aveva davanti, l'unica copia che resterà quando il server smetterà
+  // di mandarla.
   const archive = useMutation({
-    mutationFn: (id: string) => patchPantryItem(id, { archived: true }),
-    onMutate: (id) => clearFailed(id),
-    onSuccess: (_data, id) => {
-      addRemoved(id);
-      startUndoTimer(id);
+    mutationFn: (item: PantryItem) => patchPantryItem(item.id, { archived: true }),
+    onMutate: (item) => clearFailed(item.id),
+    onSuccess: (_data, item) => {
+      addRemoved(item);
+      startUndoTimer(item.id);
     },
-    onError: (_error, id) => markFailed(id),
+    onError: (_error, item) => markFailed(item.id),
   });
 
-  // l'annulla di una lapide. Se fallisce, la lapide RESTA: la voce è archiviata
-  // davvero sul server, e invalidare qui la farebbe sparire dalla risposta senza
-  // lasciare né un messaggio né un modo di riprovare — esattamente il vicolo
-  // cieco che «mai un vicolo cieco» vieta. Il timer si spegne appena si tenta
-  // l'annulla, per non far scadere una lapide che sta mostrando un errore.
+  // l'annulla di una lapide. Se fallisce, la lapide RESTA — l'istantanea non si
+  // toglie da `removed` — perché la voce è archiviata davvero sul server e
+  // perderla qui lascerebbe l'utente senza messaggio e senza modo di riprovare:
+  // esattamente il vicolo cieco che «mai un vicolo cieco» vieta. Il timer si
+  // spegne appena si tenta l'annulla, per non far scadere una lapide che sta
+  // mostrando un errore.
   const undo = useMutation({
     mutationFn: (id: string) => patchPantryItem(id, { archived: false }),
     onMutate: (id) => {
@@ -165,19 +186,24 @@ export function PantryScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping-list"] }),
   });
 
+  // quali voci hanno una richiesta in volo. Un insieme, come gli altri due, e
+  // per la stessa ragione: un solo id per tutto lo schermo faceva vincere una
+  // mutazione sull'altra, e con la PATCH del cursore della riga A in volo i
+  // «Sì»/«No» della riga B restavano premibili anche mentre il POST di B era in
+  // corso — proprio quello che questa guardia dichiara di impedire.
   // `busy` disabilita anche «Annulla» e «Sì»/«No» del rientro in lista: un
   // doppio clic non deve mandare due PATCH di annulla (innocuo perché la PATCH
-  // è idempotente, ma inutile) né due POST di restock (quello non è idempotente:
-  // due «Sì» ravvicinati manderebbero due richieste per la stessa voce)
-  const busyId = change.isPending
-    ? change.variables.id
-    : archive.isPending
-      ? archive.variables
-      : undo.isPending
-        ? undo.variables
-        : restock.isPending
-          ? restock.variables
-          : null;
+  // è idempotente, ma inutile) né due POST di restock (quello non è idempotente,
+  // e `shopping_list_items` non ha un vincolo unico che lo rimedi a valle).
+  const busyIds = new Set<string>();
+  if (change.isPending) busyIds.add(change.variables.id);
+  if (archive.isPending) busyIds.add(archive.variables.id);
+  if (undo.isPending) busyIds.add(undo.variables);
+  if (restock.isPending) busyIds.add(restock.variables);
+
+  // l'elenco a video: risposta del server più le lapidi che il server non manda
+  // più (vedi `withRemoved`)
+  const rows = withRemoved(items, removed);
 
   return (
     <Screen title="Dispensa">
@@ -225,14 +251,14 @@ export function PantryScreen() {
         </Alert>
       )}
 
-      {!isLoading && !isError && items.length === 0 && (
+      {!isLoading && !isError && rows.length === 0 && (
         <p className="pt-4 text-ink-soft">
           Dispensa vuota. Sistema la spesa, oppure aggiungi qui sopra quello che hai in casa.
         </p>
       )}
 
-      {!isLoading && !isError && items.length > 0 &&
-        groupByCategory(items).map(([category, group]) => (
+      {!isLoading && !isError && rows.length > 0 &&
+        groupByCategory(rows).map(([category, group]) => (
           <section key={category}>
             <SectionHeading>{category}</SectionHeading>
             <Card pad={false}>
@@ -241,11 +267,11 @@ export function PantryScreen() {
                   <PantryRow
                     key={item.id}
                     item={item}
-                    busy={busyId === item.id}
-                    removed={removedIds.has(item.id)}
+                    busy={busyIds.has(item.id)}
+                    removed={removed.has(item.id)}
                     failed={failedIds.has(item.id)}
                     onFill={(percent) => change.mutateAsync({ id: item.id, fill: percent })}
-                    onRemove={() => archive.mutate(item.id)}
+                    onRemove={() => archive.mutate(item)}
                     onUndo={() => undo.mutate(item.id)}
                     onRestock={() => restock.mutateAsync(item.id)}
                   />
