@@ -23,8 +23,12 @@ export function patchShoppingItem(
   });
 }
 
-export function searchIngredients(query: string) {
-  return apiFetch<Ingredient[]>(`/ingredients/search?q=${encodeURIComponent(query)}`);
+export function searchIngredients(query: string, kind?: "food") {
+  const params = new URLSearchParams({ q: query });
+  // solo chi vuole il filtro lo manda: senza parametro il server risponde tutto,
+  // che è quel che vogliono la lista, la sistemazione e la dispensa
+  if (kind) params.set("kind", kind);
+  return apiFetch<Ingredient[]>(`/ingredients/search?${params}`);
 }
 
 /** L'ultima uscita per una voce il cui testo libero non somiglia a nessun

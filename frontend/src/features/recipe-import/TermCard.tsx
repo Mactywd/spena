@@ -85,6 +85,7 @@ export function TermCard({
         accessibleLabel={`Collega «${term.display_name}» a un altro ingrediente`}
         failureNote="Puoi crearne uno nuovo qui sotto, o ignorare il termine."
         disabled={pending}
+        kind="food"
         onPick={(ingredient) =>
           onDecide({ action: "map", ingredient_id: ingredient.id, role_override: role })
         }

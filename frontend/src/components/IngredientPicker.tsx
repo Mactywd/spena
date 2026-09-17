@@ -25,6 +25,7 @@ export function IngredientPicker({
   failureNote,
   onPick,
   disabled = false,
+  kind,
 }: {
   /** Etichetta visibile: dice a cosa serve *qui*. */
   label: string;
@@ -38,6 +39,9 @@ export function IngredientPicker({
   onPick: (ingredient: Ingredient) => void;
   /** Mentre la scrittura nata dalla scelta precedente è ancora in volo. */
   disabled?: boolean;
+  /** Restringe i suggerimenti al cibo. Lo passano i tre selettori del mondo
+   * ricette, dove una voce non alimentare verrebbe rifiutata al salvataggio. */
+  kind?: "food";
 }) {
   const [term, setTerm] = useState("");
   const debounced = useDebounced(term, DEBOUNCE_MS).trim();
@@ -45,8 +49,11 @@ export function IngredientPicker({
   const ready = debounced.length >= 2;
 
   const { data: found = [], isError } = useQuery({
-    queryKey: ["ingredients", debounced],
-    queryFn: () => searchIngredients(debounced),
+    // il kind sta nella chiave: senza, la risposta filtrata e quella non filtrata
+    // si sovrascriverebbero a vicenda sulla stessa parola cercata, e la dispensa
+    // smetterebbe di vedere il detersivo perché il ricettario ha cercato prima
+    queryKey: ["ingredients", debounced, kind ?? "tutti"],
+    queryFn: () => searchIngredients(debounced, kind),
     enabled: ready,
   });
 

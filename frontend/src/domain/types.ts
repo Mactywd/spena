@@ -9,6 +9,9 @@ export interface Ingredient {
   name: string;
   display_name: string;
   category: string;
+  /** Se questa voce è cibo. Lo dice il server: la partizione dei reparti vive in
+   * `kind_for_category`, nel dominio del backend. */
+  kind: "food" | "non_food";
 }
 
 export interface Product {
@@ -57,6 +60,7 @@ export interface ShoppingItem {
   ingredient_id: string | null;
   ingredient_name: string | null;
   ingredient_category: string | null;
+  ingredient_kind: "food" | "non_food" | null;
   status: "pending" | "checked" | "done" | "archived";
   reason: "manual" | "finished_while_cooking" | "low_while_cooking";
   created_at: string;

@@ -447,6 +447,7 @@ export function AiDraftScreen() {
           <IngredientPicker
             label="Aggiungi un ingrediente"
             failureNote="Puoi salvare la ricetta comunque, anche senza ingredienti agganciati."
+            kind="food"
             onPick={attach}
           />
         </div>

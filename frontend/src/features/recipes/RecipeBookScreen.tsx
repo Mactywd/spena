@@ -224,6 +224,7 @@ export function RecipeBookScreen() {
       <IngredientPicker
         label="Contiene ingredienti"
         failureNote="Puoi comunque cercare per parole qui sopra."
+        kind="food"
         onPick={addIngredient}
       />
 
