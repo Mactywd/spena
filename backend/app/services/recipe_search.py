@@ -321,7 +321,23 @@ async def search_recipes(
         recipe_statement = recipe_statement.where(Recipe.category == category)
     if ingredient_id is not None:
         # vale anche quando i candidati arrivano dal riordino: far cadere fuori chi
-        # non ha quell'ingrediente costa zero query
+        # non ha quell'ingrediente costa zero query.
+        #
+        # Qui sta il limite, scritto dove esiste. Sul ramo senza parole cercate il
+        # filtro è già in SQL prima della piscina (vedi `_with_primary_ingredient`
+        # sopra) e vede tutto il ricettario. Su QUESTO ramo no: i candidati sono al
+        # massimo i primi CANDIDATE_POOL di ciascuna graduatoria, e il filtro lavora
+        # dentro quel campione — una ricetta col pomodoro principale che non entra
+        # nella piscina delle parole cercate non compare.
+        #
+        # Si accetta perché le parole cercate sono già un ordinamento: «fra le
+        # ricette che parlano di questo, quelle in cui il pomodoro è principale» è
+        # una domanda sul risultato della ricerca, non sul ricettario intero — non è
+        # il caso della sesta lezione di CLAUDE.md, dove il filtro era l'unico
+        # criterio e la piscina un taglio arbitrario. Ma è una scelta, non un fatto
+        # provato: nessun test ha più ricette pertinenti di CANDIDATE_POOL, quindi
+        # nessuno vedrebbe il giorno in cui smettesse di andare bene. Se il
+        # ricettario cresce, è questo il punto da rimisurare.
         recipe_statement = _with_primary_ingredient(recipe_statement, ingredient_id)
     recipes = {
         r.id: r

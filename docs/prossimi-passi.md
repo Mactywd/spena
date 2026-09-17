@@ -257,8 +257,14 @@ parsate (proposta: restano identiche e si vedono come tali).
 
 ## R3. Filtra per ingrediente **[FATTO 2026-09-17]**
 «Ho questo, cosa ci faccio» — `GET /api/v1/recipes/search?ingredient_id=…`, filtrato
-in SQL **prima** del limite (sesta lezione di `CLAUDE.md`: un filtro che lavora sul
-risultato non può stare dietro a un limite), e vale **solo sugli ingredienti
+in SQL **prima** del limite **nel ramo senza parole cercate** (sesta lezione di
+`CLAUDE.md`: un filtro che lavora sul risultato non può stare dietro a un limite).
+Con una ricerca testuale, invece, il filtro si applica **dopo** la piscina dei
+candidati della fusione RRF (`CANDIDATE_POOL` per graduatoria): comportamento
+accettabile, perché lì le parole cercate sono già un ordinamento e la domanda è sul
+risultato della ricerca — ma è una scelta, non un fatto provato, e nessun test ha più
+ricette pertinenti della piscina. Il limite è dichiarato nel commento accanto al
+filtro in `backend/app/services/recipe_search.py`. Vale **solo sugli ingredienti
 primari**, perché un secondario non caratterizza il piatto. Il selettore vive nel
 ricettario. Non ha richiesto niente di nuovo nel modello.
 
