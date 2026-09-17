@@ -140,12 +140,28 @@ async def load_recipes(session: AsyncSession, path: Path) -> RecipesLoaded:
     return RecipesLoaded(created=created, without_embedding=without_embedding)
 
 
+FLAG_SOLO_INGREDIENTI = "--solo-ingredienti"
+
+
 async def main() -> None:
     # `--solo-ingredienti` per la messa in produzione di un'anagrafica allargata:
     # il seme è idempotente e salta per titolo anche le ricette, ma «salta quelle
     # che ci sono» non è «non ne rimette»: una ricetta del seme cancellata a mano
     # tornerebbe. R4 prevede proprio di cancellarle, quindi la trappola è vicina.
-    solo_ingredienti = "--solo-ingredienti" in sys.argv
+    #
+    # Un argomento che comincia per `--` e non è questo flag viene rifiutato: un
+    # refuso come `--solo-ingredient` altrimenti passerebbe inosservato come «nessun
+    # flag», il seme farebbe la passata piena, e niente distinguerebbe «capito» da
+    # «ignorato» — esattamente la trappola che il flag doveva evitare.
+    sconosciuti = [
+        arg for arg in sys.argv[1:] if arg.startswith("--") and arg != FLAG_SOLO_INGREDIENTI
+    ]
+    if sconosciuti:
+        print(
+            f"argomento sconosciuto: {sconosciuti[0]}. Valore valido: {FLAG_SOLO_INGREDIENTI}"
+        )
+        return
+    solo_ingredienti = FLAG_SOLO_INGREDIENTI in sys.argv
     data_dir = find_data_dir()
     async with SessionLocal() as session:
         ingredients = await load_ingredients(session, data_dir / INGREDIENTS_FILE)

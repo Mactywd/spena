@@ -122,6 +122,29 @@ async def test_main_senza_flag_carica_anche_le_ricette(db_session, monkeypatch):
     assert len(recipes) > 0
 
 
+async def test_main_rifiuta_un_flag_sconosciuto_senza_toccare_niente(db_session, monkeypatch, capsys):
+    """Un refuso come --solo-ingredient (manca la i finale) prima faceva la passata
+    piena in silenzio: esattamente la trappola che --solo-ingredienti doveva
+    evitare. Deve invece rifiutare, dire cosa non ha capito e i valori validi,
+    e non toccare il database.
+    """
+    from app.cli import seed as modulo_seme
+
+    monkeypatch.setattr(modulo_seme, "SessionLocal", lambda: _SessioneDiTest(db_session))
+    monkeypatch.setattr(sys, "argv", ["app.cli.seed", "--solo-ingredient"])
+
+    await modulo_seme.main()
+
+    stampato = capsys.readouterr().out
+    assert "--solo-ingredient" in stampato
+    assert "--solo-ingredienti" in stampato
+
+    ingredients = list((await db_session.execute(select(Ingredient))).scalars())
+    recipes = list((await db_session.execute(select(Recipe))).scalars())
+    assert ingredients == [], "un flag sconosciuto non deve far entrare niente"
+    assert recipes == []
+
+
 async def test_il_seme_conta_e_annuncia_le_ricette_salvate_senza_vettore(
     db_session, monkeypatch, caplog
 ):
