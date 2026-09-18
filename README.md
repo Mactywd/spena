@@ -85,7 +85,7 @@ Poi:
 
 ```bash
 docker compose up -d --build --wait
-docker compose exec backend python -m app.cli.seed   # 169 ingredienti, 26 ricette
+docker compose exec backend python -m app.cli.seed   # 187 ingredienti, 26 ricette
 ```
 
 Le migrazioni non sono un passo a mano: il backend esegue `alembic upgrade head`
@@ -322,14 +322,18 @@ produzione non ne inventa uno).
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 120
-docker compose -f docker-compose.prod.yml exec backend python -m app.cli.seed
+docker compose -f docker-compose.prod.yml exec backend python -m app.cli.seed --solo-ingredienti
 ```
+
+`--solo-ingredienti` carica la sola anagrafica e non tocca le ricette: il seme
+rimetterebbe altrimenti anche quelle di semina cancellate a mano, che R4 prevede
+di togliere (§8 di `docs/superpowers/specs/2026-09-17-non-alimentari-design.md`).
 
 Il `--wait-timeout` serve al caso in cui una migrazione futura fallisca. Qui il
 backend ha `restart: unless-stopped`: il container muore sulla migrazione, Docker lo
 rianima, non diventa mai `healthy` e `--wait` senza scadenza aspetta per sempre senza
 dire niente. Con la scadenza il comando torna con un errore dopo due minuti (oggi
-l'avvio ne impiega pochi secondi: la 0003 è l'ultima migrazione e il database è
+l'avvio ne impiega pochi secondi: la 0007 è l'ultima migrazione e il database è
 vuoto), e la causa vera si legge in un posto solo:
 
 ```bash
