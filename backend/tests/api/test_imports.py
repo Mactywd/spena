@@ -136,6 +136,39 @@ async def test_una_somiglianza_incerta_porta_un_suggerimento_non_certo(
     }
 
 
+@pytest_asyncio.fixture
+async def termine_su_voce_non_alimentare(db_session):
+    """Un termine che, dopo la sincronizzazione, coincide esattamente con una voce
+    non alimentare aggiunta all'anagrafica in un momento successivo — stessa forma
+    di `termine_senza_aggancio`, ma sul lato che la guardia 4.4 rifiuta."""
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/sapone.html",
+        payload=payload("Torta al sapone", [
+            ("ricette-con-il-Sapone", "Sapone", "1"),
+        ]),
+    )
+    await sync_terms(db_session)
+
+
+async def test_una_voce_non_alimentare_non_porta_un_suggerimento(
+    logged_client, db_session, termine_su_voce_non_alimentare
+):
+    """Finding 2 della revisione finale: senza questa guardia la coda mostrerebbe
+    come tasto principale «Collega a «Sapone»», che chiamerebbe comunque la
+    guardia 4.4 e tornerebbe sempre un 422 — meglio nessuna scorciatoia che una
+    che non porta da nessuna parte."""
+    from app.repositories.ingredients import create_ingredient
+
+    await create_ingredient(db_session, "sapone", "Sapone", "igiene")
+
+    response = await logged_client.get("/api/v1/imports/terms")
+
+    assert response.status_code == 200
+    coda = response.json()
+    assert coda[0]["display_name"] == "Sapone"
+    assert coda[0]["suggestion"] is None
+
+
 async def test_collegare_un_termine_sblocca_le_ricette_e_lo_dice(
     logged_client, db_session, in_attesa
 ):

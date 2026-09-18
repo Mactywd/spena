@@ -95,11 +95,17 @@ async def read_terms(
     out: list[TermOut] = []
     for term in terms:
         match = await match_name(session, term.display_name)
+        # Una voce non alimentare non si propone mai come scorciatoia: il tasto
+        # «Collega» chiamerebbe comunque la guardia 4.4 più sotto e tornerebbe un
+        # 422 garantito (finding 2 della revisione finale). Meglio nessuna
+        # scorciatoia che una che non porta da nessuna parte.
         suggestion = (
             SuggestionOut(
                 ingredient_id=match.ingredient_id, name=match.name, certain=match.certain
             )
-            if match.ingredient_id is not None and match.name is not None
+            if match.ingredient_id is not None
+            and match.name is not None
+            and match.kind != IngredientKind.NON_FOOD
             else None
         )
         out.append(
