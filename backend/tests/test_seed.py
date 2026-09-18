@@ -239,20 +239,24 @@ async def test_il_seme_scrive_il_kind_corretto_nel_database(db_session):
     ne accorgerebbe da solo, mentre gli altri due test del seme (che leggono
     solo il file JSON) resterebbero verdi lo stesso.
 
-    Rilegge davvero dal database con una `select` nuova, non si fida
-    dell'oggetto Python già in mano, che potrebbe non riflettere quanto scritto.
+    Rilegge davvero dal database con una `select` nuova e `populate_existing`: senza,
+    l'istanza appena flushata resta nell'identity map della sessione e la `select`
+    tornerebbe quell'oggetto Python così com'è, senza rileggere la riga vera — misurato
+    scrivendo `kind='food'` con un `UPDATE` SQL grezzo e osservando che la stessa
+    `select` (senza `populate_existing`) continuava a tornare `NON_FOOD`.
     """
     from app.domain.rules import IngredientKind
 
     await load_ingredients(db_session, DATA / "ingredients_seed.json")
 
+    query = select(Ingredient).execution_options(populate_existing=True)
     non_alimentare = (
-        await db_session.execute(select(Ingredient).where(Ingredient.name == "candeggina"))
+        await db_session.execute(query.where(Ingredient.name == "candeggina"))
     ).scalar_one()
     assert non_alimentare.kind == IngredientKind.NON_FOOD
 
     alimentare = (
-        await db_session.execute(select(Ingredient).where(Ingredient.name == "pomodoro"))
+        await db_session.execute(query.where(Ingredient.name == "pomodoro"))
     ).scalar_one()
     assert alimentare.kind == IngredientKind.FOOD
 
