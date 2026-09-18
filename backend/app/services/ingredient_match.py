@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient, IngredientAlias
+from app.domain.rules import IngredientKind
 from app.repositories.ingredients import search_ingredients
 
 
@@ -23,6 +24,7 @@ class NameMatch:
     ingredient_id: uuid.UUID | None
     name: str | None
     certain: bool
+    kind: IngredientKind | None = None
 
 
 async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
@@ -47,7 +49,7 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
         await session.execute(select(Ingredient).where(Ingredient.name == normalized).limit(1))
     ).scalar_one_or_none()
     if canonical is not None:
-        return NameMatch(canonical.id, canonical.name, True)
+        return NameMatch(canonical.id, canonical.name, True, canonical.kind)
 
     # Poi l'alias, solo se il nome canonico non ha già deciso. Stesso principio:
     # niente ambiguità silenziosa, un ordine esplicito anche qui.
@@ -61,10 +63,10 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
         )
     ).scalar_one_or_none()
     if via_alias is not None:
-        return NameMatch(via_alias.id, via_alias.name, True)
+        return NameMatch(via_alias.id, via_alias.name, True, via_alias.kind)
 
     candidates = await search_ingredients(session, raw_name, limit=1)
     if not candidates:
         return NameMatch(None, None, False)
     best = candidates[0]
-    return NameMatch(best.id, best.name, False)
+    return NameMatch(best.id, best.name, False, best.kind)

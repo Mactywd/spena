@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
+from app.domain.rules import IngredientKind
 from app.repositories.imports import pending_pages, terms_by_key
 from app.services.ingredient_match import match_name
 
@@ -63,7 +64,14 @@ async def sync_terms(session: AsyncSession, source: str = GIALLOZAFFERANO) -> Te
             existing[key] = term
             created += 1
             match = await match_name(session, term.display_name)
-            if match.certain:
+            # Certo non basta: una coincidenza esatta su una voce non alimentare
+            # (`carta da forno` è alias di `casa` nel seme) non deve decidersi da
+            # sé, perché `create_recipe` la rifiuterebbe più tardi — a
+            # materializzazione già avviata, con la ricetta intera persa e nessuna
+            # coda a raccoglierla, dato che «auto» decide solo alla creazione del
+            # termine e non torna mai più a rivederlo. Resta `PENDING`: la coda
+            # umana ha già le sue guardie a 422 e l'uscita «ignora il termine».
+            if match.certain and match.kind != IngredientKind.NON_FOOD:
                 term.decision = TermDecision.MAPPED
                 term.ingredient_id = match.ingredient_id
                 term.decided_by = "auto"

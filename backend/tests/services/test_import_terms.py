@@ -88,6 +88,56 @@ async def test_un_termine_che_coincide_con_un_alias_si_decide_da_se(db_session, 
     assert term.decided_by == "auto"
 
 
+async def test_un_termine_su_un_alias_non_alimentare_non_si_decide_da_se(
+    db_session, anagrafica
+):
+    """`carta da forno` è alias di una voce `casa` (finding 1 della revisione
+    finale): la coincidenza è comunque esatta, ma decidere da sé porterebbe
+    `create_recipe` a rifiutare la ricetta più tardi, a materializzazione già
+    avviata e senza che il termine torni mai in coda. Deve restare `PENDING`,
+    la raccoglie la coda umana."""
+    casa = Ingredient(
+        name="carta forno", display_name="Carta forno", category=IngredientCategory.CASA
+    )
+    casa.aliases.append(IngredientAlias(alias="carta da forno", source="import"))
+    db_session.add(casa)
+    await db_session.flush()
+
+    await store_page(
+        db_session, source=GIALLOZAFFERANO,
+        url="https://ricette.giallozafferano.it/Torta.html",
+        payload=payload("Torta", [
+            ("ricette-con-la-Carta-da-forno", "Carta da forno", "1 foglio"),
+        ]),
+    )
+
+    synced = await sync_terms(db_session)
+
+    assert synced.auto_decided == 0
+    term = (await terms_by_key(db_session, GIALLOZAFFERANO))["ricette-con-la-Carta-da-forno"]
+    assert term.decision == TermDecision.PENDING
+    assert term.decided_by is None
+
+
+async def test_un_termine_su_un_alias_alimentare_continua_a_decidersi_da_se(
+    db_session, anagrafica
+):
+    """Il gemello alimentare del test sopra: la guardia deve guardare il reparto,
+    non spegnere l'auto-decide in generale."""
+    await store_page(
+        db_session, source=GIALLOZAFFERANO,
+        url="https://ricette.giallozafferano.it/Due.html",
+        payload=payload("Due", [("ricette-con-i-Rigatoni", "Rigatoni", "320 g")]),
+    )
+
+    synced = await sync_terms(db_session)
+
+    assert synced.auto_decided == 1
+    term = (await terms_by_key(db_session, GIALLOZAFFERANO))["ricette-con-i-Rigatoni"]
+    assert term.decision == TermDecision.MAPPED
+    assert term.decided_by == "auto"
+
+
 async def test_un_termine_sconosciuto_aspetta(db_session, anagrafica):
     await store_page(
         db_session, source=GIALLOZAFFERANO,
