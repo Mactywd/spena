@@ -85,6 +85,47 @@ async def test_an_unknown_ingredient_has_no_match(db_session, anagrafica):
     assert zafferano.confident is False
 
 
+async def test_una_voce_non_alimentare_non_si_aggancia_alla_bozza(db_session, monkeypatch):
+    """Finding 3 della revisione finale: senza questa guardia la riga tornerebbe
+    già agganciata e `confident: true`, e `POST /recipes` la rifiuterebbe con un
+    422. Meglio una riga non agganciata: l'utente la risolve dal selettore, che
+    dal Task 9 offre solo cibo, o la toglie."""
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    try:
+        db_session.add(
+            Ingredient(name="carta forno", display_name="Carta forno",
+                       category=IngredientCategory.CASA)
+        )
+        await db_session.flush()
+
+        finto = FakeLlm({
+            "title": "Torta", "description": None, "instructions": "1. cuoci",
+            "servings": 2,
+            "ingredients": [
+                {"name": "carta forno", "role": "secondary", "quantity_text": "1 foglio",
+                 "category": "casa"}
+            ],
+        })
+        draft = await draft_recipe(db_session, "torta", client=finto)
+        riga = draft.ingredients[0]
+        assert riga.ingredient_id is None
+        assert riga.confident is False
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_una_voce_alimentare_continua_ad_agganciarsi_alla_bozza(db_session, anagrafica):
+    """Il gemello alimentare del test sopra: la guardia deve guardare il reparto,
+    non spegnere l'aggancio in generale."""
+    draft = await draft_recipe(db_session, "x", client=FakeLlm(DRAFT))
+    pasta = next(i for i in draft.ingredients if i.raw_name == "pasta")
+    assert pasta.ingredient_id is not None
+    assert pasta.confident is True
+
+
 async def test_api_failure_raises_llm_unavailable(db_session, anagrafica):
     with pytest.raises(LlmUnavailable):
         await draft_recipe(db_session, "x", client=FakeLlm(RuntimeError("429")))

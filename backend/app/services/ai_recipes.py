@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.rules import IngredientRole
+from app.domain.rules import IngredientKind, IngredientRole
 from app.services.ingredient_match import match_name
 from app.repositories.llm_calls import record_llm_call
 from app.services.llm import LlmCallSite, LlmUnavailable, LlmUsage, complete_json
@@ -126,13 +126,19 @@ async def draft_recipe(
             else IngredientRole.PRIMARY
         )
         match = await match_name(session, raw_name)
+        # Stessa idea di `proposed_category` due righe sotto: una riga non agganciata
+        # che l'utente risolve col selettore è meglio di una già agganciata che
+        # `POST /recipes` rifiuterebbe con un 422 (finding 3 della revisione
+        # finale). Il selettore, dal Task 9, offre solo cibo.
+        non_food = match.kind == IngredientKind.NON_FOOD
         category = str(entry.get("category") or "").strip().lower()
         ingredients.append(
             DraftIngredient(
                 raw_name=raw_name, role=role,
                 quantity_text=entry.get("quantity_text") or None,
-                ingredient_id=match.ingredient_id, matched_name=match.name,
-                confident=match.certain,
+                ingredient_id=None if non_food else match.ingredient_id,
+                matched_name=None if non_food else match.name,
+                confident=False if non_food else match.certain,
                 # Solo se l'anagrafica non ce l'ha: proporre una categoria per un
                 # ingrediente che esiste già inviterebbe a cambiargliela da una
                 # schermata che non è il registro. E solo se è una delle dodici: un
