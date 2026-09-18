@@ -42,6 +42,12 @@ ingrediente rifatto al plurale (R3), quest'ultimo **senza migrazioni**. Dove que
 file dice «FATTO 2026-09-17» qui sotto, intende codice che gira su
 `spena.mattiagirellini.com`, non codice fermo in un ramo.
 
+**Il 2026-09-18 sono entrati in `master` e in produzione D4 e S5**, il non
+alimentare: migrazione `0007` applicata all'avvio, anagrafica allargata a 18 voci
+`casa`/`igiene` caricate con `seed --solo-ingredienti`, ricette non toccate. La
+verifica a mano dello stesso giorno ha trovato un difetto **preesistente e non
+legato ai non alimentari**: vedi **S6**.
+
 ---
 
 # Parte I — Le decisioni che bloccano il resto
@@ -270,6 +276,63 @@ nella forma ma povero nel contenuto.
 Vedi D4: stessa lista, stessa dispensa, nessuna informazione nutrizionale — solo
 la voce con il suo slider. Spec:
 `docs/superpowers/specs/2026-09-17-non-alimentari-design.md`.
+
+## S6. «Sistema la spesa» può chiudere l'unica porta che crea un ingrediente **[D — difetto, trovato il 2026-09-18]**
+Il menù **Reparto** e il pulsante «Crea l'ingrediente «X»» compaiono solo se la
+ricerca non trova nulla (`frontend/src/features/stocking/StockingScreen.tsx`,
+condizione `suggestions.length === 0`). Basta **un** suggerimento qualsiasi, anche
+assurdo, e la via d'uscita sparisce: la voce a testo libero resta in lista e non
+c'è modo di sistemarla.
+
+Misurato in produzione il 2026-09-18 su «cera per pavimenti» — sette suggerimenti,
+nessuno pertinente, soglia `SIMILARITY_FLOOR = 0.15` in
+`backend/app/repositories/ingredients.py`:
+
+| suggerimento | punteggio | chi lo tira dentro |
+|---|---|---|
+| Pera | 0.278 | alias *pere*, *pera abate* |
+| Pane per hamburger | 0.167 | alias *panini per hamburger* |
+| Polenta | 0.161 | alias *farina per polenta* |
+| Mandarino | 0.160 | alias *clementine* |
+| Spugne per i piatti | 0.156 | il nome |
+| Detersivo per i piatti | 0.156 | alias *sapone per i piatti* |
+| Pane | 0.156 | alias *pane per tramezzini* |
+
+Agganciano tutti sul frammento `per` e su `era` di «p**era**»: più parole ha il
+nome, più è probabile che qualcosa passi la soglia, e i nomi italiani composti
+(`per`, `di`, `da`) sono il caso peggiore.
+
+Non è un caso sfortunato. Provati sette nomi plausibili di prodotti per la casa
+(`anticalcare`, `sturalavandini`, `lucidante pavimenti`, `lucido da scarpe`,
+`spazzolone`, `cera pavimenti`, `cera per pavimenti`): **tutti** restituiscono
+almeno un suggerimento, solo una parola senza senso (`xilofono`) arriva a zero. La
+creazione è quindi **di fatto irraggiungibile**, e non esiste un aggiramento — il
+pulsante crea col testo del campo, quindi svuotarlo per far sparire i suggerimenti
+creerebbe un ingrediente col nome sbagliato.
+
+Aggrava: `Sistema la spesa` è **l'unico posto dell'app che sa creare un
+ingrediente** (`createIngredient` ha un solo chiamante), e la dispensa, quando il
+suo selettore fallisce, manda proprio qui — «scrivilo in lista e sistemalo da lì».
+
+**Radice.** La condizione codifica una premessa falsa, che il commento sopra di
+essa dichiara ad alta voce: «una voce arriva qui proprio perché il suo testo non
+somigliava a niente». Non è così: arriva qui perché in lista è stato scritto testo
+libero **senza toccare un suggerimento**. «Non è stato scelto un ingrediente» è
+stato confuso con «non esiste un ingrediente simile». È la quinta lezione di
+`CLAUDE.md` — «mai un vicolo cieco» — violata da un `&&`.
+
+**Non è una regressione del ramo `non-alimentari`:** quel lavoro ha solo sostituito
+il reparto fisso «altro» col menù a tendina *dentro* una condizione che esisteva
+già. Il non alimentare è però il primo caso in cui creare una voce nuova serviva
+davvero, ed è così che è saltato fuori.
+
+**Correzione decisa:** mostrare Reparto + «Crea l'ingrediente «X»» **sempre**, sotto
+i suggerimenti, con peso visivo minore quando i suggerimenti ci sono; la frase
+«Nessun ingrediente corrisponde» resta al solo caso vuoto. **Non** alzare
+`SIMILARITY_FLOOR`: spegnerebbe i suggerimenti buoni sui nomi corti per riparare un
+problema che non sta nella ricerca ma nell'uscita. Il test che oggi manca, e che va
+scritto per primo: **con suggerimenti presenti, il pulsante di creazione deve
+esserci.**
 
 ---
 
