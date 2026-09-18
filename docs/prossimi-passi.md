@@ -154,17 +154,36 @@ cima alla sezione madre ottengono la stessa visibilità senza pagare quel prezzo
 ↳ da questa dipendono: header globale, hamburger, tasto indietro, tutte le schede
 d'ingresso, e il fatto che `TabBar.tsx` passi da `grid-cols-3` a `grid-cols-4`.
 
-## D4. Il non alimentare — proposta, non domanda **[D salvo obiezione]**
+## D4. Il non alimentare **[FATTO 2026-09-18]**
 
-Detersivo e carta igienica devono stare in lista e in dispensa senza una seconda
-lista. La via più economica è **un campo sull'anagrafica esistente** (`kind:
-food | non_food`, categoria «Non alimentari»), non una tabella nuova: la lista, la
-dispensa e l'autocomplete continuano a fare una join sola.
+Detersivo e carta igienica stanno in lista e in dispensa senza una seconda lista.
+La via scelta è stata **un campo sull'anagrafica esistente**, non una tabella
+nuova: due assi, non uno — il reparto (`ingredients.category`, ora con due voci in
+più, `casa` e `igiene`) e `ingredients.kind` (`food` | `non_food`), che non si
+scrive mai a mano ma si deriva dal reparto con `kind_for_category`
+(`backend/app/domain/rules.py`). La lista, la dispensa e l'autocomplete continuano
+a fare una join sola. Il seme porta diciotto voci non alimentari (sette di
+`igiene`, undici di `casa`).
 
-Ne discendono tre guardie da scrivere: una ricetta non può puntare a un non
-alimentare, la nutrizione lo ignora, e le decisioni dell'AI sull'import non ne creano
-mai. La parola «ingrediente» resta nel codice; nell'interfaccia, dove serve, si dice
-«voce».
+Le guardie sono più di quelle previste in origine, perché due revisioni ne hanno
+aggiunte che questa proposta non anticipava: la lista completa, con i file e le
+righe, sta in `docs/superpowers/specs/2026-09-17-non-alimentari-design.md`. In
+sintesi, l'ultima linea è il funnel in `create_recipe`
+(`backend/app/repositories/recipes.py`), che solleva `NonFoodInRecipe`; a monte,
+le decisioni dell'AI sull'import (`decide.py`) e i due rifiuti 422 della coda
+umana (`api/imports.py`) fanno sì che quel funnel quasi non venga mai raggiunto;
+lato client, i tre selettori di ingredienti usati dalle schermate di ricetta
+chiedono `kind=food` all'anagrafica. Un numero fisso qui invecchierebbe male — è
+già successo una volta nel corso di questo stesso lavoro — quindi la spec, non
+questa riga, è la fonte per «quante sono oggi».
+
+**Sulla parola «ingrediente»: verificato, e la premessa era sbagliata.** Non è
+vero che lista e dispensa dicano sempre «voce»: `AddItemField.tsx` (lista) e
+`StockingScreen.tsx` (sistemazione della spesa) mostrano entrambi «ingrediente»
+all'utente — «l'ingrediente si abbina dopo», «Abbina un ingrediente», «Crea
+l'ingrediente «…»» — proprio nel momento in cui si collega una voce di testo
+libero all'anagrafica. Non è un difetto introdotto da questo lavoro, esisteva
+già prima; resta un rinominamento aperto, non chiuso da questo task.
 
 ---
 
@@ -246,8 +265,10 @@ nella forma ma povero nel contenuto.
   OpenRouter offre una via per dare la ricerca web a un modello qualsiasi — **da
   verificare com'è fatta oggi e quanto costa**, prima di progettarci sopra.
 
-## S5. Non alimentari in lista e dispensa **[D]**
-Vedi D4. Nessuna informazione nutrizionale, solo la voce con il suo slider.
+## S5. Non alimentari in lista e dispensa **[FATTO 2026-09-18]**
+Vedi D4: stessa lista, stessa dispensa, nessuna informazione nutrizionale — solo
+la voce con il suo slider. Spec:
+`docs/superpowers/specs/2026-09-17-non-alimentari-design.md`.
 
 ---
 
@@ -488,8 +509,9 @@ tasto indietro, schede d'ingresso). **Resta aperto** solo l'hamburger di T1,
 rinviato di proposito alla prima sezione secondaria vera — non c'è fretta, perché
 niente lo sblocca.
 
-**Poi, il blocco strutturale**: D4/S5 (non alimentari), S4 (nutrienti ampi), D1
-applicata (quantità nelle ricette). Da qui in avanti serve la spec.
+**Poi, il blocco strutturale**: S4 (nutrienti ampi), D1 applicata (quantità nelle
+ricette). Da qui in avanti serve la spec. D4/S5 (non alimentari) erano qui e sono
+fatte.
 
 **Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
 

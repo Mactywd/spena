@@ -95,6 +95,20 @@ so loose apples and a branded yogurt coexist. Keep recipes pointing at ingredien
 only; that is what keeps the recipe-to-pantry match a simple join while nutrition
 stays accurate per brand.
 
+> **Since 2026-09-17 the registry also holds non-food entries** — detergent, toilet
+> paper — split off by `ingredients.kind` (`food` | `non_food`), which is never
+> written by hand: it is derived from the department by `kind_for_category` in
+> `backend/app/domain/rules.py`. They live in the same list and the same pantry,
+> with the same three statuses. **The rule above is untouched**: recipes still
+> point at ingredients only, and it is precisely that rule the funnel in
+> `create_recipe` (`backend/app/repositories/recipes.py`) defends — a recipe
+> cannot name a non-food entry. That funnel is the last line, not the only one:
+> the AI's import decisions and the human review queue refuse a non-food term
+> before it ever reaches a recipe, and the three ingredient pickers used by the
+> recipe screens ask the registry for `kind=food` only. See
+> `docs/superpowers/specs/2026-09-17-non-alimentari-design.md` for where each of
+> these lives.
+
 ## The rule that makes `low` useful
 
 Every recipe ingredient is `primary` or `secondary`. A primary needs `available`;
