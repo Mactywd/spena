@@ -6,7 +6,9 @@ distanza è l'unica parte dell'import che non si automatizza, perché colmarla m
 avvelena la disponibilità di tutte le ricette che usano quell'ingrediente.
 
 Quel che si automatizza è l'uguaglianza: un termine che coincide con un nostro nome
-canonico o con un alias già scritto si decide da sé. Non è una proposta, è un fatto.
+canonico o con un alias già scritto si decide da sé. Non è una proposta, è un fatto —
+tranne quando quel fatto punterebbe a una voce non alimentare, che `create_recipe`
+rifiuterebbe più tardi: lì resta comunque `PENDING`, per la coda umana.
 """
 
 from dataclasses import dataclass
