@@ -568,6 +568,15 @@ layout a 375px.
   testo libero all'anagrafica, che ora può anche non essere cibo. Non è un
   difetto introdotto dal lavoro sul non alimentare (D4), esisteva già prima;
   resta un rinominamento aperto.
+- **Nella stesura AI, «non in anagrafica» è la formula sbagliata per una riga non
+  alimentare.** `AiDraftScreen.tsx:104` mostra, per ogni riga senza `ingredientId`,
+  «"X" non in anagrafica, sarà escluso». Per «carta forno» il match c'è — l'anagrafica
+  ce l'ha — solo che è non alimentare, e `ai_recipes.py` azzera l'aggancio proprio per
+  questo (stesso principio della guardia di D4). Il messaggio confonde due motivi
+  d'esclusione diversi («non esiste» contro «esiste ma non è cibo»); non è un dead
+  end — la riga resta esclusa, il picker manuale resta lì, nessun errore — quindi
+  resta una formulazione da scegliere con calma, non una stringa da correggere di
+  fretta.
 - **`skipped_reason` non affiora da nessuna rotta né da nessuna schermata**,
   solo il conteggio aggregato in `/api/v1/imports/status` — vale sia per il
   nuovo motivo «riga non alimentare» (`NonFoodInRecipe`, D4) sia per il
