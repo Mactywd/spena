@@ -283,6 +283,41 @@ e non va filtrato.
 Questa **non è la guardia che tiene** — quella è la 4.1 — è quella che evita di far
 sbattere l'utente contro un rifiuto evitabile.
 
+> **In esecuzione le guardie sono diventate sette, non cinque (nota del
+> 2026-09-18).** L'apertura di questa sezione conta il progetto, non il codice:
+> due passate di revisione ne hanno aggiunte altre due che il testo sopra non
+> anticipava, entrambe interne ad `app/services/recipe_import/decide.py` e
+> entrambe sul solo percorso dell'AI — la coda umana resta coperta dalla 4.4
+> com'era.
+>
+> La prima è `_mapped_proposal` (riga 214). La 4.3 restringe l'enum offerto e
+> verificato per il solo `create`; ma il modello può anche proporre `map` — un
+> aggancio diretto a un ingrediente già in anagrafica — e quel `map` non passava
+> da nessun controllo di reparto. `_mapped_proposal` è il punto unico che lo fa,
+> per due strade e non una: il `map` diretto del modello, e il `create` che alla
+> verifica si scopre un doppione di un nome già esistente e si riscrive come
+> `map` (riga 255). In entrambe torna `None` — il termine resta in coda — se
+> l'ingrediente di arrivo è `non_food`.
+>
+> La seconda è il collo di bottiglia del passo che applica le decisioni (riga
+> 625), che rifiuta nel momento in cui `ingredient_id` è risolto, non prima.
+> Copre tre vie che né la 4.3 né `_mapped_proposal` vedono: il `merge` che nasce
+> in `collapse_creates`, il cui `ingredient_id` viene da `registry.by_name` senza
+> passare da `_mapped_proposal`; la risoluzione di `match_name` su un **alias**
+> di una voce non alimentare, che `_mapped_proposal` non intercetta perché
+> lavora sul nome canonico, mai sugli alias; e un `ingredient_id` che il
+> registro non conosce affatto — per esempio nato da una scrittura concorrente
+> fra la lettura del registro e questa applicazione — di cui nessuna passata può
+> dire il reparto. Nei tre casi il termine resta in coda, per la stessa regola
+> che rifiuta ogni risposta non verificabile.
+>
+> Il «Cinque» qui sopra resta il numero di **progetto**, e va letto così; questo
+> paragrafo non lo aggiorna a un numero nuovo perché il numero vero invecchia
+> ogni volta che l'implementazione trova un buco che il progetto non aveva
+> visto — è già successo una volta nel corso di questo stesso lavoro. Vale la
+> convenzione di CLAUDE.md: il codice è l'autorità su quante sono oggi. Chi la
+> vuole, la conta in `decide.py` e in `create_recipe`, non in questa sezione.
+
 ## 5. L'interfaccia
 
 ### 5.1 Il seme dei non alimentari
