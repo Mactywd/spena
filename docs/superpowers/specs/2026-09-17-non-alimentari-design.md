@@ -504,6 +504,14 @@ dispensa scegliendo il reparto, portato a zero col cursore, e rimesso in lista d
 domanda. È il giro che questa funzione esiste per rendere possibile, e attraversa
 backend e frontend insieme. Niente di nuovo in `style.spec.ts`: l'aspetto non cambia.
 
+> **In esecuzione il giro non sceglie il reparto (nota del 2026-09-18).** Il test
+> scritto (`frontend/e2e/non-alimentari.spec.ts`) prende il detersivo dal seme
+> tramite l'autocomplete, quindi arriva con il suo `ingredient_id` già noto, e
+> sistema la spesa sul ramo «Sfuso» — il `<select aria-label="Reparto">` non viene
+> mai reso, e `CustomProductForm isNonFood` non è mai esercitato in un browser.
+> Entrambi restano coperti dai test vitest (voci 13 e 14 sopra), quindi niente è
+> senza copertura; la frase descriveva un giro che non è quello scritto.
+
 ## 8. La messa in produzione
 
 1. Deploy normale: `git pull --ff-only` e `docker compose -f docker-compose.prod.yml
