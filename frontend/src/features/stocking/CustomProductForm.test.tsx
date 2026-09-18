@@ -140,7 +140,22 @@ describe("CustomProductForm", () => {
     renderForm({ itemLabel: "detersivo", isNonFood: true });
 
     expect(screen.queryByLabelText("Calorie per 100 g")).toBeNull();
+    expect(screen.getByLabelText("Marca")).toBeDefined();
     await userEvent.type(screen.getByLabelText("Nome"), "Dash");
+    await userEvent.click(screen.getByRole("button", { name: "Salva prodotto" }));
+
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+    const body = bodyOf(spy);
+    expect(body).not.toHaveProperty("nutrients");
+  });
+
+  it("per un non alimentare con una suggestion piena di nutrienti, i nutrienti si scartano e non mancano soltanto", async () => {
+    // qui `parsed` non è vuoto: seedNutrients(SUGGESTION) precompila otto
+    // valori veri. La sola cosa che deve impedirne l'invio è `isNonFood`, non
+    // l'assenza di una suggestion
+    const spy = stubFetch();
+    renderForm({ itemLabel: "detersivo", isNonFood: true, suggestion: SUGGESTION });
+
     await userEvent.click(screen.getByRole("button", { name: "Salva prodotto" }));
 
     await vi.waitFor(() => expect(spy).toHaveBeenCalled());

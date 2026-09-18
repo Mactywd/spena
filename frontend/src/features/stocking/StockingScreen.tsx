@@ -237,6 +237,19 @@ export function StockingScreen() {
 
   // lo stesso ragionamento di effectiveIngredientId: la voce può avere il suo
   // ingrediente dalla lista, oppure averlo appena abbinato qui dentro
+  //
+  // `null` vuol dire "non lo so" e fa mostrare i campi nutrienti come per un
+  // alimentare (CustomProductForm.isNonFood di default è false). Al punto di
+  // chiamata (sotto, <CustomProductForm isNonFood={effectiveKind(...) ===
+  // "non_food"}>) questo `null` non è raggiungibile: il modulo si apre solo se
+  // effectiveIngredientId(item) è valorizzato, e reparto e identificativo
+  // arrivano sempre insieme dalla stessa fonte — sia dal backend
+  // (app/api/shopping.py scrive ingredient_kind accanto a ingredient_id dallo
+  // stesso oggetto Ingredient, che non ha kind nullable) sia da un match fatto
+  // qui dentro. Se un giorno il backend tornasse un ingredient_id senza il suo
+  // ingredient (kind compreso), questo `null` tornerebbe raggiungibile e un
+  // detersivo mostrerebbe di nuovo le calorie, senza che nessun test se ne
+  // accorga.
   function effectiveKind(item: ShoppingItem): "food" | "non_food" | null {
     return item.ingredient_kind ?? matchedIngredient[item.id]?.kind ?? null;
   }
