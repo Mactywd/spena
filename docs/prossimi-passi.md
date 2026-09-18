@@ -183,7 +183,8 @@ vero che lista e dispensa dicano sempre «voce»: `AddItemField.tsx` (lista) e
 all'utente — «l'ingrediente si abbina dopo», «Abbina un ingrediente», «Crea
 l'ingrediente «…»» — proprio nel momento in cui si collega una voce di testo
 libero all'anagrafica. Non è un difetto introdotto da questo lavoro, esisteva
-già prima; resta un rinominamento aperto, non chiuso da questo task.
+già prima; resta un rinominamento aperto, non chiuso da questo task — voce in
+**Parte X**, dove si guarda il lavoro ancora aperto.
 
 ---
 
@@ -560,6 +561,25 @@ layout a 375px.
 
 # Parte X — Piccole cose aperte
 
+- **«Ingrediente» invece di «voce» in due schermate.** `AddItemField.tsx` (lista)
+  e `StockingScreen.tsx` (sistemazione della spesa) dicono entrambi
+  «ingrediente» all'utente — «l'ingrediente si abbina dopo», «Abbina un
+  ingrediente», «Crea l'ingrediente «…»» — proprio dove si collega una voce di
+  testo libero all'anagrafica, che ora può anche non essere cibo. Non è un
+  difetto introdotto dal lavoro sul non alimentare (D4), esisteva già prima;
+  resta un rinominamento aperto.
+- **`skipped_reason` non affiora da nessuna rotta né da nessuna schermata**,
+  solo il conteggio aggregato in `/api/v1/imports/status` — vale sia per il
+  nuovo motivo «riga non alimentare» (`NonFoodInRecipe`, D4) sia per il
+  preesistente `EMPTY_REASON` (`backend/app/services/recipe_import/materialize.py`).
+  Una pagina `SKIPPED` non si ritenta da sola: chi vuole sapere perché deve
+  aprire il database.
+- **La guardia sugli argomenti sconosciuti di `app.cli.seed` stampa il rifiuto
+  ma esce con codice 0** (`backend/app/cli/seed.py`, vicino a
+  `FLAG_SOLO_INGREDIENTI`): un refuso come `--solo-ingredient` viene detto a
+  schermo, ma niente lo farebbe fallire in uno script che controlla l'exit
+  code invece di leggere l'output. Innocuo finché quel comando resta digitato
+  a mano.
 - **Il gate a password resta** — deciso il 2026-09-15. `SESSION_MAX_AGE` è già **un
   anno** (`backend/app/core/security.py:9`): in produzione la password si digita una
   volta per browser e poi mai più. Senza gate, `POST /api/v1/imports/...` diventerebbe
