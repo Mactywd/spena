@@ -62,6 +62,20 @@ test("un detersivo fa il giro: lista, dispensa, e ritorno in lista", async ({ pa
   // timeout a occhio) e si prova anche il positivo, nello stesso campo, con un
   // ingrediente alimentare del seme: solo se quello compare l'assenza del
   // detersivo dice quel che dichiara di dire.
+  //
+  // La garanzia vera sta nel CORPO della risposta, non nel conteggio a video:
+  // `toHaveCount(0)` riprova solo finché fallisce, quindi se al primo sguardo
+  // il DOM è già a zero passa comunque — e c'è una finestra, stretta ma vera,
+  // fra la risoluzione di `waitForResponse` (evento di rete, CDP) e il commit
+  // di React che segue la promise dentro la pagina, in cui il DOM non ha
+  // ancora reso niente. In più `OptionList` monta la `<ul>` solo quando
+  // `found.length > 0` e la query non ha `placeholderData`, quindi `found`
+  // torna `[]` a ogni cambio di chiave finché la risposta non arriva: in una
+  // ipotetica regressione del filtro per reparto il conteggio a video
+  // partirebbe comunque da zero, e una lettura caduta in quella finestra
+  // passerebbe lo stesso. Il JSON che il server risponde non ha questa corsa:
+  // prova che il server esclude. L'asserzione sul DOM resta sotto e prova la
+  // cosa diversa e utile che le compete: che a schermo non compare.
   await page.getByRole("link", { name: "Ricette", exact: true }).click();
   const filtro = page.getByLabel("Contiene ingredienti");
 
@@ -69,7 +83,8 @@ test("un detersivo fa il giro: lista, dispensa, e ritorno in lista", async ({ pa
     (res) => res.url().includes("/ingredients/search") && res.url().includes("q=detersivo")
   );
   await filtro.fill("detersivo");
-  await rispostaDetersivo;
+  const risposta = await rispostaDetersivo;
+  expect(await risposta.json()).toEqual([]);
   await expect(page.getByRole("option", { name: /Detersivo/ })).toHaveCount(0);
 
   const rispostaPomodoro = page.waitForResponse(
