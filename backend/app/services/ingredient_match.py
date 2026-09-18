@@ -49,7 +49,7 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
         await session.execute(select(Ingredient).where(Ingredient.name == normalized).limit(1))
     ).scalar_one_or_none()
     if canonical is not None:
-        return NameMatch(canonical.id, canonical.name, True, canonical.kind)
+        return NameMatch(canonical.id, canonical.name, True, IngredientKind(canonical.kind))
 
     # Poi l'alias, solo se il nome canonico non ha già deciso. Stesso principio:
     # niente ambiguità silenziosa, un ordine esplicito anche qui.
@@ -63,10 +63,17 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
         )
     ).scalar_one_or_none()
     if via_alias is not None:
-        return NameMatch(via_alias.id, via_alias.name, True, via_alias.kind)
+        return NameMatch(via_alias.id, via_alias.name, True, IngredientKind(via_alias.kind))
 
     candidates = await search_ingredients(session, raw_name, limit=1)
     if not candidates:
         return NameMatch(None, None, False)
     best = candidates[0]
-    return NameMatch(best.id, best.name, False, best.kind)
+    # `Ingredient.kind` è una `String(10)`, non un tipo enum: appena la riga arriva
+    # da una sessione che la sta leggendo per la prima volta — il caso normale in
+    # produzione — l'attributo è la stringa grezza di Postgres, non il membro che
+    # `_deduce_kind` assegna in memoria alla costruzione. Convertire qui rende vera
+    # l'annotazione di `NameMatch.kind` a prescindere da come l'oggetto è arrivato,
+    # invece di lasciarla vera per caso quando l'ingrediente è ancora nella identity
+    # map di chi lo ha creato.
+    return NameMatch(best.id, best.name, False, IngredientKind(best.kind))

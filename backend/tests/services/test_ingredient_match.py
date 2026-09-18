@@ -103,3 +103,18 @@ async def test_la_stesura_ai_usa_questa_funzione(db_session, anagrafica, monkeyp
     finally:
         get_settings.cache_clear()
     assert chiamate == ["pasta"]
+
+
+async def test_kind_e_davvero_lenum_anche_fuori_dalla_identity_map(db_session, anagrafica):
+    """`kind` è dichiarato `IngredientKind | None`, ma la colonna è una `String(10)`:
+    finché l'oggetto resta nella identity map della sessione che lo ha costruito,
+    l'attributo è ancora il membro dell'enum assegnato da `_deduce_kind`, e il test
+    passerebbe comunque. In produzione l'ingrediente arriva sempre da una sessione
+    che lo sta leggendo per la prima volta, non da una che lo ha appena creato:
+    qui si forza la stessa forma con un `expire_all`, che butta via lo stato in
+    memoria e obbliga una rilettura dalla riga grezza."""
+    from app.domain.rules import IngredientKind
+
+    db_session.expire_all()
+    match = await match_name(db_session, "Pomodoro")
+    assert isinstance(match.kind, IngredientKind)
