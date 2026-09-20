@@ -67,9 +67,67 @@ async def test_solo_cucinabili_vede_oltre_la_piscina_dei_candidati(db_session):
         bottarga.created_at = adesso + timedelta(seconds=numero)
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, only_cookable=True)
+    risultati = await search_recipes(db_session, max_missing=0)
 
     assert [r.recipe.title for r in risultati] == ["Pasta in bianco"]
+
+
+async def test_una_soglia_oltre_lo_zero_vede_oltre_la_piscina(db_session):
+    """Il gemello del test qui sopra, per una soglia diversa da zero.
+
+    I due insieme chiudono la condizione da entrambi i lati, ed è il punto di tutto
+    il lavoro: scritta `if not max_missing` la soglia zero ricadrebbe sotto il limite
+    e lo direbbe il test di sopra; scritta `if max_missing == 0` ci cadrebbe la
+    soglia uno, e lo dice solo questo.
+
+    Le ricette di scarto ne hanno due di mancanti, non una: devono restare fuori dal
+    filtro e non solo in fondo all'ordine.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import CANDIDATE_POOL, search_recipes
+
+    ho = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    non_ho = Ingredient(
+        name="bottarga", display_name="Bottarga", category=IngredientCategory.PESCE
+    )
+    nemmeno = Ingredient(
+        name="zafferano", display_name="Zafferano", category=IngredientCategory.SPEZIE
+    )
+    db_session.add_all([ho, non_ho, nemmeno])
+    await db_session.flush()
+    db_session.add(PantryItem(ingredient_id=ho.id, status="available"))
+    await db_session.flush()
+
+    # stessa costruzione del test di sopra: `created_at` assegnato a mano, e quella
+    # che ci interessa indiscutibilmente la più vecchia di tutte
+    adesso = datetime.now(UTC)
+    quasi = await create_recipe(
+        db_session, title="Pasta con la bottarga", description="Ne manca una",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(ho.id, "primary", "320 g", None), (non_ho.id, "primary", "20 g", None)],
+        embedding=None,
+    )
+    quasi.created_at = adesso - timedelta(seconds=CANDIDATE_POOL + 10)
+    for numero in range(CANDIDATE_POOL + 5):
+        scarto = await create_recipe(
+            db_session, title=f"Introvabile {numero}", description="Ne mancano due",
+            instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+            ingredients=[
+                (non_ho.id, "primary", "20 g", None),
+                (nemmeno.id, "primary", "1 bustina", None),
+            ],
+            embedding=None,
+        )
+        scarto.created_at = adesso + timedelta(seconds=numero)
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session, max_missing=1)
+
+    assert [r.recipe.title for r in risultati] == ["Pasta con la bottarga"]
 
 
 async def test_il_filtro_per_categoria_sceglie_in_sql(db_session):

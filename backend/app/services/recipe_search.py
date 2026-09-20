@@ -344,11 +344,12 @@ def _containing_all(statement, ingredient_ids: list[uuid.UUID]):
 async def search_recipes(
     session: AsyncSession,
     query: str | None = None,
-    only_cookable: bool = False,
+    max_missing: int | None = None,
     limit: int = 30,
     category: str | None = None,
     ingredient_ids: list[uuid.UUID] | None = None,
 ) -> list[RecipeSearchResult]:
+    """`max_missing` è quante cose si è disposti a comprare; `None` è «tutte»."""
     if query and query.strip():
         semantic = await _semantic_ranking(session, query)
         textual = await _textual_ranking(session, query)
@@ -366,14 +367,16 @@ async def search_recipes(
             statement = statement.where(Recipe.category == category)
         if ingredient_ids:
             statement = _containing_all(statement, ingredient_ids)
-        # Senza `only_cookable` la piscina basta: è uno scorrimento, e cento ricette
-        # recenti sono più di quante se ne guardino. Con `only_cookable` no: il
-        # filtro lavora sul risultato, quindi limitare prima significa filtrare
-        # dentro un campione, e «cosa posso cucinare» risponderebbe guardando solo
-        # le ricette entrate ieri. Misurato: a cinquecento ricette la passata
-        # completa non si distingue; oltre qualche migliaio va misurata di nuovo, e
-        # se non regge la regola scende in SQL.
-        if not only_cookable:
+        # Senza soglia la piscina basta: è uno scorrimento, e cento ricette recenti
+        # sono più di quante se ne guardino. Con una soglia no — zero compreso: il
+        # filtro lavora sul risultato, quindi limitare prima significa filtrare dentro
+        # un campione, e «cosa posso cucinare se compro due cose» risponderebbe
+        # guardando solo le ricette entrate ieri. `is None` e non la verità: `0` è una
+        # soglia, la più stretta, e `if not max_missing` la tratterebbe come la sua
+        # assenza. Misurato: a cinquecento ricette la passata completa non si
+        # distingue; oltre qualche migliaio va misurata di nuovo, e se non regge la
+        # regola scende in SQL.
+        if max_missing is None:
             statement = statement.limit(CANDIDATE_POOL)
         candidate_ids = list((await session.execute(statement)).scalars())
         fused = {recipe_id: 0.0 for recipe_id in candidate_ids}
@@ -408,6 +411,11 @@ async def search_recipes(
         # plurale stringe più di quello singolo, quindi il caso è semmai meno
         # frequente di prima, non di più. Se il ricettario cresce, è questo il punto
         # da rimisurare.
+        #
+        # Dal 2026-09-21 lo stesso vale per la soglia dei mancanti: su questo ramo
+        # «a cui manca al massimo una cosa» vuol dire «fra le ricette che parlano di
+        # queste parole», non «in tutto il ricettario». È la stessa scelta, con lo
+        # stesso motivo e lo stesso punto da rimisurare.
         recipe_statement = _containing_all(recipe_statement, ingredient_ids)
     recipes = {
         r.id: r
@@ -429,8 +437,10 @@ async def search_recipes(
                 score=fused.get(recipe_id, 0.0),
             )
         )
-    if only_cookable:
-        results = [r for r in results if r.cookable]
+    if max_missing is not None:
+        # `r.missing` l'ha già contato `missing_count`: questo confronto legge la
+        # regola, non la ricopia
+        results = [r for r in results if r.missing <= max_missing]
 
     # prima ciò che puoi davvero cucinare, poi la pertinenza
     results.sort(key=lambda r: (r.missing, -r.score, r.recipe.title))
