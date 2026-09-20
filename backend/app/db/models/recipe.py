@@ -79,8 +79,16 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
 class RecipeIngredient(UUIDMixin, Base):
     """Il ruolo è il pezzo che rende utile lo stato "quasi finito".
 
-    `quantity_text` è testo di sola visualizzazione: non entra mai in nessun
-    calcolo, per scelta di progetto.
+    `quantity_text` è la dose come l'ha scritta la fonte: non si riscrive mai e non
+    si perde mai, ed è quel che si mostra a 1×. Dal 2026-09-20 non è più l'unica
+    cosa che si sa della dose: `quantity_value` e `quantity_unit_id` accanto sono
+    *ricavate* da quel testo dal parser di `app/domain/quantities.py`, e servono
+    solo a riporzionare — annullabili entrambe, perché «q.b.» non si scala e dirlo
+    è meglio che indovinare. Il verso è uno solo: il testo alimenta le colonne, le
+    colonne non toccano il testo.
+
+    Il ristringimento riguarda le ricette e basta: la dispensa continua a non
+    sapere né quantità, né unità, né scadenze (decisione fondante 1).
     """
 
     __tablename__ = "recipe_ingredients"

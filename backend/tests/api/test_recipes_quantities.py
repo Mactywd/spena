@@ -90,3 +90,34 @@ async def test_la_stessa_unita_non_si_duplica(db_session, cucina):
         await db_session.execute(select(Unit).where(Unit.key == "g"))
     ).scalars().all()
     assert len(units) == 1
+
+
+async def test_una_parola_lunghissima_non_fa_fallire_il_salvataggio(
+    logged_client, db_session, cucina
+):
+    """La riga non si scala, la ricetta si salva: il difetto era il contrario.
+
+    `quantity_text` accetta 100 caratteri, quindi un incollaggio senza spazio passa
+    Pydantic e arriva fin qui. Finché il parser non metteva un limite alla parola
+    dell'unità, `ensure_unit` provava a depositare una chiave di 42 caratteri in una
+    colonna da 30: Postgres sollevava un `DataError`, che non è un `IntegrityError` e
+    quindi nessun `except` della rotta intercettava — 500, e la ricetta persa.
+    """
+    testo = "2 cucchiaidioliaextravergineditolivapugliese"
+    risposta = await logged_client.post("/api/v1/recipes", json={
+        "title": "Incollata", "instructions": "Cuoci.", "servings": 2,
+        "source": "manual",
+        "ingredients": [
+            {"ingredient_id": str(cucina["pasta"].id), "role": "primary",
+             "quantity_text": testo},
+        ],
+    })
+
+    assert risposta.status_code == 201
+    riga = risposta.json()["ingredients"][0]
+    # il testo resta intero — non si riscrive mai — e semplicemente non si scala
+    assert riga["quantity_text"] == testo
+    assert riga["quantity_scaled"] is False
+    # e nessuna unità mostruosa è finita nel registro
+    chiavi = (await db_session.execute(select(Unit.key))).scalars().all()
+    assert all(len(chiave) <= 30 for chiave in chiavi)

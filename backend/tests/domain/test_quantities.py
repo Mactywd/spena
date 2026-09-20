@@ -2,7 +2,13 @@ from decimal import Decimal
 
 import pytest
 
-from app.domain.quantities import UnitForms, parse_quantity, render_quantity, scale_quantity
+from app.domain.quantities import (
+    UNIT_MAX_LENGTH,
+    UnitForms,
+    parse_quantity,
+    render_quantity,
+    scale_quantity,
+)
 
 
 @pytest.mark.parametrize(
@@ -44,6 +50,11 @@ from app.domain.quantities import UnitForms, parse_quantity, render_quantity, sc
         ("300 g + q.b.", (None, None)),
         # maiuscole e spazi non contano
         ("  300  G  ", (Decimal("300"), "g")),
+        # numero misto: «2 1/2» sono due e mezzo, e leggerne solo il 2 vorrebbe dire
+        # riporzionare una dose dimezzata senza dirlo a nessuno
+        ("2 1/2 cucchiai", (None, None)),
+        ("1 1/2", (None, None)),
+        ("2  1/2 tazze", (None, None)),
     ],
 )
 def test_parse_quantity(text, expected):
@@ -53,6 +64,25 @@ def test_parse_quantity(text, expected):
 def test_una_frazione_impossibile_non_solleva():
     """Una dose che non si capisce non è un errore: è una dose che non si scala."""
     assert parse_quantity("1/0 bicchiere") == (None, None)
+
+
+@pytest.mark.parametrize(
+    "lunghezza,atteso_unita",
+    [
+        (UNIT_MAX_LENGTH, "c" * UNIT_MAX_LENGTH),
+        (UNIT_MAX_LENGTH + 1, None),
+    ],
+)
+def test_una_parola_piu_lunga_della_colonna_non_e_una_unita(lunghezza, atteso_unita):
+    """Il confine è quello di `units.key`, e sta qui perché la colonna lo prende da qui.
+
+    Una parola oltre il limite arriva da un incollaggio senza spazio — «2 cucchiai
+    dioliaextravergine…» — e depositarla farebbe fallire con un DataError la
+    scrittura di tutta la ricetta, non solo di quella riga.
+    """
+    testo = f"2 {'c' * lunghezza}"
+    atteso_valore = Decimal("2") if atteso_unita else None
+    assert parse_quantity(testo) == (atteso_valore, atteso_unita)
 
 
 CUCCHIAIO = UnitForms(key="cucchiai", singular="cucchiaio", plural="cucchiai")

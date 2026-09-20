@@ -14,6 +14,15 @@ from decimal import Decimal, DivisionByZero, InvalidOperation, ROUND_HALF_UP
 # queste righe si sommeranno per la nutrizione
 PRECISION = Decimal("0.001")
 
+# Quanto può essere lunga la parola di un'unità. La costante nasce qui, nel modulo
+# puro, e `app/db/models/unit.py` la importa da qui per dimensionare `units.key`:
+# tenerne due copie vorrebbe dire che un giorno il parser accetta una parola che la
+# colonna non regge, e quel giorno la scrittura intera fallisce. È già successo in
+# prova: «2 cucchiai dioliaextravergineditolivapugliese» senza uno spazio dava una
+# chiave di 42 caratteri, e Postgres rifiutava tutta la ricetta con un DataError che
+# nessun `except` di questo progetto intercetta.
+UNIT_MAX_LENGTH = 30
+
 # numero in testa (intero, decimale con virgola o punto, frazione), e subito dopo
 # la parola dell'unità se c'è. Tutto quel che segue è prosa e non ci riguarda:
 # «1 litro di brodo» è un litro, e «di brodo» sta già in quantity_text.
@@ -40,6 +49,10 @@ def parse_quantity(text: str | None) -> tuple[Decimal | None, str | None]:
     Torna `(None, None)` per tutto ciò che non comincia con un numero — «q.b.»,
     «abbondante», «facoltativo» — e non solleva mai: una dose che non si capisce
     non è un errore, è una dose che non si scala.
+
+    Lo stesso vale per le due cose che si capirebbero male: una dose che continua
+    con un altro numero («2 1/2 cucchiai») e una parola d'unità più lunga di
+    `UNIT_MAX_LENGTH`. Nessuna delle due si scala, e dirlo è meglio che scalarle.
     """
     if not text:
         return (None, None)
@@ -68,6 +81,18 @@ def _parse_one(piece: str) -> tuple[Decimal | None, str | None]:
     except (InvalidOperation, DivisionByZero, ZeroDivisionError):
         return (None, None)
     unit = found["unit"].lower() if found["unit"] else None
+    if unit is None and piece[found.end():][:1].isdigit():
+        # «2 1/2 cucchiai»: il numero in testa è metà della dose, non la dose. Dire
+        # 2 invece di 2,5 sarebbe il riporziona sbagliato in silenzio che la spec
+        # §4.1 mette fra le cose che non devono succedere mai.
+        return (None, None)
+    if unit is not None and len(unit) > UNIT_MAX_LENGTH:
+        # una parola più lunga della colonna che la depositerà non è un'unità: è un
+        # incollaggio senza spazio. Rifiutarla qui è quel che tiene il parser
+        # dentro il suo contratto — una dose che nessuno sa leggere non si scala —
+        # e insieme quel che impedisce a una riga sola di far fallire la scrittura
+        # di tutta la ricetta più a valle.
+        return (None, None)
     return (value, unit)
 
 

@@ -15,8 +15,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.db.models.base import TimestampMixin, UUIDMixin
+from app.domain.quantities import UNIT_MAX_LENGTH
 
-UNIT_MAX_LENGTH = 30
+# `UNIT_MAX_LENGTH` si importa dal parser e non si ridichiara qui: è lui a decidere
+# quali parole possono diventare una chiave, e due numeri separati divergerebbero il
+# giorno in cui uno dei due cambia. Chi lo importa da questo modulo continua a
+# trovarlo (`app/services/unit_forms.py`).
 
 
 class Unit(UUIDMixin, TimestampMixin, Base):
