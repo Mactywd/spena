@@ -49,10 +49,12 @@ alimentare: migrazione `0007` applicata all'avvio, anagrafica allargata a 18 voc
 verifica a mano dello stesso giorno ha trovato un difetto **preesistente e non
 legato ai non alimentari**: vedi **S6**.
 
-**Il 2026-09-20 S6 è corretto** — la porta che crea un ingrediente non si chiude più
-quando la ricerca trova qualcosa — con il suo test in jsdom e una verifica a 375px nel
-browser vero. **Non è ancora distribuito**: finché non lo è, quella voce dice
-«CORRETTO», non «FATTO».
+**Il 2026-09-20 S6 è entrato in `master` e in produzione**: la porta che crea un
+ingrediente non si chiude più quando la ricerca trova qualcosa. Solo frontend,
+**nessuna migrazione**. Che in produzione ci sia davvero il codice nuovo è verificato
+sul pacchetto servito — `assets/index-C2_ldMnr.js`, lo stesso nome (cioè lo stesso
+contenuto) della build locale del ramo corretto — e non sui container «healthy», che
+sarebbero healthy anche con il pacchetto di ieri.
 
 ---
 
@@ -283,7 +285,7 @@ Vedi D4: stessa lista, stessa dispensa, nessuna informazione nutrizionale — so
 la voce con il suo slider. Spec:
 `docs/superpowers/specs/2026-09-17-non-alimentari-design.md`.
 
-## S6. «Sistema la spesa» chiudeva l'unica porta che crea un ingrediente **[CORRETTO 2026-09-20, non ancora distribuito]**
+## S6. «Sistema la spesa» chiudeva l'unica porta che crea un ingrediente **[FATTO 2026-09-20]**
 Il menù **Reparto** e il pulsante «Crea l'ingrediente «X»» compaiono solo se la
 ricerca non trova nulla (`frontend/src/features/stocking/StockingScreen.tsx`,
 condizione `suggestions.length === 0`). Basta **un** suggerimento qualsiasi, anche
@@ -357,9 +359,9 @@ della misura in produzione) **e sotto di essi** Reparto e il pulsante di creazio
 su 375px sta su una riga sola. I nove controlli e2e esistenti restano verdi, e lo
 stack è stato ricreato con `down -v` dopo il giro a mano, che lo sporca.
 
-**Resta da distribuire:** al momento della scrittura la correzione è nell'albero di
-lavoro, non in produzione. Chi la porta in `master` e sul server aggiorni questa riga
-in «FATTO», come per le altre voci di questo file.
+**Distribuito il 2026-09-20**, commit `8854ed7`, senza migrazioni: il pacchetto
+servito da `spena.mattiagirellini.com` è lo stesso della build locale del codice
+corretto.
 
 ---
 
