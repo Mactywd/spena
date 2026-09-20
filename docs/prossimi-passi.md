@@ -776,12 +776,18 @@ layout a 375px.
   l'ortografia**, e non deve: sarebbe un secondo giudizio sul primo. L'`--azzera`
   ha sistemato `cucchiaino` al secondo tentativo e **non ha sistemato `cucchiai`**:
   il modello ha rifatto lo stesso errore. Quindi per una parola che sbaglia in modo
-  ripetibile oggi l'unica via è una `UPDATE` a mano sul database, cioè fuori da ogni
-  strada progettata. Il pezzo di lavoro che chiude davvero il buco è piccolo — un
-  `--imposta <chiave> <singolare> <plurale>` accanto all'`--azzera`, che scriva
-  `decided_by = "human"` (valore già nel vocabolario del modello, oggi mai scritto
-  per le unità) — e vale più della schermata: l'annulla senza un «invece è così»
-  è mezzo strumento.
+  ripetibile l'unica via sarebbe stata una `UPDATE` a mano sul database, cioè fuori
+  da ogni strada progettata.
+
+  **Chiuso lo stesso giorno**: `python -m app.cli.decide_units --imposta <chiave>
+  <singolare> <plurale>` scrive le forme a mano e segna `decided_by = "human"`, che
+  toglie la riga dalla coda di `undecided_units` — una decisione umana è definitiva
+  finché non la si azzera, altrimenti il giro dopo il modello rifarebbe l'errore
+  appena corretto. Scrive attraverso lo stesso `_write_forms` che usa l'AI, così il
+  puntatore al canonico non può divergere fra le due strade. `cucchiai` è stato
+  corretto in produzione con questo comando. **Resta vero il resto della voce**: una
+  schermata per farlo dall'interfaccia continua a non valere il lavoro, e l'annulla
+  da solo continua a non bastare — ma adesso non è più da solo.
 - **Circa settanta dosi in produzione contengono una dose vera che il parser non
   legge, per colpa di come l'import le ha scritte (D1).** Misurato il 2026-09-20 su
   67 ricette: `reparse_quantities` ha parsato 382 dosi su 550 e ne ha lasciate 168.

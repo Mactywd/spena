@@ -3,8 +3,8 @@
 from sqlalchemy import select
 
 from app.cli.decide_units import main
-from app.db.models.unit import Unit
-from app.repositories.units import reset_unit
+from app.db.models.unit import UNIT_MAX_LENGTH, Unit
+from app.repositories.units import reset_unit, set_unit_forms, undecided_units
 
 
 async def test_azzerare_riporta_una_unita_a_non_decisa(db_session):
@@ -125,3 +125,104 @@ async def test_senza_chiave_configurata_dice_quante_ne_restano(
         ).scalars().one().decided_by is None
     finally:
         get_settings.cache_clear()
+
+
+async def test_imposta_scrive_le_forme_a_mano(db_session):
+    """La correzione che l'`--azzera` da solo non sa fare.
+
+    Misurato in produzione il 2026-09-20: azzerare «cucchiai» e rilanciare ha
+    riprodotto lo stesso errore del modello («cchiaio», con la «u» mangiata). Un
+    annulla senza un «invece è così» è mezzo strumento, e per una parola che
+    sbaglia in modo ripetibile era l'unica strada rimasta una UPDATE a mano.
+    """
+    db_session.add(Unit(key="cucchiai", singular="cchiaio", plural="cucchiai", decided_by="ai"))
+    await db_session.flush()
+
+    assert await set_unit_forms(db_session, "cucchiai", "cucchiaio", "cucchiai") is True
+
+    riga = (
+        await db_session.execute(select(Unit).where(Unit.key == "cucchiai"))
+    ).scalars().one()
+    assert riga.singular == "cucchiaio" and riga.plural == "cucchiai"
+    # «human» e non «ai»: chi legge il registro deve poter distinguere una riga che
+    # il modello ha deciso da una che qualcuno ha corretto, altrimenti la seconda
+    # sembra un successo del primo.
+    assert riga.decided_by == "human"
+    assert riga.decided_at is not None
+
+
+async def test_imposta_una_chiave_che_non_esiste_lo_dice(db_session):
+    assert await set_unit_forms(db_session, "inesistente", "uno", "due") is False
+
+
+async def test_una_forma_messa_a_mano_non_torna_in_coda(db_session):
+    """Una decisione umana è definitiva finché non la si azzera: se `decide_units`
+    la ripescasse, il modello rifarebbe l'errore che qualcuno è appena andato a
+    correggere — e la correzione durerebbe fino al comando dopo."""
+    db_session.add(Unit(key="cucchiai"))
+    await db_session.flush()
+
+    await set_unit_forms(db_session, "cucchiai", "cucchiaio", "cucchiai")
+
+    assert [u.key for u in await undecided_units(db_session)] == []
+
+
+async def test_imposta_punta_al_canonico_come_fa_l_ai(db_session):
+    """Stessa regola di `apply_forms`, perché è lo stesso fatto: «cucchiai» il cui
+    singolare è «cucchiaio», che in anagrafica esiste già, ci punta — così S4
+    riempirà il peso di quell'unità una volta sola. Scriverla due volte in due
+    funzioni sarebbe il modo di farle divergere."""
+    canonico = Unit(key="cucchiaio", singular="cucchiaio", plural="cucchiai", decided_by="ai")
+    db_session.add_all([canonico, Unit(key="cucchiai")])
+    await db_session.flush()
+
+    await set_unit_forms(db_session, "cucchiai", "cucchiaio", "cucchiai")
+
+    riga = (
+        await db_session.execute(select(Unit).where(Unit.key == "cucchiai"))
+    ).scalars().one()
+    assert riga.canonical_id == canonico.id
+
+
+async def test_imposta_con_gli_argomenti_sbagliati_dice_come_si_usa(capsys):
+    assert await main(["--imposta", "cucchiai"]) == 2
+    assert "uso: --imposta <chiave> <singolare> <plurale>" in capsys.readouterr().out
+
+
+async def test_imposta_una_forma_vuota_o_troppo_lunga_non_passa(capsys):
+    """Lo stesso rifiuto che `decide_unit_forms` applica alla risposta dell'AI: le
+    colonne sono `String(UNIT_MAX_LENGTH)`, e una parola più lunga non produrrebbe
+    un errore leggibile ma un troncamento di Postgres a metà della scrittura."""
+    assert await main(["--imposta", "cucchiai", "", "cucchiai"]) == 2
+    assert "vuota" in capsys.readouterr().out
+
+    troppo = "c" * (UNIT_MAX_LENGTH + 1)
+    assert await main(["--imposta", "cucchiai", troppo, "cucchiai"]) == 2
+    assert str(UNIT_MAX_LENGTH) in capsys.readouterr().out
+
+
+async def test_imposta_una_chiave_che_non_esiste_esce_diverso_da_zero(
+    db_session, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        "app.cli.decide_units.SessionLocal", lambda: _SessioneFinta(db_session)
+    )
+
+    assert await main(["--imposta", "inesistente", "uno", "due"]) == 1
+    assert "nessuna unità" in capsys.readouterr().out
+
+
+async def test_imposta_una_chiave_vera_scrive_e_lo_dice(db_session, monkeypatch, capsys):
+    """Il percorso felice per intero, comando compreso."""
+    db_session.add(Unit(key="cucchiai", singular="cchiaio", plural="cucchiai", decided_by="ai"))
+    await db_session.flush()
+    monkeypatch.setattr(
+        "app.cli.decide_units.SessionLocal", lambda: _SessioneFinta(db_session)
+    )
+
+    assert await main(["--imposta", "cucchiai", "cucchiaio", "cucchiai"]) == 0
+    assert "cucchiaio" in capsys.readouterr().out
+    riga = (
+        await db_session.execute(select(Unit).where(Unit.key == "cucchiai"))
+    ).scalars().one()
+    assert riga.singular == "cucchiaio" and riga.decided_by == "human"

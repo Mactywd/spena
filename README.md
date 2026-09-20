@@ -158,8 +158,17 @@ docker compose exec backend python -m app.cli.decide_units
 Chiede all'AI un lotto di parole per volta e applica solo le risposte che sa
 verificare; l'ultima riga dice quante ne restano, e allora si rilancia. `import_gz` lo
 nomina quando ne ha depositate di nuove. Senza, non si rompe niente: le dosi
-riporzionate mostrano la parola grezza, che è brutto e non è sbagliato. Una decisione
-storta si annulla con `--azzera <parola>`, e il giro dopo la ridecide.
+riporzionate mostrano la parola grezza, che è brutto e non è sbagliato.
+
+Una decisione storta si annulla con `--azzera <parola>`, e il giro dopo la ridecide —
+ma se il modello rifà lo stesso errore, e capita, la si scrive a mano:
+
+```bash
+docker compose exec backend python -m app.cli.decide_units --imposta cucchiai cucchiaio cucchiai
+```
+
+La riga passa a `decided_by = "human"` e il comando non la ripesca più, finché non la
+si azzera: altrimenti il giro dopo il modello rifarebbe l'errore appena corretto.
 
 Una volta sola dopo la migrazione `0008`, e poi ogni volta che il parser delle dosi
 migliora:
