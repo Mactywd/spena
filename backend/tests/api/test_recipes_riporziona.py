@@ -85,6 +85,9 @@ async def test_con_servings_le_dosi_parsate_scalano(logged_client, ricetta_mista
 
     assert corpo["scaled_to"] == 2
     assert corpo["unscalable_lines"] == 1
+    # tutte e tre le righe hanno una dose scritta: qui denominatore e numero di
+    # ingredienti coincidono per caso, ed è proprio il caso che nascondeva il difetto
+    assert corpo["dose_lines"] == 3
 
 
 async def test_le_stesse_porzioni_sono_come_non_averle_chieste(logged_client, ricetta_mista):
@@ -94,6 +97,38 @@ async def test_le_stesse_porzioni_sono_come_non_averle_chieste(logged_client, ri
     assert corpo["unscalable_lines"] == 0
     for line in corpo["ingredients"]:
         assert line["quantity_display"] == line["quantity_text"]
+
+
+async def test_una_riga_senza_dose_non_e_una_dose_che_non_si_riscala(
+    logged_client, db_session, cucina
+):
+    """Il denominatore sono le dosi, non gli ingredienti.
+
+    `materialize.py`, la stesura AI e l'inserimento a mano producono tutti righe con
+    `quantity_text` nullo. Contarle fra quelle «che non si riscalano» manderebbe
+    l'utente a cercare dosi che nella ricetta non ci sono — e la spec §5.4 promette
+    su questa riga la stessa onestà dei nutrienti mancanti: l'assenza si dichiara,
+    non si gonfia.
+    """
+    recipe = await create_recipe(
+        db_session,
+        title="Con una riga muta", description=None, instructions="i", servings=4,
+        source="dataset", source_ref=None,
+        ingredients=[
+            (cucina["pasta"].id, "primary", "300 g", None),
+            (cucina["cipolla"].id, "primary", "q.b.", None),
+            (cucina["sale"].id, "secondary", None, None),
+        ],
+        embedding=None,
+    )
+    await db_session.flush()
+
+    corpo = (await logged_client.get(f"/api/v1/recipes/{recipe.id}?servings=2")).json()
+
+    # tre ingredienti, due dosi: una scalata e una no
+    assert len(corpo["ingredients"]) == 3
+    assert corpo["dose_lines"] == 2
+    assert corpo["unscalable_lines"] == 1
 
 
 async def test_senza_porzioni_dichiarate_il_parametro_si_ignora(

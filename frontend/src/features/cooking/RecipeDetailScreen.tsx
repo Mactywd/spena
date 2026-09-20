@@ -86,7 +86,6 @@ export function RecipeDetailScreen() {
     { label: "Principali", lines: primary },
     { label: "Secondari", lines: secondary },
   ];
-  const totalLines = recipe.ingredients.length;
 
   return (
     <div className="px-4 pt-2 pb-4">
@@ -183,9 +182,12 @@ export function RecipeDetailScreen() {
 
           {recipe.unscalable_lines > 0 && (
             <p className="px-1 pt-2 text-sm text-ink-faint">
+              {/* il denominatore è quante dosi ha la ricetta, non quanti
+                  ingredienti: una riga senza dose non è una dose mancata, e il
+                  conto lo fa il backend, che sa quali righe una dose ce l'hanno */}
               {recipe.unscalable_lines === 1
-                ? `1 dose su ${totalLines} non si riscala: resta com'è.`
-                : `${recipe.unscalable_lines} dosi su ${totalLines} non si riscalano: restano come sono.`}
+                ? `1 dose su ${recipe.dose_lines} non si riscala: resta com'è.`
+                : `${recipe.unscalable_lines} dosi su ${recipe.dose_lines} non si riscalano: restano come sono.`}
             </p>
           )}
 

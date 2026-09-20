@@ -11,7 +11,10 @@ const DETAIL: RecipeDetail = {
   missing: 2, cookable: false, image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, instructions: "Cuoci.",
   servings: 2, source_ref: null, scaled_to: null,
-  unscalable_lines: 0,
+  // quattro righe su cinque portano una dose: «basilico» non ne ha nessuna, ed è la
+  // riga che tiene onesto il denominatore — il conto delle dosi non è il conto degli
+  // ingredienti, e il server manda il primo
+  unscalable_lines: 0, dose_lines: 4,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
       quantity_display: "180 g", quantity_scaled: false,
@@ -19,13 +22,16 @@ const DETAIL: RecipeDetail = {
     { ingredient_id: "i2", ingredient_name: "pomodoro", role: "primary", quantity_text: "400 g",
       quantity_display: "400 g", quantity_scaled: false,
       note: null, availability: "low", satisfied: false },
-    { ingredient_id: "i3", ingredient_name: "aglio", role: "secondary", quantity_text: null,
-      quantity_display: null, quantity_scaled: false,
+    { ingredient_id: "i3", ingredient_name: "aglio", role: "secondary", quantity_text: "q.b.",
+      quantity_display: "q.b.", quantity_scaled: false,
       note: null, availability: "low", satisfied: true },
     // senza una riga che manca, metà di statusNote non è coperta da niente
     { ingredient_id: "i4", ingredient_name: "basilico", role: "secondary", quantity_text: null,
       quantity_display: null, quantity_scaled: false,
       note: null, availability: "missing", satisfied: false },
+    { ingredient_id: "i5", ingredient_name: "olio", role: "secondary", quantity_text: "q.b.",
+      quantity_display: "q.b.", quantity_scaled: false,
+      note: null, availability: "available", satisfied: true },
   ],
 };
 
@@ -264,12 +270,18 @@ describe("RecipeDetailScreen", () => {
   const DIMEZZATA = {
     ...DETAIL,
     scaled_to: 2,
+    // due «q.b.» che non si riscalano, su quattro righe che una dose ce l'hanno.
+    // «basilico» non entra in nessuno dei due numeri: non ha dose, quindi non è una
+    // dose mancata — se il denominatore fosse `ingredients.length` si leggerebbe
+    // «2 dosi su 5» e si andrebbe a cercare una quinta dose che non esiste
     unscalable_lines: 2,
+    dose_lines: 4,
     ingredients: [
       { ...DETAIL.ingredients[0], quantity_display: "90 g", quantity_scaled: true },
       { ...DETAIL.ingredients[1], quantity_display: "200 g", quantity_scaled: true },
-      { ...DETAIL.ingredients[2], quantity_display: null, quantity_scaled: false },
+      { ...DETAIL.ingredients[2], quantity_display: "q.b.", quantity_scaled: false },
       { ...DETAIL.ingredients[3], quantity_display: null, quantity_scaled: false },
+      { ...DETAIL.ingredients[4], quantity_display: "q.b.", quantity_scaled: false },
     ],
   };
 
@@ -289,8 +301,14 @@ describe("RecipeDetailScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
 
     expect(await screen.findByText("90 g")).toBeDefined();
-    // e la copertura si dichiara invece di far finta di niente
+    // e la copertura si dichiara invece di far finta di niente. «su 4» sono le dosi
+    // della ricetta, non i suoi cinque ingredienti: il denominatore arriva dal
+    // server, che è l'unico a sapere quali righe una dose ce l'hanno. Prima di
+    // questa correzione la schermata usava `ingredients.length`, e questa stessa
+    // frase era vera per il motivo sbagliato — su una ricetta importata con quattro
+    // righe senza dose mandava a cercare quattro dosi inesistenti.
     expect(screen.getByText(/2 dosi su 4 non si riscalano/)).toBeDefined();
+    expect(screen.queryByText(/su 5/)).toBeNull();
     expect(spy.mock.calls.some(([url]) => String(url).includes("servings=1"))).toBe(true);
   });
 

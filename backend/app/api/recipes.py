@@ -55,18 +55,31 @@ async def _to_out(
     # Capacitor. In TypeScript vorrebbe dire spedire il registro delle unità al
     # client e tenere le stesse regole in due lingue.
     factor: Decimal | None = None
-    if servings and recipe.servings:
+    # `is not None` e non la verità: che `servings=0` non arrivi mai qui lo garantisce
+    # `Query(ge=1)` in fondo a questo file, e una condizione che dipende da un
+    # validatore scritto altrove smette di valere il giorno in cui quello cambia
+    if servings is not None and recipe.servings is not None:
         factor = Decimal(servings) / Decimal(recipe.servings)
         if factor == 1:
             factor = None  # chiedere le porzioni che ha già è come non chiedere niente
 
     lines: list[RecipeIngredientOut] = []
     requirements: list[tuple[IngredientRole, Availability]] = []
+    # Il conto della copertura si fa sulle righe che una dose ce l'hanno. «aglio» e
+    # «basilico» senza `quantity_text` non sono dosi che non si riscalano: sono righe
+    # senza dose, e contarle farebbe leggere «4 dosi su 12 non si riscalano» a chi di
+    # dosi non riuscite ne ha due. La spec §5.4 promette la stessa onestà dei
+    # nutrienti mancanti, e gonfiare il numero è il modo opposto di mancarla.
+    # Il denominatore lo manda il server: qui si sa quali righe hanno una dose, nel
+    # client si sa solo quante righe ci sono.
+    dose_lines = 0
     unscalable = 0
     for ri in recipe.ingredients:
         have = availability.get(ri.ingredient_id, Availability.MISSING)
         role = IngredientRole(ri.role)
         requirements.append((role, have))
+        if ri.quantity_text is not None:
+            dose_lines += 1
         if factor is not None and ri.quantity_value is not None:
             forms = (
                 UnitForms(ri.unit.key, ri.unit.singular, ri.unit.plural)
@@ -78,7 +91,7 @@ async def _to_out(
         else:
             display = ri.quantity_text
             scaled = False
-            if factor is not None:
+            if factor is not None and ri.quantity_text is not None:
                 unscalable += 1
         lines.append(
             RecipeIngredientOut(
@@ -104,7 +117,7 @@ async def _to_out(
         image_url=recipe.image_url, prep_minutes=recipe.prep_minutes,
         cook_minutes=recipe.cook_minutes, category=recipe.category,
         scaled_to=servings if factor is not None else None,
-        unscalable_lines=unscalable,
+        unscalable_lines=unscalable, dose_lines=dose_lines,
     )
 
 

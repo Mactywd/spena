@@ -9,7 +9,7 @@ const RECIPE: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 0, cookable: true, image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, instructions: "Cuoci.", servings: 2, source_ref: null,
-  scaled_to: null, unscalable_lines: 0,
+  scaled_to: null, unscalable_lines: 0, dose_lines: 1,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
       quantity_display: "180 g", quantity_scaled: false,

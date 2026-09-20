@@ -103,6 +103,10 @@ export interface RecipeDetail extends RecipeSummary {
   scaled_to: number | null;
   /** Quante righe non si sono potute riscalare e sono rimaste come sono. */
   unscalable_lines: number;
+  /** Il denominatore di `unscalable_lines`: quante righe hanno una dose scritta.
+   * Arriva dal server e non si ricalcola qui — `ingredients.length` conterebbe anche
+   * le righe senza dose, che non sono dosi mancate. */
+  dose_lines: number;
 }
 
 // L'esito di una cottura, così come lo restituisce il backend: quante voci di

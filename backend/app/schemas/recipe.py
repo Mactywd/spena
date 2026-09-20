@@ -76,6 +76,10 @@ class RecipeOut(BaseModel):
     category: str | None = None
     scaled_to: int | None = None
     unscalable_lines: int = 0
+    # il denominatore di `unscalable_lines`: quante righe una dose ce l'hanno. Lo
+    # manda il server perché è il server a saperlo — `len(ingredients)` conterebbe
+    # anche le righe senza `quantity_text`, che non sono dosi mancate
+    dose_lines: int = 0
 
 
 class RecipeSummaryOut(BaseModel):
