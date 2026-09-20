@@ -1,9 +1,9 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-20 (S6, la porta della creazione riaperta). Prima: il
-2026-09-18 (D4 e S5, il non alimentare) e il 2026-09-17 (S1, S2, R1, R3, T1, più
-la domanda del rientro in lista estesa al giallo e il filtro per ingrediente
-rifatto al plurale).
+Aggiornato il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione; prima,
+nello stesso giorno, S6 e la porta della creazione riaperta). Prima: il 2026-09-18
+(D4 e S5, il non alimentare) e il 2026-09-17 (S1, S2, R1, R3, T1, più la domanda del
+rientro in lista estesa al giallo e il filtro per ingrediente rifatto al plurale).
 
 Questo file è **l'unico posto dove sta la lista**. La roadmap per fasi della spec
 madre (`docs/superpowers/specs/2026-09-11-spena-design.md`, §4) resta il documento
@@ -56,16 +56,36 @@ sul pacchetto servito — `assets/index-C2_ldMnr.js`, lo stesso nome (cioè lo s
 contenuto) della build locale del ramo corretto — e non sui container «healthy», che
 sarebbero healthy anche con il pacchetto di ieri.
 
+**Lo stesso 2026-09-20, più tardi, sono entrati in `master` e in produzione D1 e la
+metà per porzioni di R2**: le quantità strutturate nelle ricette e lo stepper delle
+porzioni. Migrazione `0008` applicata all'avvio; pacchetto servito
+`assets/index-CBbpl1eW.js`, identico alla build locale del codice fuso. I due comandi
+di §9 hanno girato sul database vero: `reparse_quantities` ha letto **382 dosi su 550**
+e depositato **27 unità**, `decide_units` le ha decise in tre giri da dodici — il tetto
+per lotto, aggiunto dalla revisione finale poche ore prima, ha fatto esattamente quel
+che era stato scritto per fare: ventisette unità in una chiamata sola avrebbero
+sforato il soffitto dei token, e il comando avrebbe stampato «0 unità decise» uscendo
+con successo. Spesa totale all'AI: **0,00019 $**. La verifica a mano è stata fatta e
+non ha trovato difetti.
+
+Due cose si sono viste solo sui dati veri, e hanno la loro voce in **Parte X**: due
+plurali sbagliati dall'AI su ventisette (uno dei quali l'`--azzera` non sapeva
+correggere, il che ha prodotto `--imposta` lo stesso giorno), e circa settanta dosi
+che contengono una dose vera che il parser non legge, perché l'import le ha scritte
+con un aggettivo e lo spazio bianco della pagina davanti al numero.
+
 ---
 
 # Parte I — Le decisioni che bloccano il resto
 
-Sono quattro, e **le prime tre sono chiuse il 2026-09-17**. Stanno qui perché
-cambiano la forma di molte cose a valle: chi apre una spec di Parte II, III o IV parte
-da queste. La quarta è una proposta che considero già buona, segnalata solo perché
-tocca una decisione fondante.
+Sono cinque. **Le prime quattro sono chiuse** — tre il 2026-09-17, la quarta il
+2026-09-18 — e **D5 è aperta**. Stanno qui perché cambiano la forma di molte cose a
+valle: chi apre una spec di Parte II, III o IV parte da queste. Le prime quattro erano
+proposte che consideravo già buone, segnalate qui solo perché toccavano una decisione
+fondante; D5 è diversa, perché chiede di riaprire la stessa decisione fondante dal
+lato che D1 aveva appena deciso di non toccare.
 
-## D1. Le quantità nelle ricette **[deciso il 2026-09-17, implementato sul ramo `quantita-ricette` il 2026-09-20, non ancora in produzione]**
+## D1. Le quantità nelle ricette **[FATTO 2026-09-20]**
 
 > **Decisione: sì, e solo nelle ricette.** La proposta qui sotto è quella adottata,
 > ed è quella costruita: `recipe_ingredients` porta `quantity_value` e
@@ -79,13 +99,18 @@ tocca una decisione fondante.
 > è cambiata di una riga. `CLAUDE.md` (decisione fondante 1) e la spec madre §2
 > sono stati emendati lo stesso giorno di questa voce, come il riquadro imponeva.
 >
-> **Quel che manca è la messa in produzione**, non il codice: 258 test frontend, 573
-> backend e 10 e2e sono verdi sul ramo, ma il ramo non è ancora in `master`, e i
-> passi descritti in §9 della sua spec — pull sul server, deploy con `-f`, le due
-> `python -m app.cli.reparse_quantities` / `decide_units`, la verifica a mano —
-> non sono ancora stati eseguiti. In questo file «FATTO» significa codice che gira
-> su `spena.mattiagirellini.com`: finché quei passi non sono fatti, questa voce non
-> lo è.
+> **In produzione dal 2026-09-20**, con i passi di §9 eseguiti in ordine: migrazione
+> `0008` all'avvio, `reparse_quantities` (382 dosi su 550 lette, 27 unità
+> depositate), `decide_units` in tre giri da dodici, verifica a mano senza difetti.
+> Il codice nuovo c'è davvero: il pacchetto servito è `assets/index-CBbpl1eW.js`,
+> lo stesso nome della build locale del codice fuso. La revisione finale dell'intero
+> ramo, prima della fusione, ha trovato un difetto critico che nessuna delle undici
+> revisioni per task poteva vedere — una parola d'unità più lunga di trenta caratteri
+> faceva fallire l'intera scrittura che la conteneva, quindi un 500 dall'API, la
+> materializzazione di un'intera pagina d'import persa, e il comando di riempimento
+> bloccato — più sette importanti, fra cui lo stepper che a ogni tocco svuotava lo
+> schermo e la cottura di una ricetta riscalata che registrava le porzioni sbagliate
+> in `cooking_events`, cioè nel dato su cui la fase 3 costruirà.
 
 **Il problema (2026-09-17).** La decisione fondante numero 1 diceva «niente
 quantità, da nessuna parte», estesa fino a `recipe_ingredients.quantity_text` — testo
@@ -216,6 +241,80 @@ l'ingrediente «…»» — proprio nel momento in cui si collega una voce di te
 libero all'anagrafica. Non è un difetto introdotto da questo lavoro, esisteva
 già prima; resta un rinominamento aperto, non chiuso da questo task — voce in
 **Parte X**, dove si guarda il lavoro ancora aperto.
+
+## D5. La scadenza in dispensa **[?]** — riapre la decisione fondante 1
+
+**Chiesto il 2026-09-20.** Quando un prodotto entra in dispensa si può scrivere anche
+la sua data di scadenza; la dispensa la mostra; e **quando mancano sette giorni la
+riga cambia colore** per dire che ci si sta avvicinando.
+
+**Perché sta in Parte I e non in Parte II.** La decisione fondante numero 1 nomina la
+scadenza per esteso: «la dispensa non conosce quantità, unità **o date di scadenza**».
+Non è una dimenticanza da colmare, è un no scritto apposta — e D1, appena ieri, ha
+ristretto quella decisione *alle ricette* lasciando la dispensa intera, emendando
+`CLAUDE.md` e la spec madre §2 nello stesso giorno per dirlo. Questa voce chiede di
+riaprirla dal lato che D1 aveva appena deciso di proteggere. Va quindi decisa qui,
+per iscritto, prima di qualunque spec: se passa, `CLAUDE.md` e la spec madre §2 si
+emendano di nuovo, **insieme**, come il riquadro impone.
+
+**L'argomento a favore, che è più forte di quanto sembri.** Il motivo per cui la
+regola esiste è la manutenzione giornaliera: è quella che fa abbandonare le app come
+questa. Ma una quantità e una scadenza **non costano la stessa manutenzione**. Una
+quantità va *mantenuta*: ogni volta che usi la cosa il numero è sbagliato finché non
+lo correggi, e il giorno che smetti di correggerlo la dispensa mente. Una data di
+scadenza si scrive **una volta sola**, quando il barattolo entra, e non si tocca mai
+più — non è un valore che si consuma, è una proprietà di quel barattolo. È il tipo di
+dato che il cursore di S2 aveva già mostrato accettabile: una cosa che si scrive
+quando si è lì con l'oggetto in mano, e che poi vive da sola. E a differenza della
+quantità, se la si lascia vuota non succede niente: chi non la scrive ha esattamente
+la dispensa di prima.
+
+**Le domande che la spec deve chiudere, e non sono di forma.**
+
+1. **Lo stato resta la sola verità?** `available` / `low` / `finished` è l'unica cosa
+   su cui il resto dell'app ragiona — la disponibilità di un ingrediente, se una
+   ricetta è cucinabile. Se la scadenza entrasse nel calcolo dello stato, una ricetta
+   diventerebbe non cucinabile in silenzio, di notte, senza che nessuno abbia toccato
+   niente. **La risposta che propongo è no**: il colore è un *segnale sulla riga*, non
+   un quarto stato e non un ingresso in `status_for_fill`. Se invece la scadenza deve
+   davvero togliere una cosa dalla disponibilità, è una decisione molto più grande di
+   quel che la richiesta sembra, e va detta adesso.
+2. **Il giallo è già occupato.** La zona gialla del cursore vuol già dire «comincia a
+   mancare» (S2, `LOW_MAX_FILL = 30`). Se anche «sta per scadere» è giallo, due fatti
+   diversi si contendono lo stesso colore, e una riga gialla smette di dire quale dei
+   due. Serve un colore suo nel blocco `@theme` — e sopra 4.5:1 come ogni altro, che
+   in questa app si legge in corsia alla luce del giorno.
+3. **Dove sta il dato.** Sull'**elemento di dispensa**, non sull'ingrediente e non sul
+   prodotto: scade *quel* barattolo, non «lo yogurt greco» e nemmeno «Fage Total 0%».
+   Quindi `pantry_items.expires_on`, annullabile, una `DATE` e non un timestamp — la
+   scadenza è un giorno, non un istante, e trattarla come un istante introduce un fuso
+   orario in un dato che non ne ha. Vale per le mele sfuse come per il barattolo di
+   marca: l'elemento di dispensa porta sempre un ingrediente e facoltativamente un
+   prodotto, e la colonna sta sull'elemento.
+4. **Chi sa che giorno è.** Il conto dei sette giorni lo fa il **server**, come ogni
+   altra regola di dominio, e manda al client il fatto già deciso. Una sottrazione fra
+   date fatta nel browser userebbe il fuso del telefono e comincerebbe a sbagliare di
+   un giorno appena si viaggia — ed è esattamente la forma di «il frontend che calcola
+   invece di chiedere» che tiene il porting a Capacitor un involucro e non un
+   riscrittura. La soglia è una costante come `LOW_MAX_FILL`, e va difesa dal
+   ricopiarla: `backend/tests/test_frontend_fill_zones.py` è il precedente — legge la
+   soglia dal sorgente TypeScript e fallisce se i due linguaggi divergono.
+5. **E il giorno dopo?** Scaduto è un terzo caso, non lo stesso di «sta per scadere»:
+   serve un colore diverso, o la stessa cosa detta più forte? E soprattutto: una cosa
+   scaduta torna in lista da sé, chiede come fa il cursore a zero («Lo rimetto in
+   lista?»), o non fa niente? Chiedere è coerente con S2; fare da sé no.
+6. **Da dove arriva la data.** Da nessuna parte se non a mano: Open Food Facts
+   descrive il *prodotto*, non la confezione che hai comprato, quindi non la sa e non
+   può saperla. È sempre scrittura umana, il che rende il campo facoltativo non una
+   cortesia ma l'unica forma possibile.
+
+**Perché non l'alternativa.** Tenere il no intero sarebbe coerente e costerebbe poco
+da difendere, ma rinuncia alla sola cosa che una dispensa sa fare e una lista no:
+dirti che stai per buttare qualcosa. E metterla sull'ingrediente invece che
+sull'elemento costerebbe meno schema ma sarebbe falsa al primo barattolo doppio.
+
+↳ tocca S1 (l'ingresso in dispensa), S2 (la riga della dispensa e i suoi colori), S3
+(l'ingresso diretto, che deve offrire le stesse strade dell'altro).
 
 ---
 
@@ -389,6 +488,20 @@ stack è stato ricreato con `down -v` dopo il giro a mano, che lo sporca.
 servito da `spena.mattiagirellini.com` è lo stesso della build locale del codice
 corretto.
 
+## S7. La scadenza scritta all'ingresso, e la riga che avvisa **[? bloccata da D5]** ↳ D5
+La metà pratica di D5, elencata qui perché è in dispensa che si vede. Tre pezzi, e
+nessuno si può scrivere prima che D5 sia chiusa:
+
+- **all'ingresso**, in «Sistema la spesa» e — per S3 — anche nell'ingresso diretto,
+  un campo data facoltativo accanto a quello che già si compila con l'oggetto in mano;
+- **nella riga della dispensa**, la data mostrata dove si legge senza aprire niente;
+- **il colore a sette giorni**, deciso dal server e non dal browser, con un token suo
+  nel blocco `@theme` perché il giallo del cursore vuol già dire un'altra cosa.
+
+Vuoto è il caso normale e non deve costare niente: chi non scrive mai una data deve
+avere esattamente la dispensa di oggi, senza colonne vuote a video e senza una riga in
+più da guardare.
+
 ---
 
 # Parte III — Ricette
@@ -400,15 +513,17 @@ componente solo, `RecipeImage` (`frontend/src/features/recipes/RecipeImage.tsx`)
 usato da entrambe le schermate: una seconda copia di quella logica si sarebbe
 scollata esattamente lì, dove nessuno guarda.
 
-## R2. Riporziona **[D, la metà per porzioni fatta]** ↳ D1
+## R2. Riporziona **[FATTO IN PARTE 2026-09-20: la metà per porzioni]** ↳ D1
 Due modi, e il secondo è quello che manca a tutte le app: per **numero di porzioni**,
 e per **quantità assoluta di un ingrediente** — «la ricetta è per 400 g di pasta, io
 ne faccio 150 g», indipendentemente dalle porzioni.
 
-**Il primo è fatto**, dentro D1: `GET /api/v1/recipes/{id}?servings=N` riscala le
-righe parsate, con lo stepper delle porzioni da schermo; una riga non parsata resta
-identica e si vede come tale, invece di scalare o contare per zero. Non ancora in
-produzione — vedi lo stato in D1.
+**Il primo è fatto e in produzione dal 2026-09-20**, dentro D1: `GET
+/api/v1/recipes/{id}?servings=N` riscala le righe parsate, con lo stepper delle
+porzioni da schermo; una riga non parsata resta identica e si vede come tale, invece
+di scalare o contare per zero, e la riga di copertura dice quante sono — contate
+**sulle dosi, non sugli ingredienti**, perché una riga che non ha mai avuto una dose
+non è una dose che non si riscala.
 
 **Resta il secondo modo**, ancorato a un ingrediente invece che alle porzioni, e
 implica scegliere quell'ingrediente prima di poter scalare. TBD, invariato dalla
@@ -605,7 +720,8 @@ Non è una stima: è la cifra addebitata, e la buttavamo via da mesi leggendo so
 un modello giù è spesa sprecata, ed è il giro che paga e non conclude che una torta
 delle spese esiste per scoprire.
 
-`call_site` è oggi `TERM_DECISION`, `TERM_COLLAPSE`, `RECIPE_DRAFT`. Ogni punto di
+`call_site` è oggi `TERM_DECISION`, `TERM_COLLAPSE`, `RECIPE_DRAFT` e — dal 2026-09-20,
+con D1 — `UNIT_FORMS`. Ogni punto di
 chiamata nuovo ne aggiunge uno: `complete_json` lo pretende come argomento
 obbligatorio, e `tests/test_llm_spend_is_recorded.py` legge i sorgenti e fallisce se un
 modulo chiama l'LLM senza registrare. Serve perché la dimenticanza qui non rompe
@@ -625,7 +741,9 @@ davvero.
 Non è un impegno, è quel che le dipendenze permettono.
 
 **Subito, perché sbloccano o smettono di perdere dati**
-T2 è fatto (2026-09-17). Restano le tre decisioni D1–D3.
+T2 è fatto (2026-09-17), e D1–D3 sono decise (le tre il 2026-09-17; D1 costruita e in
+produzione il 2026-09-20). **Resta aperta D5**, la scadenza in dispensa, ed è la sola
+decisione ferma: finché non è presa, S7 non si può nemmeno specificare.
 
 **Poi, indipendenti e piccole** — si potevano fare in qualunque momento e non
 aspettavano nessuno: **fatte il 2026-09-17** S1, S2, R1, R3, e in parte T1 (header,
@@ -633,9 +751,13 @@ tasto indietro, schede d'ingresso). **Resta aperto** solo l'hamburger di T1,
 rinviato di proposito alla prima sezione secondaria vera — non c'è fretta, perché
 niente lo sblocca.
 
-**Poi, il blocco strutturale**: S4 (nutrienti ampi), D1 applicata (quantità nelle
-ricette). Da qui in avanti serve la spec. D4/S5 (non alimentari) erano qui e sono
-fatte.
+**Poi, il blocco strutturale**: S4 (nutrienti ampi). D1 era qui ed è fatta il
+2026-09-20 — con lei la metà per porzioni di R2 — e D4/S5 (non alimentari) lo erano
+il 2026-09-18. Da qui in avanti serve la spec.
+
+**Fuori ordine, perché dipende solo da una decisione e non da uno schema**: D5, e
+subito dietro S7. Non aspetta S4 né lo storage; aspetta solo che la decisione sia
+presa, e il grosso del lavoro è una colonna annullabile, un campo data e un colore.
 
 **Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
 
