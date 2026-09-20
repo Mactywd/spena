@@ -312,6 +312,41 @@ describe("RecipeDetailScreen", () => {
     expect(spy.mock.calls.some(([url]) => String(url).includes("servings=1"))).toBe(true);
   });
 
+  it("mentre rilegge per porzioni nuove, lo schermo non sparisce da sotto il dito", async () => {
+    // `servings` sta nella chiave della query, quindi ogni tocco è una chiave nuova
+    // e senza cache: con `isLoading` a comandare il ritorno anticipato, tutta la
+    // schermata diventava «Carico…» a metà rilettura e il pulsante spariva mentre lo
+    // si premeva — toccare «+» due volte di fila era impossibile. Invisibile in
+    // locale, dove la risposta arriva prima del dito.
+    let rilascia = () => {};
+    const inVolo = new Promise<void>((resolve) => {
+      rilascia = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        if (String(url).includes("servings=1")) {
+          await inVolo;
+          return new Response(JSON.stringify(DIMEZZATA), { status: 200 });
+        }
+        return new Response(JSON.stringify(DETAIL), { status: 200 });
+      })
+    );
+
+    renderScreen();
+    expect(await screen.findByText("180 g")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+
+    // la seconda risposta è ancora per aria: quel che c'era resta
+    expect(screen.queryByText("Carico…")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Pasta al pomodoro" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Una porzione in meno" })).toBeDefined();
+    expect(screen.getByText("180 g")).toBeDefined();
+
+    rilascia();
+    expect(await screen.findByText("90 g")).toBeDefined();
+  });
+
   it("a 1× nessuna riga è invariabile: la copertura non compare", async () => {
     // il "solo quando" della regola: la riga di copertura non deve comparire quando
     // non c'è niente da segnalare, ed è proprio quel che vede chiunque apra una

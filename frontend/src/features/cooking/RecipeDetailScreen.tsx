@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { fetchRecipe } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
@@ -48,6 +48,12 @@ export function RecipeDetailScreen() {
   } = useQuery({
     queryKey: ["recipe", id, servings],
     queryFn: () => fetchRecipe(id, servings ?? undefined),
+    // le porzioni stanno nella chiave, quindi ogni tocco dello stepper è una chiave
+    // nuova e senza cache: senza questo, `isLoading` torna vero e lo schermo intero
+    // viene sostituito da «Carico…» a metà della rilettura — il pulsante sparisce da
+    // sotto il dito e toccare «+» due volte di fila diventa impossibile. In locale
+    // non si vede; in cucina, al telefono, è l'interazione principale.
+    placeholderData: keepPreviousData,
   });
 
   // Serve solo per aprire il foglio di cottura: senza dispensa non si può dire
