@@ -286,11 +286,13 @@ la voce con il suo slider. Spec:
 `docs/superpowers/specs/2026-09-17-non-alimentari-design.md`.
 
 ## S6. «Sistema la spesa» chiudeva l'unica porta che crea un ingrediente **[FATTO 2026-09-20]**
-Il menù **Reparto** e il pulsante «Crea l'ingrediente «X»» compaiono solo se la
-ricerca non trova nulla (`frontend/src/features/stocking/StockingScreen.tsx`,
-condizione `suggestions.length === 0`). Basta **un** suggerimento qualsiasi, anche
-assurdo, e la via d'uscita sparisce: la voce a testo libero resta in lista e non
-c'è modo di sistemarla.
+*Quel che segue descrive il difetto com'era; la correzione è in fondo alla voce.*
+
+Il menù **Reparto** e il pulsante «Crea l'ingrediente «X»» comparivano solo se la
+ricerca non trovava nulla (`frontend/src/features/stocking/StockingScreen.tsx`,
+condizione `suggestions.length === 0`). Bastava **un** suggerimento qualsiasi, anche
+assurdo, e la via d'uscita spariva: la voce a testo libero restava in lista e non
+c'era modo di sistemarla.
 
 Misurato in produzione il 2026-09-18 su «cera per pavimenti» — sette suggerimenti,
 nessuno pertinente, soglia `SIMILARITY_FLOOR = 0.15` in
