@@ -9,11 +9,14 @@ const RECIPE: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 0, cookable: true, image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, instructions: "Cuoci.", servings: 2, source_ref: null,
+  scaled_to: null, unscalable_lines: 0, dose_lines: 1,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
+      quantity_display: "180 g", quantity_scaled: false,
       note: null, availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "yogurt greco", role: "secondary",
-      quantity_text: "q.b.", note: null, availability: "available", satisfied: true },
+      quantity_text: "q.b.", quantity_display: "q.b.", quantity_scaled: false,
+      note: null, availability: "available", satisfied: true },
   ],
 };
 
@@ -42,11 +45,12 @@ const PANTRY: PantryItem[] = [
 function renderSheet(
   onDone = vi.fn(),
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-  items: PantryItem[] = PANTRY
+  items: PantryItem[] = PANTRY,
+  recipe: RecipeDetail = RECIPE
 ) {
   const sheet = (next: PantryItem[]) => (
     <QueryClientProvider client={client}>
-      <CookSheet recipe={RECIPE} pantryItems={next} onDone={onDone} />
+      <CookSheet recipe={recipe} pantryItems={next} onDone={onDone} />
     </QueryClientProvider>
   );
   const view = render(sheet(items));
@@ -175,6 +179,35 @@ describe("CookSheet", () => {
     await vi.waitFor(() =>
       expect(onDone).toHaveBeenCalledWith({ event_id: "e1", updated: 1, restocked: 1 })
     );
+  });
+
+  it("registra le porzioni per cui si è scalato, non quelle della ricetta", async () => {
+    // Chi scala a 6 e poi cucina ha cucinato per 6. Che il riporziona sia «una
+    // vista» (spec §5.3) vuol dire che non si salva sulla ricetta, non che quel che
+    // è uscito dalla pentola sia un altro numero: `cooking_events` non ha
+    // consumatori in v1 proprio perché la fase 3 ci trovi una storia vera, quindi
+    // un 2 scritto al posto di un 6 è invisibile oggi e sbagliato per sempre.
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet(vi.fn(), undefined, PANTRY, { ...RECIPE, scaled_to: 6 });
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+
+    expect(JSON.parse(spy.mock.calls[0][1].body).servings).toBe(6);
+  });
+
+  it("senza riporziona restano le porzioni della ricetta", async () => {
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+
+    expect(JSON.parse(spy.mock.calls[0][1].body).servings).toBe(RECIPE.servings);
   });
 
   it("una voce sparita dalla dispensa a foglio aperto non entra nel payload", async () => {

@@ -6,7 +6,9 @@ from sqlalchemy.orm import selectinload
 
 from app.db.models.ingredient import Ingredient
 from app.db.models.recipe import Recipe, RecipeIngredient
+from app.domain.quantities import parse_quantity
 from app.domain.rules import IngredientKind
+from app.repositories.units import ensure_unit
 
 
 class NonFoodInRecipe(Exception):
@@ -63,9 +65,20 @@ async def create_recipe(
         source=source, source_ref=source_ref, embedding=embedding,
     )
     for ingredient_id, role, quantity_text, note in ingredients:
+        # Il parser gira qui e non nei chiamanti: questo è già l'unico punto che
+        # scrive recipe_ingredients, e chiedere a ogni chiamante di ricordarsene
+        # significherebbe che il quinto — quello non ancora scritto — se ne
+        # dimentica.
+        value, unit_key = parse_quantity(quantity_text)
+        unit = await ensure_unit(session, unit_key) if unit_key else None
         recipe.ingredients.append(
             RecipeIngredient(
-                ingredient_id=ingredient_id, role=role, quantity_text=quantity_text, note=note
+                ingredient_id=ingredient_id,
+                role=role,
+                quantity_text=quantity_text,
+                note=note,
+                quantity_value=value,
+                quantity_unit_id=unit.id if unit else None,
             )
         )
     session.add(recipe)

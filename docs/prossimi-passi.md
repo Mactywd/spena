@@ -65,25 +65,41 @@ cambiano la forma di molte cose a valle: chi apre una spec di Parte II, III o IV
 da queste. La quarta è una proposta che considero già buona, segnalata solo perché
 tocca una decisione fondante.
 
-## D1. Le quantità nelle ricette **[D — deciso il 2026-09-17]**
+## D1. Le quantità nelle ricette **[deciso il 2026-09-17, implementato sul ramo `quantita-ricette` il 2026-09-20, non ancora in produzione]**
 
-> **Decisione: sì, e solo nelle ricette.** La proposta qui sotto è quella adottata.
-> La dispensa non cambia. Quando questa voce verrà implementata, vanno emendate
-> `CLAUDE.md` (decisione fondante 1) e la spec madre §2, che oggi dicono che
-> `quantity_text` non deve **mai** entrare in un calcolo.
+> **Decisione: sì, e solo nelle ricette.** La proposta qui sotto è quella adottata,
+> ed è quella costruita: `recipe_ingredients` porta `quantity_value` e
+> `quantity_unit_id` accanto a `quantity_text` (migrazione `0008`), un parser in
+> `backend/app/domain/quantities.py` li riempie al meglio possibile, un registro
+> `units` aperto cresce da sé con l'AI che ne decide singolare e plurale (con
+> verifica prima di applicare e un comando di undo), e `GET
+> /api/v1/recipes/{id}?servings=N` riscala le righe parsate — da schermo, con lo
+> stepper delle porzioni. Il dettaglio è nella sua spec,
+> `docs/superpowers/specs/2026-09-20-quantita-ricette-design.md`. La dispensa non
+> è cambiata di una riga. `CLAUDE.md` (decisione fondante 1) e la spec madre §2
+> sono stati emendati lo stesso giorno di questa voce, come il riquadro imponeva.
+>
+> **Quel che manca è la messa in produzione**, non il codice: 258 test frontend, 573
+> backend e 10 e2e sono verdi sul ramo, ma il ramo non è ancora in `master`, e i
+> passi descritti in §9 della sua spec — pull sul server, deploy con `-f`, le due
+> `python -m app.cli.reparse_quantities` / `decide_units`, la verifica a mano —
+> non sono ancora stati eseguiti. In questo file «FATTO» significa codice che gira
+> su `spena.mattiagirellini.com`: finché quei passi non sono fatti, questa voce non
+> lo è.
 
-**Il problema.** La decisione fondante numero 1 dice «niente quantità, da nessuna
-parte», e che `recipe_ingredients.quantity_text` è testo libero che **non deve mai
-entrare in un calcolo**. Ma tre voci della lista nuova chiedono esattamente un
-calcolo su quel campo: *riporziona*, *stima nutrienti di una ricetta*, *NutriScore*.
-Senza una decisione esplicita qui, quelle tre voci fanno deragliare l'app per
-inerzia, un pezzo alla volta.
+**Il problema (2026-09-17).** La decisione fondante numero 1 diceva «niente
+quantità, da nessuna parte», estesa fino a `recipe_ingredients.quantity_text` — testo
+libero, si diceva, buono solo per la visualizzazione e mai per un conto. Ma tre voci
+della lista nuova chiedevano esattamente un conto su quel campo: *riporziona*,
+*stima nutrienti di una ricetta*, *NutriScore*. Senza una decisione esplicita qui,
+quelle tre voci avrebbero fatto deragliare l'app per inerzia, un pezzo alla volta.
 
-**Come.** Restringere la decisione fondante a dove serviva davvero — **la
-dispensa** — e dare alle ricette quantità strutturate accanto al testo:
+**Come (proposto il 2026-09-17, costruito il 2026-09-20).** Restringere la decisione
+fondante a dove serviva davvero — **la dispensa** — e dare alle ricette quantità
+strutturate accanto al testo:
 
 - `quantity_text` resta la verità da mostrare, non viene mai riscritto né perso;
-- si affiancano `quantity_value` e `quantity_unit`, **entrambi annullabili**;
+- si affiancano `quantity_value` e `quantity_unit_id`, **entrambi annullabili**;
 - il riempimento è al meglio possibile: «400 g» → `(400, g)`; «q.b.» → `(NULL,
   NULL)`; «2 cucchiai» → `(2, cucchiaio)` con una tabella di conversione dichiarata
   approssimata;
@@ -100,8 +116,9 @@ dispensa** — e dare alle ricette quantità strutturate accanto al testo:
 > perché è una **posizione**, non una quantità — non ha unità, non scade, e l'unico
 > conto in cui entra è `status_for_fill`, che ne ricava `available`/`low`/`finished`:
 > una soglia, non un'aritmetica. Non si somma, non si scala, non nutre. La decisione
-> fondante numero 1 resta intera. Chi implementerà D1 e toccherà `CLAUDE.md` deve
-> sapere che questa colonna c'è, e perché non conta come precedente.
+> fondante numero 1, ristretta alla dispensa il 2026-09-20, resta intera anche lì:
+> questa colonna c'è, e l'emendamento di `CLAUDE.md` l'ha citata apposta perché non
+> conti come precedente.
 
 **Perché non l'alternativa.** Quantità vere anche in dispensa avrebbero sbloccato
 conti più precisi, ma avrebbero reintrodotto la manutenzione giornaliera che la
@@ -280,6 +297,13 @@ nella forma ma povero nel contenuto.
   OpenRouter offre una via per dare la ricerca web a un modello qualsiasi — **da
   verificare com'è fatta oggi e quanto costa**, prima di progettarci sopra.
 
+↳ **il registro delle unità esiste già** (D1, tabella `units`): ogni parola vista in
+una ricetta ci sta, con singolare e plurale decisi dall'AI, e `canonical_id` fa
+puntare una variante alla sua forma canonica proprio per questo — così il peso della
+coppia ingrediente×unità che S4 dovrà riempire un giorno si scrive una volta sola per
+unità canonica, non una volta per ogni variante che il ricettario ha scritto
+diversamente. L'attacco c'è; riempirlo non chiederà una migrazione.
+
 ## S5. Non alimentari in lista e dispensa **[FATTO 2026-09-18]**
 Vedi D4: stessa lista, stessa dispensa, nessuna informazione nutrizionale — solo
 la voce con il suo slider. Spec:
@@ -376,14 +400,19 @@ componente solo, `RecipeImage` (`frontend/src/features/recipes/RecipeImage.tsx`)
 usato da entrambe le schermate: una seconda copia di quella logica si sarebbe
 scollata esattamente lì, dove nessuno guarda.
 
-## R2. Riporziona **[D]** ↳ D1
+## R2. Riporziona **[D, la metà per porzioni fatta]** ↳ D1
 Due modi, e il secondo è quello che manca a tutte le app: per **numero di porzioni**,
 e per **quantità assoluta di un ingrediente** — «la ricetta è per 400 g di pasta, io
-ne faccio 150 g», indipendentemente dalle porzioni. Il secondo implica scegliere
-l'ingrediente su cui ancorare la scala.
+ne faccio 150 g», indipendentemente dalle porzioni.
 
-TBD: se il riporziona è solo una vista o si può salvare; cosa succede alle righe non
-parsate (proposta: restano identiche e si vedono come tali).
+**Il primo è fatto**, dentro D1: `GET /api/v1/recipes/{id}?servings=N` riscala le
+righe parsate, con lo stepper delle porzioni da schermo; una riga non parsata resta
+identica e si vede come tale, invece di scalare o contare per zero. Non ancora in
+produzione — vedi lo stato in D1.
+
+**Resta il secondo modo**, ancorato a un ingrediente invece che alle porzioni, e
+implica scegliere quell'ingrediente prima di poter scalare. TBD, invariato dalla
+proposta originale: se anche questo riporziona è solo una vista o si può salvare.
 
 ## R3. Filtra per ingrediente **[FATTO 2026-09-17, rifatto lo stesso giorno]**
 «Contiene questi ingredienti» — `GET /api/v1/recipes/search?ingredient_id=…&ingredient_id=…`.
@@ -729,6 +758,30 @@ layout a 375px.
   prima non c'era: è lo stesso difetto della prima lezione di `CLAUDE.md` — una
   mappa può essere giusta mentre il controllo che la gente tocca non la usa — e qui
   è sopravvissuto abbastanza a lungo da valere una nota.
+- **Non esiste una schermata per correggere un plurale sbagliato nel registro
+  `units` (D1).** Se l'AI decide un singolare o un plurale sbagliato per una
+  parola — «cucchiai» → singolare sbagliato — non c'è modo di sistemarlo da
+  interfaccia. Si corregge da riga di comando: `python -m app.cli.decide_units
+  --azzera <chiave>` azzera la decisione per quella chiave, così la prossima
+  esecuzione del comando la ridecide da capo. Scelta deliberata, non un buco: il
+  registro è una ventina di righe, un errore si vede subito nella ricetta stessa,
+  e costruire una schermata per una correzione così rara non vale ancora il
+  lavoro. Dichiarata qui perché resti visibile, non perché sia urgente.
+- **Ogni test di schermata si costruisce il proprio client react-query con
+  `retry: false`, mentre `frontend/src/App.tsx` usa
+  `defaultQueryRetryPredicate`.** È esattamente la prima lezione di `CLAUDE.md` —
+  «un test che si costruisce il proprio oggetto non sta testando quello che usa la
+  produzione» — trovata di nuovo, questa volta sul client di query invece che sul
+  client AI o su una funzione di dominio duplicata. `grep -rln "retry: false"
+  frontend/src --include=*.test.tsx` trova undici file
+  (`IngredientPicker.test.tsx`, `CustomProductForm.test.tsx`,
+  `RecipeBookScreen.test.tsx`, `CookSheet.test.tsx`, `AiDraftScreen.test.tsx` e
+  altri): nessuno di questi esercita il comportamento di retry vero dell'app, che
+  su un errore 5xx riprova mentre `retry: false` non riprova mai. Un backend che
+  iniziasse a rispondere 500 in modo intermittente potrebbe non essere notato da
+  nessuno di questi test, che vedrebbero solo il fallimento secco che hanno chiesto
+  loro stessi. Preesistente, non causato da questo lavoro; trovato passando mentre
+  si verificava lo stesso principio altrove.
 
 ---
 

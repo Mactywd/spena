@@ -4,22 +4,34 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
-import type { PantryItem } from "../../domain/types";
+import type { PantryItem, RecipeDetail } from "../../domain/types";
 
-const DETAIL = {
+const DETAIL: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
-  missing: 2, cookable: false, image_url: null as string | null, instructions: "Cuoci.",
-  servings: 2, source_ref: null,
+  missing: 2, cookable: false, image_url: null, prep_minutes: null, cook_minutes: null,
+  category: null, instructions: "Cuoci.",
+  servings: 2, source_ref: null, scaled_to: null,
+  // quattro righe su cinque portano una dose: «basilico» non ne ha nessuna, ed è la
+  // riga che tiene onesto il denominatore — il conto delle dosi non è il conto degli
+  // ingredienti, e il server manda il primo
+  unscalable_lines: 0, dose_lines: 4,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
+      quantity_display: "180 g", quantity_scaled: false,
       note: null, availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "pomodoro", role: "primary", quantity_text: "400 g",
+      quantity_display: "400 g", quantity_scaled: false,
       note: null, availability: "low", satisfied: false },
-    { ingredient_id: "i3", ingredient_name: "aglio", role: "secondary", quantity_text: null,
+    { ingredient_id: "i3", ingredient_name: "aglio", role: "secondary", quantity_text: "q.b.",
+      quantity_display: "q.b.", quantity_scaled: false,
       note: null, availability: "low", satisfied: true },
     // senza una riga che manca, metà di statusNote non è coperta da niente
     { ingredient_id: "i4", ingredient_name: "basilico", role: "secondary", quantity_text: null,
+      quantity_display: null, quantity_scaled: false,
       note: null, availability: "missing", satisfied: false },
+    { ingredient_id: "i5", ingredient_name: "olio", role: "secondary", quantity_text: "q.b.",
+      quantity_display: "q.b.", quantity_scaled: false,
+      note: null, availability: "available", satisfied: true },
   ],
 };
 
@@ -239,5 +251,118 @@ describe("RecipeDetailScreen", () => {
     expect(screen.queryByRole("img", { name: "Pasta al pomodoro" })).toBeNull();
     // il resto della scheda resta al suo posto
     expect(screen.getByRole("heading", { name: "Pasta al pomodoro" })).toBeDefined();
+  });
+
+  /** Come `stubFetch`, ma la risposta dipende dall'indirizzo: qui servono due corpi
+   * diversi — la ricetta com'è, e la ricetta riporzionata — e `mockImplementation` è
+   * obbligatorio perché il corpo di una Response si legge una volta sola. */
+  function stubFetchByUrl(route: (url: string) => unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) =>
+        Promise.resolve(new Response(JSON.stringify(route(String(url))), { status: 200 }))
+      )
+    );
+  }
+
+  // la stessa ricetta chiesta per 2 invece che per 4: è il server a decidere queste
+  // stringhe, e il client non le ricalcola — per questo il finto le detta
+  const DIMEZZATA = {
+    ...DETAIL,
+    scaled_to: 2,
+    // due «q.b.» che non si riscalano, su quattro righe che una dose ce l'hanno.
+    // «basilico» non entra in nessuno dei due numeri: non ha dose, quindi non è una
+    // dose mancata — se il denominatore fosse `ingredients.length` si leggerebbe
+    // «2 dosi su 5» e si andrebbe a cercare una quinta dose che non esiste
+    unscalable_lines: 2,
+    dose_lines: 4,
+    ingredients: [
+      { ...DETAIL.ingredients[0], quantity_display: "90 g", quantity_scaled: true },
+      { ...DETAIL.ingredients[1], quantity_display: "200 g", quantity_scaled: true },
+      { ...DETAIL.ingredients[2], quantity_display: "q.b.", quantity_scaled: false },
+      { ...DETAIL.ingredients[3], quantity_display: null, quantity_scaled: false },
+      { ...DETAIL.ingredients[4], quantity_display: "q.b.", quantity_scaled: false },
+    ],
+  };
+
+  it("il selettore delle porzioni rilegge la ricetta e mostra quel che dice il server", async () => {
+    // il client non fa aritmetica: chiede e mostra. È la riga di CLAUDE.md che tiene
+    // in piedi la porta a Capacitor.
+    const spy = vi.fn();
+    stubFetchByUrl((url) => {
+      spy(url);
+      return url.includes("servings=1") ? DIMEZZATA : DETAIL;
+    });
+
+    renderScreen();
+    expect(await screen.findByText("180 g")).toBeDefined();
+
+    // DETAIL è per 2 porzioni: un tocco porta a 1
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+
+    expect(await screen.findByText("90 g")).toBeDefined();
+    // e la copertura si dichiara invece di far finta di niente. «su 4» sono le dosi
+    // della ricetta, non i suoi cinque ingredienti: il denominatore arriva dal
+    // server, che è l'unico a sapere quali righe una dose ce l'hanno. Prima di
+    // questa correzione la schermata usava `ingredients.length`, e questa stessa
+    // frase era vera per il motivo sbagliato — su una ricetta importata con quattro
+    // righe senza dose mandava a cercare quattro dosi inesistenti.
+    expect(screen.getByText(/2 dosi su 4 non si riscalano/)).toBeDefined();
+    expect(screen.queryByText(/su 5/)).toBeNull();
+    expect(spy.mock.calls.some(([url]) => String(url).includes("servings=1"))).toBe(true);
+  });
+
+  it("mentre rilegge per porzioni nuove, lo schermo non sparisce da sotto il dito", async () => {
+    // `servings` sta nella chiave della query, quindi ogni tocco è una chiave nuova
+    // e senza cache: con `isLoading` a comandare il ritorno anticipato, tutta la
+    // schermata diventava «Carico…» a metà rilettura e il pulsante spariva mentre lo
+    // si premeva — toccare «+» due volte di fila era impossibile. Invisibile in
+    // locale, dove la risposta arriva prima del dito.
+    let rilascia = () => {};
+    const inVolo = new Promise<void>((resolve) => {
+      rilascia = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        if (String(url).includes("servings=1")) {
+          await inVolo;
+          return new Response(JSON.stringify(DIMEZZATA), { status: 200 });
+        }
+        return new Response(JSON.stringify(DETAIL), { status: 200 });
+      })
+    );
+
+    renderScreen();
+    expect(await screen.findByText("180 g")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+
+    // la seconda risposta è ancora per aria: quel che c'era resta
+    expect(screen.queryByText("Carico…")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Pasta al pomodoro" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Una porzione in meno" })).toBeDefined();
+    expect(screen.getByText("180 g")).toBeDefined();
+
+    rilascia();
+    expect(await screen.findByText("90 g")).toBeDefined();
+  });
+
+  it("a 1× nessuna riga è invariabile: la copertura non compare", async () => {
+    // il "solo quando" della regola: la riga di copertura non deve comparire quando
+    // non c'è niente da segnalare, ed è proprio quel che vede chiunque apra una
+    // ricetta per la prima volta, senza toccare lo stepper
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(DETAIL), { status: 200 })
+    ));
+    renderScreen();
+    await screen.findByText("180 g");
+    expect(screen.queryByText(/non si riscala/)).toBeNull();
+  });
+
+  it("senza porzioni dichiarate il selettore non compare", async () => {
+    stubFetch({ servings: null });
+    renderScreen();
+    await screen.findByText("180 g");
+    expect(screen.queryByRole("button", { name: /porzione in meno/ })).toBeNull();
   });
 });

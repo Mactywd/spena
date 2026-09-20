@@ -26,7 +26,21 @@ ciclo nelle fasi successive e non fanno parte della v1.
 
 Uso personale, un solo utente, deploy privato.
 
-## 2. Decisione fondante: niente quantità
+## 2. Decisione fondante: niente quantità in dispensa
+
+> **Nota d'emendamento, 2026-09-20.** Quel che segue vale per la dispensa; da
+> questa data non vale più per le ricette. `recipe_ingredients` porta
+> `quantity_value` e `quantity_unit_id` accanto a `quantity_text`, entrambi
+> annullabili e riempiti al meglio possibile dal parser di
+> `backend/app/domain/quantities.py`: `quantity_text` resta la verità mostrata a
+> 1× e non viene mai riscritta, la coppia strutturata è quel che il riporziona
+> legge, e una riga che il parser non è riuscito a riempire — `q.b.` in testa —
+> non si scala, dichiarandolo invece di fingere un numero. Vedi
+> `docs/superpowers/specs/2026-09-20-quantita-ricette-design.md`. **La dispensa
+> resta quella descritta sotto, intera**: niente quantità, niente unità, niente
+> scadenze — è lì che questa decisione ha comprato quel che doveva comprare, e il
+> costo restava lo stesso identico: i valori nutrizionali non si deducono dalle
+> scorte.
 
 La dispensa non conosce quantità, unità di misura o scadenze. Un ingrediente
 sta in uno di tre stati:

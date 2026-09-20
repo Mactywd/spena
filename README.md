@@ -116,7 +116,9 @@ successivo, quindi il ricettario si riempie a tappe e non in una notte.
 
 Dopo lo scarico, gli ingredienti che l'anagrafica non riconosce li decide l'AI: uno per
 uno, e quelli che non sa giudicare li lascia in coda. Le ricette entrano da sé, quindi
-nel caso normale questo comando è l'unica cosa da fare.
+nel caso normale il ricettario si riempie senza altri passaggi — restano i due comandi
+qui sotto, che il comando stesso ti nomina quando servono: `decide_units` se ha
+depositato unità di misura nuove, `reindex` se tieni accesa la ricerca semantica.
 
 Ci vuole `OPENROUTER_API_KEY` in `.env`. Senza, tutto continua a funzionare a mano: i
 termini restano in coda e si decidono dalla riga in cima al ricettario, un tocco
@@ -142,6 +144,35 @@ Per sapere quale provider di OpenRouter serve il modello e a quanto:
 docker compose exec backend python -m app.cli.llm_prices
 ```
 
+### Le unità di misura delle dosi
+
+Una ricetta importata porta con sé le parole con cui la fonte scrive le dosi —
+«cucchiai», «spicchio», «costa» — e ogni parola nuova entra nel registro non decisa:
+si mostra com'è arrivata, e il riporziona la scala lo stesso. Per farle scrivere bene
+al singolare e al plurale:
+
+```bash
+docker compose exec backend python -m app.cli.decide_units
+```
+
+Chiede all'AI un lotto di parole per volta e applica solo le risposte che sa
+verificare; l'ultima riga dice quante ne restano, e allora si rilancia. `import_gz` lo
+nomina quando ne ha depositate di nuove. Senza, non si rompe niente: le dosi
+riporzionate mostrano la parola grezza, che è brutto e non è sbagliato. Una decisione
+storta si annulla con `--azzera <parola>`, e il giro dopo la ridecide.
+
+Una volta sola dopo la migrazione `0008`, e poi ogni volta che il parser delle dosi
+migliora:
+
+```bash
+docker compose exec backend python -m app.cli.reparse_quantities
+```
+
+Rilegge `quantity_text` — che non si riscrive mai — e riempie le colonne che servono a
+riporzionare. È rieseguibile per costruzione, e dice quante unità nuove ha depositato.
+
+### I vettori della ricerca semantica
+
 Se tieni accesa la ricerca semantica (`INSTALL_EMBEDDINGS=1`), dopo un import esegui:
 
 ```bash
@@ -151,6 +182,8 @@ docker compose exec backend python -m app.cli.reindex
 Calcola i vettori delle ricette che non ne hanno. Senza, le ricette importate
 restano cercabili solo per le parole che contengono, e rieseguire l'import non
 rimedia: è idempotente e non torna su ciò che è già dentro.
+
+### La fonte, e cosa vuol dire raccoglierla
 
 Una nota che vale la pena sapere. Il `robots.txt` della fonte vieta esplicitamente i
 crawler AI, e le sue condizioni d'uso con ogni probabilità vietano la raccolta

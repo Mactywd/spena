@@ -155,3 +155,30 @@ test("la X di una pastiglia del filtro è un bersaglio da pollice, e la pastigli
   // --color-brand-tint: #e4efe8
   await expect(pastiglia).toHaveCSS("background-color", "rgb(228, 239, 232)");
 });
+
+test("i tasti delle porzioni sono bersagli da pollice, e il riporziona arriva a video", async ({
+  page,
+}) => {
+  // jsdom non calcola il CSS: che due tasti da toccare in cucina siano davvero
+  // grandi abbastanza non lo può dire nessun test in memoria (quarta lezione di
+  // CLAUDE.md). E il giro completo prova anche che il server sta rispondendo
+  // davvero al parametro, non che un nostro stub lo finge.
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+
+  const meno = page.getByRole("button", { name: "Una porzione in meno" });
+  const box = await meno.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(40);
+  expect(box!.width).toBeGreaterThanOrEqual(40);
+
+  // «Pasta al pomodoro» nel seme è per 2 porzioni e ha dosi di tutti i tipi:
+  // «180 g», «400 g», «1 spicchio», «2 cucchiai», «q.b.». Un tocco porta a 1, cioè
+  // dimezza: «180 g» deve diventare «90 g», e «q.b.» deve restare «q.b.».
+  const riga = page.locator("li", { hasText: "pasta" }).first();
+  await expect(riga).toContainText("180 g");
+  await meno.click();
+  await expect(riga).toContainText("90 g");
+  await expect(page.getByText("q.b.").first()).toBeVisible();
+  // a 1 non si scende: il tasto si spegne invece di proporre zero porzioni
+  await expect(meno).toBeDisabled();
+});

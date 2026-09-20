@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { fetchRecipe } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { CookSheet } from "./CookSheet";
+import { ServingsStepper } from "./ServingsStepper";
 import { Alert } from "../../components/ui/Alert";
 import { Card } from "../../components/ui/Card";
 import { SectionHeading } from "../../components/ui/SectionHeading";
@@ -35,14 +36,24 @@ export function RecipeDetailScreen() {
   // e senza questo il gesto per cui esiste tutto il task non dice mai cosa ha fatto
   const [lastCook, setLastCook] = useState<CookResult | null>(null);
 
+  // le porzioni chieste: è una vista, non si salva. Uscire dalla ricetta se ne
+  // dimentica, ed è quel che vuole chi sta guardando cosa cucinare stasera.
+  const [servings, setServings] = useState<number | null>(null);
+
   const {
     data: recipe,
     isLoading: isRecipeLoading,
     isError: isRecipeError,
     refetch: refetchRecipe,
   } = useQuery({
-    queryKey: ["recipe", id],
-    queryFn: () => fetchRecipe(id),
+    queryKey: ["recipe", id, servings],
+    queryFn: () => fetchRecipe(id, servings ?? undefined),
+    // le porzioni stanno nella chiave, quindi ogni tocco dello stepper è una chiave
+    // nuova e senza cache: senza questo, `isLoading` torna vero e lo schermo intero
+    // viene sostituito da «Carico…» a metà della rilettura — il pulsante sparisce da
+    // sotto il dito e toccare «+» due volte di fila diventa impossibile. In locale
+    // non si vede; in cucina, al telefono, è l'interazione principale.
+    placeholderData: keepPreviousData,
   });
 
   // Serve solo per aprire il foglio di cottura: senza dispensa non si può dire
@@ -131,6 +142,15 @@ export function RecipeDetailScreen() {
             </p>
           )}
 
+          {/* lo stepper compare solo se la ricetta dichiara le sue porzioni: senza
+              quelle non c'è una base da cui riscalare, e mostrarlo comunque
+              inviterebbe a un calcolo che qui non si fa */}
+          {recipe.servings != null && (
+            <div className="pt-3">
+              <ServingsStepper value={servings ?? recipe.servings} onChange={setServings} />
+            </div>
+          )}
+
           {groups.map(({ label, lines }) => (
             <section key={label}>
               <SectionHeading>{label}</SectionHeading>
@@ -143,8 +163,10 @@ export function RecipeDetailScreen() {
                     >
                       <span>
                         {line.ingredient_name}
-                        {line.quantity_text && (
-                          <span className="ml-2 text-sm text-ink-faint">{line.quantity_text}</span>
+                        {line.quantity_display && (
+                          <span className="ml-2 text-sm text-ink-faint">
+                            {line.quantity_display}
+                          </span>
                         )}
                       </span>
                       {/* gli stessi due colori della dispensa: il verdetto per riga è
@@ -163,6 +185,17 @@ export function RecipeDetailScreen() {
               </Card>
             </section>
           ))}
+
+          {recipe.unscalable_lines > 0 && (
+            <p className="px-1 pt-2 text-sm text-ink-faint">
+              {/* il denominatore è quante dosi ha la ricetta, non quanti
+                  ingredienti: una riga senza dose non è una dose mancata, e il
+                  conto lo fa il backend, che sa quali righe una dose ce l'hanno */}
+              {recipe.unscalable_lines === 1
+                ? `1 dose su ${recipe.dose_lines} non si riscala: resta com'è.`
+                : `${recipe.unscalable_lines} dosi su ${recipe.dose_lines} non si riscalano: restano come sono.`}
+            </p>
+          )}
 
           <section>
             <SectionHeading>Procedimento</SectionHeading>

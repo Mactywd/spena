@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
@@ -11,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -22,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 from app.db.models.base import TimestampMixin, UUIDMixin
 from app.db.models.ingredient import Ingredient
+from app.db.models.unit import Unit
 
 EMBEDDING_DIM = 384  # intfloat/multilingual-e5-small
 
@@ -76,8 +79,16 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
 class RecipeIngredient(UUIDMixin, Base):
     """Il ruolo è il pezzo che rende utile lo stato "quasi finito".
 
-    `quantity_text` è testo di sola visualizzazione: non entra mai in nessun
-    calcolo, per scelta di progetto.
+    `quantity_text` è la dose come l'ha scritta la fonte: non si riscrive mai e non
+    si perde mai, ed è quel che si mostra a 1×. Dal 2026-09-20 non è più l'unica
+    cosa che si sa della dose: `quantity_value` e `quantity_unit_id` accanto sono
+    *ricavate* da quel testo dal parser di `app/domain/quantities.py`, e servono
+    solo a riporzionare — annullabili entrambe, perché «q.b.» non si scala e dirlo
+    è meglio che indovinare. Il verso è uno solo: il testo alimenta le colonne, le
+    colonne non toccano il testo.
+
+    Il ristringimento riguarda le ricette e basta: la dispensa continua a non
+    sapere né quantità, né unità, né scadenze (decisione fondante 1).
     """
 
     __tablename__ = "recipe_ingredients"
@@ -85,6 +96,10 @@ class RecipeIngredient(UUIDMixin, Base):
         UniqueConstraint("recipe_id", "ingredient_id"),
         CheckConstraint("role IN ('primary', 'secondary')", name="ck_recipe_ingredient_role"),
         Index("ix_recipe_ingredients_ingredient", "ingredient_id"),
+        CheckConstraint(
+            "quantity_unit_id IS NULL OR quantity_value IS NOT NULL",
+            name="ck_recipe_ingredient_unit_needs_value",
+        ),
     )
 
     recipe_id: Mapped[uuid.UUID] = mapped_column(
@@ -95,6 +110,13 @@ class RecipeIngredient(UUIDMixin, Base):
     )
     role: Mapped[str] = mapped_column(String(20))
     quantity_text: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # `Numeric` e non `Float`: 0.1 + 0.2 deve fare 0.3 anche quando queste righe si
+    # sommeranno per la nutrizione. Annullabili entrambe: vedi i tre stati nella spec.
+    quantity_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 3), nullable=True)
+    quantity_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("units.id", ondelete="RESTRICT"), nullable=True
+    )
+    unit: Mapped["Unit | None"] = relationship(lazy="joined")
     note: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
     recipe: Mapped[Recipe] = relationship(back_populates="ingredients")

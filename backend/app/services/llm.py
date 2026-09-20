@@ -34,6 +34,7 @@ class LlmCallSite(StrEnum):
     TERM_DECISION = "term_decision"
     TERM_COLLAPSE = "term_collapse"
     RECIPE_DRAFT = "recipe_draft"
+    UNIT_FORMS = "unit_forms"
 
 
 @dataclass(frozen=True)

@@ -84,6 +84,11 @@ export interface RecipeIngredientLine {
   ingredient_name: string;
   role: IngredientRole;
   quantity_text: string | null;
+  /** La dose da mostrare per le porzioni chieste: a 1× coincide con `quantity_text`.
+   * Il calcolo resta nel backend — qui si mostra, non si ricalcola. */
+  quantity_display: string | null;
+  /** Se `quantity_display` è stato riscalato rispetto a `quantity_text`. */
+  quantity_scaled: boolean;
   note: string | null;
   availability: Availability;
   satisfied: boolean;
@@ -94,6 +99,14 @@ export interface RecipeDetail extends RecipeSummary {
   servings: number | null;
   source_ref: string | null;
   ingredients: RecipeIngredientLine[];
+  /** Le porzioni per cui il server ha effettivamente riscalato la risposta. */
+  scaled_to: number | null;
+  /** Quante righe non si sono potute riscalare e sono rimaste come sono. */
+  unscalable_lines: number;
+  /** Il denominatore di `unscalable_lines`: quante righe hanno una dose scritta.
+   * Arriva dal server e non si ricalcola qui — `ingredients.length` conterebbe anche
+   * le righe senza dose, che non sono dosi mancate. */
+  dose_lines: number;
 }
 
 // L'esito di una cottura, così come lo restituisce il backend: quante voci di

@@ -290,8 +290,11 @@ dichiara, non si riempie.
 
 `backend/app/services/unit_forms.py`, più il comando `python -m app.cli.decide_units`.
 
-- prende tutte le `units` con `decided_by IS NULL` e le chiede **in una sola chiamata**:
-  sono una manciata di parole, e sul tetto di 1$/giorno non si sentono;
+- prende le `units` con `decided_by IS NULL` e le chiede **in una sola chiamata**:
+  sono una manciata di parole, e sul tetto di 1$/giorno non si sentono. Un lotto per
+  giro, però, non tutte: `MAX_UNITS_PER_RUN` le tiene entro `FORMS_MAX_TOKENS`, perché
+  una risposta tagliata a metà non si applica affatto — quel che resta fuori lo prende
+  il giro dopo, e il comando dice quanto resta;
 - `LlmCallSite.UNIT_FORMS`, membro nuovo dell'enum in `services/llm.py`. L'enum non ha
   default di proposito — una sezione che si dimenticasse di dichiararsi finirebbe in un
   secchio muto — quindi la torta delle spese di H1 continua a tornare;
@@ -357,12 +360,22 @@ nuove depositate.
 2. la migrazione `0008` si applica all'avvio, come la `0007`;
 3. `python -m app.cli.reparse_quantities` nel container del backend: 148 righe, istantaneo;
 4. `python -m app.cli.decide_units`: una chiamata, una ventina di parole;
-5. verifica a mano su una ricetta con dosi miste — pasta al pomodoro ha `300 g`,
-   `q.b.` e un numero nudo, cioè tutti e tre gli stati.
+5. verifica a mano su una ricetta con dosi miste — «Pasta al pomodoro» ha `180 g`,
+   `400 g`, `1 spicchio`, `2 cucchiai` e `q.b.`: cinque dosi, ma solo due dei tre
+   stati del §3.3, `(valore, unità)` dose piena e `(NULL, NULL)` non parsata. Per il
+   terzo stato, il numero nudo, serve un'altra ricetta — «Frittata di patate» o
+   «Minestrone di verdure» ne hanno.
 
 Fra il passo 2 e il passo 3 le ricette hanno le colonne vuote: il selettore c'è e
 scala **zero righe**, dichiarando «14 dosi su 14 non si riscalano». È brutto e non è
 rotto, e dura il tempo di un comando.
+
+Fra il passo 3 e il passo 4 le dosi sono parsate ma le unità non hanno ancora
+singolare e plurale decisi: a una porzione lo schermo mostra la parola grezza così
+com'è arrivata dal testo, non quella corretta — misurato, non immaginato: «Pasta al
+pomodoro» a una porzione legge «1 cucchiai», perché `cucchiai` è la parola che la
+fonte ha scritto e nessuno ne ha ancora deciso il singolare. È brutto e non è rotto,
+e dura il tempo di un comando.
 
 ## 10. Fuori ambito, e perché
 
