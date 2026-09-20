@@ -8,7 +8,7 @@ quando non si ricava non si inventa.
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal, DivisionByZero, InvalidOperation
+from decimal import Decimal, DivisionByZero, InvalidOperation, ROUND_HALF_UP
 
 # tre decimali bastano a un terzo, e `Numeric` invece di `Float` perché un giorno
 # queste righe si sommeranno per la nutrizione
@@ -39,7 +39,7 @@ def parse_quantity(text: str | None) -> tuple[Decimal | None, str | None]:
 
     Torna `(None, None)` per tutto ciò che non comincia con un numero — «q.b.»,
     «abbondante», «facoltativo» — e non solleva mai: una dose che non si capisce
-    non è una dose che non si scala.
+    non è un errore, è una dose che non si scala.
     """
     if not text:
         return (None, None)
@@ -69,3 +69,17 @@ def _parse_one(piece: str) -> tuple[Decimal | None, str | None]:
         return (None, None)
     unit = found["unit"].lower() if found["unit"] else None
     return (value, unit)
+
+
+def scale_quantity(value: Decimal, factor: Decimal) -> Decimal:
+    return (value * factor).quantize(PRECISION, rounding=ROUND_HALF_UP).normalize()
+
+
+def render_quantity(value: Decimal, unit: UnitForms | None) -> str:
+    """La dose riscritta dopo una scala. Non si usa a 1×: là si mostra
+    `quantity_text`, che dice la verità meglio di quanto sappiamo riscriverla."""
+    number = format(value.normalize(), "f").replace(".", ",")
+    if unit is None:
+        return number
+    word = (unit.singular if value == 1 else unit.plural) or unit.key
+    return f"{number} {word}"

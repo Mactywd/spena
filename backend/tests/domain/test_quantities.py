@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.domain.quantities import parse_quantity
+from app.domain.quantities import UnitForms, parse_quantity, render_quantity, scale_quantity
 
 
 @pytest.mark.parametrize(
@@ -53,3 +53,41 @@ def test_parse_quantity(text, expected):
 def test_una_frazione_impossibile_non_solleva():
     """Una dose che non si capisce non è un errore: è una dose che non si scala."""
     assert parse_quantity("1/0 bicchiere") == (None, None)
+
+
+CUCCHIAIO = UnitForms(key="cucchiai", singular="cucchiaio", plural="cucchiai")
+GRAMMO = UnitForms(key="g", singular="g", plural="g")
+NON_DECISA = UnitForms(key="costa")
+
+
+@pytest.mark.parametrize(
+    "value,factor,expected",
+    [
+        (Decimal("300"), Decimal("2"), Decimal("600")),
+        (Decimal("300"), Decimal("0.5"), Decimal("150")),
+        (Decimal("3"), Decimal("2") / Decimal("3"), Decimal("2")),
+        (Decimal("1"), Decimal("0.5"), Decimal("0.5")),
+    ],
+)
+def test_scale_quantity(value, factor, expected):
+    assert scale_quantity(value, factor) == expected
+
+
+@pytest.mark.parametrize(
+    "value,unit,expected",
+    [
+        # il plurale si sceglie sul valore: singolare solo a 1 esatto
+        (Decimal("1"), CUCCHIAIO, "1 cucchiaio"),
+        (Decimal("6"), CUCCHIAIO, "6 cucchiai"),
+        (Decimal("0.5"), CUCCHIAIO, "0,5 cucchiai"),
+        # virgola decimale e zeri di coda tolti
+        (Decimal("1.500"), CUCCHIAIO, "1,5 cucchiai"),
+        (Decimal("550"), GRAMMO, "550 g"),
+        # unità non ancora decisa: si mostra la parola come è arrivata, mai un errore
+        (Decimal("2"), NON_DECISA, "2 costa"),
+        # numero nudo: «1» di una cipolla è una cipolla, non «1 pezzo»
+        (Decimal("2"), None, "2"),
+    ],
+)
+def test_render_quantity(value, unit, expected):
+    assert render_quantity(value, unit) == expected
