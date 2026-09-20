@@ -767,6 +767,36 @@ layout a 375px.
   registro è una ventina di righe, un errore si vede subito nella ricetta stessa,
   e costruire una schermata per una correzione così rara non vale ancora il
   lavoro. Dichiarata qui perché resti visibile, non perché sia urgente.
+
+  **Misurato in produzione il 2026-09-20, e il rimedio qui sopra non basta.** Delle
+  27 unità decise al primo giro, due erano sbagliate: `cucchiai` → singolare
+  `cchiaio` (una «u» mangiata) e `cucchiaino` → plurale `cucchiaiaini`. La verifica
+  prima di applicare fa il suo mestiere — controlla che la chiave sia in anagrafica
+  e che le forme non siano vuote né troppo lunghe — ma **non può controllare
+  l'ortografia**, e non deve: sarebbe un secondo giudizio sul primo. L'`--azzera`
+  ha sistemato `cucchiaino` al secondo tentativo e **non ha sistemato `cucchiai`**:
+  il modello ha rifatto lo stesso errore. Quindi per una parola che sbaglia in modo
+  ripetibile oggi l'unica via è una `UPDATE` a mano sul database, cioè fuori da ogni
+  strada progettata. Il pezzo di lavoro che chiude davvero il buco è piccolo — un
+  `--imposta <chiave> <singolare> <plurale>` accanto all'`--azzera`, che scriva
+  `decided_by = "human"` (valore già nel vocabolario del modello, oggi mai scritto
+  per le unità) — e vale più della schermata: l'annulla senza un «invece è così»
+  è mezzo strumento.
+- **Circa settanta dosi in produzione contengono una dose vera che il parser non
+  legge, per colpa di come l'import le ha scritte (D1).** Misurato il 2026-09-20 su
+  67 ricette: `reparse_quantities` ha parsato 382 dosi su 550 e ne ha lasciate 168.
+  Di quelle, una novantina sono `q.b.` e le sue combinazioni, che è giusto così —
+  ma le restanti hanno questa forma, presa da GialloZafferano con tutto il suo
+  spazio bianco: `"fredda\n\t\t\t330\n\t\t\tg"`, `"denocciolate\n\t\t\t20\n\t\t\tg"`.
+  La dose c'è (`330 g`), ma davanti ha un aggettivo, quindi `parse_quantity` — che
+  pretende il numero in testa — torna `(None, None)` e quella riga non si riscala.
+  Non è un difetto di D1: il parser fa quel che la spec §4.1 dice. È qualità del
+  dato all'ingresso. Due strade, e la prima è meglio: che l'import ripulisca
+  `quantity_text` quando la scrive (una sola volta, e il testo mostrato migliora
+  anche a schermo), oppure che il parser tolleri un aggettivo iniziale (ma allora
+  ogni parola prima del numero diventa un caso da decidere, ed è la strada che la
+  spec ha già scartato una volta). Qualunque si scelga, poi basta rilanciare
+  `reparse_quantities`: è rieseguibile apposta.
 - **Ogni test di schermata si costruisce il proprio client react-query con
   `retry: false`, mentre `frontend/src/App.tsx` usa
   `defaultQueryRetryPredicate`.** È esattamente la prima lezione di `CLAUDE.md` —
