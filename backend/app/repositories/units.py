@@ -4,6 +4,8 @@ Sta in un repository e non nel dominio perché tocca il database; la regola di c
 sia un'unità resta in `app/domain/quantities.py`, che non sa niente di sessioni.
 """
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,3 +28,30 @@ async def ensure_unit(session: AsyncSession, key: str) -> Unit:
     session.add(unit)
     await session.flush()
     return unit
+
+
+async def undecided_units(session: AsyncSession) -> list[Unit]:
+    return list(
+        (
+            await session.execute(select(Unit).where(Unit.decided_by.is_(None)))
+        ).scalars().all()
+    )
+
+
+async def apply_forms(
+    session: AsyncSession, unit: Unit, singular: str, plural: str
+) -> None:
+    unit.singular = singular
+    unit.plural = plural
+    unit.decided_by = "ai"
+    unit.decided_at = datetime.now(UTC)
+    # «cucchiai» il cui singolare è «cucchiaio», che esiste già: ci punta, così S4
+    # riempirà il peso di quell'unità una volta sola. Le forme restano scritte anche
+    # sulla riga: il dettaglio della ricetta le legge dirette, senza seguire il
+    # puntatore a ogni lettura.
+    if singular != unit.key:
+        canonical = (
+            await session.execute(select(Unit).where(Unit.key == singular))
+        ).scalars().first()
+        if canonical is not None and canonical.id != unit.id:
+            unit.canonical_id = canonical.id
