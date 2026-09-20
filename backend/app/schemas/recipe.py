@@ -68,6 +68,12 @@ class RecipeOut(BaseModel):
     ingredients: list[RecipeIngredientOut]
     missing: int
     cookable: bool
+    # I nomi di quel che manca, in ordine alfabetico. Su RecipeOut è ridondante — le
+    # righe portano già `availability` e `satisfied`, e nessuna schermata lo legge —
+    # ed è voluto: nel frontend `RecipeDetail extends RecipeSummary`, quindi un campo
+    # che solo la scheda riassuntiva manda renderebbe obbligatorio sul dettaglio
+    # qualcosa che il dettaglio non manda, e `tsc` lo direbbe solo a `npm run build`.
+    missing_names: list[str] = []
     # stesse quattro righe di RecipeSummaryOut: RecipeOut non eredita da lei oggi,
     # e introdurre una gerarchia per risparmiarle non sarebbe YAGNI rispettato
     image_url: str | None = None
@@ -89,6 +95,12 @@ class RecipeSummaryOut(BaseModel):
     source: str
     missing: int
     cookable: bool
+    # I nomi di quel che manca, in ordine alfabetico. Su RecipeOut è ridondante — le
+    # righe portano già `availability` e `satisfied`, e nessuna schermata lo legge —
+    # ed è voluto: nel frontend `RecipeDetail extends RecipeSummary`, quindi un campo
+    # che solo la scheda riassuntiva manda renderebbe obbligatorio sul dettaglio
+    # qualcosa che il dettaglio non manda, e `tsc` lo direbbe solo a `npm run build`.
+    missing_names: list[str] = []
     image_url: str | None = None
     prep_minutes: int | None = None
     cook_minutes: int | None = None
