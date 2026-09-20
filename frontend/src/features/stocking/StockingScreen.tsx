@@ -24,7 +24,9 @@ type Resolution =
  * trovato un corrispondente. Non può sparire in silenzio dal conto finale, e
  * qui sotto il sistema non inventa niente da solo: l'utente abbina un
  * ingrediente esistente, proprio come quando scrive in lista (Task 18), oppure
- * — quando non esiste, che è il caso normale per un testo spaiato — lo crea.
+ * lo crea. Le due strade stanno una sotto l'altra e sono sempre entrambe aperte:
+ * legare la seconda all'assenza della prima è il difetto S6, corretto il
+ * 2026-09-20 (vedi il commento sopra la creazione).
  */
 function MatchIngredientField({
   rawText,
@@ -117,10 +119,13 @@ function MatchIngredientField({
           ))}
         </ul>
       )}
-      {/* una voce arriva qui proprio perché il suo testo non somigliava a niente:
-          cercare lo stesso testo è il caso in cui è più probabile non trovare
-          nulla, e senza una via d'uscita quella voce resterebbe in lista per
-          sempre. Crearlo è l'unica uscita, e nessun task successivo la prevede. */}
+      {/* Questa frase vale solo quando la ricerca non ha trovato niente, e per un
+          po' ha deciso anche se si potesse creare: era la premessa sbagliata che
+          «non è stato scelto un ingrediente» significhi «non ne esiste uno
+          simile». Una voce arriva qui perché in lista è stato scritto testo
+          libero senza toccare un suggerimento — la somiglianza non c'entra, e
+          infatti «cera per pavimenti» ne pescava sette, `Pera` compresa. La
+          creazione sta più sotto e non dipende più da questo. */}
       {showSuggestions && outcome === "searched" && suggestions.length === 0 && (
         <p className="text-sm text-low">
           Nessun ingrediente corrisponde. Puoi crearlo adesso: scegli il reparto e la
@@ -132,7 +137,14 @@ function MatchIngredientField({
           La ricerca degli ingredienti non risponde. Riprova a scrivere, oppure crealo.
         </p>
       )}
-      {showSuggestions && outcome !== "searching" && suggestions.length === 0 && (
+      {/* Sempre, appena la ricerca ha risposto: è l'unico posto dell'app che crea
+          un ingrediente (`createIngredient` ha un solo chiamante), e la dispensa
+          manda proprio qui quando il suo selettore fallisce. Nasconderla dietro
+          «nessun suggerimento» la rendeva di fatto irraggiungibile — misurato in
+          produzione: di sette nomi plausibili di prodotti per la casa, tutti e
+          sette pescavano almeno un suggerimento. Con dei suggerimenti davanti
+          pesa meno (secondary, non warn): resta la seconda scelta, non sparisce. */}
+      {showSuggestions && outcome !== "searching" && (
         <>
           <label className="text-sm">
             Reparto
@@ -158,7 +170,7 @@ function MatchIngredientField({
             type="button"
             onClick={() => create.mutate(trimmed)}
             disabled={create.isPending}
-            className={buttonClasses("warn")}
+            className={buttonClasses(suggestions.length > 0 ? "secondary" : "warn")}
           >
             Crea l'ingrediente «{trimmed}»
           </button>

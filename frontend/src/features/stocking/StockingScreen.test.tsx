@@ -31,6 +31,12 @@ const UNMATCHED = [
 
 const STRANGE = { id: "i9", name: "cosa strana", display_name: "Cosa Strana", category: "altro" };
 
+// Un suggerimento che la ricerca tira dentro per un frammento e basta: in
+// produzione «cera per pavimenti» ne pescava sette così, `Pera` in testa con
+// 0.278, agganciata su «p*era*» e su «*per*». Nessuno pertinente, tutti sopra
+// SIMILARITY_FLOOR.
+const PERA = { id: "i7", name: "pera", display_name: "Pera", category: "frutta" };
+
 // Lo yogurt che si ricompra ogni settimana: già in catalogo con marca e nutrienti,
 // e l'unico modo di riagganciarlo era riscansionare il codice a barre.
 const FAGE = {
@@ -527,5 +533,35 @@ describe("StockingScreen", () => {
       display_name: "cosa strana",
       category: "casa",
     });
+  });
+
+  it("la creazione resta raggiungibile anche quando la ricerca trova qualcosa", async () => {
+    // Il difetto misurato in produzione il 2026-09-18: la porta stava dietro
+    // `suggestions.length === 0`, cioè bastava un suggerimento qualsiasi — anche
+    // «Pera» per «cera per pavimenti» — e l'unico posto dell'app che crea un
+    // ingrediente spariva, lasciando la voce in lista per sempre.
+    const spy = stubRoutedFetch((path, init) => {
+      if (path.includes("/ingredients/search")) return [[PERA]];
+      if (path.endsWith("/ingredients") && init?.method === "POST") return [STRANGE, 201];
+      return [UNMATCHED];
+    });
+
+    renderScreen();
+    await screen.findByText("cosa strana");
+
+    // il suggerimento c'è e resta: la correzione non sta nella ricerca
+    expect(await screen.findByRole("option", { name: /Pera/i })).toBeDefined();
+    // ...ma non è più lui a decidere se si può creare
+    await userEvent.selectOptions(await screen.findByLabelText("Reparto"), "casa");
+    await userEvent.click(screen.getByRole("button", { name: /Crea l'ingrediente/i }));
+
+    expect(postBody(spy, "/ingredients")).toEqual({
+      name: "cosa strana",
+      display_name: "cosa strana",
+      category: "casa",
+    });
+    // la frase del caso vuoto resta al caso vuoto: davanti a un suggerimento
+    // «nessun ingrediente corrisponde» sarebbe falso
+    expect(screen.queryByText(/Nessun ingrediente corrisponde/)).toBeNull();
   });
 });

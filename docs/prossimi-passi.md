@@ -1,8 +1,9 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-17 (le cinque voci indipendenti di Parte VIII: S1, S2, R1,
-R3, T1; poi, lo stesso giorno, la domanda del rientro in lista estesa al giallo e
-il filtro per ingrediente rifatto al plurale).
+Aggiornato il 2026-09-20 (S6, la porta della creazione riaperta). Prima: il
+2026-09-18 (D4 e S5, il non alimentare) e il 2026-09-17 (S1, S2, R1, R3, T1, più
+la domanda del rientro in lista estesa al giallo e il filtro per ingrediente
+rifatto al plurale).
 
 Questo file è **l'unico posto dove sta la lista**. La roadmap per fasi della spec
 madre (`docs/superpowers/specs/2026-09-11-spena-design.md`, §4) resta il documento
@@ -47,6 +48,11 @@ alimentare: migrazione `0007` applicata all'avvio, anagrafica allargata a 18 voc
 `casa`/`igiene` caricate con `seed --solo-ingredienti`, ricette non toccate. La
 verifica a mano dello stesso giorno ha trovato un difetto **preesistente e non
 legato ai non alimentari**: vedi **S6**.
+
+**Il 2026-09-20 S6 è corretto** — la porta che crea un ingrediente non si chiude più
+quando la ricerca trova qualcosa — con il suo test in jsdom e una verifica a 375px nel
+browser vero. **Non è ancora distribuito**: finché non lo è, quella voce dice
+«CORRETTO», non «FATTO».
 
 ---
 
@@ -277,7 +283,7 @@ Vedi D4: stessa lista, stessa dispensa, nessuna informazione nutrizionale — so
 la voce con il suo slider. Spec:
 `docs/superpowers/specs/2026-09-17-non-alimentari-design.md`.
 
-## S6. «Sistema la spesa» può chiudere l'unica porta che crea un ingrediente **[D — difetto, trovato il 2026-09-18]**
+## S6. «Sistema la spesa» chiudeva l'unica porta che crea un ingrediente **[CORRETTO 2026-09-20, non ancora distribuito]**
 Il menù **Reparto** e il pulsante «Crea l'ingrediente «X»» compaiono solo se la
 ricerca non trova nulla (`frontend/src/features/stocking/StockingScreen.tsx`,
 condizione `suggestions.length === 0`). Basta **un** suggerimento qualsiasi, anche
@@ -326,13 +332,34 @@ il reparto fisso «altro» col menù a tendina *dentro* una condizione che esist
 già. Il non alimentare è però il primo caso in cui creare una voce nuova serviva
 davvero, ed è così che è saltato fuori.
 
-**Correzione decisa:** mostrare Reparto + «Crea l'ingrediente «X»» **sempre**, sotto
-i suggerimenti, con peso visivo minore quando i suggerimenti ci sono; la frase
-«Nessun ingrediente corrisponde» resta al solo caso vuoto. **Non** alzare
-`SIMILARITY_FLOOR`: spegnerebbe i suggerimenti buoni sui nomi corti per riparare un
-problema che non sta nella ricerca ma nell'uscita. Il test che oggi manca, e che va
-scritto per primo: **con suggerimenti presenti, il pulsante di creazione deve
-esserci.**
+**Correzione applicata il 2026-09-20**, esattamente quella decisa: Reparto e «Crea
+l'ingrediente «X»» compaiono **sempre** appena la ricerca ha risposto
+(`showSuggestions && outcome !== "searching"`, in luogo del vecchio
+`&& suggestions.length === 0`), sotto i suggerimenti e con peso visivo minore quando
+ce ne sono — `buttonClasses("secondary")` invece di `"warn"`, cioè seconda scelta e
+non via principale. La frase «Nessun ingrediente corrisponde» è rimasta al solo caso
+vuoto, l'unico in cui è vera. `SIMILARITY_FLOOR` **non** è stato toccato: il problema
+non stava nella ricerca.
+
+Il test scritto per primo è quello che questa voce chiedeva — «con suggerimenti
+presenti, il pulsante di creazione deve esserci» — ed è
+`frontend/src/features/stocking/StockingScreen.test.tsx`, «la creazione resta
+raggiungibile anche quando la ricerca trova qualcosa»: dà `Pera` come unico
+suggerimento e pretende Reparto, creazione, e l'assenza della frase del caso vuoto.
+Visto fallire prima della correzione (`Unable to find a label with the text of:
+Reparto`), verde dopo.
+
+**Verificato anche a schermo vero**, a 375px sullo stack `spena-e2e`, perché il peso
+visivo e l'impaginazione non li vede jsdom: scritta «cera per pavimenti» in lista come
+testo libero, la sistemazione mostra sei suggerimenti (`Pera`, `Pane per hamburger`,
+`Polenta`, `Mandarino`, `Detersivo per i piatti`, `Spugne per i piatti` — gli stessi
+della misura in produzione) **e sotto di essi** Reparto e il pulsante di creazione, che
+su 375px sta su una riga sola. I nove controlli e2e esistenti restano verdi, e lo
+stack è stato ricreato con `down -v` dopo il giro a mano, che lo sporca.
+
+**Resta da distribuire:** al momento della scrittura la correzione è nell'albero di
+lavoro, non in produzione. Chi la porta in `master` e sul server aggiorni questa riga
+in «FATTO», come per le altre voci di questo file.
 
 ---
 
