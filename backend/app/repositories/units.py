@@ -55,3 +55,19 @@ async def apply_forms(
         ).scalars().first()
         if canonical is not None and canonical.id != unit.id:
             unit.canonical_id = canonical.id
+
+
+async def reset_unit(session: AsyncSession, key: str) -> bool:
+    """Riporta un'unità a non decisa. Torna `False` se quella chiave non c'è."""
+    unit = (
+        await session.execute(select(Unit).where(Unit.key == key))
+    ).scalars().first()
+    if unit is None:
+        return False
+    unit.singular = None
+    unit.plural = None
+    unit.decided_by = None
+    unit.decided_at = None
+    unit.canonical_id = None
+    await session.flush()
+    return True
