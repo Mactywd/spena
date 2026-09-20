@@ -38,8 +38,9 @@ export function fetchSearchMode() {
   return apiFetch<{ semantic: boolean }>("/recipes/search-mode");
 }
 
-export function fetchRecipe(id: string) {
-  return apiFetch<RecipeDetail>(`/recipes/${id}`);
+export function fetchRecipe(id: string, servings?: number) {
+  const query = servings ? `?servings=${servings}` : "";
+  return apiFetch<RecipeDetail>(`/recipes/${id}${query}`);
 }
 
 export function createRecipe(body: unknown) {

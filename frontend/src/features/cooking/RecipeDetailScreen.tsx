@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import { fetchRecipe } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { CookSheet } from "./CookSheet";
+import { ServingsStepper } from "./ServingsStepper";
 import { Alert } from "../../components/ui/Alert";
 import { Card } from "../../components/ui/Card";
 import { SectionHeading } from "../../components/ui/SectionHeading";
@@ -35,14 +36,18 @@ export function RecipeDetailScreen() {
   // e senza questo il gesto per cui esiste tutto il task non dice mai cosa ha fatto
   const [lastCook, setLastCook] = useState<CookResult | null>(null);
 
+  // le porzioni chieste: è una vista, non si salva. Uscire dalla ricetta se ne
+  // dimentica, ed è quel che vuole chi sta guardando cosa cucinare stasera.
+  const [servings, setServings] = useState<number | null>(null);
+
   const {
     data: recipe,
     isLoading: isRecipeLoading,
     isError: isRecipeError,
     refetch: refetchRecipe,
   } = useQuery({
-    queryKey: ["recipe", id],
-    queryFn: () => fetchRecipe(id),
+    queryKey: ["recipe", id, servings],
+    queryFn: () => fetchRecipe(id, servings ?? undefined),
   });
 
   // Serve solo per aprire il foglio di cottura: senza dispensa non si può dire
@@ -81,6 +86,7 @@ export function RecipeDetailScreen() {
     { label: "Principali", lines: primary },
     { label: "Secondari", lines: secondary },
   ];
+  const totalLines = recipe.ingredients.length;
 
   return (
     <div className="px-4 pt-2 pb-4">
@@ -131,6 +137,15 @@ export function RecipeDetailScreen() {
             </p>
           )}
 
+          {/* lo stepper compare solo se la ricetta dichiara le sue porzioni: senza
+              quelle non c'è una base da cui riscalare, e mostrarlo comunque
+              inviterebbe a un calcolo che qui non si fa */}
+          {recipe.servings != null && (
+            <div className="pt-3">
+              <ServingsStepper value={servings ?? recipe.servings} onChange={setServings} />
+            </div>
+          )}
+
           {groups.map(({ label, lines }) => (
             <section key={label}>
               <SectionHeading>{label}</SectionHeading>
@@ -143,8 +158,10 @@ export function RecipeDetailScreen() {
                     >
                       <span>
                         {line.ingredient_name}
-                        {line.quantity_text && (
-                          <span className="ml-2 text-sm text-ink-faint">{line.quantity_text}</span>
+                        {line.quantity_display && (
+                          <span className="ml-2 text-sm text-ink-faint">
+                            {line.quantity_display}
+                          </span>
                         )}
                       </span>
                       {/* gli stessi due colori della dispensa: il verdetto per riga è
@@ -163,6 +180,14 @@ export function RecipeDetailScreen() {
               </Card>
             </section>
           ))}
+
+          {recipe.unscalable_lines > 0 && (
+            <p className="px-1 pt-2 text-sm text-ink-faint">
+              {recipe.unscalable_lines === 1
+                ? `1 dose su ${totalLines} non si riscala: resta com'è.`
+                : `${recipe.unscalable_lines} dosi su ${totalLines} non si riscalano: restano come sono.`}
+            </p>
+          )}
 
           <section>
             <SectionHeading>Procedimento</SectionHeading>

@@ -9,16 +9,21 @@ import type { PantryItem } from "../../domain/types";
 const DETAIL = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
   missing: 2, cookable: false, image_url: null as string | null, instructions: "Cuoci.",
-  servings: 2, source_ref: null,
+  servings: 2 as number | null, source_ref: null, scaled_to: null as number | null,
+  unscalable_lines: 0,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
+      quantity_display: "180 g", quantity_scaled: false,
       note: null, availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "pomodoro", role: "primary", quantity_text: "400 g",
+      quantity_display: "400 g", quantity_scaled: false,
       note: null, availability: "low", satisfied: false },
     { ingredient_id: "i3", ingredient_name: "aglio", role: "secondary", quantity_text: null,
+      quantity_display: null, quantity_scaled: false,
       note: null, availability: "low", satisfied: true },
     // senza una riga che manca, metà di statusNote non è coperta da niente
     { ingredient_id: "i4", ingredient_name: "basilico", role: "secondary", quantity_text: null,
+      quantity_display: null, quantity_scaled: false,
       note: null, availability: "missing", satisfied: false },
   ],
 };
@@ -239,5 +244,59 @@ describe("RecipeDetailScreen", () => {
     expect(screen.queryByRole("img", { name: "Pasta al pomodoro" })).toBeNull();
     // il resto della scheda resta al suo posto
     expect(screen.getByRole("heading", { name: "Pasta al pomodoro" })).toBeDefined();
+  });
+
+  /** Come `stubFetch`, ma la risposta dipende dall'indirizzo: qui servono due corpi
+   * diversi — la ricetta com'è, e la ricetta riporzionata — e `mockImplementation` è
+   * obbligatorio perché il corpo di una Response si legge una volta sola. */
+  function stubFetchByUrl(route: (url: string) => unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) =>
+        Promise.resolve(new Response(JSON.stringify(route(String(url))), { status: 200 }))
+      )
+    );
+  }
+
+  // la stessa ricetta chiesta per 2 invece che per 4: è il server a decidere queste
+  // stringhe, e il client non le ricalcola — per questo il finto le detta
+  const DIMEZZATA = {
+    ...DETAIL,
+    scaled_to: 2,
+    unscalable_lines: 2,
+    ingredients: [
+      { ...DETAIL.ingredients[0], quantity_display: "90 g", quantity_scaled: true },
+      { ...DETAIL.ingredients[1], quantity_display: "200 g", quantity_scaled: true },
+      { ...DETAIL.ingredients[2], quantity_display: null, quantity_scaled: false },
+      { ...DETAIL.ingredients[3], quantity_display: null, quantity_scaled: false },
+    ],
+  };
+
+  it("il selettore delle porzioni rilegge la ricetta e mostra quel che dice il server", async () => {
+    // il client non fa aritmetica: chiede e mostra. È la riga di CLAUDE.md che tiene
+    // in piedi la porta a Capacitor.
+    const spy = vi.fn();
+    stubFetchByUrl((url) => {
+      spy(url);
+      return url.includes("servings=1") ? DIMEZZATA : DETAIL;
+    });
+
+    renderScreen();
+    expect(await screen.findByText("180 g")).toBeDefined();
+
+    // DETAIL è per 2 porzioni: un tocco porta a 1
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+
+    expect(await screen.findByText("90 g")).toBeDefined();
+    // e la copertura si dichiara invece di far finta di niente
+    expect(screen.getByText(/2 dosi su 4 non si riscalano/)).toBeDefined();
+    expect(spy.mock.calls.some(([url]) => String(url).includes("servings=1"))).toBe(true);
+  });
+
+  it("senza porzioni dichiarate il selettore non compare", async () => {
+    stubFetch({ servings: null });
+    renderScreen();
+    await screen.findByText("180 g");
+    expect(screen.queryByRole("button", { name: /porzione in meno/ })).toBeNull();
   });
 });
