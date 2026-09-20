@@ -20,11 +20,11 @@ function ultimaRicerca(fetchMock: { mock: { calls: unknown[][] } }): string {
 
 const RESULTS = [
   { id: "r1", title: "Pasta all'aglio", description: "Svelta", source: "dataset",
-    missing: 0, cookable: true, image_url: "https://example.com/aglio.jpg",
+    missing: 0, cookable: true, missing_names: [], image_url: "https://example.com/aglio.jpg",
     prep_minutes: 10, cook_minutes: 15, category: "Primi piatti" },
   { id: "r2", title: "Pasta al pomodoro", description: "Di sempre", source: "ai",
-    missing: 1, cookable: false, image_url: null, prep_minutes: null,
-    cook_minutes: null, category: null },
+    missing: 1, cookable: false, missing_names: ["Pomodoro"], image_url: null,
+    prep_minutes: null, cook_minutes: null, category: null },
 ];
 
 function renderScreen(queryCache?: QueryCache) {

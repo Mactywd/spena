@@ -8,7 +8,7 @@ import type { PantryItem, RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
-  missing: 2, cookable: false, image_url: null, prep_minutes: null, cook_minutes: null,
+  missing: 2, cookable: false, missing_names: ["Basilico", "Pomodoro"], image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, instructions: "Cuoci.",
   servings: 2, source_ref: null, scaled_to: null,
   // quattro righe su cinque portano una dose: «basilico» non ne ha nessuna, ed è la

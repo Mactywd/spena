@@ -103,7 +103,7 @@ export function RecipeBookScreen() {
     queryFn: () =>
       searchRecipes({
         query: debouncedQuery,
-        onlyCookable,
+        maxMissing: onlyCookable ? 0 : null,
         category,
         ingredientIds,
       }),

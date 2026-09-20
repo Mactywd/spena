@@ -73,6 +73,10 @@ export interface RecipeSummary {
   source: RecipeSource;
   missing: number;
   cookable: boolean;
+  /** I nomi di quel che manca, in ordine alfabetico, decisi dal server. Il client
+   * non li ricava da `ingredients`: chi manca lo dice la regola primario/secondario,
+   * che vive nel backend. */
+  missing_names: string[];
   image_url: string | null;
   prep_minutes: number | null;
   cook_minutes: number | null;
