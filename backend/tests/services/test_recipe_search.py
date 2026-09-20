@@ -284,3 +284,55 @@ async def test_piu_ingredienti_devono_esserci_tutti(db_session):
     risultati = await search_recipes(db_session, ingredient_ids=[pomodoro.id, basilico.id])
 
     assert [r.recipe.title for r in risultati] == ["Pasta al pomodoro e basilico"]
+
+
+async def test_i_mancanti_si_chiamano_per_nome_e_in_ordine(db_session):
+    """Il conteggio dice quante cose mancano, non quali.
+
+    Con la soglia ferma a zero bastava il numero; oltre lo zero la domanda diventa
+    «vale la pena comprarle?», e a quella un numero non risponde.
+
+    Il secondario quasi finito non compare: non manca (regola primario/secondario), e
+    se comparisse la scheda direbbe di comprare una cosa che c'è.
+    """
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import search_recipes
+
+    pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    aglio = Ingredient(name="aglio", display_name="Aglio", category=IngredientCategory.VERDURA)
+    bottarga = Ingredient(
+        name="bottarga", display_name="Bottarga", category=IngredientCategory.PESCE
+    )
+    zafferano = Ingredient(
+        name="zafferano", display_name="Zafferano", category=IngredientCategory.SPEZIE
+    )
+    db_session.add_all([pasta, aglio, bottarga, zafferano])
+    await db_session.flush()
+    db_session.add_all([
+        PantryItem(ingredient_id=pasta.id, status="available"),
+        PantryItem(ingredient_id=aglio.id, status="low"),
+    ])
+    await db_session.flush()
+
+    await create_recipe(
+        db_session, title="Pasta della domenica", description="Con quel che non ho",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[
+            (pasta.id, "primary", "320 g", None),
+            (aglio.id, "secondary", "1 spicchio", None),
+            (zafferano.id, "primary", "1 bustina", None),
+            (bottarga.id, "primary", "20 g", None),
+        ],
+        embedding=None,
+    )
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session)
+
+    assert len(risultati) == 1
+    assert risultati[0].missing == 2
+    # alfabetico: `recipe_ingredients` non ha una colonna di posizione, e senza un
+    # criterio esplicito due letture identiche potrebbero elencarli in ordine diverso
+    assert risultati[0].missing_names == ["Bottarga", "Zafferano"]
