@@ -4,12 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
-import type { PantryItem } from "../../domain/types";
+import type { PantryItem, RecipeDetail } from "../../domain/types";
 
-const DETAIL = {
+const DETAIL: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
-  missing: 2, cookable: false, image_url: null as string | null, instructions: "Cuoci.",
-  servings: 2 as number | null, source_ref: null, scaled_to: null as number | null,
+  missing: 2, cookable: false, image_url: null, prep_minutes: null, cook_minutes: null,
+  category: null, instructions: "Cuoci.",
+  servings: 2, source_ref: null, scaled_to: null,
   unscalable_lines: 0,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
@@ -291,6 +292,18 @@ describe("RecipeDetailScreen", () => {
     // e la copertura si dichiara invece di far finta di niente
     expect(screen.getByText(/2 dosi su 4 non si riscalano/)).toBeDefined();
     expect(spy.mock.calls.some(([url]) => String(url).includes("servings=1"))).toBe(true);
+  });
+
+  it("a 1× nessuna riga è invariabile: la copertura non compare", async () => {
+    // il "solo quando" della regola: la riga di copertura non deve comparire quando
+    // non c'è niente da segnalare, ed è proprio quel che vede chiunque apra una
+    // ricetta per la prima volta, senza toccare lo stepper
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(DETAIL), { status: 200 })
+    ));
+    renderScreen();
+    await screen.findByText("180 g");
+    expect(screen.queryByText(/non si riscala/)).toBeNull();
   });
 
   it("senza porzioni dichiarate il selettore non compare", async () => {
