@@ -7,6 +7,7 @@ import app.cli.import_gz as import_gz
 from app.cli.import_gz import run_import
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe_import import ImportState, RecipeImport
+from app.db.models.unit import Unit
 from app.services.recipe_import.giallozafferano import RECIPE_SITEMAP, build_client
 from llm_fakes import ScriptedLlm, llm_create, llm_map
 
@@ -320,5 +321,72 @@ async def test_senza_chiave_lo_scarico_non_fallisce_e_lascia_i_termini_in_coda(
             )
         ).scalars().all()
         assert in_coda != []
+    finally:
+        get_settings.cache_clear()
+
+
+@respx.mock
+async def test_lo_scarico_dice_le_unita_nuove_che_ha_depositato(db_session, monkeypatch):
+    """Chi importa deve sapere che c'è un comando da lanciare dopo.
+
+    `run_import` non chiama `decide_unit_forms` di proposito — sarebbe una chiamata
+    AI in più dentro un comando che ne fa già una sua, sul tetto di 1$/giorno di chi
+    possiede il progetto — quindi le unità appena depositate restano non decise. Se
+    nessuno lo dice, le dosi di ogni ricetta importata dopo questo cambiamento
+    mostrano la parola grezza per sempre.
+    """
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    try:
+        db_session.add(
+            Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+        )
+        await db_session.flush()
+
+        client = fonte_finta_con_una_ricetta()
+        llm = ScriptedLlm(
+            {"Rigatoni": llm_map("pasta"), "Speck": llm_create("speck", "Speck", "carne")}
+        )
+
+        esito = await run_import(
+            db_session, limit=1, client=client, sleep=nessuna_pausa, llm_client=llm
+        )
+
+        # le due righe della pagina finta dicono «320 g» e «100 g»: una sola unità
+        assert esito.new_units == 1
+        unita = (await db_session.execute(select(Unit))).scalars().all()
+        assert [u.key for u in unita] == ["g"]
+        assert unita[0].decided_by is None
+    finally:
+        get_settings.cache_clear()
+
+
+@respx.mock
+async def test_una_unita_gia_vista_non_si_riconta(db_session, monkeypatch):
+    """Il numero è «quante ne ha depositate questo giro», non «quante ne esistono»:
+    un secondo lotto che non porta parole nuove non deve chiedere un comando inutile."""
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    try:
+        db_session.add(Unit(key="g", singular="g", plural="g", decided_by="human"))
+        db_session.add(
+            Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+        )
+        await db_session.flush()
+
+        client = fonte_finta_con_una_ricetta()
+        llm = ScriptedLlm(
+            {"Rigatoni": llm_map("pasta"), "Speck": llm_create("speck", "Speck", "carne")}
+        )
+
+        esito = await run_import(
+            db_session, limit=1, client=client, sleep=nessuna_pausa, llm_client=llm
+        )
+
+        assert esito.new_units == 0
     finally:
         get_settings.cache_clear()

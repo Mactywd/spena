@@ -16,10 +16,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import httpx
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal
 from app.db.models.recipe_import import GIALLOZAFFERANO
+from app.db.models.unit import Unit
 from app.repositories.imports import (
     counts,
     known_urls,
@@ -57,6 +59,9 @@ class ImportRun:
     stopped_early: bool
     decided: int = 0
     still_pending: int = 0
+    # le parole d'unità mai viste che la materializzazione ha depositato: nessuno le
+    # decide da sé, e `main()` lo dice invece di lasciarle grezze per sempre
+    new_units: int = 0
 
 
 async def run_import(
@@ -158,11 +163,21 @@ async def run_import(
             still_pending = len(waiting)
             print(f"riconoscimento non disponibile ({exc}): i termini restano in coda.")
 
+    # Contate attorno alla materializzazione, che è dove `create_recipe` deposita le
+    # unità nuove. Non si decidono qui: quella è una chiamata AI in più dentro un
+    # comando che ne fa già una sua, e il tetto di 1$/giorno non è nostro da spendere.
+    # Si dice, come fa `reparse_quantities`, e chi lancia decide.
+    before = await _count_units(session)
     await materialize_ready(session, GIALLOZAFFERANO)
     return ImportRun(
         taken=taken, skipped=skipped, stopped_early=stopped_early,
         decided=decided, still_pending=still_pending,
+        new_units=await _count_units(session) - before,
     )
+
+
+async def _count_units(session: AsyncSession) -> int:
+    return (await session.execute(select(func.count()).select_from(Unit))).scalar_one()
 
 
 async def main() -> None:
@@ -187,6 +202,14 @@ async def main() -> None:
         print(
             f"{totals.pending_terms} ingredienti da abbinare a mano: aprili dal "
             "ricettario, alla riga in cima. Le ricette entrano da sé mentre decidi."
+        )
+    # La stessa riga di `reparse_quantities`: senza, le dosi delle ricette appena
+    # importate mostrano la parola grezza per sempre, perché niente in questo comando
+    # decide le unità e niente altro le guarda.
+    if result.new_units:
+        print(
+            f"{result.new_units} unità di misura nuove: decidile con "
+            "python -m app.cli.decide_units"
         )
 
 
