@@ -52,6 +52,9 @@ class RecipeIngredientOut(BaseModel):
     note: str | None
     availability: Availability
     satisfied: bool
+    # quel che va mostrato: a 1× è quantity_text, riscritto solo quando si riporziona
+    quantity_display: str | None
+    quantity_scaled: bool
 
 
 class RecipeOut(BaseModel):
@@ -71,6 +74,8 @@ class RecipeOut(BaseModel):
     prep_minutes: int | None = None
     cook_minutes: int | None = None
     category: str | None = None
+    scaled_to: int | None = None
+    unscalable_lines: int = 0
 
 
 class RecipeSummaryOut(BaseModel):

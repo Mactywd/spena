@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.db.models.recipe import Recipe
+from app.domain.quantities import UnitForms, render_quantity, scale_quantity
 from app.domain.rules import (
     Availability,
     IngredientRole,
@@ -42,16 +44,42 @@ router = APIRouter(
 )
 
 
-async def _to_out(session: AsyncSession, recipe: Recipe) -> RecipeOut:
+async def _to_out(
+    session: AsyncSession, recipe: Recipe, servings: int | None = None
+) -> RecipeOut:
     ingredient_ids = [ri.ingredient_id for ri in recipe.ingredients]
     availability = await availability_map(session, ingredient_ids)
 
+    # Il fattore sta qui e non nel client: la pluralizzazione e l'aritmetica sono
+    # logica di dominio, ed è la riga di CLAUDE.md che tiene in piedi la porta a
+    # Capacitor. In TypeScript vorrebbe dire spedire il registro delle unità al
+    # client e tenere le stesse regole in due lingue.
+    factor: Decimal | None = None
+    if servings and recipe.servings:
+        factor = Decimal(servings) / Decimal(recipe.servings)
+        if factor == 1:
+            factor = None  # chiedere le porzioni che ha già è come non chiedere niente
+
     lines: list[RecipeIngredientOut] = []
     requirements: list[tuple[IngredientRole, Availability]] = []
+    unscalable = 0
     for ri in recipe.ingredients:
         have = availability.get(ri.ingredient_id, Availability.MISSING)
         role = IngredientRole(ri.role)
         requirements.append((role, have))
+        if factor is not None and ri.quantity_value is not None:
+            forms = (
+                UnitForms(ri.unit.key, ri.unit.singular, ri.unit.plural)
+                if ri.unit
+                else None
+            )
+            display = render_quantity(scale_quantity(ri.quantity_value, factor), forms)
+            scaled = True
+        else:
+            display = ri.quantity_text
+            scaled = False
+            if factor is not None:
+                unscalable += 1
         lines.append(
             RecipeIngredientOut(
                 ingredient_id=ri.ingredient_id,
@@ -61,6 +89,8 @@ async def _to_out(session: AsyncSession, recipe: Recipe) -> RecipeOut:
                 note=ri.note,
                 availability=have,
                 satisfied=is_satisfied(role, have),
+                quantity_display=display,
+                quantity_scaled=scaled,
             )
         )
     # il conteggio e il verdetto arrivano da app/domain/rules.py, non da un `sum`
@@ -73,6 +103,8 @@ async def _to_out(session: AsyncSession, recipe: Recipe) -> RecipeOut:
         missing=missing_count(requirements), cookable=is_cookable(requirements),
         image_url=recipe.image_url, prep_minutes=recipe.prep_minutes,
         cook_minutes=recipe.cook_minutes, category=recipe.category,
+        scaled_to=servings if factor is not None else None,
+        unscalable_lines=unscalable,
     )
 
 
@@ -133,12 +165,14 @@ async def categories(session: AsyncSession = Depends(get_session)) -> list[str]:
 
 @router.get("/{recipe_id}", response_model=RecipeOut)
 async def detail(
-    recipe_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+    recipe_id: uuid.UUID,
+    servings: int | None = Query(default=None, ge=1, le=50),
+    session: AsyncSession = Depends(get_session),
 ) -> RecipeOut:
     recipe = await get_recipe(session, recipe_id)
     if recipe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
-    return await _to_out(session, recipe)
+    return await _to_out(session, recipe, servings=servings)
 
 
 @router.post("", response_model=RecipeOut, status_code=status.HTTP_201_CREATED)
