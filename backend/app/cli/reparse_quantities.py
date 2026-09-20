@@ -20,7 +20,10 @@ from app.db.models.unit import Unit
 from app.domain.quantities import parse_quantity
 from app.repositories.units import ensure_unit
 
-BATCH = 500
+# Nessun `.limit()` qui, di proposito: si legge tutta la tabella in un colpo solo
+# perché è piccola per contratto (un centinaio di ricette finché i volumi non
+# cambiano). Se un giorno smettesse di esserlo, `app.cli.reindex` tiene già la
+# forma a lotti da copiare.
 
 
 @dataclass(frozen=True)
