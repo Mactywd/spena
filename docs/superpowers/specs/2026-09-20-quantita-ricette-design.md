@@ -290,8 +290,11 @@ dichiara, non si riempie.
 
 `backend/app/services/unit_forms.py`, più il comando `python -m app.cli.decide_units`.
 
-- prende tutte le `units` con `decided_by IS NULL` e le chiede **in una sola chiamata**:
-  sono una manciata di parole, e sul tetto di 1$/giorno non si sentono;
+- prende le `units` con `decided_by IS NULL` e le chiede **in una sola chiamata**:
+  sono una manciata di parole, e sul tetto di 1$/giorno non si sentono. Un lotto per
+  giro, però, non tutte: `MAX_UNITS_PER_RUN` le tiene entro `FORMS_MAX_TOKENS`, perché
+  una risposta tagliata a metà non si applica affatto — quel che resta fuori lo prende
+  il giro dopo, e il comando dice quanto resta;
 - `LlmCallSite.UNIT_FORMS`, membro nuovo dell'enum in `services/llm.py`. L'enum non ha
   default di proposito — una sezione che si dimenticasse di dichiararsi finirebbe in un
   secchio muto — quindi la torta delle spese di H1 continua a tornare;

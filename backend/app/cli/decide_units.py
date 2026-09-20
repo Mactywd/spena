@@ -36,6 +36,16 @@ async def main(argv: list[str]) -> int:
         esito = await decide_unit_forms(session)
         await session.commit()
     print(f"{esito.applied} unità decise, {esito.refused} risposte rifiutate")
+    # L'ultima riga dice sempre quanto resta, come `import_gz` con i suoi termini:
+    # «0 decise» da solo non distingue «non c'era niente da fare» da «l'AI non ha
+    # risposto», e chi mette in produzione legge proprio quella riga per sapere se
+    # deve rilanciare.
+    if esito.pending == 1:
+        print("1 parola resta da decidere: rilancia questo comando.")
+    elif esito.pending:
+        print(f"{esito.pending} parole restano da decidere: rilancia questo comando.")
+    else:
+        print("nessuna parola in attesa.")
     return 0
 
 
