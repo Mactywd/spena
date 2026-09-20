@@ -76,7 +76,14 @@ export function CookSheet({
   const cook = useMutation({
     mutationFn: () =>
       cookRecipe(recipe.id, {
-        servings: recipe.servings ?? undefined,
+        // le porzioni per cui si è scalato, se si è scalato: è quel che si è
+        // davvero cucinato. Il riporziona è «una vista» (spec §5.3) nel senso che
+        // non si salva sulla ricetta — ma quante porzioni sono uscite dalla pentola
+        // stasera è un fatto diverso, e `cooking_events` esiste senza consumatori
+        // proprio perché la fase 3 ci trovi una storia vera su cui appoggiarsi.
+        // Scrivere 2 dopo aver cucinato per 6 sarebbe invisibile oggi e sbagliato
+        // per sempre.
+        servings: recipe.scaled_to ?? recipe.servings ?? undefined,
         // si parte da ciò che è in elenco, non da ciò che è stato cliccato: una voce
         // sparita dalla dispensa mentre il foglio era aperto farebbe fallire tutta
         // la cottura per un id che l'utente non ha più davanti e non può togliere.
