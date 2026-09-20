@@ -68,24 +68,26 @@ not pay for them again:
 
 ## The two decisions everything else follows from
 
-**1. No quantities, anywhere.** The pantry does not know amounts, units, or expiry
-dates. An ingredient is `available`, `low`, or `finished`. This is deliberate, not
-an omission: it removes unit conversion and the daily upkeep that makes apps like
-this get abandoned. `recipe_ingredients.quantity_text` is free text for display and
-must never enter a calculation. `pantry_items.fill_percent` (0–100, nullable) is not
-an exception: it is a slider *position* — no unit, no expiry — read only by
+**1. No quantities, in the pantry.** The pantry does not know amounts, units, or
+expiry dates. An ingredient is `available`, `low`, or `finished`. This is
+deliberate, not an omission: it removes unit conversion and the daily upkeep that
+makes apps like this get abandoned. `pantry_items.fill_percent` (0–100, nullable)
+is not an exception: it is a slider *position* — no unit, no expiry — read only by
 `status_for_fill` to pick one of the three statuses, which stays the only truth the
 rest of the app reasons on. The reasoning is in the note under D1 of
 `docs/prossimi-passi.md`; read it before citing this column as a precedent.
 
-> **A narrowing is decided but not yet built (2026-09-17).** Recipes — and only
-> recipes — will gain optional structured quantities beside that text, so a recipe can
-> be rescaled and its nutrition computed; see `docs/prossimi-passi.md`, D1. **The
-> pantry keeps this rule whole**: no amounts, no units, no expiry, because that is
-> where the rule bought what it was meant to buy. Until that work lands, the paragraph
-> above describes the code exactly. When it lands, amend this paragraph and §2 of the
-> mother spec together. The consequence is that nutrition cannot be derived
-from stock levels, which is why nutrition tracking is phase 3 on its own track.
+The rule narrows to exactly that (decided 2026-09-17, built since): recipes — and
+only recipes — carry structured quantities too. A recipe ingredient has
+`quantity_value` and `quantity_unit_id` beside `quantity_text`, both nullable,
+filled on a best-effort basis by the parser in `backend/app/domain/quantities.py`.
+`quantity_text` stays the truth shown at 1× and is never rewritten; the structured
+pair is what a rescale reads, and a line the parser could not fill — `q.b.` foremost
+— simply does not scale, declared as such rather than guessed. **The pantry keeps
+the rule whole**: no amounts, no units, no expiry there, which is where the rule
+bought what it was meant to buy. Nutrition still cannot be derived from what a
+recipe's quantities say, let alone from stock levels — that needs the grams-per-unit
+work of S4 too — which is why nutrition tracking is phase 3 on its own track.
 
 **2. Generic ingredient and specific product are different things.** `yogurt greco`
 is an ingredient: the shopping list writes it, recipes require it, availability is
