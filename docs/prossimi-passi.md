@@ -1,7 +1,8 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione; prima,
-nello stesso giorno, S6 e la porta della creazione riaperta). Prima: il 2026-09-18
+Aggiornato il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione, e in
+giornata **D5 decisa**: la scadenza entra in dispensa come segnale; prima, lo stesso
+giorno, S6 e la porta della creazione riaperta). Prima: il 2026-09-18
 (D4 e S5, il non alimentare) e il 2026-09-17 (S1, S2, R1, R3, T1, più la domanda del
 rientro in lista estesa al giallo e il filtro per ingrediente rifatto al plurale).
 
@@ -78,12 +79,12 @@ con un aggettivo e lo spazio bianco della pagina davanti al numero.
 
 # Parte I — Le decisioni che bloccano il resto
 
-Sono cinque. **Le prime quattro sono chiuse** — tre il 2026-09-17, la quarta il
-2026-09-18 — e **D5 è aperta**. Stanno qui perché cambiano la forma di molte cose a
-valle: chi apre una spec di Parte II, III o IV parte da queste. Le prime quattro erano
-proposte che consideravo già buone, segnalate qui solo perché toccavano una decisione
-fondante; D5 è diversa, perché chiede di riaprire la stessa decisione fondante dal
-lato che D1 aveva appena deciso di non toccare.
+Sono cinque, e **sono tutte chiuse** — tre il 2026-09-17, la quarta il 2026-09-18,
+D5 il 2026-09-20. Stanno qui perché cambiano la forma di molte cose a valle: chi apre
+una spec di Parte II, III o IV parte da queste. Le prime quattro erano proposte che
+consideravo già buone, segnalate qui solo perché toccavano una decisione fondante; D5
+era diversa, perché chiedeva di riaprire la stessa decisione fondante dal lato che D1
+aveva appena deciso di non toccare — ed è stata riaperta, di quel tanto e non di più.
 
 ## D1. Le quantità nelle ricette **[FATTO 2026-09-20]**
 
@@ -242,9 +243,34 @@ libero all'anagrafica. Non è un difetto introdotto da questo lavoro, esisteva
 già prima; resta un rinominamento aperto, non chiuso da questo task — voce in
 **Parte X**, dove si guarda il lavoro ancora aperto.
 
-## D5. La scadenza in dispensa **[?]** — riapre la decisione fondante 1
+## D5. La scadenza in dispensa **[D 2026-09-20]** — riapre la decisione fondante 1
 
-**Chiesto il 2026-09-20.** Quando un prodotto entra in dispensa si può scrivere anche
+> **Decisione: sì, la scadenza entra in dispensa, e resta un segnale.** Le due
+> domande che decidevano la forma di tutto il resto sono chiuse, e sono quelle che
+> seguono.
+>
+> **Lo stato resta la sola verità** (domanda 1). La scadenza non entra in
+> `status_for_fill`, non è un quarto stato, e **una cosa scaduta resta dov'è**:
+> disponibile, contata dalle ricette esattamente come il giorno prima. Niente diventa
+> non cucinabile di notte senza che nessuno abbia toccato niente. La riga lo dice, e
+> chi guarda decide — «scegliamo qualcos'altro» è una decisione di chi cucina, non
+> una che il database prende da sé.
+>
+> **Il colore non è il giallo** (domanda 2). Ne serve uno suo nel blocco `@theme`: il
+> giallo del cursore vuol già dire «comincia a mancare», e due fatti diversi sullo
+> stesso colore non ne dicono più nessuno.
+>
+> Le domande 3, 4 e 6 restano come sono scritte qui sotto — erano proposte senza una
+> vera alternativa. **Alla spec resta la mezza domanda 5** che il «resta» non chiude:
+> se «scaduto» sia lo stesso segnale detto più forte o un terzo colore. La proposta è
+> la prima, un token solo a due intensità, perché è lo stesso fatto a due distanze.
+>
+> **Questo riapre la decisione fondante 1 dal lato della dispensa**, e quando la spec
+> si scriverà `CLAUDE.md` e la spec madre §2 si emendano di nuovo e **insieme**, come
+> il riquadro impone: la dispensa non conosce quantità né unità, e conosce una data
+> che non si mantiene.
+
+**Chiesto e deciso il 2026-09-20.** Quando un prodotto entra in dispensa si può scrivere anche
 la sua data di scadenza; la dispensa la mostra; e **quando mancano sette giorni la
 riga cambia colore** per dire che ci si sta avvicinando.
 
@@ -269,7 +295,8 @@ quando si è lì con l'oggetto in mano, e che poi vive da sola. E a differenza d
 quantità, se la si lascia vuota non succede niente: chi non la scrive ha esattamente
 la dispensa di prima.
 
-**Le domande che la spec deve chiudere, e non sono di forma.**
+**Le domande, e come sono state chiuse.** Non erano di forma: le prime due hanno
+deciso che cosa si costruisce.
 
 1. **Lo stato resta la sola verità?** `available` / `low` / `finished` è l'unica cosa
    su cui il resto dell'app ragiona — la disponibilità di un ingrediente, se una
@@ -303,6 +330,9 @@ la dispensa di prima.
    serve un colore diverso, o la stessa cosa detta più forte? E soprattutto: una cosa
    scaduta torna in lista da sé, chiede come fa il cursore a zero («Lo rimetto in
    lista?»), o non fa niente? Chiedere è coerente con S2; fare da sé no.
+   **Chiusa la metà che contava: resta.** Non torna in lista da sé e non chiede
+   niente — la dispensa la mostra segnata, e basta. Resta da scegliere solo con
+   quanta forza lo dice.
 6. **Da dove arriva la data.** Da nessuna parte se non a mano: Open Food Facts
    descrive il *prodotto*, non la confezione che hai comprato, quindi non la sa e non
    può saperla. È sempre scrittura umana, il che rende il campo facoltativo non una
@@ -488,15 +518,22 @@ stack è stato ricreato con `down -v` dopo il giro a mano, che lo sporca.
 servito da `spena.mattiagirellini.com` è lo stesso della build locale del codice
 corretto.
 
-## S7. La scadenza scritta all'ingresso, e la riga che avvisa **[? bloccata da D5]** ↳ D5
-La metà pratica di D5, elencata qui perché è in dispensa che si vede. Tre pezzi, e
-nessuno si può scrivere prima che D5 sia chiusa:
+## S7. La scadenza scritta all'ingresso, e la riga che avvisa **[D]** ↳ D5
+La metà pratica di D5, elencata qui perché è in dispensa che si vede. **D5 è chiusa
+dal 2026-09-20**, quindi da qui si parte scrivendo la spec. Tre pezzi:
 
 - **all'ingresso**, in «Sistema la spesa» e — per S3 — anche nell'ingresso diretto,
   un campo data facoltativo accanto a quello che già si compila con l'oggetto in mano;
 - **nella riga della dispensa**, la data mostrata dove si legge senza aprire niente;
 - **il colore a sette giorni**, deciso dal server e non dal browser, con un token suo
-  nel blocco `@theme` perché il giallo del cursore vuol già dire un'altra cosa.
+  nel blocco `@theme` perché il giallo del cursore vuol già dire un'altra cosa. I tre
+  colori già presi sono il verde (`--color-brand`), l'ambra di `low` (`--color-low`,
+  `#9a5f0c`) e il rosso di `--color-danger`: il quarto va scelto perché si distingua
+  da tutti e tre a colpo d'occhio, e come gli altri sta sopra 4.5:1 — questa app si
+  legge in corsia alla luce del giorno.
+
+E una cosa che la riga **non** fa: togliere. Lo stato resta la sola verità, quindi
+niente sparisce e niente diventa non cucinabile da sé (D5, domanda 1).
 
 Vuoto è il caso normale e non deve costare niente: chi non scrive mai una data deve
 avere esattamente la dispensa di oggi, senza colonne vuote a video e senza una riga in
@@ -742,8 +779,8 @@ Non è un impegno, è quel che le dipendenze permettono.
 
 **Subito, perché sbloccano o smettono di perdere dati**
 T2 è fatto (2026-09-17), e D1–D3 sono decise (le tre il 2026-09-17; D1 costruita e in
-produzione il 2026-09-20). **Resta aperta D5**, la scadenza in dispensa, ed è la sola
-decisione ferma: finché non è presa, S7 non si può nemmeno specificare.
+produzione il 2026-09-20). **Anche D5 è decisa**, il 2026-09-20: non resta ferma
+nessuna decisione, e S7 si può specificare.
 
 **Poi, indipendenti e piccole** — si potevano fare in qualunque momento e non
 aspettavano nessuno: **fatte il 2026-09-17** S1, S2, R1, R3, e in parte T1 (header,
@@ -755,9 +792,9 @@ niente lo sblocca.
 2026-09-20 — con lei la metà per porzioni di R2 — e D4/S5 (non alimentari) lo erano
 il 2026-09-18. Da qui in avanti serve la spec.
 
-**Fuori ordine, perché dipende solo da una decisione e non da uno schema**: D5, e
-subito dietro S7. Non aspetta S4 né lo storage; aspetta solo che la decisione sia
-presa, e il grosso del lavoro è una colonna annullabile, un campo data e un colore.
+**Fuori ordine, perché dipendeva solo da una decisione e non da uno schema**: S7,
+ora che D5 è presa. Non aspetta S4 né lo storage, e il grosso del lavoro è una colonna
+annullabile, un campo data e un colore — si può fare quando si vuole, anche subito.
 
 **Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
 
