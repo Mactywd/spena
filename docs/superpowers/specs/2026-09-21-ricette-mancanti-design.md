@@ -296,8 +296,9 @@ dove si sa quanto spazio c'è; il server manda la lista intera.
 **a. Un ricettario più grande della piscina, per una soglia diversa da zero.** Il
 caso zero è già difeso: `test_solo_cucinabili_vede_oltre_la_piscina_dei_candidati`
 semina `CANDIDATE_POOL + 6` ricette con la cucinabile indiscutibilmente la più
-vecchia, e pretende di vederla. Quel test non va toccato — diventa il test del
-gradino «Ora», e continua a passare attraverso il sinonimo `only_cookable`.
+vecchia, e pretende di vederla. Quel test resta, e diventa il test del gradino
+«Ora»: cambia solo la chiamata, perché interroga il servizio e non la rotta, e il
+sinonimo `only_cookable` vive nella rotta.
 
 Quel che manca è il suo gemello per una soglia maggiore di zero: stessa semina, ma la
 ricetta più vecchia ha **un solo** ingrediente mancante e si chiede `max_missing=1`.
