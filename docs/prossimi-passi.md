@@ -79,7 +79,7 @@ tocca una decisione fondante.
 > è cambiata di una riga. `CLAUDE.md` (decisione fondante 1) e la spec madre §2
 > sono stati emendati lo stesso giorno di questa voce, come il riquadro imponeva.
 >
-> **Quel che manca è la messa in produzione**, non il codice: 258 test frontend, 574
+> **Quel che manca è la messa in produzione**, non il codice: 258 test frontend, 573
 > backend e 10 e2e sono verdi sul ramo, ma il ramo non è ancora in `master`, e i
 > passi descritti in §9 della sua spec — pull sul server, deploy con `-f`, le due
 > `python -m app.cli.reparse_quantities` / `decide_units`, la verifica a mano —
@@ -99,7 +99,7 @@ fondante a dove serviva davvero — **la dispensa** — e dare alle ricette quan
 strutturate accanto al testo:
 
 - `quantity_text` resta la verità da mostrare, non viene mai riscritto né perso;
-- si affiancano `quantity_value` e `quantity_unit`, **entrambi annullabili**;
+- si affiancano `quantity_value` e `quantity_unit_id`, **entrambi annullabili**;
 - il riempimento è al meglio possibile: «400 g» → `(400, g)`; «q.b.» → `(NULL,
   NULL)`; «2 cucchiai» → `(2, cucchiaio)` con una tabella di conversione dichiarata
   approssimata;
