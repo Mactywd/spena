@@ -293,14 +293,21 @@ dove si sa quanto spazio c'è; il server manda la lista intera.
 
 ## 7. Le prove
 
-**a. Un ricettario più grande della piscina.** È il test che non è mai esistito, e
-l'unico che dimostra il lavoro. `CLAUDE.md` dice che il difetto di `recipe_search.py`
-sopravvisse perché nessun test aveva più ricette di `CANDIDATE_POOL`. Si semina un
-ricettario di `CANDIDATE_POOL + 1` ricette in cui **la più vecchia** è quella a cui
-manca un solo ingrediente, e si chiede `max_missing=1` senza parole cercate: deve
-comparire. Con il `limit` al posto sbagliato non comparirebbe, e nessun altro test
-del progetto se ne accorgerebbe. Il vincolo delle ~100 ricette riguarda la produzione
-e il suo storage, non una transazione di prova che si annulla.
+**a. Un ricettario più grande della piscina, per una soglia diversa da zero.** Il
+caso zero è già difeso: `test_solo_cucinabili_vede_oltre_la_piscina_dei_candidati`
+semina `CANDIDATE_POOL + 6` ricette con la cucinabile indiscutibilmente la più
+vecchia, e pretende di vederla. Quel test non va toccato — diventa il test del
+gradino «Ora», e continua a passare attraverso il sinonimo `only_cookable`.
+
+Quel che manca è il suo gemello per una soglia maggiore di zero: stessa semina, ma la
+ricetta più vecchia ha **un solo** ingrediente mancante e si chiede `max_missing=1`.
+I due test insieme chiudono la condizione da entrambi i lati, ed è il punto: scritta
+`if not max_missing` invece di `if max_missing is None`, la soglia zero ricadrebbe
+sotto il limite e il test che esiste lo direbbe; scritta `if max_missing == 0`, sarebbe
+la soglia 1 a caderci, e solo il test nuovo lo direbbe.
+
+Il vincolo delle ~100 ricette riguarda la produzione e il suo storage, non una
+transazione di prova che si annulla.
 
 **b. La tabella del dominio, allargata ai budget.** `within_budget` su ogni
 combinazione di ruolo e disponibilità per budget 0, 1, 2, 3 — e l'identità
