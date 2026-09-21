@@ -40,6 +40,11 @@ class PantryItemPatch(BaseModel):
     # dove il dito ha lasciato il cursore. Lo stato non si manda: lo ricava il
     # dominio, ed è l'unico modo perché i due non possano contraddirsi
     fill_percent: int | None = Field(default=None, ge=0, le=100)
+    # `None` qui è una richiesta, non un'assenza: «cancella la scadenza». Per gli
+    # altri campi l'annullabile bastava a distinguere le due cose (vedi `archived`);
+    # per una data no, perché il valore nullo è esso stesso un comando. Chi legge
+    # questo campo deve guardare `model_fields_set`.
+    expires_on: date | None = None
 
 
 class RestockOut(BaseModel):

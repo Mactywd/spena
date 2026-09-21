@@ -14,6 +14,7 @@ from app.repositories.pantry import (
     archive_item,
     availability_map,
     list_pantry,
+    set_expiry,
     set_fill,
     set_status,
     unarchive_item,
@@ -107,6 +108,9 @@ async def patch(
             item = await set_fill(session, item_id, payload.fill_percent)
         elif payload.status is not None:
             item = await set_status(session, item_id, payload.status)
+        elif "expires_on" in payload.model_fields_set:
+            # per presenza, non per valore: `{"expires_on": null}` è la cancellazione
+            item = await set_expiry(session, item_id, payload.expires_on)
         else:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "niente da modificare")
     except KeyError as exc:

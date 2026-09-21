@@ -422,3 +422,49 @@ async def test_una_voce_scaduta_resta_disponibile(logged_client, db_session, dis
 
     risposta = await logged_client.get("/api/v1/pantry/availability")
     assert risposta.json()[str(dispensa["yogurt"].id)] == "available"
+
+
+async def test_patch_cancella_la_scadenza_con_null(logged_client, db_session, dispensa):
+    """Il test che difende il difetto più probabile di tutto questo lavoro. Scritto
+    con `payload.expires_on is not None`, il ramo sembra funzionare — scrive le date
+    e non cancella mai niente — e un corpo `{"expires_on": null}` finisce nell'`else`,
+    che risponde «niente da modificare». Cioè la cancellazione fallisce dicendo che
+    non c'era niente da fare."""
+    from datetime import date
+
+    item = PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.AVAILABLE,
+                      expires_on=date(2026, 9, 28))
+    db_session.add(item)
+    await db_session.flush()
+    await db_session.commit()
+
+    risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}",
+                                         json={"expires_on": None})
+
+    assert risposta.status_code == 200
+    assert risposta.json()["expires_on"] is None
+    assert risposta.json()["expiry"] is None
+
+
+async def test_patch_scrive_la_scadenza(logged_client, db_session, dispensa):
+    item = PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+    await db_session.commit()
+
+    risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}",
+                                         json={"expires_on": "2026-09-28"})
+
+    assert risposta.status_code == 200
+    assert risposta.json()["expires_on"] == "2026-09-28"
+
+
+async def test_patch_vuota_resta_un_400(logged_client, db_session, dispensa):
+    """Il campo nuovo non deve trasformare «non hai chiesto niente» in un successo
+    muto: un corpo `{}` non nomina `expires_on`, quindi non è una cancellazione."""
+    item = PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+    await db_session.commit()
+
+    assert (await logged_client.patch(f"/api/v1/pantry/{item.id}", json={})).status_code == 400
