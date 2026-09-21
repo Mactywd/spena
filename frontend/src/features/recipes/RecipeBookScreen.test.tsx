@@ -297,14 +297,14 @@ describe("RecipeBookScreen", () => {
     // la rapida arriva prima...
     releaseFast(new Response(JSON.stringify([
       { id: "rf", title: "Risotto al pesce", description: null, source: "dataset",
-        missing: 0, cookable: true },
+        missing: 0, cookable: true, missing_names: [] },
     ]), { status: 200 }));
     expect(await screen.findByText("Risotto al pesce")).toBeDefined();
 
     // ...e quella lenta, superata, arriva dopo: non deve cambiare nulla
     releaseSlow(new Response(JSON.stringify([
       { id: "rs", title: "Pollo al forno", description: null, source: "dataset",
-        missing: 0, cookable: true },
+        missing: 0, cookable: true, missing_names: [] },
     ]), { status: 200 }));
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -437,9 +437,9 @@ describe("RecipeBookScreen", () => {
     // soli, e il test passava anche con un .sort() aggiunto: non aveva denti.
     const backendOrder = [
       { id: "z", title: "Zuppa", description: null, source: "dataset",
-        missing: 2, cookable: false },
+        missing: 2, cookable: false, missing_names: [] },
       { id: "a", title: "Agnello", description: null, source: "dataset",
-        missing: 0, cookable: true },
+        missing: 0, cookable: true, missing_names: [] },
     ];
     stubRoutedFetch((path) => (path.includes("/recipes/categories") ? [[], 200] : [backendOrder, 200]));
     renderScreen();

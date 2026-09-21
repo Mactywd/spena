@@ -18,6 +18,21 @@ function missingLabel(recipe: RecipeSummary): string {
   return `mancano ${recipe.missing} ingredienti`;
 }
 
+const MAX_NAMES = 3;
+
+/** I mancanti, tagliati dove la riga smetterebbe di leggersi.
+ *
+ * Il taglio lo fa il client e non il server: è qui che si sa quanto spazio c'è, e il
+ * server manda la lista intera. Con un gradino della scala acceso non si taglia mai —
+ * la soglia arriva a tre — e si taglia solo su «Tutte», dove a una ricetta possono
+ * mancare dodici cose e la riga diventerebbe più lunga del titolo.
+ */
+function missingNamesLabel(names: string[]): string {
+  if (names.length <= MAX_NAMES) return names.join(", ");
+  const altri = names.length - MAX_NAMES;
+  return `${names.slice(0, MAX_NAMES).join(", ")} e ${altri === 1 ? "un altro" : `altri ${altri}`}`;
+}
+
 /** Preparazione più cottura, quando almeno uno dei due c'è.
  *
  * È l'informazione che decide davvero cosa si cucina stasera: «cucinabile ora» più
@@ -61,6 +76,12 @@ export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
             <span className="text-xs text-ink-faint">{totalMinutes(recipe)} min</span>
           )}
         </div>
+        {/* i nomi e basta: «mancano» l'ha appena detto la pastiglia qui sopra */}
+        {recipe.missing_names.length > 0 && (
+          <p className="pt-1 text-xs text-ink-faint">
+            {missingNamesLabel(recipe.missing_names)}
+          </p>
+        )}
       </Link>
     </li>
   );
