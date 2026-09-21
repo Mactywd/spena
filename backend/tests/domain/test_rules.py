@@ -1,9 +1,13 @@
+from datetime import UTC, date, datetime
+
 import pytest
 
 from app.db.models.ingredient import IngredientCategory
 from app.domain.rules import (
+    EXPIRY_SOON_DAYS,
     LOW_MAX_FILL,
     Availability,
+    ExpiryState,
     IngredientKind,
     IngredientRole,
     NON_FOOD_CATEGORIES,
@@ -11,11 +15,13 @@ from app.domain.rules import (
     SECONDARY_CATEGORIES,
     availability_of,
     default_role,
+    expiry_state,
     is_cookable,
     is_satisfied,
     kind_for_category,
     missing_count,
     status_for_fill,
+    today_in_pantry,
     within_budget,
 )
 
@@ -249,3 +255,42 @@ def test_i_reparti_non_alimentari_esistono_davvero():
     """Come per SECONDARY_CATEGORIES: un nome scritto male qui non è un errore
     visibile, è una guardia che smette di scattare in silenzio."""
     assert NON_FOOD_CATEGORIES <= {str(value) for value in IngredientCategory}
+
+
+OGGI = date(2026, 9, 21)
+
+
+@pytest.mark.parametrize(
+    "expires_on, atteso",
+    [
+        (None, None),
+        (date(2026, 12, 31), None),
+        (date(2026, 9, 29), None),
+        (date(2026, 9, 28), ExpiryState.SOON),
+        (date(2026, 9, 22), ExpiryState.SOON),
+        (date(2026, 9, 21), ExpiryState.SOON),
+        (date(2026, 9, 20), ExpiryState.EXPIRED),
+        (date(2025, 1, 1), ExpiryState.EXPIRED),
+    ],
+)
+def test_il_segnale_della_scadenza(expires_on, atteso):
+    """I due confini, dichiarati: a sette giorni esatti il segnale c'è già, e quel
+    che scade oggi è ancora «sta per scadere» — si mangia oggi. «Scaduto» comincia
+    il giorno dopo. Nessuna data è il caso normale e non produce niente."""
+    assert expiry_state(expires_on, OGGI) is atteso
+
+
+def test_la_soglia_e_sette_giorni():
+    """Il numero è un valore di dominio, non una costante decorativa: se qualcuno lo
+    cambia, deve essere una decisione e non un effetto collaterale."""
+    assert EXPIRY_SOON_DAYS == 7
+
+
+def test_il_giorno_della_dispensa_non_e_quello_di_utc():
+    """Mezzanotte e mezza a Roma d'estate è ancora ieri in UTC. Con `date.today()`
+    la pastiglia cambierebbe colore con un giorno di ritardo per due ore al giorno,
+    e nessun test se ne accorgerebbe per le altre ventidue."""
+    istante = datetime(2026, 7, 15, 23, 30, tzinfo=UTC)
+
+    assert istante.date() == date(2026, 7, 15)
+    assert today_in_pantry(istante) == date(2026, 7, 16)

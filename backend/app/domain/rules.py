@@ -6,7 +6,9 @@ finito, e il ruolo che ha nella ricetta decide se quello stato basta.
 
 import re
 from collections.abc import Iterable
+from datetime import UTC, date, datetime
 from enum import StrEnum
+from zoneinfo import ZoneInfo
 
 
 class PantryStatus(StrEnum):
@@ -110,6 +112,45 @@ def status_for_fill(fill_percent: int) -> PantryStatus:
     if fill_percent <= LOW_MAX_FILL:
         return PantryStatus.LOW
     return PantryStatus.AVAILABLE
+
+
+# La scadenza: un segnale, non uno stato. Sta accanto a `status_for_fill` perché è
+# lo stesso genere di cosa — un fatto che il client chiede invece di calcolare — ma
+# non entra in quella funzione e non ne esce: una voce scaduta resta disponibile, e
+# nessuna ricetta diventa non cucinabile di notte senza che nessuno abbia toccato
+# niente. È la decisione D5 di docs/prossimi-passi.md.
+EXPIRY_SOON_DAYS = 7
+
+# Dove sta la dispensa. Tutto il resto del backend lavora in UTC ed è giusto così:
+# sono istanti. Questo è un giorno di calendario, e un giorno in UTC non è il giorno
+# di chi apre l'app a Milano a mezzanotte e mezza.
+PANTRY_TZ = ZoneInfo("Europe/Rome")
+
+
+class ExpiryState(StrEnum):
+    SOON = "soon"
+    EXPIRED = "expired"
+
+
+def expiry_state(expires_on: date | None, today: date) -> ExpiryState | None:
+    """Nessuna data → nessun segnale: è il caso normale e non deve costare niente.
+
+    `today` entra come argomento invece di essere letto qui dentro: è quel che rende
+    questa funzione provabile su date scritte a mano, e quel che impedisce
+    all'orologio di entrare in un modulo puro.
+    """
+    if expires_on is None:
+        return None
+    if expires_on < today:
+        return ExpiryState.EXPIRED
+    if (expires_on - today).days <= EXPIRY_SOON_DAYS:
+        return ExpiryState.SOON
+    return None
+
+
+def today_in_pantry(now: datetime | None = None) -> date:
+    """Che giorno è, dove sta la dispensa."""
+    return (now or datetime.now(UTC)).astimezone(PANTRY_TZ).date()
 
 
 # Le categorie i cui ingredienti si riducono senza snaturare il piatto. Sono valori
