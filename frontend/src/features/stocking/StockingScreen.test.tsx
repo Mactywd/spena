@@ -579,6 +579,39 @@ describe("StockingScreen", () => {
     expect(screen.getByLabelText(/scadenza di yogurt greco/i)).toBeDefined();
   });
 
+  it("una data scritta e poi cancellata parte come null, non come stringa vuota", async () => {
+    // Il campo si può svuotare, e non serve nemmeno volerlo: un Backspace su un
+    // segmento di una data completa mette `value` a "" e fa scattare il `change`.
+    // Con `??` quella stringa vuota arrivava intera nel corpo, il backend la
+    // rifiutava con un 422, e «riprova» rimandava lo stesso corpo per sempre —
+    // tutta la sistemazione bloccata, con l'unica uscita in un ricaricamento che
+    // butta via ogni risoluzione.
+    const user = userEvent.setup();
+    const fetchMock = stubRoutedFetch((path) =>
+      path.endsWith("/shopping-list/stock") ? [{ created: 2 }, 201] : [CHECKED]
+    );
+    renderScreen();
+
+    for (const testo of ["yogurt greco", "mele"]) {
+      const riga = (await screen.findByText(testo)).closest("li")!;
+      await user.click(within(riga).getByRole("button", { name: /sfuso/i }));
+    }
+    const rigaYogurt = screen.getByText("yogurt greco").closest("li")!;
+    await user.click(within(rigaYogurt).getByRole("button", { name: /scadenza/i }));
+    const campo = within(rigaYogurt).getByLabelText(/scadenza di yogurt greco/i);
+    fireEvent.change(campo, { target: { value: "2026-10-02" } });
+    // ci ripensa e svuota
+    fireEvent.change(campo, { target: { value: "" } });
+    await user.click(screen.getByRole("button", { name: /metti in dispensa/i }));
+
+    await waitFor(() => {
+      expect(postBody(fetchMock, "/shopping-list/stock").entries).toEqual([
+        expect.objectContaining({ shopping_item_id: "s1", expires_on: null }),
+        expect.objectContaining({ shopping_item_id: "s2", expires_on: null }),
+      ]);
+    });
+  });
+
   it("la data scritta parte con la sistemazione, e le altre righe restano senza", async () => {
     const user = userEvent.setup();
     const spy = vi.fn((url: unknown, _init?: RequestInit) => {

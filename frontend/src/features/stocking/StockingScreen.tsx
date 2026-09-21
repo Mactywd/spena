@@ -285,8 +285,16 @@ export function StockingScreen() {
               ingredient_id: ingredientId,
               product_id: resolution.kind === "product" ? resolution.product.id : null,
               // sempre presente, mai assente: una riga senza scadenza scritta
-              // manda `null`, non salta la chiave
-              expires_on: expiry[itemId] ?? null,
+              // manda `null`, non salta la chiave.
+              //
+              // `||` e non `??`, e la differenza è tutta qui: svuotare il campo
+              // data (un Backspace su un segmento basta) lascia in `expiry` la
+              // stringa vuota, e `''` non è una data — il backend risponde 422,
+              // il messaggio dice «riprova», e il riprova ricostruisce lo stesso
+              // corpo identico all'infinito. L'unica uscita sarebbe ricaricare,
+              // buttando via tutte le risoluzioni. `PantryRow.commitExpiry` fa la
+              // stessa cosa nello stesso modo: le due forme devono restare uguali.
+              expires_on: expiry[itemId] || null,
             };
           })
           .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
