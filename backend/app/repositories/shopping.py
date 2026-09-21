@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ class StockEntry:
     shopping_item_id: uuid.UUID
     ingredient_id: uuid.UUID
     product_id: uuid.UUID | None
+    expires_on: date | None
 
 
 async def list_items(
@@ -86,7 +87,7 @@ async def stock_items(session: AsyncSession, entries: list[StockEntry]) -> list[
             raise KeyError(entry.shopping_item_id)
         item = await add_pantry_item(
             session, ingredient_id=entry.ingredient_id, product_id=entry.product_id,
-            status=PantryStatus.AVAILABLE,
+            status=PantryStatus.AVAILABLE, expires_on=entry.expires_on,
         )
         shopping_item.ingredient_id = entry.ingredient_id
         shopping_item.status = ShoppingStatus.DONE

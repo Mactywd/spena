@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -32,6 +32,9 @@ class StockEntryIn(BaseModel):
     shopping_item_id: uuid.UUID
     ingredient_id: uuid.UUID
     product_id: uuid.UUID | None = None
+    # facoltativa per voce, non per l'intera sistemazione: la maggior parte
+    # delle voci (frutta sfusa, ecc.) non porta una scadenza
+    expires_on: date | None = None
 
 
 class StockRequest(BaseModel):

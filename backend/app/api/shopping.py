@@ -91,7 +91,7 @@ async def stock(
     entries = [
         StockEntry(
             shopping_item_id=e.shopping_item_id, ingredient_id=e.ingredient_id,
-            product_id=e.product_id,
+            product_id=e.product_id, expires_on=e.expires_on,
         )
         for e in payload.entries
     ]

@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest_asyncio
 from sqlalchemy import select
 
@@ -80,6 +82,38 @@ async def test_stocking_creates_pantry_items_and_closes_list_entries(
     await db_session.refresh(mela_item)
     assert yogurt_item.status == "done"
     assert mela_item.done_at is not None
+
+
+async def test_la_sistemazione_porta_in_dispensa_anche_le_scadenze(
+    logged_client, db_session, ingredienti
+):
+    """Una voce con la data e una senza, nella stessa richiesta: la scadenza è
+    facoltativa per voce, non per sistemazione. Lo yogurt ha una scadenza vera e
+    corta, le mele sfuse no — ed è il caso normale."""
+    yogurt_item = ShoppingListItem(raw_text="yogurt greco",
+                                   ingredient_id=ingredienti["yogurt"].id,
+                                   status=ShoppingStatus.CHECKED,
+                                   reason=ShoppingReason.MANUAL)
+    mela_item = ShoppingListItem(raw_text="mele", ingredient_id=ingredienti["mela"].id,
+                                 status=ShoppingStatus.CHECKED,
+                                 reason=ShoppingReason.MANUAL)
+    db_session.add_all([yogurt_item, mela_item])
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={"entries": [
+        {"shopping_item_id": str(yogurt_item.id),
+         "ingredient_id": str(ingredienti["yogurt"].id),
+         "product_id": None, "expires_on": "2026-10-02"},
+        # le mele sfuse entrano senza data, e non è un errore
+        {"shopping_item_id": str(mela_item.id),
+         "ingredient_id": str(ingredienti["mela"].id), "product_id": None},
+    ]})
+    assert response.status_code == 201
+
+    voci = list((await db_session.execute(select(PantryItem))).scalars())
+    per_ingrediente = {v.ingredient_id: v for v in voci}
+    assert per_ingrediente[ingredienti["yogurt"].id].expires_on == date(2026, 10, 2)
+    assert per_ingrediente[ingredienti["mela"].id].expires_on is None
 
 
 async def test_stocking_is_all_or_nothing(logged_client, db_session, ingredienti):
