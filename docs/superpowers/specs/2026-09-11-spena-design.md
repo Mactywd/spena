@@ -28,6 +28,24 @@ Uso personale, un solo utente, deploy privato.
 
 ## 2. Decisione fondante: niente quantità in dispensa
 
+> **Nota d'emendamento, 2026-09-21.** La dispensa conosce una data di scadenza,
+> **facoltativa, per elemento**: `pantry_items.expires_on`, annullabile, migrazione
+> `0009`, sull'elemento di dispensa perché scade *quel* barattolo e non «lo yogurt
+> greco». **Non entra negli stati**: `status_for_fill` non la guarda,
+> `availability_map` non la vede, nessun giudizio di cucinabilità la legge — una cosa
+> scaduta resta disponibile e le ricette la contano come il giorno prima, quindi
+> niente diventa non cucinabile di notte senza che nessuno abbia toccato niente. È un
+> segnale sulla riga e nient'altro, e il verdetto viaggia già deciso (`expiry`:
+> `"soon"` / `"expired"` / `null`), calcolato da `expiry_state` accanto a
+> `status_for_fill` e di proposito fuori di lui. La regola si piega per una data e non
+> per una quantità per una ragione sola: **una quantità va mantenuta e mente dal
+> giorno che smetti di mantenerla; una scadenza si scrive una volta sola, con il
+> barattolo in mano, e non si tocca più.** Chi la lascia vuota ha esattamente la
+> dispensa di prima. Questo supera il «niente scadenze» della nota qui sotto, che il
+> 2026-09-20 era vero. Vedi
+> `docs/superpowers/specs/2026-09-21-scadenza-dispensa-design.md`; la decisione è D5
+> in `docs/prossimi-passi.md`.
+
 > **Nota d'emendamento, 2026-09-20.** Quel che segue vale per la dispensa; da
 > questa data non vale più per le ricette. `recipe_ingredients` porta
 > `quantity_value` e `quantity_unit_id` accanto a `quantity_text`, entrambi
@@ -42,8 +60,9 @@ Uso personale, un solo utente, deploy privato.
 > costo restava lo stesso identico: i valori nutrizionali non si deducono dalle
 > scorte.
 
-La dispensa non conosce quantità, unità di misura o scadenze. Un ingrediente
-sta in uno di tre stati:
+La dispensa non conosce quantità né unità di misura; la data di scadenza che
+conosce dal 2026-09-21 è un segnale sulla riga e non entra in quel che segue
+(nota d'emendamento qui sopra). Un ingrediente sta in uno di tre stati:
 
 | Stato | Significato |
 |---|---|

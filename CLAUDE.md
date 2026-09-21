@@ -68,14 +68,14 @@ not pay for them again:
 
 ## The two decisions everything else follows from
 
-**1. No quantities, in the pantry.** The pantry does not know amounts, units, or
-expiry dates. An ingredient is `available`, `low`, or `finished`. This is
-deliberate, not an omission: it removes unit conversion and the daily upkeep that
-makes apps like this get abandoned. `pantry_items.fill_percent` (0–100, nullable)
-is not an exception: it is a slider *position* — no unit, no expiry — read only by
-`status_for_fill` to pick one of the three statuses, which stays the only truth the
-rest of the app reasons on. The reasoning is in the note under D1 of
-`docs/prossimi-passi.md`; read it before citing this column as a precedent.
+**1. No quantities, in the pantry.** The pantry does not know amounts or units. An
+ingredient is `available`, `low`, or `finished`. This is deliberate, not an omission:
+it removes unit conversion and the daily upkeep that makes apps like this get
+abandoned. `pantry_items.fill_percent` (0–100, nullable) is not an exception: it is a
+slider *position* — no unit, nothing to convert — read only by `status_for_fill` to
+pick one of the three statuses, which stays the only truth the rest of the app
+reasons on. The reasoning is in the note under D1 of `docs/prossimi-passi.md`; read
+it before citing this column as a precedent.
 
 The rule narrows to exactly that (decided 2026-09-17, built since): recipes — and
 only recipes — carry structured quantities too. A recipe ingredient has
@@ -84,10 +84,34 @@ filled on a best-effort basis by the parser in `backend/app/domain/quantities.py
 `quantity_text` stays the truth shown at 1× and is never rewritten; the structured
 pair is what a rescale reads, and a line the parser could not fill — `q.b.` foremost
 — simply does not scale, declared as such rather than guessed. **The pantry keeps
-the rule whole**: no amounts, no units, no expiry there, which is where the rule
+the rule whole on amounts**: no quantities and no units there, which is where the rule
 bought what it was meant to buy. Nutrition still cannot be derived from what a
 recipe's quantities say, let alone from stock levels — that needs the grams-per-unit
 work of S4 too — which is why nutrition tracking is phase 3 on its own track.
+
+The pantry does carry one date, and it is the only other bend (decided 2026-09-20 as
+D5, built 2026-09-21): `pantry_items.expires_on`, a nullable `DATE` on the pantry item
+— *that* jar expires, not `yogurt greco` and not `Fage Total 0%` — with no CHECK
+constraint, because a date already in the past is legitimate: people write it the day
+after, with the jar in hand. It does not enter `status_for_fill`, it never reaches
+`availability_map`, and no cookability judgement reads it: an expired item stays
+available and recipes count it exactly as the day before, so nothing becomes
+uncookable overnight with nobody having touched anything. It is a signal on the row
+and nothing else. The verdict travels already decided inside `PantryItemOut` as
+`expiry` (`"soon"` / `"expired"` / `null`), from `expiry_state` in
+`backend/app/domain/rules.py` — beside `status_for_fill` and deliberately outside it,
+with `EXPIRY_SOON_DAYS = 7`, and with *today* read in `Europe/Rome` through
+`PANTRY_TZ` and not in UTC, because a UTC calendar day is not the day of someone
+opening the app in Milan at half past midnight. So the number 7 never crosses into the
+TypeScript.
+
+Why the rule bends for a date and not for an amount is the whole argument, and it is
+D5's: **a quantity has to be maintained and starts lying the day you stop; an expiry
+is written once and never touched again.** Leave it empty and you have exactly the
+pantry you had before. The column stands beside `fill_percent` above and for the same
+reason: present, nullable, and no precedent for amounts, because the three statuses
+remain the only truth the rest of the app reasons on. Spec:
+`docs/superpowers/specs/2026-09-21-scadenza-dispensa-design.md`.
 
 **2. Generic ingredient and specific product are different things.** `yogurt greco`
 is an ingredient: the shopping list writes it, recipes require it, availability is

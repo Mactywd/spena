@@ -11,12 +11,18 @@ ciclo nelle fasi successive e non c'è dentro.
 
 ## La decisione da cui dipende tutto: niente quantità
 
-La dispensa non conosce quantità, unità di misura né scadenze. Un ingrediente sta
-in uno di tre stati: `available`, `low`, `finished`. Non è una mancanza, è una
-scelta: toglie le conversioni di unità e la manutenzione quotidiana che fa
-abbandonare le app di questo tipo. Il prezzo è che i valori nutrizionali non si
-possono dedurre dalle scorte, ed è il motivo per cui la nutrizione è in fase 3 su
-un binario suo.
+La dispensa non conosce quantità né unità di misura. Un ingrediente sta in uno di
+tre stati: `available`, `low`, `finished`. Non è una mancanza, è una scelta: toglie
+le conversioni di unità e la manutenzione quotidiana che fa abbandonare le app di
+questo tipo. Il prezzo è che i valori nutrizionali non si possono dedurre dalle
+scorte, ed è il motivo per cui la nutrizione è in fase 3 su un binario suo.
+
+Una data la conosce, dal 2026-09-21, ed è l'unica: la **scadenza** del singolo
+elemento di dispensa, facoltativa. Non entra negli stati e non cambia la
+disponibilità di niente — una cosa scaduta resta disponibile, la riga lo dice e chi
+cucina sceglie. La regola si piega per una data e non per una quantità perché una
+quantità va mantenuta e mente dal giorno che smetti, mentre una scadenza si scrive
+una volta sola e non si tocca più.
 
 Il `low` serve a qualcosa grazie a una seconda regola: ogni ingrediente di una
 ricetta è `primary` o `secondary`. Un primario vuole `available`, un secondario si

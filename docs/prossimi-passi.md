@@ -1,8 +1,10 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-21 (**R7 fatto**: la casella «Solo quelle che posso cucinare»
-è diventata una scala a cinque gradini, e la scheda dice quali ingredienti mancano).
-Prima: il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione, e in giornata
+Aggiornato il 2026-09-21 (**S7 fatto**: la dispensa conosce una data di scadenza
+facoltativa per elemento, che si legge sulla riga e non cambia nessuno stato — e con
+lei `CLAUDE.md` e la spec madre §2 emendati; lo stesso giorno **R7**: la casella «Solo
+quelle che posso cucinare» è diventata una scala a cinque gradini, e la scheda dice
+quali ingredienti mancano). Prima: il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione, e in giornata
 **D5 decisa**: la scadenza entra in dispensa come segnale; prima, lo stesso giorno,
 S6 e la porta della creazione riaperta), il 2026-09-18 (D4 e S5, il non alimentare) e
 il 2026-09-17 (S1, S2, R1, R3, T1, più la domanda del rientro in lista estesa al
@@ -70,6 +72,12 @@ che era stato scritto per fare: ventisette unità in una chiamata sola avrebbero
 sforato il soffitto dei token, e il comando avrebbe stampato «0 unità decise» uscendo
 con successo. Spesa totale all'AI: **0,00019 $**. La verifica a mano è stata fatta e
 non ha trovato difetti.
+
+**Il 2026-09-21 S7 è stato costruito, e sta ancora sul ramo `scadenza-dispensa`**:
+undici task, dodici commit, suite verdi (644 backend, 288 jsdom, 12 e2e). Non è fuso
+in `master` e **non è distribuito**, quindi la migrazione `0009` in produzione non è
+ancora girata: dove questo file dice «FATTO 2026-09-21» per S7 intende codice verde su
+un ramo, non codice che gira su `spena.mattiagirellini.com`.
 
 Due cose si sono viste solo sui dati veri, e hanno la loro voce in **Parte X**: due
 plurali sbagliati dall'AI su ventisette (uno dei quali l'`--azzera` non sapeva
@@ -245,7 +253,7 @@ libero all'anagrafica. Non è un difetto introdotto da questo lavoro, esisteva
 già prima; resta un rinominamento aperto, non chiuso da questo task — voce in
 **Parte X**, dove si guarda il lavoro ancora aperto.
 
-## D5. La scadenza in dispensa **[D 2026-09-20]** — riapre la decisione fondante 1
+## D5. La scadenza in dispensa **[D 2026-09-20, costruita con S7 il 2026-09-21]** — riapre la decisione fondante 1
 
 > **Decisione: sì, la scadenza entra in dispensa, e resta un segnale.** Le due
 > domande che decidevano la forma di tutto il resto sono chiuse, e sono quelle che
@@ -271,6 +279,13 @@ già prima; resta un rinominamento aperto, non chiuso da questo task — voce in
 > si scriverà `CLAUDE.md` e la spec madre §2 si emendano di nuovo e **insieme**, come
 > il riquadro impone: la dispensa non conosce quantità né unità, e conosce una data
 > che non si mantiene.
+>
+> **Emendati il 2026-09-21**, nello stesso commit e insieme, come il riquadro
+> imponeva: la decisione fondante 1 di `CLAUDE.md` e la nota d'emendamento in cima al
+> §2 della spec madre dicono adesso la stessa cosa — la data c'è, è facoltativa, non
+> entra in `status_for_fill` né in `availability_map` né in nessun giudizio di
+> cucinabilità, e la ragione per cui la regola si piega qui e non per le quantità è
+> quella scritta qui sotto: una quantità va mantenuta, una scadenza no.
 
 **Chiesto e deciso il 2026-09-20.** Quando un prodotto entra in dispensa si può scrivere anche
 la sua data di scadenza; la dispensa la mostra; e **quando mancano sette giorni la
@@ -406,6 +421,9 @@ Oggi i due schermi non offrono le stesse strade. L'ingresso diretto deve dare tu
 quelle che dà l'altro: scegliere fra i prodotti già scansionati, scansionare un
 codice a barre, **scansionare uno scontrino**, o inserire a mano.
 
+↳ e da S7 anche il campo scadenza: `add_pantry_item` (`backend/app/repositories/pantry.py`)
+accetta già `expires_on`, quindi all'ingresso diretto resta solo da mostrarlo.
+
 ↳ la scansione dello scontrino è la fase 2 della spec madre e **non esiste ancora**:
 questa voce la tira dentro. Va deciso se la parità si fa subito senza scontrino e si
 completa dopo, o se aspetta.
@@ -520,26 +538,77 @@ stack è stato ricreato con `down -v` dopo il giro a mano, che lo sporca.
 servito da `spena.mattiagirellini.com` è lo stesso della build locale del codice
 corretto.
 
-## S7. La scadenza scritta all'ingresso, e la riga che avvisa **[D]** ↳ D5
-La metà pratica di D5, elencata qui perché è in dispensa che si vede. **D5 è chiusa
-dal 2026-09-20**, quindi da qui si parte scrivendo la spec. Tre pezzi:
+## S7. La scadenza scritta all'ingresso, e la riga che avvisa **[FATTO 2026-09-21]** ↳ D5
+La metà pratica di D5, costruita in undici task; la forma sta nella sua spec,
+`docs/superpowers/specs/2026-09-21-scadenza-dispensa-design.md`. I tre pezzi, come
+erano elencati qui:
 
-- **all'ingresso**, in «Sistema la spesa» e — per S3 — anche nell'ingresso diretto,
-  un campo data facoltativo accanto a quello che già si compila con l'oggetto in mano;
-- **nella riga della dispensa**, la data mostrata dove si legge senza aprire niente;
-- **il colore a sette giorni**, deciso dal server e non dal browser, con un token suo
-  nel blocco `@theme` perché il giallo del cursore vuol già dire un'altra cosa. I tre
-  colori già presi sono il verde (`--color-brand`), l'ambra di `low` (`--color-low`,
-  `#9a5f0c`) e il rosso di `--color-danger`: il quarto va scelto perché si distingua
-  da tutti e tre a colpo d'occhio, e come gli altri sta sopra 4.5:1 — questa app si
-  legge in corsia alla luce del giorno.
+- **all'ingresso**, in «Sistema la spesa», un «+ scadenza» che apre un
+  `<input type="date">` nativo sulla riga — dietro un tocco e non sempre a video,
+  perché quello schermo è già il più fitto dell'app e dieci campi vuoti sarebbero
+  rumore permanente;
+- **nella riga della dispensa**, una pastiglia accanto a `StatusChip` che porta la
+  data: «Scade il 28/09/2026» prima, «Scadeva il 20/09/2026» dopo — due forme senza
+  genere, perché «scaduto» e «scaduta» avrebbero sbagliato metà delle volte fra «Fage
+  Total 0%» e «passata di pomodoro» — e toccandola si riapre il campo, anche per
+  svuotarlo;
+- **il colore a sette giorni**, deciso dal server: `EXPIRY_SOON_DAYS = 7` e
+  `expiry_state` stanno in `backend/app/domain/rules.py` accanto a `status_for_fill` e
+  **di proposito fuori di lui**, e il verdetto viaggia già preso dentro
+  `PantryItemOut` (`expiry`: `"soon"` / `"expired"` / `null`). Il sette non attraversa
+  il confine, quindi fra i due linguaggi non c'è niente da tenere allineato: è il modo
+  più solido di passare il controllo che `test_frontend_fill_zones.py` fa per
+  `LOW_MAX_FILL`, cioè non averne bisogno.
+
+**Il dato.** `pantry_items.expires_on`, `DATE` annullabile, migrazione `0009`, **senza
+`CHECK`**: una data già passata è legittima, perché capita di scriverla il giorno dopo
+con il barattolo in mano. E il giorno di calendario è quello di `Europe/Rome`
+(`PANTRY_TZ`), non di UTC: la data UTC non è il giorno di chi apre l'app a Milano a
+mezzanotte e mezza.
+
+**La PATCH riconosce il campo dalla presenza** — `"expires_on" in
+payload.model_fields_set` — e non dal valore, perché `{"expires_on": null}` *è* il
+comando «cancella la data». Scritta con `is not None`, come gli altri rami della
+catena, la cancellazione sarebbe fallita con un 400 che dice che non c'era niente da
+modificare.
+
+**Il colore, che era la domanda lasciata all'occhio.** `--color-expiry: #5b45a8` con
+`--color-expiry-tint: #efeaf9`: un viola, **l'unica tinta fredda** in una tavolozza di
+verde, ambra e rosso, quindi si separa per famiglia di colore e non per chiarezza —
+che è la separazione che regge anche in corsia e anche per chi confonde rosso e verde.
+Contrasto misurato: **7,34:1** per il bianco sul viola, **6,22:1** per il viola sulla
+sua tinta. **Guardato in un browser vero a 375px e lasciato com'era**: sulla stessa
+riga X rossa, «Quasi finito» in ambra tenue e «Scadeva il 19/09/2026» in viola pieno
+convivono senza un istante di ambiguità, e la coppia di pastiglie più lunga finisce a
+263px su 375. Era la decisione che il piano lasciava all'occhio, e l'occhio ha detto
+di sì: `index.css` non è stato toccato dopo.
+
+**Due difetti trovati dalle revisioni, e sono del tipo che torna.** `formatExpiry`
+costruiva `new Date("2026-09-28")`, che JavaScript legge come mezzanotte **UTC**: ogni
+lettore a ovest di Greenwich avrebbe visto il giorno prima. Ora la data si costruisce
+dai suoi componenti, un test la fissa, ed è stato visto fallire rimettendo il vecchio
+codice sotto `TZ=America/New_York`. E il «+ scadenza» è nato **62×16 px**, contro il
+bersaglio da 44px che `frontend/e2e/style.spec.ts` difendeva già su altri tre comandi:
+corretto allargando il bersaglio e non il disegno — padding più un margine negativo
+uguale — così le due righe restano alte quanto prima (misurato: **152px** in dispensa
+e **177px** in «Sistema la spesa», prima e dopo), e `style.spec.ts` ha una quarta
+misura d'altezza perché non possa tornare invisibile.
 
 E una cosa che la riga **non** fa: togliere. Lo stato resta la sola verità, quindi
-niente sparisce e niente diventa non cucinabile da sé (D5, domanda 1).
+niente sparisce e niente diventa non cucinabile da sé (D5, domanda 1). Non riordina la
+dispensa per scadenza, non chiede «Lo rimetto in lista?» — quella domanda nasce da un
+gesto sul cursore, mentre una scadenza arriva da sola — e non manda notifiche, che
+sarebbero l'unica forma di manutenzione giornaliera che D5 non ha accettato.
 
-Vuoto è il caso normale e non deve costare niente: chi non scrive mai una data deve
-avere esattamente la dispensa di oggi, senza colonne vuote a video e senza una riga in
-più da guardare.
+Vuoto resta il caso normale e quasi non costa niente: chi non scrive mai una data ha
+la dispensa di prima, salvo il «+ scadenza» discreto dove starebbe la pastiglia. È un
+costo dichiarato e non una svista: senza di lui la correzione non avrebbe da dove
+cominciare, e sarebbe il vicolo cieco appena evitato.
+
+Suite alla fine del lavoro: **644 backend, 288 jsdom, 12 e2e**, tutte verdi.
+`CLAUDE.md` (decisione fondante 1) e la spec madre §2 sono stati emendati **insieme e
+nello stesso commit**, come D5 imponeva. **Non è in produzione**: il lavoro sta sul
+ramo `scadenza-dispensa`, la `0009` in produzione non è ancora girata.
 
 ---
 
@@ -795,7 +864,8 @@ Non è un impegno, è quel che le dipendenze permettono.
 **Subito, perché sbloccano o smettono di perdere dati**
 T2 è fatto (2026-09-17), e D1–D3 sono decise (le tre il 2026-09-17; D1 costruita e in
 produzione il 2026-09-20). **Anche D5 è decisa**, il 2026-09-20: non resta ferma
-nessuna decisione, e S7 si può specificare.
+nessuna decisione, e la sua metà pratica, S7, è **fatta il 2026-09-21** — verde sul
+ramo `scadenza-dispensa`, non ancora in `master` né in produzione.
 
 **Poi, indipendenti e piccole** — si potevano fare in qualunque momento e non
 aspettavano nessuno: **fatte il 2026-09-17** S1, S2, R1, R3, e in parte T1 (header,
@@ -808,8 +878,10 @@ niente lo sblocca.
 il 2026-09-18. Da qui in avanti serve la spec.
 
 **Fuori ordine, perché dipendeva solo da una decisione e non da uno schema**: S7,
-ora che D5 è presa. Non aspetta S4 né lo storage, e il grosso del lavoro è una colonna
-annullabile, un campo data e un colore — si può fare quando si vuole, anche subito.
+**fatto il 2026-09-21**. Qui c'era scritto «si può fare quando si vuole, anche subito»,
+ed è andata proprio così: non ha aspettato né S4 né lo storage, e il lavoro è stato
+quel che si diceva — una colonna annullabile, un campo data e un colore. Resta da
+fondere e da distribuire.
 
 **Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
 
