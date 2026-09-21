@@ -109,6 +109,10 @@ async def patch(
         elif payload.status is not None:
             item = await set_status(session, item_id, payload.status)
         elif "expires_on" in payload.model_fields_set:
+            # ultima della catena, e nessuno oggi manda la data insieme ad altro: una
+            # richiesta con stato e scadenza scriverebbe lo stato e perderebbe la data
+            # in silenzio. Se un giorno una schermata le mandasse insieme, questa
+            # catena va aperta, non riordinata — l'ordine qui sopra è già una regola.
             # per presenza, non per valore: `{"expires_on": null}` è la cancellazione
             item = await set_expiry(session, item_id, payload.expires_on)
         else:
