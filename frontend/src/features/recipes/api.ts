@@ -6,18 +6,22 @@ import type { CookResult, RecipeDetail, RecipeDraft, RecipeSummary } from "../..
  * compilatore non può vedere. */
 export function searchRecipes({
   query = "",
-  onlyCookable = false,
+  maxMissing = null,
   category = "",
   ingredientIds = [],
 }: {
   query?: string;
-  onlyCookable?: boolean;
+  /** Quante cose si è disposti a comprare. `null` è «tutte»: non una soglia
+   * altissima, ma l'assenza di soglia — il server le distingue, perché una soglia
+   * qualunque gli fa guardare tutto il ricettario invece dei cento più recenti. */
+  maxMissing?: number | null;
   category?: string;
   ingredientIds?: string[];
 } = {}) {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
-  if (onlyCookable) params.set("only_cookable", "true");
+  // `!== null` e non la verità: `0` è la soglia più stretta, non la sua assenza
+  if (maxMissing !== null) params.set("max_missing", String(maxMissing));
   if (category) params.set("category", category);
   // `append` e non `set`: il parametro si ripete, una volta per ingrediente, e il
   // backend li vuole tutti e due. Con `set` sopravviverebbe solo l'ultimo, e

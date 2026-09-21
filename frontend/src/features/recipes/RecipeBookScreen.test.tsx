@@ -20,11 +20,11 @@ function ultimaRicerca(fetchMock: { mock: { calls: unknown[][] } }): string {
 
 const RESULTS = [
   { id: "r1", title: "Pasta all'aglio", description: "Svelta", source: "dataset",
-    missing: 0, cookable: true, image_url: "https://example.com/aglio.jpg",
+    missing: 0, cookable: true, missing_names: [], image_url: "https://example.com/aglio.jpg",
     prep_minutes: 10, cook_minutes: 15, category: "Primi piatti" },
   { id: "r2", title: "Pasta al pomodoro", description: "Di sempre", source: "ai",
-    missing: 1, cookable: false, image_url: null, prep_minutes: null,
-    cook_minutes: null, category: null },
+    missing: 1, cookable: false, missing_names: ["Pomodoro"], image_url: null,
+    prep_minutes: null, cook_minutes: null, category: null },
 ];
 
 function renderScreen(queryCache?: QueryCache) {
@@ -104,15 +104,39 @@ describe("RecipeBookScreen", () => {
     );
   });
 
-  it("il filtro restringe alle sole ricette cucinabili", async () => {
+  it("la scala manda la soglia, e «Ora» manda zero", async () => {
     const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
-
     renderScreen();
-    await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
+    await screen.findByText("Pasta all'aglio");
 
-    await vi.waitFor(() =>
-      expect(spy.mock.calls.some(([url]) => String(url).includes("only_cookable=true"))).toBe(true)
+    await userEvent.click(
+      screen.getByRole("radio", { name: "Solo quelle che puoi cucinare adesso." })
     );
+
+    // `max_missing=0`, non l'assenza del parametro: «cucinabili ora» è la soglia più
+    // stretta, e un `if (maxMissing)` la scambierebbe per «Tutte» mostrando tutto
+    await waitFor(() => expect(ultimaRicerca(spy)).toContain("max_missing=0"));
+    expect(ultimaRicerca(spy)).not.toContain("only_cookable");
+  });
+
+  it("un gradino più largo manda la sua soglia", async () => {
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+    await screen.findByText("Pasta all'aglio");
+
+    await userEvent.click(
+      screen.getByRole("radio", { name: "Al massimo 2 ingredienti da comprare." })
+    );
+
+    await waitFor(() => expect(ultimaRicerca(spy)).toContain("max_missing=2"));
+  });
+
+  it("senza soglia non manda il parametro", async () => {
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+    await screen.findByText("Pasta all'aglio");
+
+    expect(ultimaRicerca(spy)).not.toContain("max_missing");
   });
 
   // Spec §11: «modello di embedding non caricato → la ricerca degrada a sola
@@ -179,7 +203,9 @@ describe("RecipeBookScreen", () => {
       path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
     );
     renderScreen();
-    await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Solo quelle che puoi cucinare adesso." })
+    );
     await userEvent.type(screen.getByLabelText("Cerca nel ricettario"), "bulloni");
 
     // «fra quelle che puoi cucinare» appartiene solo al caso con entrambi: cercare
@@ -196,10 +222,67 @@ describe("RecipeBookScreen", () => {
       path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
     );
     renderScreen();
-    await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Solo quelle che puoi cucinare adesso." })
+    );
 
-    expect(await screen.findByText(/Niente che puoi cucinare con quel che hai in dispensa/))
-      .toBeDefined();
+    expect(
+      await screen.findByText(
+        "Niente che puoi cucinare con quel che hai in dispensa: alza la soglia, o " +
+          "scegli «Tutte» nella scala per vedere tutto il ricettario."
+      )
+    ).toBeDefined();
+  });
+
+  // Finding 1c della revisione finale: a un gradino di mezzo «alza la soglia» è
+  // ancora un consiglio eseguibile, e deve comparire insieme a «Tutte».
+  it("con un gradino di mezzo il vuoto offre sia di alzare la soglia sia «Tutte»", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Al massimo 2 ingredienti da comprare." })
+    );
+
+    const messaggio = await screen.findByText(/Niente da cucinare comprando al massimo/);
+    expect(messaggio.textContent).toMatch(/alza la soglia/);
+    expect(messaggio.textContent).toMatch(/«Tutte» nella scala/);
+  });
+
+  // In cima alla scala non esiste un gradino più alto: «alza la soglia» sarebbe un
+  // consiglio impossibile da seguire, non solo superfluo, ed è esattamente il tipo
+  // di difetto che questo progetto tratta come tale invece che come una sfumatura.
+  it("al gradino più alto il vuoto non consiglia di alzare la soglia, ma offre comunque una via d'uscita", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Al massimo 3 ingredienti da comprare." })
+    );
+
+    const messaggio = await screen.findByText(/Niente da cucinare comprando al massimo/);
+    expect(messaggio.textContent).not.toMatch(/alza la soglia/);
+    expect(messaggio.textContent).toMatch(/«Tutte» nella scala/);
+  });
+
+  // Finding 1a: la casella «solo cucinabili» non esiste più, quindi il vuoto con
+  // parole cercate più una soglia non può più dire «togli il filtro» — non c'è
+  // nessun filtro da togliere, solo una scala da riportare a «Tutte».
+  it("con parole cercate e una soglia il vuoto non parla più di un filtro da togliere", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Al massimo 1 ingrediente da comprare." })
+    );
+    await userEvent.type(screen.getByLabelText("Cerca nel ricettario"), "bulloni");
+
+    const messaggio = await screen.findByText(/Nessuna ricetta con queste parole/);
+    expect(messaggio.textContent).not.toMatch(/togli il filtro/);
+    expect(messaggio.textContent).toMatch(/«Tutte» nella scala/);
   });
 
   it("senza parole cercate il verdetto sul ricettario è quello giusto", async () => {
@@ -265,14 +348,14 @@ describe("RecipeBookScreen", () => {
     // la rapida arriva prima...
     releaseFast(new Response(JSON.stringify([
       { id: "rf", title: "Risotto al pesce", description: null, source: "dataset",
-        missing: 0, cookable: true },
+        missing: 0, cookable: true, missing_names: [] },
     ]), { status: 200 }));
     expect(await screen.findByText("Risotto al pesce")).toBeDefined();
 
     // ...e quella lenta, superata, arriva dopo: non deve cambiare nulla
     releaseSlow(new Response(JSON.stringify([
       { id: "rs", title: "Pollo al forno", description: null, source: "dataset",
-        missing: 0, cookable: true },
+        missing: 0, cookable: true, missing_names: [] },
     ]), { status: 200 }));
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -405,9 +488,9 @@ describe("RecipeBookScreen", () => {
     // soli, e il test passava anche con un .sort() aggiunto: non aveva denti.
     const backendOrder = [
       { id: "z", title: "Zuppa", description: null, source: "dataset",
-        missing: 2, cookable: false },
+        missing: 2, cookable: false, missing_names: [] },
       { id: "a", title: "Agnello", description: null, source: "dataset",
-        missing: 0, cookable: true },
+        missing: 0, cookable: true, missing_names: [] },
     ];
     stubRoutedFetch((path) => (path.includes("/recipes/categories") ? [[], 200] : [backendOrder, 200]));
     renderScreen();

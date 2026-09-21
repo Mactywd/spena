@@ -67,9 +67,112 @@ async def test_solo_cucinabili_vede_oltre_la_piscina_dei_candidati(db_session):
         bottarga.created_at = adesso + timedelta(seconds=numero)
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, only_cookable=True)
+    risultati = await search_recipes(db_session, max_missing=0)
 
     assert [r.recipe.title for r in risultati] == ["Pasta in bianco"]
+
+
+async def test_una_soglia_oltre_lo_zero_vede_oltre_la_piscina(db_session):
+    """Il gemello del test qui sopra, per una soglia diversa da zero.
+
+    I due insieme chiudono la condizione da entrambi i lati, ed è il punto di tutto
+    il lavoro: scritta `if not max_missing` la soglia zero ricadrebbe sotto il limite
+    e lo direbbe il test di sopra; scritta `if max_missing == 0` ci cadrebbe la
+    soglia uno, e lo dice solo questo.
+
+    Le ricette di scarto ne hanno due di mancanti, non una: devono restare fuori dal
+    filtro e non solo in fondo all'ordine.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import CANDIDATE_POOL, search_recipes
+
+    ho = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    non_ho = Ingredient(
+        name="bottarga", display_name="Bottarga", category=IngredientCategory.PESCE
+    )
+    nemmeno = Ingredient(
+        name="zafferano", display_name="Zafferano", category=IngredientCategory.SPEZIE
+    )
+    db_session.add_all([ho, non_ho, nemmeno])
+    await db_session.flush()
+    db_session.add(PantryItem(ingredient_id=ho.id, status="available"))
+    await db_session.flush()
+
+    # stessa costruzione del test di sopra: `created_at` assegnato a mano, e quella
+    # che ci interessa indiscutibilmente la più vecchia di tutte
+    adesso = datetime.now(UTC)
+    quasi = await create_recipe(
+        db_session, title="Pasta con la bottarga", description="Ne manca una",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(ho.id, "primary", "320 g", None), (non_ho.id, "primary", "20 g", None)],
+        embedding=None,
+    )
+    quasi.created_at = adesso - timedelta(seconds=CANDIDATE_POOL + 10)
+    for numero in range(CANDIDATE_POOL + 5):
+        scarto = await create_recipe(
+            db_session, title=f"Introvabile {numero}", description="Ne mancano due",
+            instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+            ingredients=[
+                (non_ho.id, "primary", "20 g", None),
+                (nemmeno.id, "primary", "1 bustina", None),
+            ],
+            embedding=None,
+        )
+        scarto.created_at = adesso + timedelta(seconds=numero)
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session, max_missing=1)
+
+    assert [r.recipe.title for r in risultati] == ["Pasta con la bottarga"]
+
+
+async def test_max_missing_filtra_anche_sul_ramo_con_parole_cercate(db_session):
+    """Il gemello dei due test sopra, sull'altro ramo di `search_recipes`.
+
+    Tutti i test di `max_missing` fin qui passano dal ramo senza parole cercate.
+    Il ramo con le parole applica lo stesso filtro sugli stessi candidati fusi da
+    RRF, ma è quello che porta la limitazione dichiarata nel commento sopra
+    `_containing_all` (i candidati sono la piscina, non tutto il ricettario) — ed
+    era anche l'unico senza un solo test.
+    """
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import search_recipes
+
+    pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    pomodoro = Ingredient(
+        name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
+    )
+    basilico = Ingredient(
+        name="basilico", display_name="Basilico", category=IngredientCategory.VERDURA
+    )
+    db_session.add_all([pasta, pomodoro, basilico])
+    await db_session.flush()
+    db_session.add(PantryItem(ingredient_id=pasta.id, status="available"))
+    await db_session.flush()
+
+    quasi = await create_recipe(
+        db_session, title="Pasta rustica al pomodoro", description="Ne manca una",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(pasta.id, "primary", "320 g", None), (pomodoro.id, "primary", "6", None)],
+        embedding=None,
+    )
+    lontana = await create_recipe(
+        db_session, title="Pasta rustica al pesto", description="Ne mancano due",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(pomodoro.id, "primary", "6", None), (basilico.id, "primary", "50 g", None)],
+        embedding=None,
+    )
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session, query="pasta rustica", max_missing=1)
+
+    assert [r.recipe.title for r in risultati] == ["Pasta rustica al pomodoro"]
 
 
 async def test_il_filtro_per_categoria_sceglie_in_sql(db_session):
@@ -284,3 +387,55 @@ async def test_piu_ingredienti_devono_esserci_tutti(db_session):
     risultati = await search_recipes(db_session, ingredient_ids=[pomodoro.id, basilico.id])
 
     assert [r.recipe.title for r in risultati] == ["Pasta al pomodoro e basilico"]
+
+
+async def test_i_mancanti_si_chiamano_per_nome_e_in_ordine(db_session):
+    """Il conteggio dice quante cose mancano, non quali.
+
+    Con la soglia ferma a zero bastava il numero; oltre lo zero la domanda diventa
+    «vale la pena comprarle?», e a quella un numero non risponde.
+
+    Il secondario quasi finito non compare: non manca (regola primario/secondario), e
+    se comparisse la scheda direbbe di comprare una cosa che c'è.
+    """
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import search_recipes
+
+    pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    aglio = Ingredient(name="aglio", display_name="Aglio", category=IngredientCategory.VERDURA)
+    bottarga = Ingredient(
+        name="bottarga", display_name="Bottarga", category=IngredientCategory.PESCE
+    )
+    zafferano = Ingredient(
+        name="zafferano", display_name="Zafferano", category=IngredientCategory.SPEZIE
+    )
+    db_session.add_all([pasta, aglio, bottarga, zafferano])
+    await db_session.flush()
+    db_session.add_all([
+        PantryItem(ingredient_id=pasta.id, status="available"),
+        PantryItem(ingredient_id=aglio.id, status="low"),
+    ])
+    await db_session.flush()
+
+    await create_recipe(
+        db_session, title="Pasta della domenica", description="Con quel che non ho",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[
+            (pasta.id, "primary", "320 g", None),
+            (aglio.id, "secondary", "1 spicchio", None),
+            (zafferano.id, "primary", "1 bustina", None),
+            (bottarga.id, "primary", "20 g", None),
+        ],
+        embedding=None,
+    )
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session)
+
+    assert len(risultati) == 1
+    assert risultati[0].missing == 2
+    # alfabetico: `recipe_ingredients` non ha una colonna di posizione, e senza un
+    # criterio esplicito due letture identiche potrebbero elencarli in ordine diverso
+    assert risultati[0].missing_names == ["Bottarga", "Zafferano"]

@@ -16,6 +16,7 @@ from app.domain.rules import (
     kind_for_category,
     missing_count,
     status_for_fill,
+    within_budget,
 )
 
 AVAILABLE, LOW, FINISHED = PantryStatus.AVAILABLE, PantryStatus.LOW, PantryStatus.FINISHED
@@ -77,6 +78,51 @@ def test_missing_count_and_cookability():
 def test_recipe_without_ingredients_is_cookable():
     assert is_cookable([]) is True
     assert missing_count([]) == 0
+
+
+@pytest.mark.parametrize(
+    "requirements,budget,expected",
+    [
+        ([], 0, True),
+        ([(PRIMARY, Availability.AVAILABLE)], 0, True),
+        ([(PRIMARY, Availability.MISSING)], 0, False),
+        ([(PRIMARY, Availability.MISSING)], 1, True),
+        # un principale quasi finito manca davvero: la soglia si applica dopo la
+        # regola del ruolo, non al posto suo
+        ([(PRIMARY, Availability.LOW)], 0, False),
+        ([(PRIMARY, Availability.LOW)], 1, True),
+        # un secondario quasi finito non manca, quindi non consuma soglia
+        ([(SECONDARY, Availability.LOW)], 0, True),
+        ([(SECONDARY, Availability.MISSING)], 0, False),
+        ([(SECONDARY, Availability.MISSING)], 1, True),
+        ([(PRIMARY, Availability.MISSING), (PRIMARY, Availability.LOW)], 1, False),
+        ([(PRIMARY, Availability.MISSING), (PRIMARY, Availability.LOW)], 2, True),
+        ([(PRIMARY, Availability.MISSING)] * 3, 2, False),
+        ([(PRIMARY, Availability.MISSING)] * 3, 3, True),
+    ],
+)
+def test_la_soglia_conta_solo_quel_che_manca_davvero(requirements, budget, expected):
+    assert within_budget(requirements, budget) is expected
+
+
+@pytest.mark.parametrize(
+    "requirements",
+    [
+        [],
+        [(PRIMARY, Availability.AVAILABLE)],
+        [(PRIMARY, Availability.LOW)],
+        [(SECONDARY, Availability.LOW)],
+        [(PRIMARY, Availability.MISSING), (SECONDARY, Availability.MISSING)],
+    ],
+)
+def test_cucinabile_e_la_soglia_a_zero(requirements):
+    """Non è una coincidenza da controllare a occhio: è la definizione.
+
+    Se un giorno le due risposte divergessero, vorrebbe dire che «cucinabile» è
+    tornata a essere una seconda regola scritta altrove — che è il difetto che
+    questo lavoro toglie di mezzo.
+    """
+    assert is_cookable(requirements) is within_budget(requirements, 0)
 
 
 @pytest.mark.parametrize(

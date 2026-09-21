@@ -65,6 +65,7 @@ async def _to_out(
 
     lines: list[RecipeIngredientOut] = []
     requirements: list[tuple[IngredientRole, Availability]] = []
+    missing_names: list[str] = []
     # Il conto della copertura si fa sulle righe che una dose ce l'hanno. «aglio» e
     # «basilico» senza `quantity_text` non sono dosi che non si riscalano: sono righe
     # senza dose, e contarle farebbe leggere «4 dosi su 12 non si riscalano» a chi di
@@ -78,6 +79,8 @@ async def _to_out(
         have = availability.get(ri.ingredient_id, Availability.MISSING)
         role = IngredientRole(ri.role)
         requirements.append((role, have))
+        if not is_satisfied(role, have):
+            missing_names.append(ri.ingredient.display_name)
         if ri.quantity_text is not None:
             dose_lines += 1
         if factor is not None and ri.quantity_value is not None:
@@ -114,6 +117,7 @@ async def _to_out(
         instructions=recipe.instructions, servings=recipe.servings, source=recipe.source,
         source_ref=recipe.source_ref, ingredients=lines,
         missing=missing_count(requirements), cookable=is_cookable(requirements),
+        missing_names=sorted(missing_names),
         image_url=recipe.image_url, prep_minutes=recipe.prep_minutes,
         cook_minutes=recipe.cook_minutes, category=recipe.category,
         scaled_to=servings if factor is not None else None,
@@ -124,6 +128,14 @@ async def _to_out(
 @router.get("/search", response_model=list[RecipeSummaryOut])
 async def search(
     q: str | None = None,
+    # quante cose si è disposti a comprare; assente vuol dire «tutto il ricettario»
+    max_missing: int | None = Query(default=None, ge=0),
+    # Sinonimo di `max_missing=0`, e non un residuo da togliere alla prossima
+    # occasione. Il service worker della PWA può servire per giorni una copia vecchia
+    # dello schermo, che manda ancora questo parametro: ignorarlo significherebbe
+    # mostrarle il ricettario intero sotto l'etichetta di un filtro che sembra acceso
+    # — lo stesso guasto silenzioso che il commento su `ingredient_id` qui sotto
+    # esiste per evitare.
     only_cookable: bool = False,
     category: str | None = None,
     # ripetibile: `?ingredient_id=a&ingredient_id=b` vuol dire «che li contenga
@@ -136,13 +148,24 @@ async def search(
     limit: int = Query(default=30, le=100),
     session: AsyncSession = Depends(get_session),
 ) -> list[RecipeSummaryOut]:
+    # esplicito batte sinonimo: se arrivano entrambi vince quello che la persona ha scelto
+    budget = max_missing if max_missing is not None else (0 if only_cookable else None)
     results = await search_recipes(
-        session, q, only_cookable, limit, category=category, ingredient_ids=ingredient_id
+        session,
+        q,
+        # per nome, non per posizione: il terzo argomento posizionale era un `bool` e
+        # adesso è un `int | None`, e in Python `True == 1` — un `only_cookable`
+        # rimasto posizionale diventerebbe in silenzio «al massimo un mancante»
+        max_missing=budget,
+        limit=limit,
+        category=category,
+        ingredient_ids=ingredient_id,
     )
     return [
         RecipeSummaryOut(
             id=r.recipe.id, title=r.recipe.title, description=r.recipe.description,
             source=r.recipe.source, missing=r.missing, cookable=r.cookable,
+            missing_names=r.missing_names,
             image_url=r.recipe.image_url, prep_minutes=r.recipe.prep_minutes,
             cook_minutes=r.recipe.cook_minutes, category=r.recipe.category,
         )

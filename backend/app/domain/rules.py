@@ -64,8 +64,26 @@ def missing_count(requirements: Iterable[tuple[IngredientRole, Availability]]) -
     return sum(1 for role, availability in requirements if not is_satisfied(role, availability))
 
 
+def within_budget(
+    requirements: Iterable[tuple[IngredientRole, Availability]], budget: int
+) -> bool:
+    """Se quel che manca sta dentro quante cose si è disposti a comprare.
+
+    La soglia si applica *dopo* la regola del ruolo, non al posto suo: «al massimo
+    due mancanti» vuol dire due cose da comprare davvero, non due righe gialle — un
+    secondario quasi finito non manca e non consuma soglia.
+    """
+    return missing_count(requirements) <= budget
+
+
 def is_cookable(requirements: Iterable[tuple[IngredientRole, Availability]]) -> bool:
-    return missing_count(requirements) == 0
+    """Il caso `budget = 0`, e scritto così di proposito.
+
+    «Cucinabile» resta una parola sola in tutta l'app: il giorno in cui la regola di
+    `is_satisfied` cambiasse, la risposta al filtro e la risposta alla scheda non
+    potrebbero divergere, perché sono la stessa funzione.
+    """
+    return within_budget(requirements, 0)
 
 
 # Il secondo pallino del cursore della dispensa: fin qui è «quasi finito», oltre è

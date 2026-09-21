@@ -120,6 +120,68 @@ async def test_only_cookable_filter_hides_the_rest(logged_client, db_session, cu
     assert [r["title"] for r in body] == ["Pasta all'aglio"]
 
 
+async def test_la_soglia_lascia_passare_chi_manca_di_poco(logged_client, db_session, cucina):
+    """«Tanto devo andare a fare la spesa»: con una cosa da comprare l'elenco cambia."""
+    await _create_recipe(logged_client, cucina, title="Pasta al pomodoro")
+    await _create_recipe(logged_client, cucina, title="Pasta all'aglio",
+                         primary=("pasta",), secondary=("aglio",))
+    db_session.add_all([
+        PantryItem(ingredient_id=cucina["pasta"].id, status=PantryStatus.AVAILABLE),
+        PantryItem(ingredient_id=cucina["aglio"].id, status=PantryStatus.AVAILABLE),
+    ])
+    await db_session.flush()
+
+    body = (await logged_client.get("/api/v1/recipes/search?max_missing=1")).json()
+
+    # «Pasta al pomodoro» ha il pomodoro primario e non in dispensa: ne manca una
+    assert [r["title"] for r in body] == ["Pasta all'aglio", "Pasta al pomodoro"]
+
+
+async def test_la_soglia_esplicita_ha_la_precedenza_sul_sinonimo(
+    logged_client, db_session, cucina
+):
+    """Una copia vecchia dello schermo manda `only_cookable`; una nuova manda
+    entrambi solo per sbaglio. Se succede, vince quello che la persona ha scelto.
+    """
+    await _create_recipe(logged_client, cucina, title="Pasta al pomodoro")
+    db_session.add_all([
+        PantryItem(ingredient_id=cucina["pasta"].id, status=PantryStatus.AVAILABLE),
+        PantryItem(ingredient_id=cucina["aglio"].id, status=PantryStatus.AVAILABLE),
+    ])
+    await db_session.flush()
+
+    body = (
+        await logged_client.get("/api/v1/recipes/search?only_cookable=true&max_missing=1")
+    ).json()
+
+    assert [r["title"] for r in body] == ["Pasta al pomodoro"]
+
+
+async def test_la_scheda_elenca_i_mancanti(logged_client, db_session, cucina):
+    await _create_recipe(logged_client, cucina, title="Pasta al pomodoro")
+    db_session.add(PantryItem(ingredient_id=cucina["pasta"].id, status=PantryStatus.AVAILABLE))
+    await db_session.flush()
+
+    body = (await logged_client.get("/api/v1/recipes/search")).json()
+
+    # l'aglio è secondario e non in dispensa: manca anche lui. Il pomodoro è primario
+    assert body[0]["missing_names"] == ["Aglio", "Pomodoro"]
+
+
+async def test_anche_il_dettaglio_dichiara_i_mancanti(logged_client, db_session, cucina):
+    """Ridondante sul dettaglio — le righe portano già `satisfied` — e mandato lo
+    stesso: nel frontend `RecipeDetail extends RecipeSummary`, quindi un campo che
+    solo una delle due rotte manda è una forma che mente.
+    """
+    creata = await _create_recipe(logged_client, cucina, title="Pasta al pomodoro")
+    db_session.add(PantryItem(ingredient_id=cucina["pasta"].id, status=PantryStatus.AVAILABLE))
+    await db_session.flush()
+
+    body = (await logged_client.get(f"/api/v1/recipes/{creata['id']}")).json()
+
+    assert body["missing_names"] == ["Aglio", "Pomodoro"]
+
+
 async def test_search_filtra_su_tutti_gli_ingredienti_ripetuti(logged_client, cucina):
     """Il parametro si ripete, e ogni ripetizione stringe.
 

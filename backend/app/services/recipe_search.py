@@ -9,14 +9,22 @@ riordinamento: non nasconde nulla, perché una ricetta a cui manca una sola cosa
 import asyncio
 import logging
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.db.models.ingredient import Ingredient
 from app.db.models.recipe import Recipe, RecipeIngredient
-from app.domain.rules import Availability, IngredientRole, is_cookable, missing_count
+from app.domain.rules import (
+    Availability,
+    IngredientRole,
+    is_cookable,
+    is_satisfied,
+    missing_count,
+)
 from app.repositories.pantry import availability_map
 from app.services.embeddings import (
     EmbeddingUnavailable,
@@ -94,12 +102,52 @@ _model_mismatch_logged = False
 EMBED_TIMEOUT_SECONDS = 5.0
 
 
+@dataclass(frozen=True)
+class RecipeRequirement:
+    """Una riga di ricetta ridotta a quel che serve per giudicarla.
+
+    Il nome sta qui dentro e non si va a ripescare dopo: chi manca lo decide
+    `is_satisfied` riga per riga, e per dirlo la riga deve sapere come si chiama.
+    """
+
+    name: str
+    role: IngredientRole
+    availability: Availability
+
+
 @dataclass
 class RecipeSearchResult:
     recipe: Recipe
     missing: int
     cookable: bool
+    missing_names: list[str]
     score: float
+
+
+def _pairs(
+    requirements: Iterable[RecipeRequirement],
+) -> list[tuple[IngredientRole, Availability]]:
+    """Le coppie che `rules.py` sa leggere.
+
+    Il dominio è puro e non conosce questa dataclass: la conversione sta qui, in un
+    posto solo, invece di far entrare un tipo del servizio dentro il modulo delle
+    regole.
+    """
+    return [(r.role, r.availability) for r in requirements]
+
+
+def missing_names(requirements: Iterable[RecipeRequirement]) -> list[str]:
+    """I nomi di quel che manca, in ordine alfabetico.
+
+    L'ordine non è un vezzo: `recipe_ingredients` non ha una colonna di posizione,
+    quindi senza un criterio esplicito due richieste identiche elencherebbero gli
+    stessi mancanti in ordine diverso. È lo spareggio di `Recipe.id.desc()` sulla
+    piscina dei candidati, applicato a una lista.
+
+    Il giudizio su cosa manchi è `is_satisfied`, la stessa funzione della rotta di
+    dettaglio: non esiste un secondo parere su cosa sia mancante.
+    """
+    return sorted(r.name for r in requirements if not is_satisfied(r.role, r.availability))
 
 
 def reciprocal_rank_fusion(
@@ -226,28 +274,37 @@ async def _textual_ranking(session: AsyncSession, query: str) -> list[uuid.UUID]
 
 async def _requirements_by_recipe(
     session: AsyncSession, recipe_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, list[tuple[IngredientRole, Availability]]]:
-    """Per ogni ricetta, le coppie (ruolo, disponibilità) su cui decidono le regole.
+) -> dict[uuid.UUID, list[RecipeRequirement]]:
+    """Per ogni ricetta, le righe su cui decidono le regole.
 
     Si ferma qui di proposito: il conteggio dei mancanti e il verdetto di
     cucinabilità sono le funzioni di app/domain/rules.py, non una somma ricopiata
     in questo modulo. Ricalcolarle in linea è la ragione per cui il test a tabella
     difendeva una copia che non girava.
     """
-    requirements: dict[uuid.UUID, list[tuple[IngredientRole, Availability]]] = {
+    requirements: dict[uuid.UUID, list[RecipeRequirement]] = {
         recipe_id: [] for recipe_id in recipe_ids
     }
     if not recipe_ids:
         return requirements
-    statement = select(
-        RecipeIngredient.recipe_id, RecipeIngredient.ingredient_id, RecipeIngredient.role
-    ).where(RecipeIngredient.recipe_id.in_(recipe_ids))
+    statement = (
+        select(
+            RecipeIngredient.recipe_id,
+            RecipeIngredient.ingredient_id,
+            RecipeIngredient.role,
+            Ingredient.display_name,
+        )
+        .join(Ingredient, Ingredient.id == RecipeIngredient.ingredient_id)
+        .where(RecipeIngredient.recipe_id.in_(recipe_ids))
+    )
     rows = (await session.execute(statement)).all()
 
     availability = await availability_map(session, [row[1] for row in rows])
-    for recipe_id, ingredient_id, role in rows:
+    for recipe_id, ingredient_id, role, display_name in rows:
         have = availability.get(ingredient_id, Availability.MISSING)
-        requirements[recipe_id].append((IngredientRole(role), have))
+        requirements[recipe_id].append(
+            RecipeRequirement(display_name, IngredientRole(role), have)
+        )
     return requirements
 
 
@@ -287,11 +344,12 @@ def _containing_all(statement, ingredient_ids: list[uuid.UUID]):
 async def search_recipes(
     session: AsyncSession,
     query: str | None = None,
-    only_cookable: bool = False,
+    max_missing: int | None = None,
     limit: int = 30,
     category: str | None = None,
     ingredient_ids: list[uuid.UUID] | None = None,
 ) -> list[RecipeSearchResult]:
+    """`max_missing` è quante cose si è disposti a comprare; `None` è «tutte»."""
     if query and query.strip():
         semantic = await _semantic_ranking(session, query)
         textual = await _textual_ranking(session, query)
@@ -309,14 +367,16 @@ async def search_recipes(
             statement = statement.where(Recipe.category == category)
         if ingredient_ids:
             statement = _containing_all(statement, ingredient_ids)
-        # Senza `only_cookable` la piscina basta: è uno scorrimento, e cento ricette
-        # recenti sono più di quante se ne guardino. Con `only_cookable` no: il
-        # filtro lavora sul risultato, quindi limitare prima significa filtrare
-        # dentro un campione, e «cosa posso cucinare» risponderebbe guardando solo
-        # le ricette entrate ieri. Misurato: a cinquecento ricette la passata
-        # completa non si distingue; oltre qualche migliaio va misurata di nuovo, e
-        # se non regge la regola scende in SQL.
-        if not only_cookable:
+        # Senza soglia la piscina basta: è uno scorrimento, e cento ricette recenti
+        # sono più di quante se ne guardino. Con una soglia no — zero compreso: il
+        # filtro lavora sul risultato, quindi limitare prima significa filtrare dentro
+        # un campione, e «cosa posso cucinare se compro due cose» risponderebbe
+        # guardando solo le ricette entrate ieri. `is None` e non la verità: `0` è una
+        # soglia, la più stretta, e `if not max_missing` la tratterebbe come la sua
+        # assenza. Misurato: a cinquecento ricette la passata completa non si
+        # distingue; oltre qualche migliaio va misurata di nuovo, e se non regge la
+        # regola scende in SQL.
+        if max_missing is None:
             statement = statement.limit(CANDIDATE_POOL)
         candidate_ids = list((await session.execute(statement)).scalars())
         fused = {recipe_id: 0.0 for recipe_id in candidate_ids}
@@ -351,24 +411,36 @@ async def search_recipes(
         # plurale stringe più di quello singolo, quindi il caso è semmai meno
         # frequente di prima, non di più. Se il ricettario cresce, è questo il punto
         # da rimisurare.
+        #
+        # Dal 2026-09-21 lo stesso vale per la soglia dei mancanti: su questo ramo
+        # «a cui manca al massimo una cosa» vuol dire «fra le ricette che parlano di
+        # queste parole», non «in tutto il ricettario». È la stessa scelta, con lo
+        # stesso motivo e lo stesso punto da rimisurare.
         recipe_statement = _containing_all(recipe_statement, ingredient_ids)
     recipes = {
         r.id: r
         for r in (await session.execute(recipe_statement)).unique().scalars()
     }
 
-    results = [
-        RecipeSearchResult(
-            recipe=recipes[recipe_id],
-            missing=missing_count(requirements.get(recipe_id, [])),
-            cookable=is_cookable(requirements.get(recipe_id, [])),
-            score=fused.get(recipe_id, 0.0),
+    results: list[RecipeSearchResult] = []
+    for recipe_id in candidate_ids:
+        if recipe_id not in recipes:
+            continue
+        reqs = requirements.get(recipe_id, [])
+        pairs = _pairs(reqs)
+        results.append(
+            RecipeSearchResult(
+                recipe=recipes[recipe_id],
+                missing=missing_count(pairs),
+                cookable=is_cookable(pairs),
+                missing_names=missing_names(reqs),
+                score=fused.get(recipe_id, 0.0),
+            )
         )
-        for recipe_id in candidate_ids
-        if recipe_id in recipes
-    ]
-    if only_cookable:
-        results = [r for r in results if r.cookable]
+    if max_missing is not None:
+        # `r.missing` l'ha già contato `missing_count`: questo confronto legge la
+        # regola, non la ricopia
+        results = [r for r in results if r.missing <= max_missing]
 
     # prima ciò che puoi davvero cucinare, poi la pertinenza
     results.sort(key=lambda r: (r.missing, -r.score, r.recipe.title))
