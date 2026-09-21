@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
+import { MissingBudgetFilter } from "./MissingBudgetFilter";
 import { fetchCategories, fetchSearchMode, searchRecipes } from "./api";
 import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
@@ -22,6 +23,18 @@ function elenco(names: string[]): string {
   return `${quoted.slice(0, -1).join(", ")} e ${quoted[quoted.length - 1]}`;
 }
 
+/** Come si nomina la soglia dentro le frasi degli altri rami.
+ *
+ * Un posto solo: quattro rami che se la scrivono a mano si scollano al primo cambio
+ * di parole, e il primo a scollarsi sarebbe quello che si legge meno spesso.
+ */
+function frammentoSoglia(maxMissing: number | null): string {
+  if (maxMissing === null) return "";
+  if (maxMissing === 0) return " fra quelle che puoi cucinare adesso";
+  if (maxMissing === 1) return " fra quelle a cui manca al massimo 1 ingrediente";
+  return ` fra quelle a cui mancano al massimo ${maxMissing} ingredienti`;
+}
+
 /** Perché non c'è niente da mostrare: le parole cercate e i filtri, un caso per ciascuno.
  *
  * «Nessuna ricetta» è un verdetto sul ricettario, e il ricettario del seme ne ha 26:
@@ -32,12 +45,12 @@ function elenco(names: string[]): string {
  */
 function emptyMessage({
   query,
-  onlyCookable,
+  maxMissing,
   category,
   ingredientNames,
 }: {
   query: string;
-  onlyCookable: boolean;
+  maxMissing: number | null;
   category: string;
   ingredientNames: string[];
 }): string {
@@ -46,7 +59,7 @@ function emptyMessage({
     return (
       `Nessuna ricetta che contenga ${elenco(ingredientNames)}` +
       `${searched ? " con queste parole" : ""}${category ? ` in «${category}»` : ""}` +
-      `${onlyCookable ? " fra quelle che puoi cucinare adesso" : ""}: ` +
+      `${frammentoSoglia(maxMissing)}: ` +
       // la via d'uscita è quella vera, e al plurale non è la stessa: ogni
       // ingrediente in più stringe, quindi si esce togliendone uno, non cambiandoli
       (ingredientNames.length === 1
@@ -56,25 +69,30 @@ function emptyMessage({
   }
   if (category) {
     const withSearchFragment = searched ? " con queste parole" : "";
-    const onlyCookableFragment = onlyCookable ? " fra quelle che puoi cucinare adesso" : "";
     return (
-      `Nessuna ricetta in «${category}»${withSearchFragment}${onlyCookableFragment}: ` +
+      `Nessuna ricetta in «${category}»${withSearchFragment}${frammentoSoglia(maxMissing)}: ` +
       "scegli «Tutte» per vedere il resto del ricettario."
     );
   }
-  if (searched && onlyCookable) {
+  if (searched && maxMissing !== null) {
     return (
-      "Nessuna ricetta con queste parole fra quelle che puoi cucinare adesso: " +
+      `Nessuna ricetta con queste parole${frammentoSoglia(maxMissing)}: ` +
       "togli il filtro, o prova con altre parole."
     );
   }
   if (searched) {
     return "Nessuna ricetta con queste parole: provane altre, o scrivine una con l'AI.";
   }
-  if (onlyCookable) {
+  if (maxMissing === 0) {
     return (
-      "Niente che puoi cucinare con quel che hai in dispensa: togli il filtro per " +
-      "vedere tutto il ricettario."
+      "Niente che puoi cucinare con quel che hai in dispensa: alza la soglia, o " +
+      "scegli «Tutte» per vedere tutto il ricettario."
+    );
+  }
+  if (maxMissing !== null) {
+    return (
+      `Niente da cucinare comprando al massimo ${maxMissing === 1 ? "1 cosa" : `${maxMissing} cose`}: ` +
+      "alza la soglia, o scegli «Tutte» per vedere tutto il ricettario."
     );
   }
   return "Nessuna ricetta. Provane una scritta con l'AI.";
@@ -82,7 +100,8 @@ function emptyMessage({
 
 export function RecipeBookScreen() {
   const [query, setQuery] = useState("");
-  const [onlyCookable, setOnlyCookable] = useState(false);
+  // `null` è «Tutte»: l'assenza di soglia, non una soglia larghissima
+  const [maxMissing, setMaxMissing] = useState<number | null>(null);
   const [category, setCategory] = useState("");
   // gli ingredienti scelti, non solo i loro id: i nomi servono alle pastiglie del
   // filtro e al messaggio di elenco vuoto, e una seconda chiamata per riaverli
@@ -99,11 +118,11 @@ export function RecipeBookScreen() {
   // diventare un "ricerca fallita" permanente su uno schermo che non funzionerà
   // mai più. La prima versione di questo schermo sbagliava esattamente lì.
   const { data: recipes = [], isLoading, isError } = useQuery({
-    queryKey: ["recipes", debouncedQuery, onlyCookable, category, ingredientIds],
+    queryKey: ["recipes", debouncedQuery, maxMissing, category, ingredientIds],
     queryFn: () =>
       searchRecipes({
         query: debouncedQuery,
-        maxMissing: onlyCookable ? 0 : null,
+        maxMissing,
         category,
         ingredientIds,
       }),
@@ -189,16 +208,7 @@ export function RecipeBookScreen() {
         </p>
       )}
 
-      <label className="flex min-h-11 items-center gap-2.5 text-sm text-ink-soft">
-        <input
-          type="checkbox"
-          aria-label="Solo quelle che posso cucinare"
-          checked={onlyCookable}
-          onChange={(e) => setOnlyCookable(e.target.checked)}
-          className="size-5"
-        />
-        Solo quelle che posso cucinare
-      </label>
+      <MissingBudgetFilter value={maxMissing} onChange={setMaxMissing} />
 
       {categories.length > 0 && (
         <label className="text-sm font-medium text-ink-soft">
@@ -276,7 +286,7 @@ export function RecipeBookScreen() {
         <p className="pt-4 text-ink-soft">
           {emptyMessage({
             query: debouncedQuery,
-            onlyCookable,
+            maxMissing,
             category,
             ingredientNames: ingredients.map((i) => i.display_name),
           })}

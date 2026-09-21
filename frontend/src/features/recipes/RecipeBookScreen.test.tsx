@@ -104,15 +104,39 @@ describe("RecipeBookScreen", () => {
     );
   });
 
-  it("il filtro restringe alle sole ricette cucinabili", async () => {
+  it("la scala manda la soglia, e «Ora» manda zero", async () => {
     const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
-
     renderScreen();
-    await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
+    await screen.findByText("Pasta all'aglio");
 
-    await vi.waitFor(() =>
-      expect(spy.mock.calls.some(([url]) => String(url).includes("only_cookable=true"))).toBe(true)
+    await userEvent.click(
+      screen.getByRole("radio", { name: "Solo quelle che puoi cucinare adesso." })
     );
+
+    // `max_missing=0`, non l'assenza del parametro: «cucinabili ora» è la soglia più
+    // stretta, e un `if (maxMissing)` la scambierebbe per «Tutte» mostrando tutto
+    await waitFor(() => expect(ultimaRicerca(spy)).toContain("max_missing=0"));
+    expect(ultimaRicerca(spy)).not.toContain("only_cookable");
+  });
+
+  it("un gradino più largo manda la sua soglia", async () => {
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+    await screen.findByText("Pasta all'aglio");
+
+    await userEvent.click(
+      screen.getByRole("radio", { name: "Al massimo 2 ingredienti da comprare." })
+    );
+
+    await waitFor(() => expect(ultimaRicerca(spy)).toContain("max_missing=2"));
+  });
+
+  it("senza soglia non manda il parametro", async () => {
+    const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+    await screen.findByText("Pasta all'aglio");
+
+    expect(ultimaRicerca(spy)).not.toContain("max_missing");
   });
 
   // Spec §11: «modello di embedding non caricato → la ricerca degrada a sola
@@ -179,7 +203,9 @@ describe("RecipeBookScreen", () => {
       path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
     );
     renderScreen();
-    await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Solo quelle che puoi cucinare adesso." })
+    );
     await userEvent.type(screen.getByLabelText("Cerca nel ricettario"), "bulloni");
 
     // «fra quelle che puoi cucinare» appartiene solo al caso con entrambi: cercare
@@ -196,10 +222,16 @@ describe("RecipeBookScreen", () => {
       path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
     );
     renderScreen();
-    await userEvent.click(await screen.findByLabelText("Solo quelle che posso cucinare"));
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Solo quelle che puoi cucinare adesso." })
+    );
 
-    expect(await screen.findByText(/Niente che puoi cucinare con quel che hai in dispensa/))
-      .toBeDefined();
+    expect(
+      await screen.findByText(
+        "Niente che puoi cucinare con quel che hai in dispensa: alza la soglia, o " +
+          "scegli «Tutte» per vedere tutto il ricettario."
+      )
+    ).toBeDefined();
   });
 
   it("senza parole cercate il verdetto sul ricettario è quello giusto", async () => {
