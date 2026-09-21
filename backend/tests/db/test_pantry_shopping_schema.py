@@ -118,3 +118,21 @@ async def test_la_posizione_sta_fra_zero_e_cento(db_session):
     )
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+async def test_una_voce_di_dispensa_puo_portare_una_scadenza(db_session):
+    """Annullabile davvero, e una data già passata è legittima: capita di mettere in
+    dispensa qualcosa che scade domani, o di scrivere la data il giorno dopo con il
+    barattolo in mano. Un CHECK «non nel passato» sarebbe falso metà delle volte."""
+    from datetime import date
+
+    latte = await _ingredient(db_session, "latte")
+
+    senza = PantryItem(ingredient_id=latte.id, status=PantryStatus.AVAILABLE)
+    scaduto = PantryItem(ingredient_id=latte.id, status=PantryStatus.AVAILABLE,
+                         expires_on=date(2020, 1, 1))
+    db_session.add_all([senza, scaduto])
+    await db_session.flush()
+
+    assert senza.expires_on is None
+    assert scaduto.expires_on == date(2020, 1, 1)

@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -54,6 +55,12 @@ class PantryItem(UUIDMixin, Base):
     # NULL per chi non l'ha mai mosso.
     fill_percent: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # La scadenza di *questo* barattolo, non dell'ingrediente e non del prodotto: la
+    # dispensa può avere due vasetti dello stesso yogurt comprati a un mese di
+    # distanza. `DATE` e non un timestamp, perché una scadenza è un giorno e non un
+    # istante: trattarla come un istante infilerebbe un fuso orario in un dato che
+    # non ne ha. NULL è il caso normale — chi non la scrive ha la dispensa di prima.
+    expires_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     status_changed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
