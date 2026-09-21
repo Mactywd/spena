@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   MutationCache,
@@ -106,7 +106,7 @@ describe("StockingScreen", () => {
 
     const post = spy.mock.calls.find(([url]) => String(url).endsWith("/shopping-list/stock"));
     expect(JSON.parse(post?.[1].body).entries).toEqual([
-      { shopping_item_id: "s2", ingredient_id: "i2", product_id: null },
+      { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null },
     ]);
   });
 
@@ -185,7 +185,7 @@ describe("StockingScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
 
     expect(postBody(spy, "/stock").entries).toEqual([
-      { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1" },
+      { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1", expires_on: null },
     ]);
   });
 
@@ -281,7 +281,7 @@ describe("StockingScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
     await vi.waitFor(() =>
       expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
-        { shopping_item_id: "s2", ingredient_id: "i2", product_id: null },
+        { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null },
       ])
     );
   });
@@ -473,7 +473,7 @@ describe("StockingScreen", () => {
     // tutto il percorso, ed è esattamente ciò che prima spariva in silenzio
     await vi.waitFor(() =>
       expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
-        { shopping_item_id: "s3", ingredient_id: "i9", product_id: null },
+        { shopping_item_id: "s3", ingredient_id: "i9", product_id: null, expires_on: null },
       ])
     );
   });
@@ -563,5 +563,49 @@ describe("StockingScreen", () => {
     // la frase del caso vuoto resta al caso vuoto: davanti a un suggerimento
     // «nessun ingrediente corrisponde» sarebbe falso
     expect(screen.queryByText(/Nessun ingrediente corrisponde/)).toBeNull();
+  });
+
+  it("il campo della scadenza non c'è finché non lo si chiede", async () => {
+    // dieci campi vuoti a video sono rumore permanente per chi la scadenza non la
+    // scrive mai, e questo è già lo schermo più denso dell'app
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(CHECKED)));
+    renderScreen();
+
+    await screen.findByText("yogurt greco");
+    expect(screen.queryByLabelText(/scadenza/i)).toBeNull();
+
+    await user.click(screen.getAllByRole("button", { name: /scadenza/i })[0]);
+    expect(screen.getByLabelText(/scadenza di yogurt greco/i)).toBeDefined();
+  });
+
+  it("la data scritta parte con la sistemazione, e le altre righe restano senza", async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn((url: unknown, _init?: RequestInit) => {
+      if (String(url).includes("/stock")) return Promise.resolve(respond({ created: 2 }, 201));
+      return Promise.resolve(respond(CHECKED));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    // entrambe le voci hanno già un ingrediente: si confermano sfuse
+    for (const testo of ["yogurt greco", "mele"]) {
+      const riga = (await screen.findByText(testo)).closest("li")!;
+      await user.click(within(riga).getByRole("button", { name: /sfuso/i }));
+    }
+    const rigaYogurt = screen.getByText("yogurt greco").closest("li")!;
+    await user.click(within(rigaYogurt).getByRole("button", { name: /scadenza/i }));
+    fireEvent.change(within(rigaYogurt).getByLabelText(/scadenza di yogurt greco/i), {
+      target: { value: "2026-10-02" },
+    });
+    await user.click(screen.getByRole("button", { name: /metti in dispensa/i }));
+
+    await waitFor(() => {
+      const stock = spy.mock.calls.find(([url]) => String(url).includes("/stock"));
+      expect(JSON.parse(String((stock![1] as RequestInit).body)).entries).toEqual([
+        expect.objectContaining({ shopping_item_id: "s1", expires_on: "2026-10-02" }),
+        expect.objectContaining({ shopping_item_id: "s2", expires_on: null }),
+      ]);
+    });
   });
 });

@@ -227,6 +227,12 @@ export function StockingScreen() {
   });
 
   const [resolved, setResolved] = useState<Record<string, Resolution>>({});
+  // La scadenza scritta per voce, indicizzata come `resolved`: opzionale, e
+  // il caso normale è non scriverla mai. `openExpiryFor` è il tocco che la
+  // fa comparire — dieci campi vuoti sarebbero rumore permanente su uno
+  // schermo già il più denso dell'app, per chi la scadenza non la scrive mai.
+  const [expiry, setExpiry] = useState<Record<string, string>>({});
+  const [openExpiryFor, setOpenExpiryFor] = useState<Record<string, boolean>>({});
   // voci senza ingredient_id, abbinate a mano in questo schermo
   const [matchedIngredient, setMatchedIngredient] = useState<Record<string, Ingredient>>({});
   const [scanningFor, setScanningFor] = useState<ShoppingItem | null>(null);
@@ -278,6 +284,9 @@ export function StockingScreen() {
               shopping_item_id: itemId,
               ingredient_id: ingredientId,
               product_id: resolution.kind === "product" ? resolution.product.id : null,
+              // sempre presente, mai assente: una riga senza scadenza scritta
+              // manda `null`, non salta la chiave
+              expires_on: expiry[itemId] ?? null,
             };
           })
           .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
@@ -473,6 +482,36 @@ export function StockingScreen() {
                     Sfuso, senza marca<span className="sr-only">: {item.raw_text}</span>
                   </button>
                 </div>
+              )}
+
+              {/* Dietro un tocco, sempre: indipendente dalla risoluzione (resta
+                  raggiungibile anche a riga già confermata, come nel secondo test)
+                  perché la data riguarda il lotto che entra in dispensa, non il
+                  come è stato scelto il prodotto. */}
+              {openExpiryFor[item.id] ? (
+                <div>
+                  <label htmlFor={`expiry-${item.id}`} className="sr-only">
+                    Scadenza di {item.raw_text}
+                  </label>
+                  <input
+                    id={`expiry-${item.id}`}
+                    type="date"
+                    value={expiry[item.id] ?? ""}
+                    onChange={(e) =>
+                      setExpiry((prev) => ({ ...prev, [item.id]: e.target.value }))
+                    }
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenExpiryFor((prev) => ({ ...prev, [item.id]: true }))
+                  }
+                  className="self-start text-xs font-medium text-ink-faint"
+                >
+                  + scadenza<span className="sr-only"> per {item.raw_text}</span>
+                </button>
               )}
             </li>
           );

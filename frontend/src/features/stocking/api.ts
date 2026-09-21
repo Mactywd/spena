@@ -35,7 +35,15 @@ export function createProduct(body: {
 }
 
 export function stockItems(
-  entries: { shopping_item_id: string; ingredient_id: string; product_id: string | null }[]
+  entries: {
+    shopping_item_id: string;
+    ingredient_id: string;
+    product_id: string | null;
+    // facoltativa per voce, non per richiesta: una riga può portare la data e
+    // l'altra no, ed è il caso normale — vedi la nota per esteso in
+    // StockingScreen sopra `openExpiryFor`.
+    expires_on: string | null;
+  }[]
 ) {
   return apiFetch<{ created: number }>("/shopping-list/stock", {
     method: "POST",
