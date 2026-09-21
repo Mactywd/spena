@@ -239,3 +239,60 @@ test("il gradino scelto della scala si distingue, e si legge", async ({ page }) 
   const rapporto = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
   expect(rapporto).toBeGreaterThanOrEqual(4.5);
 });
+
+test("il campo data si vede, e la pastiglia della scadenza porta il suo colore", async ({
+  page,
+}) => {
+  // La regola di base che veste i campi è una lista di esclusioni per selettore, e
+  // `date` in quella lista non compare — quindi il campo *dovrebbe* essere vestito
+  // come gli altri. È già successo il contrario con `input[type="text"]`: campi
+  // trasparenti su fondo grigio mentre 157 test in jsdom passavano. Tailwind genera
+  // il CSS alla costruzione e jsdom non lo calcola: questo è l'unico posto da cui
+  // si vede.
+  await page.getByRole("link", { name: "Dispensa" }).click();
+
+  // stessa cautela del test sul cursore: una voce che nessun altro file nomina
+  // («cipolla» è già di quel test, «pomodoro» di cooking.spec.ts), e archiviata in
+  // fondo, perché la dispensa è stato condiviso e il database vive quanto lo stack
+  await page.getByLabel("Aggiungi in dispensa").fill("carot");
+  await page.getByRole("option", { name: /^Carota\b/ }).click();
+
+  const riga = page.locator("li", { hasText: "carota" });
+  await riga.getByRole("button", { name: /scadenza/i }).click();
+
+  const campo = riga.getByLabel(/scadenza/i);
+  await expect(campo).toBeVisible();
+  // bianco sul fondo grigio, non trasparente: è il difetto che questo file esiste
+  // per prendere
+  await expect(campo).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(campo).toHaveCSS("border-top-width", "1px");
+  // sotto i 16px iOS ingrandisce la pagina da solo quando il campo prende fuoco
+  await expect(campo).toHaveCSS("font-size", "16px");
+
+  // fra tre giorni: dentro la soglia, quindi il server deve rispondere «soon» e la
+  // pastiglia prendere il token nuovo. La data si calcola qui e non si scrive a
+  // mano, o il test scadrebbe da solo.
+  const fraTreGiorni = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  //
+  // Niente `blur()` dopo il `fill()`, ed è una misura, non una semplificazione: il
+  // `fill()` di Playwright fa scattare davvero il `change` che la riga ascolta —
+  // `writeExpiry` chiude il campo nello stesso istante — quindi un `blur()` dopo
+  // aspetterebbe un campo che non c'è più e il test scadrebbe a 30s con la scadenza
+  // già salvata. Che la data arrivi al server lo prova la pastiglia qui sotto, che
+  // esiste solo se `item.expires_on` è tornato valorizzato dalla GET successiva.
+  await campo.fill(fraTreGiorni);
+
+  // --color-expiry: #5b45a8. Se il token non arrivasse, la pastiglia resterebbe
+  // del colore ereditato e direbbe quanto una scritta qualsiasi. Questo valore e
+  // quello in index.css sono gli unici due posti dove il colore compare: se
+  // l'occhio allo Step 3 lo fa cambiare, cambiano insieme.
+  const pastiglia = riga.getByText(/^Scade il /);
+  await expect(pastiglia).toHaveCSS("color", "rgb(91, 69, 168)");
+
+  // la pulizia, come fa il test del cursore: senza, la dispensa cresce di una riga
+  // a ogni esecuzione su uno stack riusato
+  await riga.getByRole("button", { name: "Togli carota dalla dispensa" }).click();
+  await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+});
