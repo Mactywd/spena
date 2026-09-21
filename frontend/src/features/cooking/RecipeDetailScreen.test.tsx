@@ -38,10 +38,10 @@ const DETAIL: RecipeDetail = {
 const PANTRY: PantryItem[] = [
   { id: "p1", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
     ingredient_category: "cereali", product_name: null, product_brand: null,
-    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null },
   { id: "p2", ingredient_id: "i2", product_id: "pr1", ingredient_name: "pomodoro",
     ingredient_category: "conserve", product_name: "Pelati", product_brand: "Mutti",
-    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null },
 ];
 
 function renderScreen() {

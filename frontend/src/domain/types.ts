@@ -1,5 +1,6 @@
 // Rispecchiano gli schemi Pydantic del backend. La logica resta là: qui solo forme.
 export type PantryStatus = "available" | "low" | "finished";
+export type ExpiryState = "soon" | "expired";
 export type Availability = "available" | "low" | "missing";
 export type IngredientRole = "primary" | "secondary";
 export type RecipeSource = "dataset" | "manual" | "ai";
@@ -52,6 +53,10 @@ export interface PantryItem {
   fill_percent: number | null;
   note: string | null;
   added_at: string;
+  /** La scadenza di questo barattolo, `null` se non è stata scritta. */
+  expires_on: string | null;
+  /** Il verdetto, già preso dal server: la soglia dei sette giorni non vive qui. */
+  expiry: ExpiryState | null;
 }
 
 export interface ShoppingItem {

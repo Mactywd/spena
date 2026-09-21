@@ -32,6 +32,13 @@
   --color-low: #9a5f0c;
   --color-low-tint: #fbefdc;
 
+  /* La scadenza ha un colore suo, e non è il giallo: la zona gialla del cursore vuol
+     già dire «comincia a mancare» (LOW_MAX_FILL), e due fatti diversi sullo stesso
+     colore non ne dicono più nessuno. Due intensità e non due colori: «sta per
+     scadere» e «scaduto» sono lo stesso fatto a due distanze. */
+  --color-expiry: #5b45a8;
+  --color-expiry-tint: #efeaf9;
+
   --color-danger: #b3261e;
 
   --radius-card: 14px;
