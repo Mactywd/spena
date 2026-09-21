@@ -1,10 +1,12 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione, e in
-giornata **D5 decisa**: la scadenza entra in dispensa come segnale; prima, lo stesso
-giorno, S6 e la porta della creazione riaperta). Prima: il 2026-09-18
-(D4 e S5, il non alimentare) e il 2026-09-17 (S1, S2, R1, R3, T1, più la domanda del
-rientro in lista estesa al giallo e il filtro per ingrediente rifatto al plurale).
+Aggiornato il 2026-09-21 (**R7 fatto**: la casella «Solo quelle che posso cucinare»
+è diventata una scala a cinque gradini, e la scheda dice quali ingredienti mancano).
+Prima: il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione, e in giornata
+**D5 decisa**: la scadenza entra in dispensa come segnale; prima, lo stesso giorno,
+S6 e la porta della creazione riaperta), il 2026-09-18 (D4 e S5, il non alimentare) e
+il 2026-09-17 (S1, S2, R1, R3, T1, più la domanda del rientro in lista estesa al
+giallo e il filtro per ingrediente rifatto al plurale).
 
 Questo file è **l'unico posto dove sta la lista**. La roadmap per fasi della spec
 madre (`docs/superpowers/specs/2026-09-11-spena-design.md`, §4) resta il documento
@@ -633,13 +635,26 @@ corregge una risposta sbagliata.
 Oggi si filtra per «cucinabile». Serve anche «cucinabile usando quel che ho al posto
 di quel che manca».
 
-## R7. Cerca ricette con al massimo *n* ingredienti mancanti **[D]**
+«Cucinabile» adesso è un gradino di una scala, non una casella: quando R6 arriverà,
+«cucinabile con sostituti» va pensata come una seconda scala o come un interruttore
+accanto a questa, non come una casella in più.
+
+## R7. Cerca ricette con al massimo *n* ingredienti mancanti **[FATTO 2026-09-21]**
 Due usi in uno: «tanto devo andare a fare la spesa, ammetto 3 cose da comprare», e
 **svuotafrigo** — parto dagli avanzi e allargo di poco la scelta.
 
-⚠️ Attenzione alla sesta lezione di `CLAUDE.md`: *un filtro che lavora sul risultato
-non può stare dietro a un limite*. `recipe_search.py` ha già preso questo difetto una
-volta. Con il catalogo intero di GialloZafferano è la stessa trappola, moltiplicata.
+La casella «Solo quelle che posso cucinare» non c'è più: è diventata il gradino zero
+di una scala a cinque — Tutte, Ora, +1, +2, +3 — dove «Tutte» è l'assenza di soglia e
+non una soglia altissima, perché è il server a distinguere le due cose. E la scheda
+elenca i nomi di quel che manca invece del solo numero (i primi tre, poi «e un
+altro»): «mancano 3 ingredienti» non basta a decidere se vale la spesa.
+
+La sesta lezione di `CLAUDE.md` è stata presa in parola: il limite della piscina cade
+per **qualunque** soglia, zero compreso — anche «cosa posso cucinare adesso» filtra
+sul risultato, e prima stava dietro alle cento ricette più recenti. Il ramo con le
+parole cercate resta dietro alla piscina RRF, come già dichiarato in R3. Il gradino
+scelto si distingue dagli altri solo per il CSS, quindi la prova sta dove il CSS
+esiste davvero: `frontend/e2e/style.spec.ts` misura fondo e contrasto in un browser.
 
 ## R8. Modifica con AI **[D]**
 Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 /**
  * Lo stile è l'unica parte dell'app che i test in jsdom non possono vedere: Tailwind
@@ -181,4 +181,61 @@ test("i tasti delle porzioni sono bersagli da pollice, e il riporziona arriva a 
   await expect(page.getByText("q.b.").first()).toBeVisible();
   // a 1 non si scende: il tasto si spegne invece di proporre zero porzioni
   await expect(meno).toBeDisabled();
+});
+
+test("il gradino scelto della scala si distingue, e si legge", async ({ page }) => {
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+
+  const tutte = page.getByRole("radio", { name: "Tutto il ricettario." });
+  const uno = page.getByRole("radio", { name: "Al massimo 1 ingrediente da comprare." });
+  await expect(tutte).toBeChecked();
+
+  // il radio è `sr-only`: la pastiglia che si vede è lo `span` dentro la sua label,
+  // come per la X del filtro qui sopra si parte dal controllo e si sale
+  const pastigliaDi = (radio: Locator) => page.locator("label").filter({ has: radio }).locator("span");
+
+  // --color-card: #ffffff. «+1» non è scelto: ha il fondo bianco del `secondary`
+  await expect(pastigliaDi(uno)).toHaveCSS("background-color", "rgb(255, 255, 255)");
+
+  // si tocca la pastiglia, non il radio: `sr-only` lo riduce a un quadratino di un
+  // pixel sotto la sua label, e un click diretto lo intercetta la label (o, dopo lo
+  // scorrimento, l'intestazione sticky). È anche il gesto vero — in corsia si tocca
+  // quel che si vede — e che il radio risulti scelto prova pure che la label è legata
+  await pastigliaDi(uno).click();
+  await expect(uno).toBeChecked();
+
+  // --color-brand: #14804f. Se il gradino scelto non cambiasse fondo, la scala
+  // direbbe cinque volte la stessa cosa e nessun test in jsdom se ne accorgerebbe:
+  // questa asserzione e quella sotto, insieme, dicono che i due gradini differiscono
+  await expect(pastigliaDi(uno)).toHaveCSS("background-color", "rgb(20, 128, 79)");
+  await expect(pastigliaDi(tutte)).toHaveCSS("background-color", "rgb(255, 255, 255)");
+
+  // Il contrasto lo misura il browser: i due colori della pastiglia scelta si leggono
+  // da `getComputedStyle`, il rapporto è la formula WCAG qui in chiaro. Le due letture
+  // passano da `page.evaluate` con un'espressione — e non da `locator.evaluate` con
+  // una funzione — per il motivo detto sull'intestazione qui sopra: questo file lo
+  // compila tsconfig.node.json, che non include la libreria DOM, e `getComputedStyle`
+  // scritto in una funzione non compilerebbe. Nella forma a stringa Playwright valuta
+  // l'espressione e basta (non la chiama, quindi non c'è elemento da ricevere): lo
+  // span si ritrova in CSS, partendo sempre dal controllo — `input[aria-label=…] + span`
+  // è la stessa risalita del `filter({ has })`, scritta in un selettore.
+  const ARIA = "Al massimo 1 ingrediente da comprare.";
+  const coloreDella = (proprieta: string) =>
+    page.evaluate<string>(
+      `getComputedStyle(document.querySelector('input[aria-label="${ARIA}"] + span')).${proprieta}`
+    );
+  const luminanza = (colore: string) => {
+    const [r, g, b] = colore.match(/\d+(\.\d+)?/g)!.slice(0, 3).map(Number);
+    const canale = (v: number) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * canale(r) + 0.7152 * canale(g) + 0.0722 * canale(b);
+  };
+
+  // questa app si legge in corsia alla luce del giorno: bianco su verde sta sopra 4.5:1
+  const a = luminanza(await coloreDella("color"));
+  const b = luminanza(await coloreDella("backgroundColor"));
+  const rapporto = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  expect(rapporto).toBeGreaterThanOrEqual(4.5);
 });
