@@ -826,7 +826,13 @@ describe("PantryScreen", () => {
     expect(within(riga).getByRole("button", { name: /scadenza/i })).toBeDefined();
   });
 
-  it("scrivere una data la manda al server, per la voce giusta", async () => {
+  it("scrivere una data la manda al server, per la voce giusta, e solo all'uscita dal campo", async () => {
+    // Un `input[type="date"]` fa scattare `change` a ogni segmento toccato, non una
+    // volta alla fine: battendo «2026» sull'anno il campo passa per 0002, 0020, 0202.
+    // Legata al `change`, la scrittura partiva sul primo di quei valori e chiudeva il
+    // campo sotto le dita — una data dell'anno 2 salvata e la correzione impossibile
+    // da portare a termine con la tastiera. Le battute qui sotto sono quella sequenza:
+    // nessuna di loro deve scrivere niente.
     const fetchMock = stubRoutedFetch((_path, init) => {
       if (init?.method === "PATCH") return [{ ...ITEMS[0], expires_on: "2026-10-05" }, 200];
       return [ITEMS, 200];
@@ -835,21 +841,76 @@ describe("PantryScreen", () => {
 
     const riga = (await screen.findByText("Total 0%")).closest("li")!;
     fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
-    fireEvent.change(within(riga).getByLabelText(/scadenza/i), {
-      target: { value: "2026-10-05" },
+    const campo = within(riga).getByLabelText(/scadenza/i);
+    for (const battuta of ["0002-10-05", "0020-10-05", "0202-10-05", "2026-10-05"]) {
+      fireEvent.change(campo, { target: { value: battuta } });
+    }
+
+    // il campo è ancora lì, e non è partito niente: si può continuare a correggere
+    expect(within(riga).getByLabelText(/scadenza/i)).toBeDefined();
+    expect(
+      fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "PATCH")
+    ).toHaveLength(0);
+
+    fireEvent.blur(campo);
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit)?.method === "PATCH"
+      );
+      // una sola scrittura, e del valore finito: non quattro, non dell'anno 2
+      expect(patch).toHaveLength(1);
+      // ITEMS[0] ha id "p1": senza questa riga nessuna asserzione distinguerebbe
+      // una PATCH mandata per la voce sbagliata
+      expect(String(patch[0][0])).toContain("/pantry/p1");
+      expect(JSON.parse(String((patch[0][1] as RequestInit).body))).toEqual({
+        expires_on: "2026-10-05",
+      });
     });
+  });
+
+  it("l'Invio salva senza dover toccare altrove", async () => {
+    // mai un vicolo cieco: chi scrive la data con la tastiera deve avere un modo di
+    // dire «ho finito» che non sia indovinare dove toccare per uscire dal campo
+    const fetchMock = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[0], expires_on: "2026-10-05" }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const riga = (await screen.findByText("Total 0%")).closest("li")!;
+    fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
+    const campo = within(riga).getByLabelText(/scadenza/i);
+    fireEvent.change(campo, { target: { value: "2026-10-05" } });
+    fireEvent.keyDown(campo, { key: "Enter" });
 
     await waitFor(() => {
       const patch = fetchMock.mock.calls.find(
         ([, init]) => (init as RequestInit)?.method === "PATCH"
       );
-      // ITEMS[0] ha id "p1": senza questa riga nessuna asserzione distinguerebbe
-      // una PATCH mandata per la voce sbagliata
-      expect(String(patch![0])).toContain("/pantry/p1");
       expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({
         expires_on: "2026-10-05",
       });
     });
+  });
+
+  it("uscire dal campo senza aver cambiato niente non scrive", async () => {
+    // toccare «+ scadenza» e ripensarci manderebbe una cancellazione su una voce che
+    // data non ne ha: una richiesta che non chiede niente, e un guasto suo da mostrare
+    const fetchMock = stubRoutedFetch(() => [ITEMS, 200]);
+    renderScreen();
+
+    const riga = (await screen.findByText("Total 0%")).closest("li")!;
+    fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
+    fireEvent.blur(within(riga).getByLabelText(/scadenza/i));
+
+    // il campo si richiude (si torna al «+ scadenza»), e niente è partito
+    await waitFor(() =>
+      expect(within(riga).getByRole("button", { name: /scadenza/i })).toBeDefined()
+    );
+    expect(
+      fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "PATCH")
+    ).toHaveLength(0);
   });
 
   it("svuotare il campo manda null, che vuol dire cancellala", async () => {
@@ -863,7 +924,9 @@ describe("PantryScreen", () => {
 
     const riga = (await screen.findByText("mela")).closest("li")!;
     fireEvent.click(within(riga).getByText("Scade il 28/09/2026"));
-    fireEvent.change(within(riga).getByLabelText(/scadenza/i), { target: { value: "" } });
+    const campo = within(riga).getByLabelText(/scadenza/i);
+    fireEvent.change(campo, { target: { value: "" } });
+    fireEvent.blur(campo);
 
     await waitFor(() => {
       const patch = fetchMock.mock.calls.find(
@@ -884,9 +947,9 @@ describe("PantryScreen", () => {
 
     const riga = (await screen.findByText("Total 0%")).closest("li")!;
     fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
-    fireEvent.change(within(riga).getByLabelText(/scadenza/i), {
-      target: { value: "2026-10-05" },
-    });
+    const campo = within(riga).getByLabelText(/scadenza/i);
+    fireEvent.change(campo, { target: { value: "2026-10-05" } });
+    fireEvent.blur(campo);
 
     expect(await within(riga).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     const altra = screen.getByText("Pesca").closest("li")!;

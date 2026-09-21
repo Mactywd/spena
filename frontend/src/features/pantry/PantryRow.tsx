@@ -103,11 +103,25 @@ export function PantryRow({
     }
   }
 
-  // il campo chiude subito, non quando la richiesta torna: la lettura successiva
+  // Si scrive all'uscita dal campo, non a ogni battuta, e non è una preferenza.
+  // Un `input[type="date"]` non fa scattare `change` una volta alla fine: lo fa a
+  // ogni segmento toccato. Misurato in Chromium, correggere l'anno di «2026-09-28»
+  // battendo «2027» produce «0002-09-28», «0020-09-28», «0202-09-28», «2027-09-28»:
+  // legato al `change`, il primo di quei quattro chiudeva il campo sotto le dita e
+  // salvava una data dell'anno 2, che il server giudicava scaduta. Restava solo il
+  // calendario nativo, ed è la ragione per cui l'e2e non l'aveva mai visto —
+  // `fill()` di Playwright scrive il valore in un colpo solo. Il campo è per questo
+  // non controllato (`defaultValue`): i valori di passaggio non devono risalire da
+  // nessuna parte, devono solo restare nel campo finché l'utente non ha finito.
+  //
+  // Il campo chiude qui e non quando la richiesta torna: la lettura successiva
   // arriva da `item` (invalidato in caso di successo), e un fallimento lo dice già
-  // l'`Alert` qui sotto — non serve tenere il campo aperto per mostrarlo
-  async function writeExpiry(value: string) {
+  // l'`Alert` qui sotto — non serve tenere il campo aperto per mostrarlo.
+  async function commitExpiry(value: string) {
     setEditingExpiry(false);
+    // uscire senza aver toccato niente non è una scrittura: aprire «+ scadenza» e
+    // ripensarci manderebbe una cancellazione su una voce che data non ne ha
+    if (value === (item.expires_on ?? "")) return;
     try {
       await onExpiry(value || null);
     } catch {
@@ -197,12 +211,41 @@ export function PantryRow({
               id={`expiry-${item.id}`}
               type="date"
               disabled={busy}
+              // il campo prende fuoco appena compare: è stato chiesto con un tocco,
+              // e così l'uscita — cioè la scrittura — è a un tocco qualsiasi di
+              // distanza, invece di restare aperto e muto per chi non lo tocca più
+              autoFocus
               defaultValue={item.expires_on ?? ""}
-              onChange={(event) => void writeExpiry(event.target.value)}
+              onBlur={(event) => void commitExpiry(event.target.value)}
+              // Invio salva senza dover toccare altrove. Passa dal `blur`, non da una
+              // seconda chiamata: la scrittura resta una strada sola.
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
             />
           </div>
         ) : item.expires_on ? (
-          <button type="button" disabled={busy} onClick={() => setEditingExpiry(true)}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setEditingExpiry(true)}
+            // stessa tecnica del «+ scadenza» qui sotto, con la misura di questo
+            // contenuto: la pastiglia è alta 24px (12px di testo più `py-1`), quindi
+            // bastano 10px di padding per parte a portare il riquadro a 44px, e il
+            // margine negativo uguale lo ritoglie dal flusso — la riga resta alta
+            // quanto lo StatusChip che le sta accanto. La sporgenza di 10px è
+            // esattamente il `gap-2.5` che separa questa riga dal cursore: il
+            // bersaglio cresce fin dove c'è vuoto e non si mangia quello del vicino.
+            // Non è un dettaglio di eleganza: è il tocco con cui si corregge una data
+            // sbagliata, cioè l'unica uscita dal vicolo cieco (spec §6).
+            //
+            // `flex` non è decorazione: la pastiglia è un `inline-block`, e in un
+            // pulsante di blocco il suo riquadro di riga si porta dietro lo spazio
+            // del discendente — 26px invece di 24, misurati, cioè un bersaglio da
+            // 46px e la riga più alta di due. Da elemento flex la pastiglia è alta
+            // quanto è, e la riga resta identica al pixel.
+            className="-my-2.5 flex py-2.5"
+          >
             <ExpiryChip expiresOn={item.expires_on} expiry={item.expiry} />
           </button>
         ) : (

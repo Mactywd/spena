@@ -288,13 +288,16 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
     .toISOString()
     .slice(0, 10);
   //
-  // Niente `blur()` dopo il `fill()`, ed è una misura, non una semplificazione: il
-  // `fill()` di Playwright fa scattare davvero il `change` che la riga ascolta —
-  // `writeExpiry` chiude il campo nello stesso istante — quindi un `blur()` dopo
-  // aspetterebbe un campo che non c'è più e il test scadrebbe a 30s con la scadenza
-  // già salvata. Che la data arrivi al server lo prova la pastiglia qui sotto, che
-  // esiste solo se `item.expires_on` è tornato valorizzato dalla GET successiva.
+  // Il `blur()` dopo il `fill()` non è cerimonia: la riga scrive all'uscita dal
+  // campo, non a ogni battuta, perché un `input[type="date"]` fa scattare `change`
+  // a ogni segmento toccato e legarci la scrittura salvava l'anno 0002 mentre si
+  // batteva il 2027. Il `fill()` di Playwright scrive il valore in un colpo solo:
+  // è esattamente il gesto che quel difetto non toccava, ed è la ragione per cui
+  // questo file non l'aveva visto. Che la data arrivi al server lo prova la
+  // pastiglia qui sotto, che esiste solo se `item.expires_on` è tornato valorizzato
+  // dalla GET successiva — cioè prova anche che il `blur` scrive davvero.
   await campo.fill(fraTreGiorni);
+  await campo.blur();
 
   // --color-expiry: #5b45a8. Se il token non arrivasse, la pastiglia resterebbe
   // del colore ereditato e direbbe quanto una scritta qualsiasi. Questo valore e
@@ -302,6 +305,15 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   // l'occhio allo Step 3 lo fa cambiare, cambiano insieme.
   const pastiglia = riga.getByText(/^Scade il /);
   await expect(pastiglia).toHaveCSS("color", "rgb(91, 69, 168)");
+
+  // La pastiglia è anche un pulsante: toccarla riapre il campo, ed è l'unica strada
+  // per correggere una data battuta male (spec §6). Il disegno è la pastiglia, alta
+  // 24px; il bersaglio dev'essere quello di tutti gli altri, come il «+ scadenza»
+  // che stava qui un momento fa — due controlli affiancati, uno da 44px e uno da 24,
+  // sarebbero mezza correzione. Anche questa misura la può fare solo un browser.
+  const correggi = riga.getByRole("button", { name: /^Scade il / });
+  const boxPastiglia = await correggi.boundingBox();
+  expect(boxPastiglia!.height).toBeGreaterThanOrEqual(40);
 
   // la pulizia, come fa il test del cursore: senza, la dispensa cresce di una riga
   // a ogni esecuzione su uno stack riusato
