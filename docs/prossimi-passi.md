@@ -1,10 +1,13 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-21 (**S7 fatto**: la dispensa conosce una data di scadenza
-facoltativa per elemento, che si legge sulla riga e non cambia nessuno stato — e con
-lei `CLAUDE.md` e la spec madre §2 emendati; lo stesso giorno **R7**: la casella «Solo
-quelle che posso cucinare» è diventata una scala a cinque gradini, e la scheda dice
-quali ingredienti mancano). Prima: il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione, e in giornata
+Aggiornato il 2026-09-22 (**S7 e R7 sono in produzione**: la scadenza in dispensa e la
+scala a cinque gradini del ricettario girano su `spena.mattiagirellini.com`, migrazione
+`0009` applicata — la verifica a mano però **non è ancora stata fatta**). Prima: il
+2026-09-21 (**S7 costruito**: la dispensa conosce una data di scadenza facoltativa per
+elemento, che si legge sulla riga e non cambia nessuno stato — e con lei `CLAUDE.md` e
+la spec madre §2 emendati; lo stesso giorno **R7**: la casella «Solo quelle che posso
+cucinare» è diventata una scala a cinque gradini, e la scheda dice quali ingredienti
+mancano), il 2026-09-20 (D1 e la metà per porzioni di R2 in produzione, e in giornata
 **D5 decisa**: la scadenza entra in dispensa come segnale; prima, lo stesso giorno,
 S6 e la porta della creazione riaperta), il 2026-09-18 (D4 e S5, il non alimentare) e
 il 2026-09-17 (S1, S2, R1, R3, T1, più la domanda del rientro in lista estesa al
@@ -73,11 +76,28 @@ sforato il soffitto dei token, e il comando avrebbe stampato «0 unità decise»
 con successo. Spesa totale all'AI: **0,00019 $**. La verifica a mano è stata fatta e
 non ha trovato difetti.
 
-**Il 2026-09-21 S7 è stato costruito, e sta ancora sul ramo `scadenza-dispensa`**:
-undici task, dodici commit, suite verdi (644 backend, 288 jsdom, 12 e2e). Non è fuso
-in `master` e **non è distribuito**, quindi la migrazione `0009` in produzione non è
-ancora girata: dove questo file dice «FATTO 2026-09-21» per S7 intende codice verde su
-un ramo, non codice che gira su `spena.mattiagirellini.com`.
+**Il 2026-09-21 S7 è stato costruito** sul ramo `scadenza-dispensa`: undici task,
+diciassette commit, suite verdi (644 backend, 292 jsdom, 12 e2e). **Il 2026-09-22 è
+entrato in `master` e in produzione**, con un fast-forward e senza conflitti.
+Migrazione `0009` applicata all'avvio (`alembic current` sul container risponde
+`0009 (head)`, e `pantry_items.expires_on` esiste come `date` annullabile); pacchetto
+servito `assets/index-sNWfaC-_.js` e `assets/index-B3fgdiVV.css`, **identici** alla
+build locale del codice fuso — che è la prova, non i container «healthy».
+
+**Lo stesso deploy ha finalmente costruito l'immagine di R7.** Il server aveva già il
+commit (`355360d`, il merge del 2026-09-21), ma da allora nessuno aveva ricostruito:
+la scala a cinque gradini e i nomi degli ingredienti mancanti diventano visibili con
+questo deploy, non con quello di ieri. Vale la pena ricordarlo la prossima volta: un
+`git pull` sul server non distribuisce niente da solo, perché il frontend è compilato
+dentro l'immagine.
+
+**La verifica a mano di S7 e R7 non è ancora stata fatta.** Quattro cose che nessun
+test ha potuto vedere e che vanno guardate sul telefono: che il selettore data nativo
+di Android chiuda il campo in modo da far scattare il salvataggio (vedi il secondo
+difetto grave in S7, qui sotto — è stato provato in Chromium, non su un telefono
+vero); che una data scaduta **non** cambi lo stato né la cucinabilità; che una data
+svuotata si cancelli senza «riprova»; e che il viola si stacchi davvero dal verde e
+dall'ambra alla luce del giorno.
 
 Due cose si sono viste solo sui dati veri, e hanno la loro voce in **Parte X**: due
 plurali sbagliati dall'AI su ventisette (uno dei quali l'`--azzera` non sapeva
@@ -583,7 +603,29 @@ convivono senza un istante di ambiguità, e la coppia di pastiglie più lunga fi
 263px su 375. Era la decisione che il piano lasciava all'occhio, e l'occhio ha detto
 di sì: `index.css` non è stato toccato dopo.
 
-**Due difetti trovati dalle revisioni, e sono del tipo che torna.** `formatExpiry`
+**Le revisioni hanno trovato sette difetti** — due nei controlli per task, cinque in
+quello sull'intero ramo. **Questi quattro sono del tipo che torna**, e i due gravi li
+ha visti solo la revisione finale, perché nessuno dei due è visibile da dentro un task
+solo.
+
+Il primo è **la quinta lezione di `CLAUDE.md` daccapo**: in «Sistema la spesa» un campo
+data *svuotato* mandava `""` invece di `null`, Pydantic rispondeva 422, e il messaggio
+diceva «riprova» — ma riprovare rimandava lo stesso corpo. La spesa intera restava
+bloccata, e l'unica uscita era ricaricare la pagina perdendo ogni abbinamento già
+risolto. Il vicolo cieco l'ha aperto la funzione nuova, non un'omissione. Serviva
+vedere il frontend e lo schema Pydantic nello stesso sguardo.
+
+Il secondo è che **`input[type="date"]` emette un evento a ogni tasto**: scrivendo
+`2027` sopra `2026` passa da `0002-`, `0020-`, `0202-`, e il campo si chiudeva al
+primo, salvando l'anno 2 e smontandosi sotto le dita. Nessun test poteva vederlo,
+perché `fill()` di Playwright imposta il valore in un colpo solo: è la quarta lezione
+(«un selettore CSS non è una superficie di test») spostata sugli eventi. Ora si scrive
+uscendo dal campo — campo non controllato, `autoFocus`, e Invio che conferma passando
+dal blur — provato con tasti veri in un browser. **Resta da provare sul telefono**: il
+selettore data nativo di Android non è quello di Chromium desktop, e come chiuda il
+campo lo dice solo l'uso vero.
+
+Gli altri due sono più piccoli, e li hanno presi i controlli per task. `formatExpiry`
 costruiva `new Date("2026-09-28")`, che JavaScript legge come mezzanotte **UTC**: ogni
 lettore a ovest di Greenwich avrebbe visto il giorno prima. Ora la data si costruisce
 dai suoi componenti, un test la fissa, ed è stato visto fallire rimettendo il vecchio
@@ -605,10 +647,10 @@ la dispensa di prima, salvo il «+ scadenza» discreto dove starebbe la pastigli
 costo dichiarato e non una svista: senza di lui la correzione non avrebbe da dove
 cominciare, e sarebbe il vicolo cieco appena evitato.
 
-Suite alla fine del lavoro: **644 backend, 288 jsdom, 12 e2e**, tutte verdi.
+Suite alla fine del lavoro: **644 backend, 292 jsdom, 12 e2e**, tutte verdi.
 `CLAUDE.md` (decisione fondante 1) e la spec madre §2 sono stati emendati **insieme e
-nello stesso commit**, come D5 imponeva. **Non è in produzione**: il lavoro sta sul
-ramo `scadenza-dispensa`, la `0009` in produzione non è ancora girata.
+nello stesso commit**, come D5 imponeva. **In produzione dal 2026-09-22**, migrazione
+`0009` applicata; la verifica a mano resta da fare (vedi «Stato di oggi»).
 
 ---
 
@@ -724,6 +766,11 @@ sul risultato, e prima stava dietro alle cento ricette più recenti. Il ramo con
 parole cercate resta dietro alla piscina RRF, come già dichiarato in R3. Il gradino
 scelto si distingue dagli altri solo per il CSS, quindi la prova sta dove il CSS
 esiste davvero: `frontend/e2e/style.spec.ts` misura fondo e contrasto in un browser.
+
+**In produzione dal 2026-09-22, non dal 21.** Il commit era sceso sul server il giorno
+del merge, ma l'immagine è stata ricostruita solo con il deploy di S7: fino ad allora
+il browser riceveva il pacchetto di prima. Nessuna migrazione, quindi niente da
+applicare; la verifica a mano vale anche per questa voce.
 
 ## R8. Modifica con AI **[D]**
 Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
@@ -986,10 +1033,30 @@ layout a 375px.
   un'offerta che appare o non appare. Ma le due sezioni ora rispondono in modo
   diverso alla stessa domanda — «quasi finito va ricomprato?» — e vale la pena
   deciderlo una volta invece di riscoprirlo.
-- **`PantryRow.tsx` è il file più affollato dell'app** (oltre 170 righe, tre stati
-  locali oltre alle prop). Estrarre la domanda del rientro in lista («Lo rimetto in
-  lista?», con la sua lapide e il suo esito) come componente a sé è il taglio
-  naturale, quando qualcuno ci tornerà.
+- **`PantryRow.tsx` è il file più affollato dell'app** (304 righe dopo S7, che ne ha
+  aggiunte un centinaio, e quattro stati locali oltre alle prop). Estrarre la domanda
+  del rientro in lista («Lo rimetto in lista?», con la sua lapide e il suo esito) come
+  componente a sé è il taglio naturale, quando qualcuno ci tornerà; la scadenza è il
+  secondo candidato.
+- **Il bersaglio di «+ scadenza» sborda di 4px su quello del cursore** in dispensa.
+  Il comando è alto 16px e viene portato a 44 con `-my-3.5 py-3.5`, cioè 14px per
+  parte, mentre lo spazio fra i due controlli è un `gap-2.5` da 10px: restano 4px in
+  cui il tocco può prendere «+ scadenza» invece del cursore. **E il commento accanto
+  dice «10px per parte, cioè esattamente il `gap-2.5`»**, che sarebbe vero per un
+  contenuto alto 24px, non 16. Trovato dalla revisione finale e lasciato lì di
+  proposito: il giro di correzioni era speso e la suite era verde. Si sistema
+  cambiando due classi e il commento.
+- **Nessuno dei due campi data ha un `max`**, quindi Chromium accetta un anno a sei
+  cifre. Non rompe niente — il backend prende qualunque `DATE` — ma si vede.
+- **`npm run lint` è rosso: 5 errori e 1 avviso.** Quattro errori sono preesistenti
+  (`FillSlider.tsx`, due in `PantryRow.tsx`, uno in `MissingBudgetFilter.tsx`). **Il
+  quinto l'ha introdotto S7**: in `StockingScreen.test.tsx` un parametro inutilizzato
+  è stato rinominato `_init` per soddisfare `noUnusedParameters` di TypeScript — che
+  esenta il trattino basso — ma la regola `@typescript-eslint/no-unused-vars` di
+  questo progetto non è configurata per esentarlo, quindi lo segnala. Si chiude con
+  `argsIgnorePattern: "^_"` nella configurazione di ESLint, che è anche il modo di
+  allineare le due regole una volta per tutte. Il lint non è nei comandi di verifica
+  del progetto (Parte XI), quindi nessuna suite se n'è accorta.
 - **Restano riferimenti a `StatusToggle` in alcuni commenti**
   (`frontend/src/components/ui/StatusChip.tsx`,
   `frontend/src/features/cooking/CookSheet.test.tsx`,
@@ -1073,6 +1140,13 @@ layout a 375px.
 - Deploy: `git pull --ff-only` e poi
   `docker compose -f docker-compose.prod.yml up -d --build --wait`. **Il `-f` non è
   opzionale** — terza lezione di `CLAUDE.md`.
+- **Il `git pull` da solo non distribuisce niente**, e non lo dice nessun errore: il
+  frontend è compilato dentro l'immagine, quindi finché non si ricostruisce il browser
+  riceve il pacchetto di prima. Misurato il 2026-09-22: R7 era sul server dal 21 e
+  nessuno l'aveva mai visto. La prova che il codice nuovo gira è il nome del pacchetto
+  servito — `curl -s https://spena.mattiagirellini.com/ | grep -o "assets/index-[^\"]*"`
+  contro `frontend/dist/assets/` dopo un `npm run build` locale — e non i container
+  «healthy», che sarebbero healthy anche con l'immagine di ieri.
 - La suite vera gira **sull'host, non in Docker**: `cd backend && .venv/bin/python -m
   pytest` con Postgres su da `docker compose up -d db`; per il frontend
   `npx vitest run`, `npm run typecheck`, `npm run build`. L'immagine del backend non
