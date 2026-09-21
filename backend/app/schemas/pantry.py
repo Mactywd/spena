@@ -1,9 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from app.domain.rules import PantryStatus
+from app.domain.rules import ExpiryState, PantryStatus
 
 
 class PantryItemOut(BaseModel):
@@ -17,6 +17,11 @@ class PantryItemOut(BaseModel):
     status: PantryStatus
     fill_percent: int | None
     note: str | None
+    # La data com'è stata scritta, e il verdetto già preso. Il secondo esiste perché
+    # la soglia dei sette giorni non deve attraversare il confine: il client chiede,
+    # non calcola.
+    expires_on: date | None
+    expiry: ExpiryState | None
     added_at: datetime
 
 

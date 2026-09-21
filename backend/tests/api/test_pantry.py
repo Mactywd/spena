@@ -372,3 +372,53 @@ async def test_una_voce_entra_gia_con_la_sua_scadenza(db_session, dispensa):
     )
 
     assert item.expires_on == date(2026, 10, 5)
+
+
+async def test_la_dispensa_manda_la_data_e_il_verdetto(logged_client, db_session, dispensa):
+    """Due campi e non uno: la data serve a mostrarla e a riaprirla in correzione, il
+    verdetto a colorarla. Con la sola data il browser dovrebbe rifare il conto dei
+    sette giorni, che è esattamente quel che la spec §4 evita; con il solo verdetto si
+    perderebbe quel che l'utente ha scritto."""
+    from datetime import timedelta
+
+    from app.domain.rules import today_in_pantry
+
+    oggi = today_in_pantry()
+    db_session.add_all([
+        PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.AVAILABLE,
+                   expires_on=oggi + timedelta(days=3)),
+        PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE,
+                   expires_on=oggi - timedelta(days=1)),
+        PantryItem(ingredient_id=dispensa["aglio"].id, status=PantryStatus.AVAILABLE),
+    ])
+    await db_session.flush()
+    await db_session.commit()
+
+    risposta = await logged_client.get("/api/v1/pantry")
+    assert risposta.status_code == 200
+    per_nome = {v["ingredient_name"]: v for v in risposta.json()}
+
+    assert per_nome["yogurt greco"]["expiry"] == "soon"
+    assert per_nome["yogurt greco"]["expires_on"] == (oggi + timedelta(days=3)).isoformat()
+    assert per_nome["pomodoro"]["expiry"] == "expired"
+    assert per_nome["aglio"]["expiry"] is None
+    assert per_nome["aglio"]["expires_on"] is None
+
+
+async def test_una_voce_scaduta_resta_disponibile(logged_client, db_session, dispensa):
+    """Il cuore di D5. Se questo test diventa rosso, qualcuno ha fatto entrare la
+    scadenza nel giudizio di disponibilità, e una ricetta ha smesso di essere
+    cucinabile di notte senza che nessuno abbia toccato niente."""
+    from datetime import timedelta
+
+    from app.domain.rules import today_in_pantry
+
+    db_session.add(
+        PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.AVAILABLE,
+                   expires_on=today_in_pantry() - timedelta(days=30))
+    )
+    await db_session.flush()
+    await db_session.commit()
+
+    risposta = await logged_client.get("/api/v1/pantry/availability")
+    assert risposta.json()[str(dispensa["yogurt"].id)] == "available"

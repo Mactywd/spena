@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.db.models.pantry import PantryItem
-from app.domain.rules import Availability
+from app.domain.rules import Availability, expiry_state, today_in_pantry
 from app.repositories.pantry import (
     ProductIngredientMismatch,
     add_pantry_item,
@@ -38,6 +38,8 @@ def _to_out(item: PantryItem) -> PantryItemOut:
         status=item.status,
         fill_percent=item.fill_percent,
         note=item.note,
+        expires_on=item.expires_on,
+        expiry=expiry_state(item.expires_on, today_in_pantry()),
         added_at=item.added_at,
     )
 
