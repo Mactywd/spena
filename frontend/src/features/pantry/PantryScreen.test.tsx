@@ -8,13 +8,16 @@ import { PantryScreen } from "./PantryScreen";
 const ITEMS = [
   { id: "p1", ingredient_id: "i1", product_id: "pr1", ingredient_name: "yogurt greco",
     ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
-    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
+    expires_on: null, expiry: null },
   { id: "p2", ingredient_id: "i1", product_id: "pr2", ingredient_name: "yogurt greco",
     ingredient_category: "latticini", product_name: "Pesca", product_brand: "Carrefour",
-    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
+    expires_on: null, expiry: null },
   { id: "p3", ingredient_id: "i2", product_id: null, ingredient_name: "mela",
     ingredient_category: "frutta", product_name: null, product_brand: null,
-    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z" },
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
+    expires_on: "2026-09-28", expiry: "soon" },
 ];
 
 const MELA = { id: "i2", name: "mela", display_name: "Mela", category: "frutta" };
@@ -802,5 +805,91 @@ describe("PantryScreen", () => {
 
     const posts = spy.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "POST");
     expect(posts).toHaveLength(1);
+  });
+
+  it("una voce con la scadenza la mostra sulla riga", async () => {
+    stubRoutedFetch(() => [ITEMS, 200]);
+    renderScreen();
+
+    const riga = (await screen.findByText("mela")).closest("li")!;
+    expect(within(riga).getByText("Scade il 28/09/2026")).toBeDefined();
+  });
+
+  it("una voce senza scadenza offre di scriverla", async () => {
+    // il vuoto non deve costare niente, ma da qualche parte la strada deve esserci:
+    // senza questo, chi ha saltato il momento dell'ingresso non può più scriverla —
+    // ed è il vicolo cieco che la scelta del campo facoltativo voleva evitare
+    stubRoutedFetch(() => [ITEMS, 200]);
+    renderScreen();
+
+    const riga = (await screen.findByText("Total 0%")).closest("li")!;
+    expect(within(riga).getByRole("button", { name: /scadenza/i })).toBeDefined();
+  });
+
+  it("scrivere una data la manda al server, per la voce giusta", async () => {
+    const fetchMock = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[0], expires_on: "2026-10-05" }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const riga = (await screen.findByText("Total 0%")).closest("li")!;
+    fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
+    fireEvent.change(within(riga).getByLabelText(/scadenza/i), {
+      target: { value: "2026-10-05" },
+    });
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit)?.method === "PATCH"
+      );
+      // ITEMS[0] ha id "p1": senza questa riga nessuna asserzione distinguerebbe
+      // una PATCH mandata per la voce sbagliata
+      expect(String(patch![0])).toContain("/pantry/p1");
+      expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({
+        expires_on: "2026-10-05",
+      });
+    });
+  });
+
+  it("svuotare il campo manda null, che vuol dire cancellala", async () => {
+    // e non `{}`: un corpo vuoto il backend lo rifiuta con 400 «niente da modificare»,
+    // cioè la cancellazione fallirebbe dicendo che non c'era niente da fare
+    const fetchMock = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ ...ITEMS[2], expires_on: null, expiry: null }, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const riga = (await screen.findByText("mela")).closest("li")!;
+    fireEvent.click(within(riga).getByText("Scade il 28/09/2026"));
+    fireEvent.change(within(riga).getByLabelText(/scadenza/i), { target: { value: "" } });
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit)?.method === "PATCH"
+      );
+      expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ expires_on: null });
+    });
+  });
+
+  it("una scrittura rifiutata lo dice, accanto alla voce giusta", async () => {
+    // stesso principio del cursore: senza, la data torna da sé al valore del server e
+    // l'utente resta convinto di averla scritta
+    stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") return [{ detail: "no" }, 500];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+
+    const riga = (await screen.findByText("Total 0%")).closest("li")!;
+    fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
+    fireEvent.change(within(riga).getByLabelText(/scadenza/i), {
+      target: { value: "2026-10-05" },
+    });
+
+    expect(await within(riga).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
+    const altra = screen.getByText("Pesca").closest("li")!;
+    expect(within(altra).queryByRole("alert")).toBeNull();
   });
 });

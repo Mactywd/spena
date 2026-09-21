@@ -80,6 +80,17 @@ export function PantryScreen() {
     onError: (_error, { id }) => markFailed(id),
   });
 
+  // la scadenza, sulla falsariga di `change`: stessa forma, stesso terzetto di
+  // handler. `expiresOn` nullo cancella la data — mandarla come `{}` non
+  // funzionerebbe: il backend rifiuta un corpo vuoto con 400.
+  const expiry = useMutation({
+    mutationFn: ({ id, expiresOn }: { id: string; expiresOn: string | null }) =>
+      patchPantryItem(id, { expires_on: expiresOn }),
+    onMutate: ({ id }) => clearFailed(id),
+    onSuccess: invalidate,
+    onError: (_error, { id }) => markFailed(id),
+  });
+
   // le voci appena tolte, finché il loro annulla è possibile. Una mappa, non un
   // solo id: togliere una seconda voce prima che scada la lapide della prima non
   // deve spegnere quella della prima. E si tiene la VOCE, non solo il suo id,
@@ -206,6 +217,7 @@ export function PantryScreen() {
   if (archive.isPending) busyIds.add(archive.variables.id);
   if (undo.isPending) busyIds.add(undo.variables);
   if (restock.isPending) busyIds.add(restock.variables);
+  if (expiry.isPending) busyIds.add(expiry.variables.id);
 
   // l'elenco a video: risposta del server più le lapidi che il server non manda
   // più (vedi `withRemoved`). Se il caricamento fallisce la risposta del server
@@ -283,6 +295,7 @@ export function PantryScreen() {
                     onRemove={() => archive.mutate(item)}
                     onUndo={() => undo.mutate(item.id)}
                     onRestock={() => restock.mutateAsync(item.id)}
+                    onExpiry={(expiresOn) => expiry.mutateAsync({ id: item.id, expiresOn })}
                   />
                 ))}
               </ul>

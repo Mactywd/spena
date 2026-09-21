@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FillSlider } from "./FillSlider";
 import { fillForStatus } from "./fillZones";
 import { Alert } from "../../components/ui/Alert";
+import { ExpiryChip } from "../../components/ui/ExpiryChip";
 import { StatusChip } from "../../components/ui/StatusChip";
 import type { PantryItem, RestockResult } from "../../domain/types";
 
@@ -30,6 +31,7 @@ export function PantryRow({
   onRemove,
   onUndo,
   onRestock,
+  onExpiry,
 }: {
   item: PantryItem;
   busy: boolean;
@@ -39,6 +41,7 @@ export function PantryRow({
   onRemove: () => void;
   onUndo: () => void;
   onRestock: () => Promise<RestockResult>;
+  onExpiry: (expiresOn: string | null) => Promise<PantryItem>;
 }) {
   // la domanda vive qui e non nello schermo: riguarda questa riga, e fuori di qui
   // sarebbe un avviso in cima a una dispensa lunga, cioè fuori schermo
@@ -47,16 +50,23 @@ export function PantryRow({
   // mai un vicolo cieco: se il rientro in lista fallisce, la domanda torna a
   // video (non resta chiusa su un errore muto) e «Sì» è di nuovo un modo di riprovare
   const [restockFailed, setRestockFailed] = useState(false);
+  // se il campo della scadenza è aperto. Stessa ragione di `asking`: riguarda
+  // questa riga sola, e vive qui perché uno stato in cima allo schermo
+  // aprirebbe il campo sbagliato quando due voci condividono l'ingrediente.
+  const [editingExpiry, setEditingExpiry] = useState(false);
 
   // la riga non si smonta quando diventa una lapide (stessa chiave, stesso
   // fiber): senza questo, la domanda risposta prima dell'archiviazione resta
   // accesa in memoria e, al ritorno dall'annulla, si ripresenta da sola senza
   // nessun gesto nuovo dell'utente. Il difetto è fra due rami della stessa riga,
   // non fra due righe: si azzera qui, seguendo `removed`, in entrambe le direzioni.
+  // `editingExpiry` segue la stessa regola: un campo aperto non deve riapparire
+  // da sé dopo un annulla.
   useEffect(() => {
     setAsking(false);
     setRestocked(null);
     setRestockFailed(false);
+    setEditingExpiry(false);
   }, [removed]);
 
   async function fill(percent: number) {
@@ -90,6 +100,18 @@ export function PantryRow({
     } catch {
       setRestocked(null);
       setRestockFailed(true);
+    }
+  }
+
+  // il campo chiude subito, non quando la richiesta torna: la lettura successiva
+  // arriva da `item` (invalidato in caso di successo), e un fallimento lo dice già
+  // l'`Alert` qui sotto — non serve tenere il campo aperto per mostrarlo
+  async function writeExpiry(value: string) {
+    setEditingExpiry(false);
+    try {
+      await onExpiry(value || null);
+    } catch {
+      // niente qui: il guasto lo mostra già l'`Alert` della riga
     }
   }
 
@@ -158,9 +180,42 @@ export function PantryRow({
         disabled={busy}
         onCommit={fill}
       />
-      {/* la verità sullo stato la dice il server, e questa pastiglia è l'unica cosa
-          nella riga a dirla: il cursore, da solo, è un'indicazione a occhio */}
-      <StatusChip status={item.status} />
+      <div className="flex flex-wrap items-center gap-2">
+        {/* la verità sullo stato la dice il server, e questa pastiglia è l'unica cosa
+            nella riga a dirla: il cursore, da solo, è un'indicazione a occhio */}
+        <StatusChip status={item.status} />
+        {/* la scadenza accanto allo stato, non al posto suo: due pastiglie dicono
+            due fatti diversi (vedi ExpiryChip). Senza data non c'è vicolo cieco:
+            resta sempre un modo di scriverla, anche per chi l'ha saltata
+            all'ingresso. */}
+        {editingExpiry ? (
+          <div>
+            <label htmlFor={`expiry-${item.id}`} className="sr-only">
+              Scadenza di {itemLabel(item)}
+            </label>
+            <input
+              id={`expiry-${item.id}`}
+              type="date"
+              disabled={busy}
+              defaultValue={item.expires_on ?? ""}
+              onChange={(event) => void writeExpiry(event.target.value)}
+            />
+          </div>
+        ) : item.expires_on ? (
+          <button type="button" disabled={busy} onClick={() => setEditingExpiry(true)}>
+            <ExpiryChip expiresOn={item.expires_on} expiry={item.expiry} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setEditingExpiry(true)}
+            className="text-xs font-medium text-ink-faint"
+          >
+            + scadenza
+          </button>
+        )}
+      </div>
       {failed && <Alert>Non sono riuscito a salvare la modifica. Riprova.</Alert>}
 
       {asking && (
