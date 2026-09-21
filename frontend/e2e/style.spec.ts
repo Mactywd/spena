@@ -258,7 +258,19 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   await page.getByRole("option", { name: /^Carota\b/ }).click();
 
   const riga = page.locator("li", { hasText: "carota" });
-  await riga.getByRole("button", { name: /scadenza/i }).click();
+
+  // Il «+ scadenza» è scritto in piccolo di proposito, ma è un pulsante come gli
+  // altri e si tocca col pollice in corsia: 12px di testo fanno un riquadro alto
+  // 16px, e un bersaglio così si manca o si prende il vicino. Il padding lo porta
+  // a 44px senza toccare il disegno, e questa è l'unica misura che lo verifica —
+  // jsdom non calcola il CSS, quindi nessun test in memoria vede la differenza fra
+  // prima e dopo. Misurato prima di aprire il campo: è l'unico momento in cui il
+  // pulsante è a video.
+  const aggiungiScadenza = riga.getByRole("button", { name: /scadenza/i });
+  const boxTasto = await aggiungiScadenza.boundingBox();
+  expect(boxTasto!.height).toBeGreaterThanOrEqual(40);
+
+  await aggiungiScadenza.click();
 
   const campo = riga.getByLabel(/scadenza/i);
   await expect(campo).toBeVisible();

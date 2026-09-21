@@ -508,7 +508,13 @@ export function StockingScreen() {
                   onClick={() =>
                     setOpenExpiryFor((prev) => ({ ...prev, [item.id]: true }))
                   }
-                  className="self-start text-xs font-medium text-ink-faint"
+                  // come in dispensa: si allarga il bersaglio, non il disegno (44px di
+                  // riquadro, ritolti dal flusso dal margine negativo, così la voce non
+                  // si allunga sullo schermo più fitto dell'app). Qui però la sporgenza
+                  // è sbilanciata in basso: sopra, a soli 8px, ci sono i tre pulsanti
+                  // della risoluzione, e un bersaglio simmetrico da 44px si sovrapporrebbe
+                  // al loro; sotto c'è solo il fondo della voce, cioè vuoto.
+                  className="-mt-2 -mb-5 self-start pt-2 pb-5 text-xs font-medium text-ink-faint"
                 >
                   + scadenza<span className="sr-only"> per {item.raw_text}</span>
                 </button>

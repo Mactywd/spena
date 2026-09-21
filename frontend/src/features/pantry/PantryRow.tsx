@@ -210,7 +210,14 @@ export function PantryRow({
             type="button"
             disabled={busy}
             onClick={() => setEditingExpiry(true)}
-            className="text-xs font-medium text-ink-faint"
+            // il disegno resta minuscolo (12px, tinta smorta: su venti righe dev'essere
+            // una colonnina grigia, non una fila di bottoni), il bersaglio no. Il
+            // padding porta il riquadro a 44px, il margine negativo lo ritoglie dal
+            // flusso: la riga della pastiglia resta alta quanto lo StatusChip (24px) e
+            // la dispensa non si allunga di un pixel. La sporgenza è di 10px per parte,
+            // cioè esattamente il `gap-2.5` che separa questa riga dal cursore: il
+            // bersaglio cresce fin dove c'è vuoto e non si mangia quello del vicino.
+            className="-my-3.5 py-3.5 text-xs font-medium text-ink-faint"
           >
             + scadenza
           </button>
