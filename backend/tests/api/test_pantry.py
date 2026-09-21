@@ -308,3 +308,67 @@ async def test_il_rientro_di_una_voce_inesistente_e_404(logged_client):
 
     risposta = await logged_client.post(f"/api/v1/pantry/{uuid.uuid4()}/restock")
     assert risposta.status_code == 404
+
+
+async def test_scrivere_e_cancellare_la_scadenza(db_session, dispensa):
+    """`None` non è «non l'ho detto», è «cancellala»: chi ha battuto male una data
+    deve poterla togliere, non solo cambiarla."""
+    from datetime import date
+
+    from app.repositories.pantry import set_expiry
+
+    item = PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.AVAILABLE)
+    db_session.add(item)
+    await db_session.flush()
+
+    await set_expiry(db_session, item.id, date(2026, 9, 28))
+    assert item.expires_on == date(2026, 9, 28)
+
+    await set_expiry(db_session, item.id, None)
+    assert item.expires_on is None
+
+
+async def test_la_scadenza_non_e_un_cambio_di_stato(db_session, dispensa):
+    """`status_changed_at` risponde a «da quanto è in questo stato»: muoverlo qui
+    direbbe che qualcosa è cambiato nella disponibilità, che è precisamente quel che
+    D5 ha deciso non succeda."""
+    from datetime import date
+
+    from app.repositories.pantry import set_expiry
+
+    item = PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.LOW)
+    db_session.add(item)
+    await db_session.flush()
+    prima = item.status_changed_at
+
+    await set_expiry(db_session, item.id, date(2026, 9, 28))
+
+    assert item.status_changed_at == prima
+    assert item.status == PantryStatus.LOW
+
+
+async def test_scadenza_su_una_voce_inesistente(db_session):
+    import uuid as _uuid
+    from datetime import date
+
+    import pytest as _pytest
+
+    from app.repositories.pantry import set_expiry
+
+    with _pytest.raises(KeyError):
+        await set_expiry(db_session, _uuid.uuid4(), date(2026, 9, 28))
+
+
+async def test_una_voce_entra_gia_con_la_sua_scadenza(db_session, dispensa):
+    """La strada dell'ingresso: la data si scrive con il barattolo in mano, quindi
+    `add_pantry_item` deve saperla accettare — è il punto unico da cui passano sia la
+    scorta diretta sia la sistemazione della spesa."""
+    from datetime import date
+
+    from app.repositories.pantry import add_pantry_item
+
+    item = await add_pantry_item(
+        db_session, ingredient_id=dispensa["yogurt"].id, expires_on=date(2026, 10, 5)
+    )
+
+    assert item.expires_on == date(2026, 10, 5)

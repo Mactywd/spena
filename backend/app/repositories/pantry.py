@@ -1,7 +1,7 @@
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -91,6 +91,7 @@ async def add_pantry_item(
     product_id: uuid.UUID | None = None,
     status: PantryStatus = PantryStatus.AVAILABLE,
     note: str | None = None,
+    expires_on: date | None = None,
 ) -> PantryItem:
     """Crea la voce di dispensa. Il controllo prodotto-ingrediente vive qui e non
     nei chiamanti: sia la rotta di scorta diretta sia quella che smista la
@@ -100,7 +101,7 @@ async def add_pantry_item(
     """
     if product_id is not None:
         await _ensure_product_matches_ingredient(session, product_id, ingredient_id)
-    item = PantryItem(ingredient_id=ingredient_id, product_id=product_id, status=status, note=note)
+    item = PantryItem(ingredient_id=ingredient_id, product_id=product_id, status=status, note=note, expires_on=expires_on)
     session.add(item)
     await session.flush()
     return item
@@ -132,6 +133,24 @@ async def set_fill(session: AsyncSession, item_id: uuid.UUID, fill_percent: int)
     item.fill_percent = fill_percent
     item.status = status_for_fill(fill_percent)
     item.status_changed_at = datetime.now(UTC)
+    await session.flush()
+    return item
+
+
+async def set_expiry(
+    session: AsyncSession, item_id: uuid.UUID, expires_on: date | None
+) -> PantryItem:
+    """La scadenza di questa voce. `None` cancella la data: è una richiesta, non
+    un'assenza di richiesta, ed è il motivo per cui la rotta guarda
+    `model_fields_set` invece di `is_not_none`.
+
+    Non tocca `status_changed_at`: la scadenza non è un cambio di stato, e il resto
+    dell'app non deve vedere niente muoversi.
+    """
+    item = await session.get(PantryItem, item_id)
+    if item is None:
+        raise KeyError(item_id)
+    item.expires_on = expires_on
     await session.flush()
     return item
 
