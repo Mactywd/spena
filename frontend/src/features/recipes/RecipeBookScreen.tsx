@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
-import { MissingBudgetFilter } from "./MissingBudgetFilter";
+import { MissingBudgetFilter, MAX_BUDGET } from "./MissingBudgetFilter";
 import { fetchCategories, fetchSearchMode, searchRecipes } from "./api";
 import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
@@ -71,13 +71,13 @@ function emptyMessage({
     const withSearchFragment = searched ? " con queste parole" : "";
     return (
       `Nessuna ricetta in «${category}»${withSearchFragment}${frammentoSoglia(maxMissing)}: ` +
-      "scegli «Tutte» per vedere il resto del ricettario."
+      "scegli «Tutte» fra le categorie per vedere il resto del ricettario."
     );
   }
   if (searched && maxMissing !== null) {
     return (
       `Nessuna ricetta con queste parole${frammentoSoglia(maxMissing)}: ` +
-      "togli il filtro, o prova con altre parole."
+      "scegli «Tutte» nella scala, o prova con altre parole."
     );
   }
   if (searched) {
@@ -86,13 +86,19 @@ function emptyMessage({
   if (maxMissing === 0) {
     return (
       "Niente che puoi cucinare con quel che hai in dispensa: alza la soglia, o " +
-      "scegli «Tutte» per vedere tutto il ricettario."
+      "scegli «Tutte» nella scala per vedere tutto il ricettario."
     );
   }
   if (maxMissing !== null) {
+    // in cima alla scala non c'è più una soglia da alzare: offrire quel
+    // consiglio lì sarebbe impossibile da seguire, non solo inutile
+    const wayOut =
+      maxMissing === MAX_BUDGET
+        ? "scegli «Tutte» nella scala per vedere tutto il ricettario."
+        : "alza la soglia, o scegli «Tutte» nella scala per vedere tutto il ricettario.";
     return (
       `Niente da cucinare comprando al massimo ${maxMissing === 1 ? "1 cosa" : `${maxMissing} cose`}: ` +
-      "alza la soglia, o scegli «Tutte» per vedere tutto il ricettario."
+      wayOut
     );
   }
   return "Nessuna ricetta. Provane una scritta con l'AI.";

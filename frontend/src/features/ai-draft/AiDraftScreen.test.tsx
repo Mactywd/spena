@@ -565,10 +565,10 @@ describe("AiDraftScreen", () => {
   });
 });
 
-// La chiave `["recipes"]` invalida per prefisso ogni voce `["recipes", termine,
-// soloCucinabili]` del ricettario. Era vero per ispezione e per niente altro:
-// qui i due schermi stanno sotto lo stesso QueryClient, e la ricerca deve
-// ripartire da sé quando il salvataggio va a buon fine.
+// La chiave `["recipes"]` invalida per prefisso ogni voce `["recipes", debouncedQuery,
+// maxMissing, category, ingredientIds]` del ricettario. Era vero per ispezione e per
+// niente altro: qui i due schermi stanno sotto lo stesso QueryClient, e la ricerca
+// deve ripartire da sé quando il salvataggio va a buon fine.
 describe("AiDraftScreen e il ricettario sotto lo stesso QueryClient", () => {
   it("una ricetta salvata fa ripartire la ricerca del ricettario", async () => {
     const spy = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {

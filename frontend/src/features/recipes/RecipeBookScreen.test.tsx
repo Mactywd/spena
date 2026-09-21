@@ -229,9 +229,60 @@ describe("RecipeBookScreen", () => {
     expect(
       await screen.findByText(
         "Niente che puoi cucinare con quel che hai in dispensa: alza la soglia, o " +
-          "scegli «Tutte» per vedere tutto il ricettario."
+          "scegli «Tutte» nella scala per vedere tutto il ricettario."
       )
     ).toBeDefined();
+  });
+
+  // Finding 1c della revisione finale: a un gradino di mezzo «alza la soglia» è
+  // ancora un consiglio eseguibile, e deve comparire insieme a «Tutte».
+  it("con un gradino di mezzo il vuoto offre sia di alzare la soglia sia «Tutte»", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Al massimo 2 ingredienti da comprare." })
+    );
+
+    const messaggio = await screen.findByText(/Niente da cucinare comprando al massimo/);
+    expect(messaggio.textContent).toMatch(/alza la soglia/);
+    expect(messaggio.textContent).toMatch(/«Tutte» nella scala/);
+  });
+
+  // In cima alla scala non esiste un gradino più alto: «alza la soglia» sarebbe un
+  // consiglio impossibile da seguire, non solo superfluo, ed è esattamente il tipo
+  // di difetto che questo progetto tratta come tale invece che come una sfumatura.
+  it("al gradino più alto il vuoto non consiglia di alzare la soglia, ma offre comunque una via d'uscita", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Al massimo 3 ingredienti da comprare." })
+    );
+
+    const messaggio = await screen.findByText(/Niente da cucinare comprando al massimo/);
+    expect(messaggio.textContent).not.toMatch(/alza la soglia/);
+    expect(messaggio.textContent).toMatch(/«Tutte» nella scala/);
+  });
+
+  // Finding 1a: la casella «solo cucinabili» non esiste più, quindi il vuoto con
+  // parole cercate più una soglia non può più dire «togli il filtro» — non c'è
+  // nessun filtro da togliere, solo una scala da riportare a «Tutte».
+  it("con parole cercate e una soglia il vuoto non parla più di un filtro da togliere", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Al massimo 1 ingrediente da comprare." })
+    );
+    await userEvent.type(screen.getByLabelText("Cerca nel ricettario"), "bulloni");
+
+    const messaggio = await screen.findByText(/Nessuna ricetta con queste parole/);
+    expect(messaggio.textContent).not.toMatch(/togli il filtro/);
+    expect(messaggio.textContent).toMatch(/«Tutte» nella scala/);
   });
 
   it("senza parole cercate il verdetto sul ricettario è quello giusto", async () => {

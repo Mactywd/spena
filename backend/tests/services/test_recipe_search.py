@@ -130,6 +130,51 @@ async def test_una_soglia_oltre_lo_zero_vede_oltre_la_piscina(db_session):
     assert [r.recipe.title for r in risultati] == ["Pasta con la bottarga"]
 
 
+async def test_max_missing_filtra_anche_sul_ramo_con_parole_cercate(db_session):
+    """Il gemello dei due test sopra, sull'altro ramo di `search_recipes`.
+
+    Tutti i test di `max_missing` fin qui passano dal ramo senza parole cercate.
+    Il ramo con le parole applica lo stesso filtro sugli stessi candidati fusi da
+    RRF, ma è quello che porta la limitazione dichiarata nel commento sopra
+    `_containing_all` (i candidati sono la piscina, non tutto il ricettario) — ed
+    era anche l'unico senza un solo test.
+    """
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import search_recipes
+
+    pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    pomodoro = Ingredient(
+        name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
+    )
+    basilico = Ingredient(
+        name="basilico", display_name="Basilico", category=IngredientCategory.VERDURA
+    )
+    db_session.add_all([pasta, pomodoro, basilico])
+    await db_session.flush()
+    db_session.add(PantryItem(ingredient_id=pasta.id, status="available"))
+    await db_session.flush()
+
+    quasi = await create_recipe(
+        db_session, title="Pasta rustica al pomodoro", description="Ne manca una",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(pasta.id, "primary", "320 g", None), (pomodoro.id, "primary", "6", None)],
+        embedding=None,
+    )
+    lontana = await create_recipe(
+        db_session, title="Pasta rustica al pesto", description="Ne mancano due",
+        instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
+        ingredients=[(pomodoro.id, "primary", "6", None), (basilico.id, "primary", "50 g", None)],
+        embedding=None,
+    )
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session, query="pasta rustica", max_missing=1)
+
+    assert [r.recipe.title for r in risultati] == ["Pasta rustica al pomodoro"]
+
+
 async def test_il_filtro_per_categoria_sceglie_in_sql(db_session):
     """Filtrare dopo il limite significherebbe filtrare dentro un campione."""
     from app.db.models.ingredient import Ingredient, IngredientCategory

@@ -343,7 +343,10 @@ prossimi passi: è una riga dentro il file che già esiste.
 - **Il conteggio dei mancanti in SQL.** Vedi §3.
 - **L'`retry: false` degli undici test di schermata.** Difetto vero e preesistente,
   con una voce sua in `prossimi-passi.md`. I test nuovi di questo lavoro non lo
-  allargano: usano il client di produzione.
+  allargano né lo stringono: quelli di `MissingBudgetFilter` e `RecipeCard` non
+  hanno bisogno di nessun `QueryClient`, e quelli aggiunti a
+  `RecipeBookScreen.test.tsx` passano dal `renderScreen()` già presente nel file —
+  lo stesso helper, con lo stesso `retry: false`, che i test di prima già usavano.
 
 ## 9. Cosa va aggiornato quando questo lavora
 

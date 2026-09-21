@@ -35,6 +35,16 @@ describe("RecipeCard", () => {
     expect(screen.queryByText(/,/)).toBeNull();
   });
 
+  it("esattamente al limite non taglia: tre nomi restano tre nomi", () => {
+    renderCard(
+      ricetta({
+        missing: 3, cookable: false,
+        missing_names: ["Acciughe", "Basilico", "Capperi"],
+      })
+    );
+    expect(screen.getByText("Acciughe, Basilico, Capperi")).toBeVisible();
+  });
+
   it("taglia gli elenchi lunghi invece di allungare la riga", () => {
     renderCard(
       ricetta({

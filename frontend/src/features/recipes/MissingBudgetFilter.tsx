@@ -15,6 +15,14 @@ const BUDGET_STEPS: { value: number | null; pill: string; caption: string }[] = 
   { value: 3, pill: "+3", caption: "Al massimo 3 ingredienti da comprare." },
 ];
 
+/** L'ultimo gradino della scala.
+ *
+ * Lo schermo lo chiede per non dire «alza la soglia» a chi è già in cima: un
+ * consiglio impossibile non è un vicolo cieco, ma è la prima frase che si legge
+ * quando lo schermo è vuoto, ed è la peggiore da sprecare.
+ */
+export const MAX_BUDGET = BUDGET_STEPS[BUDGET_STEPS.length - 1].value ?? 0;
+
 export function MissingBudgetFilter({
   value,
   onChange,
@@ -53,7 +61,7 @@ export function MissingBudgetFilter({
           );
         })}
       </div>
-      <p className="pt-1.5 text-xs text-ink-faint">{scelto.caption}</p>
+      <p className="pt-1.5 pb-2 text-xs text-ink-faint">{scelto.caption}</p>
     </fieldset>
   );
 }
