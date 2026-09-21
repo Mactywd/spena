@@ -18,4 +18,13 @@ describe("formatExpiry", () => {
   it("non arretra di un giorno nel ramo scaduto", () => {
     expect(formatExpiry("2026-09-20", "expired")).toBe("Scadeva il 20/09/2026");
   });
+
+  it("un anno a una cifra resta quell'anno, non diventa il Novecento", () => {
+    // `new Date(2, 9, 15)` non è l'anno 2: il costruttore posizionale mappa 0-99
+    // sul 1900-1999. Una data così si scrive da sé battendo a mano nel campo, che
+    // è completo a ogni segmento: il primo tasto dell'anno la produce. Mostrarla
+    // come «15/10/1902» aggiunge una bugia a un valore già sbagliato — chi rilegge
+    // la riga per capire cos'è successo non ritrova quel che ha battuto.
+    expect(formatExpiry("0002-10-15", null)).toBe("Scade il 15/10/2");
+  });
 });

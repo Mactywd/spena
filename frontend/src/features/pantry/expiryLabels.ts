@@ -13,7 +13,13 @@ import type { ExpiryState } from "../../domain/types";
  * backend. */
 export function formatExpiry(expiresOn: string, expiry: ExpiryState | null): string {
   const [anno, mese, giorno] = expiresOn.split("-").map(Number);
-  const quando = new Date(anno, mese - 1, giorno).toLocaleDateString("it-IT");
+  const data = new Date(anno, mese - 1, giorno);
+  // il costruttore posizionale mappa gli anni 0-99 sul 1900-1999 («0002-10-15»
+  // diventerebbe «15/10/1902»): `setFullYear` gli ridà l'anno che ha davvero.
+  // Non tocca le date normali — un 2026 resta 2026 — e serve perché un anno a una
+  // cifra è raggiungibile battendo a mano nel campo data, prima che sia finito.
+  data.setFullYear(anno);
+  const quando = data.toLocaleDateString("it-IT");
   return expiry === "expired" ? `Scadeva il ${quando}` : `Scade il ${quando}`;
 }
 
