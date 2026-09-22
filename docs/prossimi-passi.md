@@ -1,8 +1,9 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-22 (**S7 e R7 sono in produzione**: la scadenza in dispensa e la
-scala a cinque gradini del ricettario girano su `spena.mattiagirellini.com`, migrazione
-`0009` applicata — la verifica a mano però **non è ancora stata fatta**). Prima: il
+Aggiornato il 2026-09-23 (**la verifica a mano di S7 e R7 è stata fatta ed è
+passata**: nessun difetto). Prima: il 2026-09-22 (**S7 e R7 in produzione**: la
+scadenza in dispensa e la scala a cinque gradini del ricettario girano su
+`spena.mattiagirellini.com`, migrazione `0009` applicata), il
 2026-09-21 (**S7 costruito**: la dispensa conosce una data di scadenza facoltativa per
 elemento, che si legge sulla riga e non cambia nessuno stato — e con lei `CLAUDE.md` e
 la spec madre §2 emendati; lo stesso giorno **R7**: la casella «Solo quelle che posso
@@ -91,13 +92,16 @@ questo deploy, non con quello di ieri. Vale la pena ricordarlo la prossima volta
 `git pull` sul server non distribuisce niente da solo, perché il frontend è compilato
 dentro l'immagine.
 
-**La verifica a mano di S7 e R7 non è ancora stata fatta.** Quattro cose che nessun
-test ha potuto vedere e che vanno guardate sul telefono: che il selettore data nativo
-di Android chiuda il campo in modo da far scattare il salvataggio (vedi il secondo
-difetto grave in S7, qui sotto — è stato provato in Chromium, non su un telefono
-vero); che una data scaduta **non** cambi lo stato né la cucinabilità; che una data
-svuotata si cancelli senza «riprova»; e che il viola si stacchi davvero dal verde e
-dall'ambra alla luce del giorno.
+**Il 2026-09-23 la verifica a mano di S7 e R7 è stata fatta ed è passata**: nessun
+difetto riportato. Le quattro cose che nessun test poteva vedere sono state guardate
+sul telefono e stanno tutte: il selettore data nativo di Android chiude il campo in
+modo da far scattare il salvataggio (era il secondo difetto grave di S7, qui sotto —
+fino a ieri provato in Chromium e non su un telefono vero); una data scaduta **non**
+cambia lo stato né la cucinabilità; una data svuotata si cancella senza «riprova»; e
+il viola si stacca dal verde e dall'ambra alla luce del giorno.
+
+**Con questo non resta lavoro già impegnato**: tutto quel che segue è scelta, e il
+prossimo passo vuole prima la sua spec.
 
 Due cose si sono viste solo sui dati veri, e hanno la loro voce in **Parte X**: due
 plurali sbagliati dall'AI su ventisette (uno dei quali l'`--azzera` non sapeva
@@ -650,7 +654,9 @@ cominciare, e sarebbe il vicolo cieco appena evitato.
 Suite alla fine del lavoro: **644 backend, 292 jsdom, 12 e2e**, tutte verdi.
 `CLAUDE.md` (decisione fondante 1) e la spec madre §2 sono stati emendati **insieme e
 nello stesso commit**, come D5 imponeva. **In produzione dal 2026-09-22**, migrazione
-`0009` applicata; la verifica a mano resta da fare (vedi «Stato di oggi»).
+`0009` applicata; **verifica a mano fatta il 2026-09-23, passata** (vedi «Stato di
+oggi»): il selettore data di Android chiude il campo come serviva, che era l'unico
+punto rimasto all'uso vero.
 
 ---
 
@@ -770,7 +776,7 @@ esiste davvero: `frontend/e2e/style.spec.ts` misura fondo e contrasto in un brow
 **In produzione dal 2026-09-22, non dal 21.** Il commit era sceso sul server il giorno
 del merge, ma l'immagine è stata ricostruita solo con il deploy di S7: fino ad allora
 il browser riceveva il pacchetto di prima. Nessuna migrazione, quindi niente da
-applicare; la verifica a mano vale anche per questa voce.
+applicare; la verifica a mano del 2026-09-23 vale anche per questa voce ed è passata.
 
 ## R8. Modifica con AI **[D]**
 Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
@@ -911,8 +917,8 @@ Non è un impegno, è quel che le dipendenze permettono.
 **Subito, perché sbloccano o smettono di perdere dati**
 T2 è fatto (2026-09-17), e D1–D3 sono decise (le tre il 2026-09-17; D1 costruita e in
 produzione il 2026-09-20). **Anche D5 è decisa**, il 2026-09-20: non resta ferma
-nessuna decisione, e la sua metà pratica, S7, è **fatta il 2026-09-21** — verde sul
-ramo `scadenza-dispensa`, non ancora in `master` né in produzione.
+nessuna decisione, e la sua metà pratica, S7, è **fatta il 2026-09-21**, in produzione
+dal 2026-09-22 e verificata a mano il 2026-09-23.
 
 **Poi, indipendenti e piccole** — si potevano fare in qualunque momento e non
 aspettavano nessuno: **fatte il 2026-09-17** S1, S2, R1, R3, e in parte T1 (header,
@@ -927,8 +933,8 @@ il 2026-09-18. Da qui in avanti serve la spec.
 **Fuori ordine, perché dipendeva solo da una decisione e non da uno schema**: S7,
 **fatto il 2026-09-21**. Qui c'era scritto «si può fare quando si vuole, anche subito»,
 ed è andata proprio così: non ha aspettato né S4 né lo storage, e il lavoro è stato
-quel che si diceva — una colonna annullabile, un campo data e un colore. Resta da
-fondere e da distribuire.
+quel che si diceva — una colonna annullabile, un campo data e un colore. Fuso,
+distribuito il 2026-09-22 e verificato a mano il 2026-09-23.
 
 **Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
 
