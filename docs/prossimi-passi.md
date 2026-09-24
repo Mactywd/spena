@@ -1,8 +1,22 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-24, due volte. La seconda: **R9 costruita** — il costo da uno a
-cinque `€` c'è, si sceglie nel dettaglio, la bozza AI lo propone e l'import lo legge
-dalla pagina; manca il deploy. La prima: **due voci nuove**: R9, il costo della ricetta da uno a
+Aggiornato il 2026-09-24, cinque volte. La quinta: **S4 costruita in parte** — il
+livello prodotto dei nutrienti (vocabolario canonico dell'Allegato XIII, quattro
+nuovi campi raccolti da Open Food Facts: vitamina C, calcio, ferro, potassio),
+nessuna migrazione, nessuno schermo nuovo; il livello ingrediente generico e il tasto
+«Stima» restano TBD. Il vincolo di storage su R4 è stato tolto nella stessa
+conversazione. La quarta: **due ricerche per sbloccare i
+prossimi passi** — i campi nutrizionali di S4 (macro invariati, ~25 micronutrienti
+dall'Allegato XIII del Reg. UE 1169/2011, CREA senza API) e il dimensionamento
+storage di R4 (~6 KB/ricetta misurati, 5-10 GB bastano per tutto il catalogo: il
+tetto dei 100 non sembra più giustificato dai numeri). La terza: **R9 in
+produzione** — migrazione `0010`
+applicata, `reread_costs` eseguito (31 costi scritti, 9 pagine senza costo, 0 sparite),
+pacchetto servito verificato identico alla build (`index-COEGqsbx.js`,
+`index-5M6VGWMn.css`). **Con questo non resta lavoro già impegnato.** La seconda: **R9
+costruita** — il costo da uno a cinque `€` c'è, si sceglie nel dettaglio, la bozza AI lo
+propone e l'import lo legge dalla pagina; mancava il deploy. La prima: **due voci
+nuove**: R9, il costo della ricetta da uno a
 cinque `€`, e P3, la pianificazione su più giorni con un budget — il brainstorming
 sulla forma del budget è stato fatto in giornata: conta solo la media per pasto,
 scelta con dei profili, e gli avanzi non ripagano). Prima: il 2026-09-23 (**la verifica a mano di S7 e R7 è stata fatta ed è
@@ -110,10 +124,15 @@ prossimo passo vuole prima la sua spec.
 
 **Il 2026-09-24 R9 è stata costruita**, con la sua spec, sul ramo di lavoro della
 sessione: suite verdi (701 backend, 308 jsdom, 13 e2e su uno stack pulito), ed è
-**entrata in `master`** lo stesso giorno con un fast-forward (`c8814c2`). **Non è
-ancora in produzione**: il lavoro impegnato torna a essere uno — il deploy, con la
-migrazione `0010`, `reread_costs` una volta, e la verifica a mano del grigio. Il
-deploy non si è potuto fare dalla sessione cloud, che non raggiunge il server.
+**entrata in `master`** lo stesso giorno con un fast-forward (`c8814c2`). Il deploy
+non si è potuto fare dalla sessione cloud, che non raggiunge il server; **è stato
+fatto lo stesso giorno da una sessione locale con accesso SSH a `hetznerserver`**:
+`git pull --ff-only`, `docker compose -f docker-compose.prod.yml up -d --build --wait`,
+migrazione `0010` applicata (`alembic current` → `0010 (head)`), `reread_costs`
+eseguito una volta (31 costi scritti, 9 pagine senza costo, 0 sparite), pacchetto
+servito verificato identico alla build locale. La verifica a mano del grigio dei
+gradini spenti alla luce del giorno è stata dichiarata fatta da Mattia, non da un
+browser controllato.
 
 Due cose si sono viste solo sui dati veri, e hanno la loro voce in **Parte X**: due
 plurali sbagliati dall'AI su ventisette (uno dei quali l'`--azzera` non sapeva
@@ -464,13 +483,42 @@ accetta già `expires_on`, quindi all'ingresso diretto resta solo da mostrarlo.
 questa voce la tira dentro. Va deciso se la parità si fa subito senza scontrino e si
 completa dopo, o se aspetta.
 
-## S4. Valori nutrizionali molto più ampi **[D, con TBD dentro]**
+## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE 2026-09-24 — solo il livello prodotto]**
 Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero
-nella forma ma povero nel contenuto.
+nella forma ma povero nel contenuto. Spec:
+`docs/superpowers/specs/2026-09-24-nutrienti-ampi-design.md`. **Scopo deciso e
+costruito: solo il livello prodotto.** `backend/app/domain/nutrients.py` porta il
+vocabolario canonico dell'intero Allegato XIII (Reg. UE 1169/2011, 29 campi con
+etichetta, unità e VNR), e `COLLECTED_FIELDS` segna i dodici raccolti davvero oggi;
+`_NUTRIENT_MAP` in `openfoodfacts.py` si è allargata di quattro chiavi — vitamina C,
+calcio, ferro, potassio — le migliori coperte da Open Food Facts. **Nessuna
+migrazione** (la colonna era già JSONB libero), **nessuno schermo nuovo**: non c'è
+ancora un lettore prima di P2, e `CustomProductForm.tsx` continua solo a nominare in
+italiano quel che trasporta senza chiederlo a mano
+(`EXTRA_LABELS`). Suite verdi: 708 backend, 309 jsdom, typecheck pulito. Il livello
+ingrediente generico (CREA) e il tasto «Stima» con l'AI restano TBD, fuori da questa
+spec — non hanno un'API/fonte pronta.
 
-- **TODO (sottoagente):** ricerca su quali macro e micronutrienti servono davvero per
-  una dieta bilanciata, con le unità e i riferimenti giornalieri. È il lavoro che
-  definisce i campi, e va fatto prima della spec.
+- **TODO (sottoagente) — fatto il 2026-09-24.** Macro: nessuna novità, sono già gli
+  otto campi che `OpenFoodFactsClient._NUTRIENT_MAP`
+  (`backend/app/services/openfoodfacts.py:17`) mappa oggi — kcal, proteine,
+  carboidrati, zuccheri, grassi, saturi, fibre, sale. Micro: un set di ~25 voci (13
+  vitamine, 12 minerali) che coincide con l'**Allegato XIII, parte B del Regolamento UE
+  1169/2011** — la stessa normativa dell'etichetta nutrizionale italiana, che porta
+  già con sé i VNR (valori di riferimento giornalieri) da usare per un futuro %VNR:
+  niente da inventare. Esempio: Vit. C 80mg, Calcio 800mg, Ferro 14mg, Potassio
+  2000mg, Vit. D 5µg. **Punto debole verificato:** Open Food Facts espone i campi
+  anche per i micronutrienti ma li popola raramente — meno del 20% dei prodotti ha
+  dati oltre sodio/sale, e per prodotti italiani generici sono quasi sempre assenti.
+  Conferma perché il livello ingrediente-generico (CREA) non è ridondante. **CREA**: le
+  tabelle esistono (~900 alimenti, 120 nutrienti, `alimentinutrizione.it`) ma **senza
+  API né export ufficiale** — solo consultazione web, quindi popolarle richiede
+  scraping mirato o inserimento progressivo, non un import in blocco; licenza non
+  esplicitamente open, da trattare con cautela. **Raccomandazione per l'MVP:** estendere
+  subito i campi già presenti con Vitamina C, Calcio, Ferro, Potassio (miglior
+  copertura OFF, rilevanza più immediata), rimandando il resto dell'Allegato XIII a
+  quando CREA sarà davvero integrato. Ogni campo assente resta `null`, mai `0`, coerente
+  con la regola del progetto.
 - **TBD strutturale:** i nutrienti servono su **due** livelli, non uno. Sul prodotto
   (esatti, di marca, da Open Food Facts) e sull'**ingrediente generico** (medi, dalle
   tabelle di composizione tipo CREA), perché le ricette puntano agli ingredienti e non
@@ -734,14 +782,37 @@ service worker dalla sua cache, ne manda ancora uno solo e continua a filtrare b
 invece di vedersi ignorare il parametro e mostrare il ricettario intero sotto
 l'etichetta di un filtro acceso.
 
-## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[D, con un blocco]**
+## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[D]**
 L'obiettivo è tutto il catalogo. Strategia proposta: **prima uno scarico locale
 completo**, poi la messa online e il parsing a ondate.
 
-> **VINCOLO ATTIVO: massimo ~100 ricette totali** finché i volumi Docker non stanno
-> su uno storage esterno più capiente. Me lo dirai tu quando è fatto. Fino ad allora
-> nessun import di massa, e questo vincolo vale anche per ogni altra voce di questo
-> file.
+> **Vincolo di storage tolto il 2026-09-24.** Era «massimo ~100 ricette totali finché
+> i volumi Docker non stanno su uno storage esterno più capiente». Il dimensionamento
+> sotto mostra che non era più giustificato dai numeri: l'intero catalogo pesa
+> centinaia di MB, non i GB per cui il vincolo era nato prudenzialmente. Resta invece
+> attivo, e vale per questa voce come per ogni altra, il **tetto di spesa 1$/giorno su
+> OpenRouter** (Parte XI) — R4 di per sé non chiama l'AI, ma un import di massa va
+> comunque verificato contro quel tetto se in futuro si combina con decisioni AI sui
+> termini sconosciuti.
+
+**Dimensionamento fatto il 2026-09-24 (sottoagente), la ricerca che ha tolto il
+vincolo qui sopra.** Misurato su 3.000 ricette sintetiche ma realistiche (embedding
+pgvector a 384 dimensioni, indici HNSW/GIN/B-tree veri, non le 26 di semina — troppo
+poche perché la dimensione minima di pagina di Postgres domina il conteggio): **~6 KB
+per ricetta** nel database. **Le immagini non vengono scaricate**, resta solo l'URL
+(`recipe.image_url`, verificato in `giallozafferano.py` e `materialize.py`) — è il
+fattore che tiene basso il conto. Il catalogo totale non ha una sitemap pubblica di
+singole ricette (solo 139 pagine-categoria); le uniche cifre trovate sono discordanti
+e non autorevoli (4.500 nel 2018, "oltre 7000" da una fonte terza non datata): stima
+con incertezza dichiarata, **6.000–12.000 ricette**. Anche al limite alto, ~70 MB di
+dati puri; con margine ×3 per crescita anagrafica/backup/WAL/vacuum: **~100–250 MB**.
+Se un giorno si decidesse anche di scaricare le immagini (oggi non previsto): 1,2–5
+GB. **Un volume esterno da 5 GB basta ampiamente; 10 GB dà margine comodo** anche con
+le immagini. Il tetto dei 100 sembra nato da prudenza generica, non da un conto fatto:
+a giudicare dai numeri lo storage non è più il vincolo reale — resta da decidere se e
+quando procurarlo. Nota a margine: `robots.txt` di GialloZafferano blocca
+esplicitamente `ClaudeBot`/`anthropic-ai` (ma non `User-agent: *`), da tenere presente
+per come lo scraper si presenterà.
 
 ## R5. Sostituisci ingrediente **[D, con TBD pesante]**
 Dentro la ricetta, accanto a ogni ingrediente, un tasto «Sostituisci». Tre esiti, e
@@ -797,7 +868,7 @@ Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
 
 TBD: se la nuova ricetta tiene un legame con quella da cui nasce, e se si vede.
 
-## R9. Il costo della ricetta **[FATTO 2026-09-24, in `master`, non ancora in produzione]**
+## R9. Il costo della ricetta **[FATTO 2026-09-24, in produzione]**
 Ogni ricetta ha un costo da 1 a 5, disegnato come cinque `€` di cui i primi *n* neri
 e gli altri grigio chiaro: `€€€··` è una ricetta da 3. È un **livello**, non una
 cifra in euro — la stessa scelta della decisione fondante 1 sulle quantità, per la
@@ -817,12 +888,11 @@ genere** — «Elevato» sul filetto, «Molto elevata» sul risotto al tartufo �
 parser legge per radice; e qualunque parola diversa è nessun costo, mai un gradino
 indovinato.
 
-**Resta da fare, al deploy:** la migrazione `0010` si applica all'avvio, poi una volta
-sola `python -m app.cli.reread_costs` (vedi README), che riscarica le pagine delle
-ricette già importate e scrive solo il costo, solo dove manca. Poi la verifica a mano
-sul telefono: che il grigio dei gradini spenti si veda alla luce del giorno e non si
-confonda col nero — `e2e/style.spec.ts` misura i due colori, non come li legge un
-occhio in corsia.
+**Fatto al deploy, il 2026-09-24:** la migrazione `0010` si è applicata all'avvio,
+`python -m app.cli.reread_costs` ha girato una volta (31 costi scritti, 9 pagine senza
+costo, 0 sparite dalla fonte). La verifica a mano sul telefono — che il grigio dei
+gradini spenti si veda alla luce del giorno e non si confonda col nero — è dichiarata
+fatta; `e2e/style.spec.ts` misura i due colori, non come li legge un occhio in corsia.
 
 ---
 
@@ -1026,7 +1096,8 @@ ed è andata proprio così: non ha aspettato né S4 né lo storage, e il lavoro 
 quel che si diceva — una colonna annullabile, un campo data e un colore. Fuso,
 distribuito il 2026-09-22 e verificato a mano il 2026-09-23.
 
-**Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
+**Poi**: R4 — non aspetta più lo storage (vincolo tolto il 2026-09-24) — e a valle R5,
+R6.
 
 **Indipendente e piccola**: R9, il costo della ricetta, **fatta il 2026-09-24** — una
 colonna annullabile, un selettore e cinque `€`, più la lettura del costo dall'import,
