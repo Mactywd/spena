@@ -27,11 +27,27 @@ async def test_fetch_maps_a_complete_product():
     assert product.nutrients["kcal"] == 57.0
     assert product.nutrients["protein"] == 10.3
     assert product.nutrients["salt"] == 0.1
-    assert product.nutrients["vitamin_c"] == 0.5
-    assert product.nutrients["calcium"] == 0.11
-    assert product.nutrients["iron"] == 0.05
-    assert product.nutrients["potassium"] == 0.14
     assert product.image_url.endswith("fage.jpg")
+
+
+@respx.mock
+async def test_micronutrients_arrive_in_the_unit_the_vocabulary_declares():
+    """Open Food Facts scrive ogni `_100g` in grammi, qualunque unità mostri
+    l'etichetta: il ferro dei Chocapic arriva come `0.012`, cioè 12 mg.
+    Salvato così sotto una chiave che il vocabolario dichiara in mg, sarebbe
+    mille volte troppo poco."""
+    respx.get(f"{BASE}/api/v2/product/5201054000138.json").mock(
+        return_value=httpx.Response(200, json=_fixture("complete"))
+    )
+    product = await OpenFoodFactsClient(base_url=BASE).fetch("5201054000138")
+
+    assert product.nutrients["vitamin_c"] == 0.5  # mg
+    assert product.nutrients["calcium"] == 110  # mg
+    assert product.nutrients["iron"] == 0.05  # mg
+    assert product.nutrients["potassium"] == 140  # mg
+    assert product.nutrients["kcal"] == 57.0  # l'energia non è in grammi
+    # la vitamina D c'è nella risposta ma non è fra i campi raccolti
+    assert "vitamin_d" not in product.nutrients
 
 
 @respx.mock

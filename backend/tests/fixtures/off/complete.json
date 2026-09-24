@@ -14,10 +14,11 @@
       "saturated-fat_100g": 0,
       "fiber_100g": 0,
       "salt_100g": 0.1,
-      "vitamin-c_100g": 0.5,
+      "vitamin-c_100g": 0.0005,
       "calcium_100g": 0.11,
-      "iron_100g": 0.05,
-      "potassium_100g": 0.14
+      "iron_100g": 0.00005,
+      "potassium_100g": 0.14,
+      "vitamin-d_100g": 3.1e-06
     }
   }
 }

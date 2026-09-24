@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from app.core.config import get_settings
+from app.domain.nutrients import NUTRIENT_FIELDS
 
 # le chiavi di Open Food Facts mappate sul nostro vocabolario
 _NUTRIENT_MAP = {
@@ -28,6 +29,21 @@ _NUTRIENT_MAP = {
     "iron_100g": "iron",
     "potassium_100g": "potassium",
 }
+
+# Open Food Facts scrive ogni `_100g` in grammi, qualunque unità mostri
+# l'etichetta (misurato il 2026-09-24: il ferro dei Chocapic è `0.012`, cioè
+# 12 mg); l'energia in kcal è l'unica eccezione. Il fattore porta il valore
+# all'unità che il vocabolario dichiara per quella chiave.
+_FROM_GRAMS = {"g": 1, "mg": 1_000, "µg": 1_000_000}
+
+
+def _in_vocabulary_unit(ours: str, value: float) -> float:
+    unit = NUTRIENT_FIELDS[ours].unit
+    if unit == "kcal":
+        return value
+    factor = _FROM_GRAMS[unit]
+    # 0.00005 * 1000 fa 0.05000000000000001: si arrotonda solo dove si moltiplica
+    return value if factor == 1 else round(value * factor, 6)
 
 
 class OffUnavailable(Exception):
@@ -76,7 +92,7 @@ class OpenFoodFactsClient:
         nutriments = product.get("nutriments") or {}
         # un nutriente assente resta assente: zero sarebbe un'informazione falsa
         nutrients = {
-            ours: float(nutriments[theirs])
+            ours: _in_vocabulary_unit(ours, float(nutriments[theirs]))
             for theirs, ours in _NUTRIENT_MAP.items()
             if nutriments.get(theirs) is not None
         }

@@ -19,10 +19,12 @@ def test_every_off_mapped_key_is_marked_collected():
         assert our_key in COLLECTED_FIELDS
 
 
-def test_every_field_has_a_label_and_a_unit():
+def test_every_field_has_a_label_and_a_unit_the_import_can_convert_to():
+    """La raccolta da Open Food Facts converte dai grammi con un fattore per
+    unità: un'unità nuova senza fattore farebbe cadere ogni scansione."""
     for key, field in NUTRIENT_FIELDS.items():
         assert field.label, key
-        assert field.unit, key
+        assert field.unit in {"kcal", "g", "mg", "µg"}, key
 
 
 def test_vnr_values_match_allegato_xiii():

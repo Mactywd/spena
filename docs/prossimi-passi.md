@@ -1,15 +1,23 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-24, cinque volte. La quinta: **S4 costruita in parte** — il
+Aggiornato il 2026-09-24, sei volte. La sesta: **un ricontrollo del lavoro della
+giornata ha trovato un difetto e tre inesattezze**, tutti corretti. Il difetto: Open
+Food Facts scrive ogni `_100g` in grammi, e S4 salvava quei grammi sotto chiavi che il
+vocabolario dichiara in mg e µg — mille volte troppo poco; nessun prodotto in
+produzione ne era stato toccato. Le inesattezze: le parti dell'Allegato XIII erano
+invertite (la A sono vitamine e minerali, la B energia e macronutrienti) e i conteggi
+sbagliati; la sitemap delle ricette **esiste** ed è quella che l'import usa già (8.469
+indirizzi, contati); e R4 **chiama** l'AI, per decidere i termini. La quinta: **S4 costruita in parte** — il
 livello prodotto dei nutrienti (vocabolario canonico dell'Allegato XIII, quattro
 nuovi campi raccolti da Open Food Facts: vitamina C, calcio, ferro, potassio),
 nessuna migrazione, nessuno schermo nuovo; il livello ingrediente generico e il tasto
 «Stima» restano TBD. Il vincolo di storage su R4 è stato tolto nella stessa
 conversazione. La quarta: **due ricerche per sbloccare i
-prossimi passi** — i campi nutrizionali di S4 (macro invariati, ~25 micronutrienti
+prossimi passi** — i campi nutrizionali di S4 (macro invariati, 27 micronutrienti
 dall'Allegato XIII del Reg. UE 1169/2011, CREA senza API) e il dimensionamento
-storage di R4 (~6 KB/ricetta misurati, 5-10 GB bastano per tutto il catalogo: il
-tetto dei 100 non sembra più giustificato dai numeri). La terza: **R9 in
+storage di R4 (l'intero catalogo, 8.469 ricette, sta in circa 150 MB: il tetto dei
+100 non era giustificato dai numeri). Entrambe ricontrollate e corrette lo stesso
+giorno: vedi la sesta. La terza: **R9 in
 produzione** — migrazione `0010`
 applicata, `reread_costs` eseguito (31 costi scritti, 9 pagine senza costo, 0 sparite),
 pacchetto servito verificato identico alla build (`index-COEGqsbx.js`,
@@ -488,28 +496,32 @@ Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già l
 nella forma ma povero nel contenuto. Spec:
 `docs/superpowers/specs/2026-09-24-nutrienti-ampi-design.md`. **Scopo deciso e
 costruito: solo il livello prodotto.** `backend/app/domain/nutrients.py` porta il
-vocabolario canonico dell'intero Allegato XIII (Reg. UE 1169/2011, 29 campi con
-etichetta, unità e VNR), e `COLLECTED_FIELDS` segna i dodici raccolti davvero oggi;
-`_NUTRIENT_MAP` in `openfoodfacts.py` si è allargata di quattro chiavi — vitamina C,
-calcio, ferro, potassio — le migliori coperte da Open Food Facts. **Nessuna
+vocabolario canonico dell'intero Allegato XIII (Reg. UE 1169/2011: 35 campi con
+etichetta, unità e VNR — i sette della parte B, le fibre, i ventisette della parte A),
+e `COLLECTED_FIELDS` segna i dodici raccolti davvero oggi; `_NUTRIENT_MAP` in
+`openfoodfacts.py` si è allargata di quattro chiavi — vitamina C, calcio, ferro,
+potassio — e **converte dai grammi**, perché Open Food Facts scrive ogni `_100g` in
+grammi qualunque unità mostri l'etichetta (misurato: il ferro dei Chocapic è `0.012`,
+cioè 12 mg). La prima implementazione non lo faceva; corretta lo stesso giorno, prima
+che un prodotto in produzione ne fosse toccato. **Nessuna
 migrazione** (la colonna era già JSONB libero), **nessuno schermo nuovo**: non c'è
 ancora un lettore prima di P2, e `CustomProductForm.tsx` continua solo a nominare in
 italiano quel che trasporta senza chiederlo a mano
-(`EXTRA_LABELS`). Suite verdi: 708 backend, 309 jsdom, typecheck pulito. Il livello
+(`EXTRA_LABELS`). Il livello
 ingrediente generico (CREA) e il tasto «Stima» con l'AI restano TBD, fuori da questa
 spec — non hanno un'API/fonte pronta.
 
 - **TODO (sottoagente) — fatto il 2026-09-24.** Macro: nessuna novità, sono già gli
   otto campi che `OpenFoodFactsClient._NUTRIENT_MAP`
   (`backend/app/services/openfoodfacts.py:17`) mappa oggi — kcal, proteine,
-  carboidrati, zuccheri, grassi, saturi, fibre, sale. Micro: un set di ~25 voci (13
-  vitamine, 12 minerali) che coincide con l'**Allegato XIII, parte B del Regolamento UE
-  1169/2011** — la stessa normativa dell'etichetta nutrizionale italiana, che porta
+  carboidrati, zuccheri, grassi, saturi, fibre, sale. Micro: ventisette voci (13
+  vitamine, 14 minerali), cioè l'**Allegato XIII, parte A del Regolamento UE
+  1169/2011** (la parte B sono energia e macronutrienti) — la stessa normativa dell'etichetta nutrizionale italiana, che porta
   già con sé i VNR (valori di riferimento giornalieri) da usare per un futuro %VNR:
   niente da inventare. Esempio: Vit. C 80mg, Calcio 800mg, Ferro 14mg, Potassio
-  2000mg, Vit. D 5µg. **Punto debole verificato:** Open Food Facts espone i campi
-  anche per i micronutrienti ma li popola raramente — meno del 20% dei prodotti ha
-  dati oltre sodio/sale, e per prodotti italiani generici sono quasi sempre assenti.
+  2000mg, Vit. D 5µg. **Punto debole riportato dalla ricerca, non misurato da noi:**
+  Open Food Facts espone i campi anche per i micronutrienti ma li popola raramente —
+  meno del 20% dei prodotti avrebbe dati oltre sodio/sale, e per prodotti italiani generici sono quasi sempre assenti.
   Conferma perché il livello ingrediente-generico (CREA) non è ridondante. **CREA**: le
   tabelle esistono (~900 alimenti, 120 nutrienti, `alimentinutrizione.it`) ma **senza
   API né export ufficiale** — solo consultazione web, quindi popolarle richiede
@@ -791,28 +803,29 @@ completo**, poi la messa online e il parsing a ondate.
 > sotto mostra che non era più giustificato dai numeri: l'intero catalogo pesa
 > centinaia di MB, non i GB per cui il vincolo era nato prudenzialmente. Resta invece
 > attivo, e vale per questa voce come per ogni altra, il **tetto di spesa 1$/giorno su
-> OpenRouter** (Parte XI) — R4 di per sé non chiama l'AI, ma un import di massa va
-> comunque verificato contro quel tetto se in futuro si combina con decisioni AI sui
-> termini sconosciuti.
+> OpenRouter** (Parte XI), che qui morde davvero: `import_gz` fa decidere all'LLM i
+> termini sconosciuti di ogni lotto (`MAX_TERMS_PER_RUN`), quindi un catalogo intero
+> sono migliaia di termini e va misurato contro quel tetto prima di partire.
 
-**Dimensionamento fatto il 2026-09-24 (sottoagente), la ricerca che ha tolto il
-vincolo qui sopra.** Misurato su 3.000 ricette sintetiche ma realistiche (embedding
-pgvector a 384 dimensioni, indici HNSW/GIN/B-tree veri, non le 26 di semina — troppo
-poche perché la dimensione minima di pagina di Postgres domina il conteggio): **~6 KB
-per ricetta** nel database. **Le immagini non vengono scaricate**, resta solo l'URL
-(`recipe.image_url`, verificato in `giallozafferano.py` e `materialize.py`) — è il
-fattore che tiene basso il conto. Il catalogo totale non ha una sitemap pubblica di
-singole ricette (solo 139 pagine-categoria); le uniche cifre trovate sono discordanti
-e non autorevoli (4.500 nel 2018, "oltre 7000" da una fonte terza non datata): stima
-con incertezza dichiarata, **6.000–12.000 ricette**. Anche al limite alto, ~70 MB di
-dati puri; con margine ×3 per crescita anagrafica/backup/WAL/vacuum: **~100–250 MB**.
-Se un giorno si decidesse anche di scaricare le immagini (oggi non previsto): 1,2–5
-GB. **Un volume esterno da 5 GB basta ampiamente; 10 GB dà margine comodo** anche con
-le immagini. Il tetto dei 100 sembra nato da prudenza generica, non da un conto fatto:
-a giudicare dai numeri lo storage non è più il vincolo reale — resta da decidere se e
-quando procurarlo. Nota a margine: `robots.txt` di GialloZafferano blocca
-esplicitamente `ClaudeBot`/`anthropic-ai` (ma non `User-agent: *`), da tenere presente
-per come lo scraper si presenterà.
+**Dimensionamento del 2026-09-24, misurato in produzione.** La sitemap che `import_gz`
+legge già, `https://ricette.giallozafferano.it/sitemap/ricette.xml`, elenca **8.469
+ricette** (contate il 2026-09-24; una prima stima di un sottoagente diceva che una
+sitemap di ricette non esisteva, ed era sbagliata). Sul database vero, con 67 ricette e
+40 pagine importate, `recipes` pesa 376 kB, `recipe_ingredients` 288 kB e
+`recipe_imports` 296 kB: circa **17 KB per ricetta importata**, pagina d'import
+compresa — che è il payload già analizzato, ~2 KB, non l'HTML. Tutto il catalogo fa
+quindi **circa 150 MB**. **Le immagini non vengono scaricate**, resta solo l'URL
+(`recipe.image_url`), ed è il fattore che tiene basso il conto. Gli embedding in
+produzione non ci sono (`INSTALL_EMBEDDINGS=0`, 0 vettori su 67); accesi,
+aggiungerebbero pochi KB a ricetta. Il server ha **75 GB di disco, 31 liberi** (più
+17,6 GB di immagini Docker e 7,2 GB di cache di build recuperabili): nessuno storage
+esterno serve.
+
+Il tempo invece conta: con una pagina ogni `DELAY_SECONDS = 1.2` secondi, 8.469
+pagine sono almeno tre ore di sole pause, e `--limit` vale 50 per lotto. Il
+`robots.txt` della fonte vieta `Claude-Web` e `anthropic-ai`; l'import non è quei
+crawler e lo dichiara nel suo `User-Agent` (`SpenaPersonalArchive/1.0`), decisione già
+presa in §3 della spec dell'import.
 
 ## R5. Sostituisci ingrediente **[D, con TBD pesante]**
 Dentro la ricetta, accanto a ogni ingrediente, un tasto «Sostituisci». Tre esiti, e

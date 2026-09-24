@@ -24,9 +24,9 @@ oggi non esiste.
 **Decisione di scopo.** S4 qui non costruisce un cruscotto nutrizionale — non ha
 ancora un lettore vero. Costruisce la **base dati**: un vocabolario di campi deciso
 una volta, la loro raccolta da Open Food Facts dove disponibile, e il posto dove P2
-andrà a leggerli. Lo stesso schema di R9: «chi lo leggerà davvero è [P3/P2], questa
-voce viene prima perché è piccola, indipendente, e perché ogni [ricetta/prodotto]
-raccolto oggi senza \[costo/nutrienti\] andrebbe rimesso a posto dopo».
+andrà a leggerli. È lo stesso ragionamento di R9, che chi legge davvero il costo è P3:
+la voce viene prima perché è piccola e indipendente, e perché ogni prodotto scansionato
+oggi senza micronutrienti andrebbe riscansionato dopo.
 
 ## 2. Le decisioni
 
@@ -34,9 +34,9 @@ raccolto oggi senza \[costo/nutrienti\] andrebbe rimesso a posto dopo».
    `backend/app/domain/nutrients.py`, puro come `rules.py` e `quantities.py`: nessun
    accesso al database. Contiene, per ciascun campo, la chiave (`kcal`, `vitamin_c`,
    `calcium`, …), l'unità (`kcal`, `g`, `mg`, `µg`), l'etichetta italiana, e il VNR
-   (valore nutritivo di riferimento) per un adulto — dall'**Allegato XIII, parte A e B
-   del Regolamento UE 1169/2011**, la stessa normativa dell'etichetta nutrizionale
-   italiana. Il VNR non serve a nessun conto oggi: è scritto perché quando P2 dovrà
+   (valore nutritivo di riferimento) per un adulto — dall'**Allegato XIII del
+   Regolamento UE 1169/2011** (parte A: vitamine e minerali; parte B: energia e
+   macronutrienti), la stessa normativa dell'etichetta nutrizionale italiana. Il VNR non serve a nessun conto oggi: è scritto perché quando P2 dovrà
    calcolare un punteggio, la tabella sia già lì, normata e non improvvisata — lo
    stesso spirito di `LOW_MAX_FILL` ed `EXPIRY_SOON_DAYS`: **una costante di dominio
    sola, non ricopiata**.
@@ -49,11 +49,12 @@ raccolto oggi senza \[costo/nutrienti\] andrebbe rimesso a posto dopo».
    prodotto.** Il campo che porterà il livello ingrediente resterà su
    `ingredients` quando arriverà; non esiste ancora.
 3. **Priorità di popolamento: quattro campi, non tutto il vocabolario.** Open Food
-   Facts copre male i micronutrienti — meno del 20% dei prodotti, verificato dalla
-   ricerca — quindi allargare `_NUTRIENT_MAP` a tutti e venticinque i campi
-   dell'Allegato XIII riempirebbe quasi sempre il vuoto. Si aggiungono i quattro con
+   Facts copre male i micronutrienti — secondo la ricerca meno del 20% dei prodotti
+   ne porta oltre al sodio; è un dato riportato, non misurato da noi — quindi
+   allargare `_NUTRIENT_MAP` a tutti e ventisette i micronutrienti dell'Allegato XIII
+   riempirebbe quasi sempre il vuoto. Si aggiungono i quattro con
    la copertura migliore e la rilevanza più immediata in una dieta italiana comune:
-   **vitamina C, calcio, ferro, potassio**. Gli altri ventuno restano nel vocabolario
+   **vitamina C, calcio, ferro, potassio**. Gli altri ventitré restano nel vocabolario
    (per nome, unità, VNR) ma **non si raccolgono ancora**: quando un giorno arriverà
    una fonte più ricca (CREA, o Open Food Facts che migliora), si aggiunge una riga
    alla mappa, non uno schema.
@@ -89,9 +90,11 @@ nome usato in `products.nutrients`:
 | `calcium` | Calcio | mg | 800 | **nuovo** |
 | `iron` | Ferro | mg | 14 | **nuovo** |
 | `potassium` | Potassio | mg | 2000 | **nuovo** |
-| `vitamin_a` … `iodine` | (le restanti 21 voci dell'Allegato XIII) | mg/µg | dall'Allegato XIII | no — solo vocabolario |
+| `vitamin_a` … `iodine` | (i restanti 23 micronutrienti dell'Allegato XIII) | mg/µg | dall'Allegato XIII | no — solo vocabolario |
 
-La tabella completa (tutte e 29 le voci, con i valori esatti) va nel modulo, non
+Sono 35 voci: le sette della parte B, le fibre (che il regolamento non norma) e i
+ventisette micronutrienti della parte A. La tabella completa, con i valori esatti, va
+nel modulo, non
 ripetuta qui: è dati, non narrazione, e un domani P2 la importa con
 `from app.domain.nutrients import NUTRIENT_FIELDS`.
 
@@ -109,6 +112,16 @@ ripetuta qui: è dati, non narrazione, e un domani P2 la importa con
 Stesso meccanismo di oggi: un nutriente assente nella risposta OFF resta assente nel
 dizionario, mai un valore a zero. Nessuna migrazione: `products.nutrients` è già
 JSONB libero.
+
+**Le unità.** Open Food Facts scrive ogni campo `_100g` **in grammi**, qualunque
+unità mostri l'etichetta — misurato il 2026-09-24 su prodotti veri: il ferro dei
+Chocapic arriva come `0.012`, la vitamina D come `3.1e-06`. L'energia in kcal è
+l'unica eccezione. La raccolta quindi converte ogni valore all'unità che il vocabolario
+dichiara per quella chiave (×1000 per i mg, ×1.000.000 per i µg), così
+`products.nutrients` dice sempre `{"iron": 12}` intendendo 12 mg, e chi lo leggerà
+non dovrà sapere da quale fonte è arrivato. La prima stesura di questa spec non lo
+diceva, e la prima implementazione salvava i grammi sotto una chiave in mg: corretto
+lo stesso giorno, prima che un solo prodotto in produzione ne fosse toccato.
 
 ## 5. Lo schermo
 
@@ -142,5 +155,5 @@ Nessun altro file di frontend cambia.
   accesso al web via OpenRouter — va deciso quando la spec di quel tasto si scrive,
   non qui.
 - **Ogni display, calcolo o %VNR.** Non ha lettore prima di P2.
-- **I restanti ventuno campi dell'Allegato XIII.** Nel vocabolario per nome, non
+- **I restanti ventitré micronutrienti dell'Allegato XIII.** Nel vocabolario per nome, non
   raccolti: si aggiungono quando una fonte li riempie per davvero.

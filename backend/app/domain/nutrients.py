@@ -3,8 +3,9 @@
 `products.nutrients` (e un domani un campo simile per l'ingrediente generico)
 è un JSONB libero: qualunque chiave ci sta. Questo modulo fissa una volta sola
 quali chiavi esistono, con che etichetta italiana, che unità, e il valore
-nutritivo di riferimento (VNR) per un adulto secondo l'Allegato XIII, parti A
-e B, del Regolamento UE 1169/2011 — la stessa normativa dell'etichetta
+nutritivo di riferimento (VNR) per un adulto secondo l'Allegato XIII del
+Regolamento UE 1169/2011 (parte A vitamine e minerali, parte B energia e
+macronutrienti) — la stessa normativa dell'etichetta
 nutrizionale italiana. Non tutti i campi qui elencati sono raccolti oggi:
 `COLLECTED_FIELDS` segna quelli che una fonte reale popola (vedi
 `app.services.openfoodfacts._NUTRIENT_MAP`); gli altri restano nel vocabolario
@@ -23,7 +24,8 @@ class NutrientField:
 
 
 NUTRIENT_FIELDS: dict[str, NutrientField] = {
-    # macronutrienti — Allegato XIII, parte A (base 2000 kcal)
+    # energia e macronutrienti — Allegato XIII, parte B (base 2000 kcal);
+    # le fibre non ci sono, quindi niente VNR
     "kcal": NutrientField("Energia", "kcal", 2000),
     "protein": NutrientField("Proteine", "g", 50),
     "carbs": NutrientField("Carboidrati", "g", 260),
@@ -32,7 +34,7 @@ NUTRIENT_FIELDS: dict[str, NutrientField] = {
     "saturated_fat": NutrientField("di cui saturi", "g", 20),
     "fiber": NutrientField("Fibre", "g", None),
     "salt": NutrientField("Sale", "g", 6),
-    # vitamine — Allegato XIII, parte B
+    # vitamine — Allegato XIII, parte A
     "vitamin_a": NutrientField("Vitamina A", "µg", 800),
     "vitamin_d": NutrientField("Vitamina D", "µg", 5),
     "vitamin_e": NutrientField("Vitamina E", "mg", 12),
@@ -46,7 +48,7 @@ NUTRIENT_FIELDS: dict[str, NutrientField] = {
     "vitamin_b12": NutrientField("Vitamina B12", "µg", 2.5),
     "biotin": NutrientField("Biotina", "µg", 50),
     "pantothenic_acid": NutrientField("Acido pantotenico", "mg", 6),
-    # minerali — Allegato XIII, parte B
+    # minerali — Allegato XIII, parte A
     "potassium": NutrientField("Potassio", "mg", 2000),
     "chloride": NutrientField("Cloruro", "mg", 800),
     "calcium": NutrientField("Calcio", "mg", 800),
