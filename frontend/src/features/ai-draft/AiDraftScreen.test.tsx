@@ -605,3 +605,49 @@ describe("AiDraftScreen e il ricettario sotto lo stesso QueryClient", () => {
     await vi.waitFor(() => expect(searches()).toBeGreaterThan(before));
   });
 });
+
+describe("il costo nel modulo (R9)", () => {
+  it("la bozza precompila il costo proposto, e il salvataggio lo porta", async () => {
+    const spy = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...DRAFT, cost: 2 }), { status: 200 }))
+      .mockResolvedValue(new Response(CREATED, { status: 201 }));
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    await proposeDraft();
+    await draftLanded();
+    expect(screen.getByRole("button", { name: "Costo 2 su 5" })).toHaveAttribute(
+      "aria-pressed", "true"
+    );
+    await userEvent.click(saveButton());
+    expect(postedRecipe(spy).cost).toBe(2);
+  });
+
+  it("il costo proposto si cambia prima di salvare", async () => {
+    const spy = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...DRAFT, cost: 2 }), { status: 200 }))
+      .mockResolvedValue(new Response(CREATED, { status: 201 }));
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    await proposeDraft();
+    await draftLanded();
+    await userEvent.click(screen.getByRole("button", { name: "Costo 4 su 5" }));
+    await userEvent.click(saveButton());
+    expect(postedRecipe(spy).cost).toBe(4);
+  });
+
+  it("scritta a mano, la ricetta parte senza costo e lo manda come null", async () => {
+    const spy = vi.fn().mockResolvedValue(new Response(CREATED, { status: 201 }));
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    expect(screen.getByText("non indicato")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Titolo"), "Pane e olio");
+    await userEvent.type(screen.getByLabelText("Procedimento"), "Condisci.");
+    await userEvent.click(saveButton());
+    const body = postedRecipe(spy);
+    expect(body.source).toBe("manual");
+    expect(body.cost).toBeNull();
+  });
+});

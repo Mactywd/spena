@@ -8,7 +8,7 @@ function ricetta(overrides: Partial<RecipeSummary> = {}): RecipeSummary {
   return {
     id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "dataset",
     missing: 0, cookable: true, missing_names: [], image_url: null,
-    prep_minutes: null, cook_minutes: null, category: null,
+    prep_minutes: null, cook_minutes: null, category: null, cost: null,
     ...overrides,
   };
 }
@@ -63,5 +63,16 @@ describe("RecipeCard", () => {
       })
     );
     expect(screen.getByText("Acciughe, Basilico, Capperi e un altro")).toBeVisible();
+  });
+
+  it("porta il costo accanto al tempo", () => {
+    renderCard(ricetta({ cost: 4, prep_minutes: 10 }));
+    expect(screen.getByRole("img", { name: "Costo 4 su 5" })).toBeInTheDocument();
+  });
+
+  it("senza costo non mostra cinque € grigi", () => {
+    renderCard(ricetta({ cost: null }));
+    expect(screen.queryByRole("img", { name: /Costo/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("€")).not.toBeInTheDocument();
   });
 });

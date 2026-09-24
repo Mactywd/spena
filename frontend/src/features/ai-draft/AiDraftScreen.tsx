@@ -6,6 +6,7 @@ import { createRecipe, draftRecipe } from "../recipes/api";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { BackLink } from "../../components/BackLink";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import { CostPicker } from "../../components/ui/CostPicker";
 import { FOOD_CATEGORIES } from "../../domain/categories";
 import type {
   DraftIngredient,
@@ -186,6 +187,9 @@ export function AiDraftScreen() {
   // stringa, non numero: un campo vuoto vuole dire "non lo so", e non deve
   // diventare uno zero o un 4 inventato da noi
   const [servingsText, setServingsText] = useState("");
+  // `null` è «non indicato»: una ricetta scritta a mano parte senza costo, e la
+  // bozza AI lo precompila solo se il backend l'ha trovato nella scala
+  const [cost, setCost] = useState<number | null>(null);
   const [lines, setLines] = useState<FormLine[]>([]);
 
   const propose = useMutation({
@@ -195,6 +199,7 @@ export function AiDraftScreen() {
       setTitle(result.title);
       setInstructions(result.instructions);
       setServingsText(String(result.servings ?? ""));
+      setCost(result.cost);
       setLines((prev) => [
         ...result.ingredients.map(lineFromDraft),
         // le righe scelte a mano non sono roba del modello: una nuova bozza
@@ -219,6 +224,7 @@ export function AiDraftScreen() {
         description: draft?.description ?? null,
         instructions,
         servings: servingsText.trim() === "" ? null : Number(servingsText.trim()),
+        cost,
         // la provenienza dice il vero: senza bozza questa ricetta l'ha scritta
         // una persona, e spacciarla per "ai" sarebbe una bugia nello storico
         source: draft ? "ai" : "manual",
@@ -325,6 +331,14 @@ export function AiDraftScreen() {
             className="mt-1.5"
           />
         </label>
+
+        <div className="text-sm">
+          Costo
+          <div className="flex items-center gap-2">
+            <CostPicker value={cost} onChange={setCost} />
+            {cost === null && <span className="text-ink-faint">non indicato</span>}
+          </div>
+        </div>
 
         <div>
           <h2 className="text-xs uppercase tracking-wide text-ink-faint">Ingredienti</h2>

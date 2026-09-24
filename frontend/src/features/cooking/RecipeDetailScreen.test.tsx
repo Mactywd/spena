@@ -9,7 +9,7 @@ import type { PantryItem, RecipeDetail } from "../../domain/types";
 const DETAIL: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
   missing: 2, cookable: false, missing_names: ["Basilico", "Pomodoro"], image_url: null, prep_minutes: null, cook_minutes: null,
-  category: null, instructions: "Cuoci.",
+  category: null, cost: null, instructions: "Cuoci.",
   servings: 2, source_ref: null, scaled_to: null,
   // quattro righe su cinque portano una dose: «basilico» non ne ha nessuna, ed è la
   // riga che tiene onesto il denominatore — il conto delle dosi non è il conto degli
@@ -364,5 +364,77 @@ describe("RecipeDetailScreen", () => {
     renderScreen();
     await screen.findByText("180 g");
     expect(screen.queryByRole("button", { name: /porzione in meno/ })).toBeNull();
+  });
+});
+
+/** Un server finto che ricorda il costo: la GET dopo la PATCH deve vedere il nuovo.
+ * `patchStatus` diverso da 200 simula un salvataggio rifiutato. */
+function stubCostServer(initial: number | null, patchStatus = 200) {
+  let cost = initial;
+  const spy = vi.fn((url: string, init?: RequestInit) => {
+    if (String(url).includes("/pantry")) {
+      return Promise.resolve(new Response(JSON.stringify(PANTRY), { status: 200 }));
+    }
+    if (init?.method === "PATCH") {
+      if (patchStatus !== 200) {
+        return Promise.resolve(new Response(JSON.stringify({ detail: "no" }), { status: patchStatus }));
+      }
+      cost = JSON.parse(String(init.body)).cost;
+    }
+    return Promise.resolve(new Response(JSON.stringify({ ...DETAIL, cost }), { status: 200 }));
+  });
+  vi.stubGlobal("fetch", spy);
+  return spy;
+}
+
+describe("il costo nel dettaglio (R9)", () => {
+  it("senza costo dice «non indicato», e nessun € è acceso", async () => {
+    stubCostServer(null);
+    renderScreen();
+    expect(await screen.findByText("non indicato")).toBeInTheDocument();
+    for (const step of [1, 2, 3, 4, 5]) {
+      expect(screen.getByRole("button", { name: `Costo ${step} su 5` })).toHaveAttribute(
+        "aria-pressed", "false"
+      );
+    }
+  });
+
+  it("toccare un € lo salva, e lo schermo mostra quel che il server ha salvato", async () => {
+    const spy = stubCostServer(null);
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "Costo 3 su 5" }));
+
+    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(String(patch![0])).toMatch(/\/recipes\/r1$/);
+    expect(JSON.parse(String(patch![1]!.body))).toEqual({ cost: 3 });
+
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "Costo 3 su 5" })).toHaveAttribute(
+        "aria-pressed", "true"
+      )
+    );
+    expect(screen.queryByText("non indicato")).not.toBeInTheDocument();
+  });
+
+  it("ritoccare quello scelto manda null, non lo lascia com'era", async () => {
+    const spy = stubCostServer(2);
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "Costo 2 su 5" }));
+    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(JSON.parse(String(patch![1]!.body))).toEqual({ cost: null });
+    expect(await screen.findByText("non indicato")).toBeInTheDocument();
+  });
+
+  it("un salvataggio rifiutato lo dice, e il costo mostrato resta quello di prima", async () => {
+    stubCostServer(2, 500);
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "Costo 5 su 5" }));
+    expect(await screen.findByText(/Non sono riuscito a salvare il costo/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Costo 2 su 5" })).toHaveAttribute(
+      "aria-pressed", "true"
+    );
+    expect(screen.getByRole("button", { name: "Costo 5 su 5" })).toHaveAttribute(
+      "aria-pressed", "false"
+    );
   });
 });

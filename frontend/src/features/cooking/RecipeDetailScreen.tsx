@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
-import { fetchRecipe } from "../recipes/api";
+import { fetchRecipe, updateRecipeCost } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { CookSheet } from "./CookSheet";
 import { ServingsStepper } from "./ServingsStepper";
@@ -11,6 +11,7 @@ import { SectionHeading } from "../../components/ui/SectionHeading";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { BackLink } from "../../components/BackLink";
 import { RecipeImage } from "../recipes/RecipeImage";
+import { CostPicker } from "../../components/ui/CostPicker";
 import type { CookResult, RecipeIngredientLine } from "../../domain/types";
 
 function statusNote(line: RecipeIngredientLine): string {
@@ -39,6 +40,23 @@ export function RecipeDetailScreen() {
   // le porzioni chieste: è una vista, non si salva. Uscire dalla ricetta se ne
   // dimentica, ed è quel che vuole chi sta guardando cosa cucinare stasera.
   const [servings, setServings] = useState<number | null>(null);
+
+  const queryClient = useQueryClient();
+  // Il valore mostrato è sempre quello che il server ha salvato, non quello toccato:
+  // niente aggiornamento ottimistico, perché un tocco fallito che restasse a video
+  // direbbe un costo che la ricetta non ha. La rilettura costa un giro, e il
+  // selettore resta spento finché non è tornato.
+  const setCost = useMutation({
+    mutationFn: (cost: number | null) => updateRecipeCost(id, cost),
+    onSuccess: async () => {
+      await Promise.all([
+        // il prefisso, non la chiave intera: le porzioni stanno in coda alla chiave
+        queryClient.invalidateQueries({ queryKey: ["recipe", id] }),
+        // la scheda del ricettario porta il costo anche lei
+        queryClient.invalidateQueries({ queryKey: ["recipes"] }),
+      ]);
+    },
+  });
 
   const {
     data: recipe,
@@ -118,6 +136,19 @@ export function RecipeDetailScreen() {
         >
           Apri l'originale
         </a>
+      )}
+
+      <div className="flex items-center gap-2 pt-2">
+        <span className="text-sm text-ink-soft">Costo</span>
+        <CostPicker
+          value={recipe.cost}
+          onChange={(cost) => setCost.mutate(cost)}
+          disabled={setCost.isPending}
+        />
+        {recipe.cost === null && <span className="text-sm text-ink-faint">non indicato</span>}
+      </div>
+      {setCost.isError && (
+        <Alert>Non sono riuscito a salvare il costo: è rimasto quello di prima. Riprova.</Alert>
       )}
 
       {cooking && pantry ? (

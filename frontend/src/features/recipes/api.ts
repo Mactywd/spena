@@ -47,6 +47,15 @@ export function fetchRecipe(id: string, servings?: number) {
   return apiFetch<RecipeDetail>(`/recipes/${id}${query}`);
 }
 
+/** Cambia il costo di una ricetta salvata. `null` lo toglie: il backend distingue
+ * un campo mandato a `null` da uno non mandato, e qui si manda sempre. */
+export function updateRecipeCost(id: string, cost: number | null) {
+  return apiFetch<RecipeDetail>(`/recipes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ cost }),
+  });
+}
+
 export function createRecipe(body: unknown) {
   return apiFetch<RecipeDetail>("/recipes", { method: "POST", body: JSON.stringify(body) });
 }

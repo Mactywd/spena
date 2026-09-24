@@ -86,6 +86,8 @@ export interface RecipeSummary {
   prep_minutes: number | null;
   cook_minutes: number | null;
   category: string | null;
+  /** Il costo, da 1 a 5 (R9). `null` è «non indicato», non «economica». */
+  cost: number | null;
 }
 
 export interface RecipeIngredientLine {
@@ -148,6 +150,8 @@ export interface RecipeDraft {
   instructions: string;
   servings: number | null;
   ingredients: DraftIngredient[];
+  /** La proposta dell'AI, già controllata dal backend: un gradino o niente. */
+  cost: number | null;
 }
 
 export interface ImportStatus {

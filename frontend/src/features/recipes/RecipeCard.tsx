@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { RecipeSummary } from "../../domain/types";
 import { RecipeImage } from "./RecipeImage";
+import { CostMeter } from "../../components/ui/CostMeter";
 
 const SOURCE_LABEL: Record<string, string> = {
   dataset: "dataset",
@@ -75,6 +76,9 @@ export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
           {totalMinutes(recipe) !== null && (
             <span className="text-xs text-ink-faint">{totalMinutes(recipe)} min</span>
           )}
+          {/* accanto al tempo: sono le due cose che decidono cosa si cucina stasera
+              dopo «si può». Senza costo non compare niente, e la riga resta com'era */}
+          <CostMeter cost={recipe.cost} />
         </div>
         {/* i nomi e basta: «mancano» l'ha appena detto la pastiglia qui sopra */}
         {recipe.missing_names.length > 0 && (

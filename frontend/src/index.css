@@ -18,6 +18,13 @@
   --color-ink: #16281f;
   --color-ink-soft: #4e5a52;
   --color-ink-faint: #636e66;
+  /* I gradini spenti del costo di una ricetta (R9): `€€€··` si legge come «tre su
+     cinque» solo se i due spenti si vedono e insieme non si confondono con i tre
+     accesi. Non porta testo da leggere — il gradino sta nell'etichetta accessibile —
+     quindi non ha il vincolo di contrasto del testo: deve solo stare lontano da
+     `ink` e restare visibile sul bianco e sul grigio della pagina alla luce del
+     giorno. */
+  --color-ink-ghost: #b3bcb5;
 
   --color-line: #dce1dc;
 
