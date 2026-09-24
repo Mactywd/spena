@@ -120,6 +120,13 @@ Scarica un lotto di ricette da GialloZafferano: una pagina alla volta, con una p
 di cortesia, e mai due volte lo stesso indirizzo. Rilanciarlo prende il lotto
 successivo, quindi il ricettario si riempie a tappe e non in una notte.
 
+Per tutto il catalogo (8.469 ricette nella sitemap al 2026-09-24) c'è `--tutto`: legge
+la sitemap una volta e va a lotti da 50 fino in fondo, poi decide i termini rimasti.
+Sono ore, quindi si lancia in background; il come, e cosa controllare prima e dopo,
+sta in [`docs/import-gz-runbook.md`](docs/import-gz-runbook.md). Le 26 ricette di
+semina, in produzione, si tolgono prima con
+`python -m app.cli.drop_seed_recipes`, che senza `--conferma` elenca e basta.
+
 Dopo lo scarico, gli ingredienti che l'anagrafica non riconosce li decide l'AI: uno per
 uno, e quelli che non sa giudicare li lascia in coda. Le ricette entrano da sé, quindi
 nel caso normale il ricettario si riempie senza altri passaggi — restano i due comandi

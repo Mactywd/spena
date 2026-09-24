@@ -34,7 +34,7 @@ async def test_senza_conferma_dice_cosa_toglierebbe_e_non_tocca_niente(db_sessio
     testo = "\n".join(righe)
     assert "Pasta al pomodoro" in testo
     assert "Amatriciana" not in testo
-    assert "1 cottura" in testo
+    assert "1 cottura resterà" in testo
     assert "--conferma" in testo
 
 

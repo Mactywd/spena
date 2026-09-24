@@ -58,10 +58,10 @@ async def drop_seed_recipes(
     ).scalar_one()
     for recipe in recipes:
         log(f"  {recipe.title}")
-    parola = "cottura" if cooked == 1 else "cotture"
+    cotture = "1 cottura resterà" if cooked == 1 else f"{cooked} cotture resteranno"
     log(
-        f"{len(recipes)} ricette di semina; {cooked} {parola} resteranno nello storico "
-        "senza ricetta collegata."
+        f"{len(recipes)} ricette di semina; {cotture} nello storico senza ricetta "
+        "collegata."
     )
     if not confirm:
         log("Niente cancellato: rilancia con --conferma per toglierle.")

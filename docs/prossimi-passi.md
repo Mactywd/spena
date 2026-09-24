@@ -1,6 +1,9 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-24, sei volte. La sesta: **un ricontrollo del lavoro della
+Aggiornato il 2026-09-24, sette volte. La settima: **R4 costruita, non eseguita** — sul
+ramo `r4-import-completo`, con il runbook per la sessione che la eseguirà
+(`docs/import-gz-runbook.md`). Misurando, R4 ha trovato i filtri del ricettario in
+errore oltre le ~3.300 ricette: corretti prima che l'import li raggiungesse. La sesta: **un ricontrollo del lavoro della
 giornata ha trovato un difetto e tre inesattezze**, tutti corretti. Il difetto: Open
 Food Facts scrive ogni `_100g` in grammi, e S4 salvava quei grammi sotto chiavi che il
 vocabolario dichiara in mg e µg — mille volte troppo poco; nessun prodotto in
@@ -794,9 +797,43 @@ service worker dalla sua cache, ne manda ancora uno solo e continua a filtrare b
 invece di vedersi ignorare il parametro e mostrare il ricettario intero sotto
 l'etichetta di un filtro acceso.
 
-## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[D]**
-L'obiettivo è tutto il catalogo. Strategia proposta: **prima uno scarico locale
-completo**, poi la messa online e il parsing a ondate.
+## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[COSTRUITA 2026-09-24, da eseguire]**
+L'obiettivo è tutto il catalogo. La strategia di partenza era «prima uno scarico
+locale completo, poi la messa online e il parsing a ondate»: nata per lo storage, che
+non è più un problema, e sostituita dal brainstorming del 2026-09-24 con un comando che
+svuota la sitemap direttamente sul server.
+
+> **Costruita, non eseguita.** Il codice sta sul ramo `r4-import-completo` (spinto su
+> `origin`, non in `master`). Deploy, cancellazione delle ricette di semina e lancio
+> dell'import sono in **`docs/import-gz-runbook.md`**, scritto per la sessione che li
+> farà: si parte da lì. Spec: `docs/superpowers/specs/2026-09-24-import-completo-design.md`;
+> piano: `docs/superpowers/plans/2026-09-24-import-completo.md`.
+>
+> Cosa c'è: il seme carica le ricette solo con `--con-ricette` (in produzione un seme
+> rilanciato non rimette quelle di semina); `python -m app.cli.drop_seed_recipes`, che
+> senza `--conferma` elenca e basta; `import_gz --tutto`, che legge la sitemap una
+> volta e va a lotti da 50 allineando, decidendo e materializzando dopo ognuno, con i
+> termini già chiesti esclusi dal giro e l'AI lasciata stare dopo due giri senza una
+> decisione; «Mostra altre» nel ricettario. Tre risposte di Mattia nel brainstorming:
+> via **tutte** le ricette di semina, il tetto di spesa resta **un limite di credito su
+> OpenRouter** e non codice, e il ricettario si sfoglia con **«Mostra altre»**.
+>
+> **E la cosa che nessuno aveva chiesto, trovata misurando.** Su 8.500 ricette
+> sintetiche la ricerca con una soglia («Ora / +1 / +2 / +3») andava **in errore**:
+> `availability_map` riceveva un id per riga, duplicati compresi, oltre i 32.767
+> parametri di asyncpg — già intorno alle 3.300 ricette, cioè a metà dell'import. Dove
+> passava, dentro una categoria, costava un secondo. È la sesta lezione di `CLAUDE.md`,
+> e il commento nel codice la prevedeva. Ora `rules.py` decide quali ingredienti della
+> dispensa soddisfano ciascun ruolo e SQL conta le righe fuori da quegli insiemi,
+> filtra, ordina per `(mancanti, titolo, id)` e pagina: **73–143 ms** in ogni caso, e
+> un test a tabella lega il conteggio SQL alla regola. Senza parole cercate il
+> ricettario non è più la piscina delle cento più recenti ma il ricettario intero.
+> Verificato anche a schermo, a 375 px: «Mostra altre» è alto 44 px, porta la pagina
+> dopo senza doppioni e sparisce alla fine.
+>
+> Suite alla fine del lavoro: 726 backend, 313 jsdom, typecheck pulito. Gli e2e non
+> sono girati: lo stack `spena-e2e` vuole un `.env` nella radice, che in questa
+> macchina non c'è e che Claude non crea.
 
 > **Vincolo di storage tolto il 2026-09-24.** Era «massimo ~100 ricette totali finché
 > i volumi Docker non stanno su uno storage esterno più capiente». Il dimensionamento
@@ -1109,8 +1146,8 @@ ed è andata proprio così: non ha aspettato né S4 né lo storage, e il lavoro 
 quel che si diceva — una colonna annullabile, un campo data e un colore. Fuso,
 distribuito il 2026-09-22 e verificato a mano il 2026-09-23.
 
-**Poi**: R4 — non aspetta più lo storage (vincolo tolto il 2026-09-24) — e a valle R5,
-R6.
+**Poi**: R4, **costruita il 2026-09-24 e da eseguire** con `docs/import-gz-runbook.md`
+— e a valle R5, R6.
 
 **Indipendente e piccola**: R9, il costo della ricetta, **fatta il 2026-09-24** — una
 colonna annullabile, un selettore e cinque `€`, più la lettura del costo dall'import,
@@ -1318,6 +1355,8 @@ layout a 375px.
 # Parte XI — Note operative
 
 - Il repo sul server è in **`~/sites/spena`** su `hetznerserver`.
+- **L'import completo (R4) ha un runbook suo**, `docs/import-gz-runbook.md`: deploy,
+  backup, ricette di semina, lancio in background, cosa guardare e cosa fare dopo.
 - Deploy: `git pull --ff-only` e poi
   `docker compose -f docker-compose.prod.yml up -d --build --wait`. **Il `-f` non è
   opzionale** — terza lezione di `CLAUDE.md`.
