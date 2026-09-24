@@ -11,8 +11,8 @@ Piano: `docs/superpowers/plans/2026-09-24-import-completo.md`.
 
 ## 0. Cosa c'è da sapere prima di toccare qualunque cosa
 
-**Dove sta il codice.** Sul ramo `r4-import-completo`, spinto su `origin`, non ancora
-in `master` né in produzione. Contiene: il seme che carica le ricette solo con
+**Dove sta il codice.** In `master` e su `origin` dal 2026-09-24 (fuso in avanti dal
+ramo `r4-import-completo`, poi cancellato), **non ancora in produzione**. Contiene: il seme che carica le ricette solo con
 `--con-ricette`, il comando `drop_seed_recipes`, `import_gz --tutto`, la soglia dei
 mancanti calcolata in SQL e «Mostra altre» nel ricettario. **Nessuna migrazione**:
 dopo il deploy `alembic current` deve dire ancora `0010 (head)`.
@@ -58,19 +58,15 @@ inseguirli.
 
 ---
 
-## 1. In `master` e in produzione
+## 1. In produzione
 
-Da una macchina con il repo:
+Il codice è già in `master`. Prima di tutto si controlla che `master` su `origin` sia
+quello atteso, cioè che contenga il commit del runbook (`R4: il runbook dell'import
+completo`) e che nel frattempo non sia arrivato altro da distribuire senza saperlo:
 
 ```bash
-git switch master
-git pull --ff-only origin master
-git merge --ff-only r4-import-completo
-git push origin master
+git fetch origin && git log --oneline -5 origin/master
 ```
-
-Se il `--ff-only` rifiuta, `master` è andato avanti nel frattempo: si fa un rebase del
-ramo e si rilanciano le suite (`README.md`, «Test») prima di andare avanti.
 
 Sul server:
 

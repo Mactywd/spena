@@ -1,7 +1,7 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-24, sette volte. La settima: **R4 costruita, non eseguita** — sul
-ramo `r4-import-completo`, con il runbook per la sessione che la eseguirà
+Aggiornato il 2026-09-24, sette volte. La settima: **R4 costruita, non eseguita** — in
+`master`, con il runbook per la sessione che la eseguirà
 (`docs/import-gz-runbook.md`). Misurando, R4 ha trovato i filtri del ricettario in
 errore oltre le ~3.300 ricette: corretti prima che l'import li raggiungesse. La sesta: **un ricontrollo del lavoro della
 giornata ha trovato un difetto e tre inesattezze**, tutti corretti. Il difetto: Open
@@ -803,8 +803,8 @@ locale completo, poi la messa online e il parsing a ondate»: nata per lo storag
 non è più un problema, e sostituita dal brainstorming del 2026-09-24 con un comando che
 svuota la sitemap direttamente sul server.
 
-> **Costruita, non eseguita.** Il codice sta sul ramo `r4-import-completo` (spinto su
-> `origin`, non in `master`). Deploy, cancellazione delle ricette di semina e lancio
+> **Costruita, non eseguita.** Il codice è in `master` e su `origin` dal 2026-09-24,
+> **non in produzione**. Deploy, cancellazione delle ricette di semina e lancio
 > dell'import sono in **`docs/import-gz-runbook.md`**, scritto per la sessione che li
 > farà: si parte da lì. Spec: `docs/superpowers/specs/2026-09-24-import-completo-design.md`;
 > piano: `docs/superpowers/plans/2026-09-24-import-completo.md`.
