@@ -147,6 +147,9 @@ async def search(
     # parametro e mostrare il ricettario intero sotto l'etichetta di un filtro acceso.
     ingredient_id: list[uuid.UUID] = Query(default=[]),
     limit: int = Query(default=30, le=100),
+    # «Mostra altre» nel ricettario (R4). Una lista resta una lista: un frontend
+    # vecchio non manda `offset` e vede la prima pagina, come prima.
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[RecipeSummaryOut]:
     # esplicito batte sinonimo: se arrivano entrambi vince quello che la persona ha scelto
@@ -161,6 +164,7 @@ async def search(
         limit=limit,
         category=category,
         ingredient_ids=ingredient_id,
+        offset=offset,
     )
     return [
         RecipeSummaryOut(

@@ -450,3 +450,20 @@ async def test_salvare_una_ricetta_con_una_voce_non_alimentare_e_un_422(
     # il messaggio nomina la voce: su una ricetta di dodici righe «una voce non
     # alimentare» non dice quale togliere
     assert "Sapone" in response.json()["detail"]
+
+
+async def test_search_accetta_un_offset(logged_client, cucina):
+    await _create_recipe(logged_client, cucina, title="Prima")
+    await _create_recipe(logged_client, cucina, title="Seconda")
+
+    uno = (await logged_client.get("/api/v1/recipes/search?limit=1")).json()
+    due = (await logged_client.get("/api/v1/recipes/search?limit=1&offset=1")).json()
+
+    assert len(uno) == 1
+    assert len(due) == 1
+    assert uno[0]["id"] != due[0]["id"]
+
+
+async def test_search_rifiuta_un_offset_negativo(logged_client):
+    response = await logged_client.get("/api/v1/recipes/search?offset=-1")
+    assert response.status_code == 422

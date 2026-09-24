@@ -207,22 +207,22 @@ async def test_il_filtro_per_categoria_sceglie_in_sql(db_session):
     assert [r.recipe.title for r in risultati] == ["Tiramisù"]
 
 
-async def test_senza_parole_la_piscina_dei_candidati_e_stabile(db_session):
-    """Un import in blocco scrive centinaia di righe nella stessa transazione, con lo
-    stesso `created_at` (il `server_default=func.now()` è costante per tutta la
-    transazione). Senza una chiave di spareggio, quali cento righe entrano nella
-    piscina — e in quale ordine — non è definito. `Recipe.id.desc()` come secondo
-    criterio lo impedisce: a `created_at` pari, la piscina è sempre le cento righe
-    con l'id più grande, in ordine decrescente di id.
+async def test_senza_parole_l_ordine_a_parita_e_deciso_dall_id(db_session):
+    """Un import in blocco scrive centinaia di ricette nella stessa transazione, e
+    molte hanno lo stesso titolo («Impasto») e gli stessi mancanti. Senza uno
+    spareggio, quali finiscono in una pagina — e in quale ordine — non sarebbe
+    definito, e «Mostra altre» potrebbe ripetere una ricetta e saltarne un'altra.
+    Dal 2026-09-24 (R4) l'ordine è `(mancanti, titolo, id)`: a parità decide l'id.
 
-    L'attesa è calcolata qui dagli id delle ricette appena creati, non da una
-    seconda chiamata a `search_recipes`: confrontare due letture della stessa
-    tabella immutata, nella stessa transazione, non dimostra nulla — passerebbe
-    comunque, spareggio o non spareggio, perché niente cambia fra le due letture.
+    Fino a R4 questo test difendeva lo spareggio della piscina delle cento più
+    recenti (`created_at`, poi `id`); la piscina se n'è andata, l'intento no.
+    L'attesa è calcolata dagli id appena creati, non da una seconda chiamata alla
+    funzione sotto test: due letture della stessa tabella immutata passerebbero
+    comunque.
     """
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import CANDIDATE_POOL, search_recipes
+    from app.services.recipe_search import search_recipes
 
     ingrediente = Ingredient(
         name="farina", display_name="Farina", category=IngredientCategory.CEREALI
@@ -230,34 +230,21 @@ async def test_senza_parole_la_piscina_dei_candidati_e_stabile(db_session):
     db_session.add(ingrediente)
     await db_session.flush()
 
-    # stesso titolo per tutte: il riordinamento finale di search_recipes è per
-    # (missing, -score, title), e qui missing e score pareggiano già (nessuna ha
-    # "farina" in dispensa, il punteggio RRF è 0.0 per tutte senza parole cercate).
-    # Con anche il titolo in parità non resta nulla su cui il sort possa rimescolare
-    # l'ordine arrivato dalla query: il sort di Python è stabile, quindi l'ordine dei
-    # risultati è l'ordine della query, ed è proprio quell'ordine che il test vuole
-    # verificare.
-    #
-    # nessun `created_at` assegnato a mano: tutte restano sul server_default, che
-    # dentro questa stessa transazione è lo stesso istante per ogni riga.
     creati = [
         await create_recipe(
             db_session, title="Impasto", description="Pane",
             instructions="Cuoci.", servings=2, source="dataset", source_ref=None,
             ingredients=[(ingrediente.id, "primary", "500 g", None)], embedding=None,
         )
-        for _ in range(CANDIDATE_POOL + 5)
+        for _ in range(45)
     ]
     await db_session.flush()
+    attesi = sorted(recipe.id for recipe in creati)
 
-    # calcolato dagli id creati, non dalla funzione sotto test: con `created_at`
-    # tutti pari, le cento righe che la piscina deve contenere sono per definizione
-    # le cento con l'id più grande, in ordine decrescente.
-    attesi = sorted((recipe.id for recipe in creati), reverse=True)[:CANDIDATE_POOL]
+    prima = await search_recipes(db_session, limit=30)
+    seconda = await search_recipes(db_session, limit=30, offset=30)
 
-    risultati = await search_recipes(db_session, limit=CANDIDATE_POOL)
-
-    assert [r.recipe.id for r in risultati] == attesi
+    assert [r.recipe.id for r in prima + seconda] == attesi
 
 
 async def test_il_filtro_per_ingrediente_sceglie_in_sql(db_session):
@@ -439,3 +426,134 @@ async def test_i_mancanti_si_chiamano_per_nome_e_in_ordine(db_session):
     # alfabetico: `recipe_ingredients` non ha una colonna di posizione, e senza un
     # criterio esplicito due letture identiche potrebbero elencarli in ordine diverso
     assert risultati[0].missing_names == ["Bottarga", "Zafferano"]
+
+
+async def test_la_soglia_in_sql_coincide_con_la_regola(db_session):
+    """Ogni combinazione di ruolo e stato in dispensa: le ricette che il filtro SQL
+    lascia passare con soglia 0 sono esattamente quelle che `rules.py` dice
+    cucinabili. La soglia si calcola in SQL dal 2026-09-24 (R4), ma la regola resta
+    una sola: se un giorno cambiasse, il filtro non potrebbe restare indietro in
+    silenzio."""
+    from datetime import UTC, datetime
+
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.db.models.recipe import Recipe, RecipeIngredient
+    from app.domain.rules import (
+        Availability,
+        IngredientRole,
+        PantryStatus,
+        availability_of,
+        is_satisfied,
+    )
+    from app.services.recipe_search import search_recipes
+
+    # (stati attivi, stati archiviati): un elemento archiviato non conta
+    dispense = {
+        "assente": ([], []),
+        "disponibile": ([PantryStatus.AVAILABLE], []),
+        "quasi": ([PantryStatus.LOW], []),
+        "finito": ([PantryStatus.FINISHED], []),
+        "quasi e disponibile": ([PantryStatus.LOW, PantryStatus.AVAILABLE], []),
+        "solo archiviato": ([], [PantryStatus.AVAILABLE]),
+    }
+    attese: dict[str, bool] = {}
+    for nome, (attivi, archiviati) in dispense.items():
+        ingrediente = Ingredient(
+            name=f"ing {nome}", display_name=nome, category=IngredientCategory.VERDURA
+        )
+        db_session.add(ingrediente)
+        await db_session.flush()
+        for status in attivi:
+            db_session.add(PantryItem(ingredient_id=ingrediente.id, status=status))
+        for status in archiviati:
+            db_session.add(
+                PantryItem(ingredient_id=ingrediente.id, status=status,
+                           archived_at=datetime.now(UTC))
+            )
+        disponibilita = availability_of(attivi) if attivi else Availability.MISSING
+        for ruolo in IngredientRole:
+            titolo = f"{nome} {ruolo.value}"
+            ricetta = Recipe(title=titolo, instructions="x", source="manual")
+            db_session.add(ricetta)
+            await db_session.flush()
+            db_session.add(
+                RecipeIngredient(
+                    recipe_id=ricetta.id, ingredient_id=ingrediente.id, role=ruolo.value
+                )
+            )
+            attese[titolo] = is_satisfied(ruolo, disponibilita)
+    await db_session.flush()
+
+    cucinabili = await search_recipes(db_session, max_missing=0, limit=100)
+
+    assert {r.recipe.title for r in cucinabili} == {t for t, ok in attese.items() if ok}
+    assert all(r.missing == 0 and r.cookable for r in cucinabili)
+
+
+async def test_senza_parole_il_ricettario_si_sfoglia_tutto(db_session):
+    """Prima il ramo senza ricerca guardava le 100 più recenti: dopo la centesima
+    non c'era più niente. Ora ogni ricetta si raggiunge, una volta sola."""
+    from app.db.models.recipe import Recipe
+    from app.services.recipe_search import search_recipes
+
+    for numero in range(130):
+        db_session.add(Recipe(title=f"Ricetta {numero:03d}", instructions="x", source="manual"))
+    await db_session.flush()
+
+    visti: list[str] = []
+    for offset in range(0, 150, 30):
+        pagina = await search_recipes(db_session, limit=30, offset=offset)
+        visti += [r.recipe.title for r in pagina]
+
+    assert len(visti) == 130
+    assert len(set(visti)) == 130
+    # stessi mancanti (nessuna riga): allora vale il titolo
+    assert visti == sorted(visti)
+
+
+async def test_senza_parole_prima_le_cucinabili_su_tutte_le_pagine(db_session):
+    """L'ordine «prima ciò che puoi cucinare» vale sul ricettario intero, non
+    dentro ogni pagina: una ricetta cucinabile non finisce a pagina due perché il
+    suo titolo viene dopo."""
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.db.models.recipe import Recipe, RecipeIngredient
+    from app.services.recipe_search import search_recipes
+
+    ho = Ingredient(name="ho", display_name="Ho", category=IngredientCategory.VERDURA)
+    manca = Ingredient(name="manca", display_name="Manca", category=IngredientCategory.VERDURA)
+    db_session.add_all([ho, manca])
+    await db_session.flush()
+    db_session.add(PantryItem(ingredient_id=ho.id, status="available"))
+    for titolo, ingrediente in [("A manca", manca), ("B manca", manca), ("Z cucinabile", ho)]:
+        ricetta = Recipe(title=titolo, instructions="x", source="manual")
+        db_session.add(ricetta)
+        await db_session.flush()
+        db_session.add(
+            RecipeIngredient(recipe_id=ricetta.id, ingredient_id=ingrediente.id, role="primary")
+        )
+    await db_session.flush()
+
+    prima = await search_recipes(db_session, limit=1)
+    seconda = await search_recipes(db_session, limit=1, offset=1)
+
+    assert [r.recipe.title for r in prima] == ["Z cucinabile"]
+    assert [r.recipe.title for r in seconda] == ["A manca"]
+    assert seconda[0].missing == 1
+
+
+async def test_con_parole_l_offset_scorre_i_candidati(db_session):
+    from app.db.models.recipe import Recipe
+    from app.services.recipe_search import search_recipes
+
+    for numero in range(5):
+        db_session.add(Recipe(title=f"Zuppa {numero}", instructions="x", source="manual"))
+    await db_session.flush()
+
+    prima = await search_recipes(db_session, "zuppa", limit=3)
+    dopo = await search_recipes(db_session, "zuppa", limit=3, offset=3)
+
+    assert len(prima) == 3
+    assert len(dopo) == 2
+    assert not {r.recipe.id for r in prima} & {r.recipe.id for r in dopo}

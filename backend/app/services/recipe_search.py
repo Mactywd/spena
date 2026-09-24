@@ -12,8 +12,9 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.config import get_settings
 from app.db.models.ingredient import Ingredient
@@ -299,7 +300,9 @@ async def _requirements_by_recipe(
     )
     rows = (await session.execute(statement)).all()
 
-    availability = await availability_map(session, [row[1] for row in rows])
+    # Id distinti: un id per riga, duplicati compresi, sfondava i 32.767 parametri
+    # di asyncpg già intorno alle 3.300 ricette (misurato il 2026-09-24).
+    availability = await availability_map(session, list({row[1] for row in rows}))
     for recipe_id, ingredient_id, role, display_name in rows:
         have = availability.get(ingredient_id, Availability.MISSING)
         requirements[recipe_id].append(
@@ -341,6 +344,70 @@ def _containing_all(statement, ingredient_ids: list[uuid.UUID]):
     return statement
 
 
+def _unmet_line(availability: dict[uuid.UUID, Availability], line=RecipeIngredient):
+    """La condizione SQL «questa riga manca», senza ricopiare la regola.
+
+    `is_satisfied` decide, ruolo per ruolo, quali ingredienti della dispensa lo
+    soddisfano; SQL chiede solo se l'ingrediente della riga sta in quell'insieme. Gli
+    insiemi hanno al più la dimensione della dispensa, quindi i parametri restano
+    pochi qualunque sia il ricettario. Un ingrediente fuori dalla dispensa è
+    `MISSING`: se un giorno un ruolo si accontentasse anche di quello, la condizione
+    si rovescia invece di mentire.
+    """
+    per_role = []
+    for role in IngredientRole:
+        if is_satisfied(role, Availability.MISSING):
+            bad = [i for i, have in availability.items() if not is_satisfied(role, have)]
+            unmet = line.ingredient_id.in_(bad) if bad else false()
+        else:
+            good = [i for i, have in availability.items() if is_satisfied(role, have)]
+            unmet = line.ingredient_id.not_in(good) if good else true()
+        per_role.append(and_(line.role == role.value, unmet))
+    return or_(*per_role)
+
+
+async def _browse(
+    session: AsyncSession,
+    *,
+    max_missing: int | None,
+    category: str | None,
+    ingredient_ids: list[uuid.UUID] | None,
+    limit: int,
+    offset: int,
+) -> list[uuid.UUID]:
+    """Il ricettario intero senza parole cercate: filtrato, ordinato e paginato in SQL.
+
+    Sostituisce la piscina delle cento più recenti. Con 8.500 ricette la passata in
+    Python costava un secondo dentro una sola categoria e, sul ricettario intero,
+    un errore (misurato il 2026-09-24): la sesta lezione di CLAUDE.md, arrivata.
+    L'ordine è quello che la pagina mostrava già — prima ciò che puoi cucinare, poi
+    il titolo — ma adesso vale su tutto il ricettario, non su un campione, e ogni
+    pagina continua dove finisce la precedente.
+    """
+    availability = await availability_map(session)
+    # Un alias, non la tabella: il filtro per ingredienti (`_containing_all`) è un
+    # EXISTS su `recipe_ingredients` correlato a `recipes`, e con la tabella stessa
+    # già nel FROM qui fuori SQLAlchemy correlerebbe via anche quella, lasciando il
+    # sottoquery senza tabelle.
+    line = aliased(RecipeIngredient)
+    missing = func.count(line.id).filter(_unmet_line(availability, line)).label("missing")
+    statement = (
+        select(Recipe.id, missing)
+        .outerjoin(line, line.recipe_id == Recipe.id)
+        .group_by(Recipe.id)
+    )
+    if category is not None:
+        statement = statement.where(Recipe.category == category)
+    if ingredient_ids:
+        statement = _containing_all(statement, ingredient_ids)
+    if max_missing is not None:
+        statement = statement.having(missing <= max_missing)
+    statement = (
+        statement.order_by(missing, Recipe.title, Recipe.id).offset(offset).limit(limit)
+    )
+    return [row.id for row in (await session.execute(statement)).all()]
+
+
 async def search_recipes(
     session: AsyncSession,
     query: str | None = None,
@@ -348,6 +415,7 @@ async def search_recipes(
     limit: int = 30,
     category: str | None = None,
     ingredient_ids: list[uuid.UUID] | None = None,
+    offset: int = 0,
 ) -> list[RecipeSearchResult]:
     """`max_missing` è quante cose si è disposti a comprare; `None` è «tutte»."""
     if query and query.strip():
@@ -356,29 +424,10 @@ async def search_recipes(
         fused = reciprocal_rank_fusion([semantic, textual])
         candidate_ids = list(fused)
     else:
-        # `Recipe.id.desc()` come secondo criterio: un import in blocco scrive
-        # centinaia di righe nella stessa transazione, quindi con lo stesso
-        # `created_at` (vedi il commento sopra CANDIDATE_POOL). Senza un secondo
-        # criterio `ORDER BY created_at DESC` non ha modo di spareggiare, e quali
-        # cento righe (e in che ordine) finiscono nella piscina non è definito:
-        # due richieste identiche potrebbero vedere ricettari diversi.
-        statement = select(Recipe.id).order_by(Recipe.created_at.desc(), Recipe.id.desc())
-        if category is not None:
-            statement = statement.where(Recipe.category == category)
-        if ingredient_ids:
-            statement = _containing_all(statement, ingredient_ids)
-        # Senza soglia la piscina basta: è uno scorrimento, e cento ricette recenti
-        # sono più di quante se ne guardino. Con una soglia no — zero compreso: il
-        # filtro lavora sul risultato, quindi limitare prima significa filtrare dentro
-        # un campione, e «cosa posso cucinare se compro due cose» risponderebbe
-        # guardando solo le ricette entrate ieri. `is None` e non la verità: `0` è una
-        # soglia, la più stretta, e `if not max_missing` la tratterebbe come la sua
-        # assenza. Misurato: a cinquecento ricette la passata completa non si
-        # distingue; oltre qualche migliaio va misurata di nuovo, e se non regge la
-        # regola scende in SQL.
-        if max_missing is None:
-            statement = statement.limit(CANDIDATE_POOL)
-        candidate_ids = list((await session.execute(statement)).scalars())
+        candidate_ids = await _browse(
+            session, max_missing=max_missing, category=category,
+            ingredient_ids=ingredient_ids, limit=limit, offset=offset,
+        )
         fused = {recipe_id: 0.0 for recipe_id in candidate_ids}
 
     if not candidate_ids:
@@ -442,6 +491,12 @@ async def search_recipes(
         # regola, non la ricopia
         results = [r for r in results if r.missing <= max_missing]
 
-    # prima ciò che puoi davvero cucinare, poi la pertinenza
-    results.sort(key=lambda r: (r.missing, -r.score, r.recipe.title))
-    return results[:limit]
+    if query and query.strip():
+        # prima ciò che puoi davvero cucinare, poi la pertinenza
+        results.sort(key=lambda r: (r.missing, -r.score, r.recipe.title))
+        return results[offset : offset + limit]
+    # Senza parole ordine e pagina li ha già decisi `_browse`, in SQL, e `results`
+    # segue quell'ordine. Il filtro sulla soglia qui sopra è una conferma, non un
+    # secondo taglio: SQL e `missing_count` contano lo stesso numero, e
+    # `test_la_soglia_in_sql_coincide_con_la_regola` lo difende.
+    return results
