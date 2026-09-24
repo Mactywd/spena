@@ -2,7 +2,8 @@
 
 Aggiornato il 2026-09-24 (**due voci nuove**: R9, il costo della ricetta da uno a
 cinque `€`, e P3, la pianificazione su più giorni con un budget — il brainstorming
-sulla forma del budget è aperto). Prima: il 2026-09-23 (**la verifica a mano di S7 e R7 è stata fatta ed è
+sulla forma del budget è stato fatto in giornata: conta solo la media per pasto,
+scelta con dei profili, e gli avanzi non ripagano). Prima: il 2026-09-23 (**la verifica a mano di S7 e R7 è stata fatta ed è
 passata**: nessun difetto). Prima: il 2026-09-22 (**S7 e R7 in produzione**: la
 scadenza in dispensa e la scala a cinque gradini del ricettario girano su
 `spena.mattiagirellini.com`, migrazione `0009` applicata), il
@@ -804,8 +805,9 @@ modulo; per la bozza AI può proporlo l'AI, come propone il resto.
 TBD:
 - annullabile o obbligatorio? La regola «ciò che manca resta mancante» vale anche
   qui: una ricetta senza costo non è una ricetta da 1;
-- **il costo è della ricetta intera o della porzione?** Per il ricettario non cambia
-  niente; per P3, che somma pasti, cambia tutto (vedi lì);
+- ~~il costo è della ricetta intera o della porzione?~~ **Chiusa il 2026-09-24 con
+  P3**: il costo è di quel che si cucina, e si conta una volta sola, nel pasto in cui
+  si cucina. Gli avanzi non lo ripagano (vedi P3);
 - se il costo di una ricetta cucinata «con quel che ho in dispensa» debba contare
   meno. Proposta: no, almeno all'inizio — la dispensa non sa le quantità e non può
   dire quanto di quella spesa è già pagata.
@@ -837,7 +839,7 @@ mangiare con quel che si è mangiato, e dà un punteggio.
 
 ↳ P1 per i dati mangiati, S4 per i nutrienti, D1 per le quantità.
 
-## P3. Pianificare più giorni **[TBD]** ↳ P1, P2, M1, R9
+## P3. Pianificare più giorni **[D in parte il 2026-09-24, con TBD]** ↳ P1, P2, M1, R9
 Nella sezione Pasti, oltre al pasto singolo, si pianifica un periodo — una settimana,
 o più.
 
@@ -851,31 +853,32 @@ Il giro, come l'ha descritto Mattia il 2026-09-24:
 
 Il budget è una somma di livelli: ogni ricetta scelta sottrae tanti `€` quanti ne
 porta. Nella prima formulazione era «ideale 30 €, con margine di 10 €» — dove però
-«€» non sono euro ma gradini di costo, e **questo è il TBD principale: la forma del
-budget confonde**. Il brainstorming è partito il 2026-09-24; le opzioni e le domande
-aperte stanno sotto.
+«€» non sono euro ma gradini di costo, e la forma confondeva. Il brainstorming del
+2026-09-24 l'ha chiusa così.
 
-**Opzioni sul budget** (nessuna decisa):
-- **a. Somma di gettoni con tetto** — la formulazione originale, con un nome che non
-  sia «euro» («30 gettoni, fino a 40»). Fedele all'idea, ma il numero giusto cambia
-  con i giorni e i pasti: 30 su sette giorni e due pasti è un'altra cosa che su tre.
-- **b. Media per pasto** — «in media `€€···`, al massimo `€€€··`». Si esprime con lo
-  stesso simbolo della ricetta, non cambia al cambiare della durata e dei pasti fuori,
-  e la somma la fa il programma. Proposta.
-- **c. Tre profili** — «risparmio / normale / mi concedo», tradotti dietro in b.
-  È b con meno manopole; si può aggiungere dopo senza toccare il resto.
+**Deciso il 2026-09-24:**
+- **conta solo la media, mai il singolo piatto.** Nessun tetto per pasto: una
+  bistecca `€€€€€` ci sta, purché gli altri pasti la bilancino. Il budget si esprime
+  come **costo medio per pasto** sul periodo — con lo stesso simbolo delle ricette,
+  e quindi valido uguale su tre giorni o su dieci, con o senza cene fuori — e il
+  programma ne ricava il totale da spendere;
+- **si sceglie con dei profili** — «risparmio / normale / mi concedo» o simili, nomi
+  e valori da fissare nella spec — che dietro diventano una media ideale e un
+  margine sopra. Il margine è a senso unico: spendere meno dell'ideale non è mai un
+  errore;
+- **avanzi: un pasto «Altro» che non sottrae niente.** Se domani pranzo con l'avanzo
+  di stasera, è perché stasera ho cucinato di più: il costo è già stato contato
+  nel pasto in cui si è cucinato, e contarlo di nuovo sarebbe sbagliato. Niente
+  logica di porzioni e avanzi nel piano, almeno all'inizio: «Altro» è un posto
+  riservato, come una cena fuori;
+- **i pasti fuori non pesano sul budget**: il budget è quello della spesa;
+- **la somma dei livelli resta lineare, per ora.** `€€€€` non costa davvero il doppio
+  di `€€`, e lo sappiamo: è un'approssimazione dichiarata, da riprendere dopo (pesi
+  non lineari per gradino) se il piano risulta sbilanciato nei fatti;
+- **i nutrienti aspettano P2 e S4** (sotto).
 
-**Domande aperte:**
-- il margine è simmetrico? Proposta: no — spendere meno dell'ideale non è mai un
-  errore, quindi è un ideale e un tetto, non un ±;
-- sommare livelli è lecito? `€€€€` non costa per forza il doppio di `€€`: la somma
-  tratta una scala ordinale come se fosse in euro. Si può accettare come
-  approssimazione dichiarata, o dare ai gradini un peso non lineare nascosto;
-- **porzioni e avanzi**: una ricetta da 4 porzioni mangiata in due giorni sottrae il
-  suo costo una volta o due? E il piano deve saper proporre «ceni e ti avanza il
-  pranzo di domani»? Si lega a R2 e a «costo per ricetta o per porzione» di R9;
-- i pasti fuori pesano sul budget? Proposta: no di default — il budget è quello della
-  spesa — con un costo facoltativo per chi lo vuole;
+**Ancora aperto:**
+- nomi e valori dei profili, e se si può anche scegliere una media a mano;
 - cosa fa il piano quando budget e nutrienti non stanno insieme: rispetta il tetto e
   lo dice, mai un «impossibile» secco (Mai un vicolo cieco);
 - il piano finito **chiude l'anello**: quel che manca per le ricette scelte va in
@@ -884,6 +887,8 @@ aperte stanno sotto.
 **Cosa si può fare prima di P2 e S4.** I nutrienti per ricetta non esistono ancora:
 un primo piano può guardare solo budget, pasti al giorno, dispensa e varietà, e
 imparare i nutrienti quando arrivano — come P2 senza H2 impara l'attività dopo.
+**Deciso il 2026-09-24: si aspetta.** P3 non parte prima di P2 e S4; la versione
+senza nutrienti resta scritta qui come ripiego, non come piano.
 
 ---
 
