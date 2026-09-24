@@ -27,6 +27,10 @@ async def test_fetch_maps_a_complete_product():
     assert product.nutrients["kcal"] == 57.0
     assert product.nutrients["protein"] == 10.3
     assert product.nutrients["salt"] == 0.1
+    assert product.nutrients["vitamin_c"] == 0.5
+    assert product.nutrients["calcium"] == 0.11
+    assert product.nutrients["iron"] == 0.05
+    assert product.nutrients["potassium"] == 0.14
     assert product.image_url.endswith("fage.jpg")
 
 

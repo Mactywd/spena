@@ -10,7 +10,7 @@ const CREATED = {
   barcode: "88990", source: "openfoodfacts", nutrients: null, image_url: null,
 };
 
-// quel che Open Food Facts restituisce davvero: il backend mappa otto nutrienti
+// quel che Open Food Facts restituisce davvero: il backend mappa dodici nutrienti
 // (backend/app/services/openfoodfacts.py), non i quattro che il modulo mostra
 const SUGGESTION: ProductSuggestion = {
   name: "Passata Rustica",
@@ -19,6 +19,7 @@ const SUGGESTION: ProductSuggestion = {
   nutrients: {
     kcal: 30, protein: 1.4, carbs: 5.6, sugars: 4.9,
     fat: 0.3, saturated_fat: 0.1, fiber: 1.2, salt: 0.06,
+    vitamin_c: 12, calcium: 0.02, iron: 0.5, potassium: 0.25,
   },
   image_url: "https://images.off/88990.jpg",
 };
@@ -99,6 +100,18 @@ describe("CustomProductForm", () => {
     expect(body.source).toBe("openfoodfacts");
     expect(body.image_url).toBe(SUGGESTION.image_url);
     expect(body.barcode).toBe("88990");
+  });
+
+  it("nomina in italiano anche i nuovi nutrienti trasportati, non solo i quattro storici", () => {
+    stubFetch();
+    renderForm({ suggestion: SUGGESTION, barcode: "88990" });
+
+    const carried = screen.getByText(/Da Open Food Facts vengono salvati anche/);
+    expect(carried.textContent).toContain("vitamina C");
+    expect(carried.textContent).toContain("calcio");
+    expect(carried.textContent).toContain("ferro");
+    expect(carried.textContent).toContain("potassio");
+    expect(carried.textContent).not.toContain("vitamin_c");
   });
 
   it("correggere un valore del suggerimento non cancella gli altri", async () => {

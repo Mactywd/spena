@@ -22,6 +22,10 @@ const EXTRA_LABELS: Record<string, string> = {
   saturated_fat: "grassi saturi",
   fiber: "fibre",
   salt: "sale",
+  vitamin_c: "vitamina C",
+  calcium: "calcio",
+  iron: "ferro",
+  potassium: "potassio",
 };
 
 /** Quel che Open Food Facts ha già detto su un codice a barre non ancora in

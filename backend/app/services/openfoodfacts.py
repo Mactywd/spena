@@ -23,6 +23,10 @@ _NUTRIENT_MAP = {
     "saturated-fat_100g": "saturated_fat",
     "fiber_100g": "fiber",
     "salt_100g": "salt",
+    "vitamin-c_100g": "vitamin_c",
+    "calcium_100g": "calcium",
+    "iron_100g": "iron",
+    "potassium_100g": "potassium",
 }
 
 
