@@ -109,9 +109,11 @@ il viola si stacca dal verde e dall'ambra alla luce del giorno.
 prossimo passo vuole prima la sua spec.
 
 **Il 2026-09-24 R9 è stata costruita**, con la sua spec, sul ramo di lavoro della
-sessione: suite verdi (701 backend, 308 jsdom, 13 e2e su uno stack pulito). **Non è
-in `master` né in produzione**: il lavoro impegnato torna a essere uno — il deploy,
-con la migrazione `0010`, `reread_costs` una volta, e la verifica a mano del grigio.
+sessione: suite verdi (701 backend, 308 jsdom, 13 e2e su uno stack pulito), ed è
+**entrata in `master`** lo stesso giorno con un fast-forward (`c8814c2`). **Non è
+ancora in produzione**: il lavoro impegnato torna a essere uno — il deploy, con la
+migrazione `0010`, `reread_costs` una volta, e la verifica a mano del grigio. Il
+deploy non si è potuto fare dalla sessione cloud, che non raggiunge il server.
 
 Due cose si sono viste solo sui dati veri, e hanno la loro voce in **Parte X**: due
 plurali sbagliati dall'AI su ventisette (uno dei quali l'`--azzera` non sapeva
@@ -795,7 +797,7 @@ Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
 
 TBD: se la nuova ricetta tiene un legame con quella da cui nasce, e se si vede.
 
-## R9. Il costo della ricetta **[FATTO 2026-09-24, non ancora in produzione]**
+## R9. Il costo della ricetta **[FATTO 2026-09-24, in `master`, non ancora in produzione]**
 Ogni ricetta ha un costo da 1 a 5, disegnato come cinque `€` di cui i primi *n* neri
 e gli altri grigio chiaro: `€€€··` è una ricetta da 3. È un **livello**, non una
 cifra in euro — la stessa scelta della decisione fondante 1 sulle quantità, per la
