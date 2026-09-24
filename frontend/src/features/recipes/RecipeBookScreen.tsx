@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
 import { MissingBudgetFilter, MAX_BUDGET } from "./MissingBudgetFilter";
-import { fetchCategories, fetchSearchMode, searchRecipes } from "./api";
+import { RECIPE_PAGE_SIZE, fetchCategories, fetchSearchMode, searchRecipes } from "./api";
 import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
 import { Alert } from "../../components/ui/Alert";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 import { Screen } from "../../components/ui/Screen";
 import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
 import { IngredientPicker } from "../../components/IngredientPicker";
@@ -104,6 +105,15 @@ function emptyMessage({
   return "Nessuna ricetta. Provane una scritta con l'AI.";
 }
 
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 export function RecipeBookScreen() {
   const [query, setQuery] = useState("");
   // `null` è «Tutte»: l'assenza di soglia, non una soglia larghissima
@@ -123,16 +133,41 @@ export function RecipeBookScreen() {
   // App.tsx aggancia al 401: una sessione scaduta riporta all'accesso, invece di
   // diventare un "ricerca fallita" permanente su uno schermo che non funzionerà
   // mai più. La prima versione di questo schermo sbagliava esattamente lì.
-  const { data: recipes = [], isLoading, isError } = useQuery({
+  //
+  // Una query a pagine (R4): 8.469 ricette non stanno in una. La chiave è la stessa
+  // di prima, quindi gli `invalidateQueries({ queryKey: ["recipes"] })` sparsi
+  // nell'app continuano a rinfrescarla.
+  const {
+    data,
+    isLoading,
+    isError,
+    isFetchNextPageError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["recipes", debouncedQuery, maxMissing, category, ingredientIds],
-    queryFn: () =>
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
       searchRecipes({
         query: debouncedQuery,
         maxMissing,
         category,
         ingredientIds,
+        offset: pageParam,
       }),
+    // la pagina dopo parte da quante ne sono arrivate, doppioni compresi: è il conto
+    // che il server usa per l'offset
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === RECIPE_PAGE_SIZE
+        ? allPages.reduce((total, page) => total + page.length, 0)
+        : undefined,
   });
+  // Un inserimento sopra la pagina (l'import che gira) sposta tutto in giù di uno:
+  // l'offset fa vedere un doppione, mai un buco, e il doppione si scarta qui.
+  const recipes = uniqueById(data?.pages.flat() ?? []);
+  // l'errore di una pagina successiva non cancella quel che è già a video
+  const searchFailed = isError && !isFetchNextPageError;
 
   // le categorie presenti, non tutte quelle possibili: un filtro che offre voci
   // vuote porta a una schermata vuota
@@ -282,13 +317,13 @@ export function RecipeBookScreen() {
 
       {isLoading && <p className="pt-4 text-ink-soft">Cerco…</p>}
 
-      {!isLoading && isError && (
+      {!isLoading && searchFailed && (
         <Alert className="pt-4">
           Non sono riuscito a cercare nel ricettario. Riprova, o scrivine una con l'AI.
         </Alert>
       )}
 
-      {!isLoading && !isError && recipes.length === 0 && (
+      {!isLoading && !searchFailed && recipes.length === 0 && (
         <p className="pt-4 text-ink-soft">
           {emptyMessage({
             query: debouncedQuery,
@@ -299,12 +334,27 @@ export function RecipeBookScreen() {
         </p>
       )}
 
-      {!isLoading && !isError && recipes.length > 0 && (
+      {!isLoading && !searchFailed && recipes.length > 0 && (
         <ul className="flex flex-col gap-2 pt-2">
           {recipes.map((recipe) => (
             <RecipeCard key={recipe.id} recipe={recipe} />
           ))}
         </ul>
+      )}
+
+      {!isLoading && !searchFailed && hasNextPage && (
+        <div className="flex flex-col items-center gap-2 pt-3">
+          {/* il bottone resta: riprovare è la via d'uscita, mai un vicolo cieco */}
+          {isFetchNextPageError && <Alert>Non sono riuscito a caricarne altre.</Alert>}
+          <button
+            type="button"
+            onClick={() => void fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className={buttonClasses("secondary")}
+          >
+            {isFetchingNextPage ? "Carico…" : "Mostra altre"}
+          </button>
+        </div>
       )}
     </Screen>
   );

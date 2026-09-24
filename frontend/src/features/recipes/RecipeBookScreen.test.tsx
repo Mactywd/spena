@@ -710,4 +710,63 @@ describe("RecipeBookScreen", () => {
     ).toBeDefined();
     expect(screen.getByText(/togli un ingrediente/)).toBeDefined();
   });
+  describe("«Mostra altre»", () => {
+    function ricette(quante: number, da = 0) {
+      return Array.from({ length: quante }, (_, n) => ({
+        ...RESULTS[0], id: `r${da + n}`, title: `Ricetta ${da + n}`,
+      }));
+    }
+
+    function paginato(path: string): [unknown, number] {
+      if (path.includes("/recipes/categories")) return [[], 200];
+      if (path.includes("/recipes/search-mode")) return [{ semantic: true }, 200];
+      const offset = Number(new URL(path, "http://x").searchParams.get("offset") ?? 0);
+      // la seconda pagina ripete l'ultima della prima: è quel che fa un inserimento
+      // sopra la pagina mentre l'import gira
+      return offset === 0 ? [ricette(30), 200] : [ricette(5, 29), 200];
+    }
+
+    it("porta la pagina dopo, senza doppioni, e sparisce quando non ce ne sono altre", async () => {
+      const fetchMock = stubRoutedFetch(paginato);
+      renderScreen();
+      await screen.findByText("Ricetta 29");
+
+      await userEvent.click(screen.getByRole("button", { name: "Mostra altre" }));
+
+      expect(await screen.findByText("Ricetta 33")).toBeDefined();
+      expect(ultimaRicerca(fetchMock)).toContain("offset=30");
+      expect(screen.getAllByText("Ricetta 29")).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "Mostra altre" })).toBeNull();
+    });
+
+    it("chiede sempre la stessa misura di pagina che usa per decidere se ce n'è un'altra", async () => {
+      const fetchMock = stubRoutedFetch(paginato);
+      renderScreen();
+      await screen.findByText("Ricetta 29");
+      expect(ultimaRicerca(fetchMock)).toContain("limit=30");
+    });
+
+    it("con meno di una pagina non la offre", async () => {
+      stubRoutedFetch(CODA_CON_CATEGORIE);
+      renderScreen();
+      await screen.findByText("Pasta all'aglio");
+      expect(screen.queryByRole("button", { name: "Mostra altre" })).toBeNull();
+    });
+
+    it("se la pagina dopo fallisce, le ricette restano e si può riprovare", async () => {
+      stubRoutedFetch((path) => {
+        if (path.includes("offset=30")) return [{ detail: "giù" }, 500];
+        return paginato(path);
+      });
+      renderScreen();
+      await screen.findByText("Ricetta 29");
+
+      await userEvent.click(screen.getByRole("button", { name: "Mostra altre" }));
+
+      expect(await screen.findByText("Non sono riuscito a caricarne altre.")).toBeDefined();
+      expect(screen.getByText("Ricetta 0")).toBeDefined();
+      expect(screen.queryByText(/Non sono riuscito a cercare/)).toBeNull();
+      expect(screen.getByRole("button", { name: "Mostra altre" })).toBeDefined();
+    });
+  });
 });

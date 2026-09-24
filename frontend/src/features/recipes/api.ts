@@ -1,6 +1,10 @@
 import { apiFetch } from "../../api/client";
 import type { CookResult, RecipeDetail, RecipeDraft, RecipeSummary } from "../../domain/types";
 
+/** Quante ricette per pagina. Si manda sempre, così il numero sta in un posto solo e
+ * «l'ultima pagina era piena» si confronta con quel che si è chiesto davvero. */
+export const RECIPE_PAGE_SIZE = 30;
+
 /** I filtri del ricettario, per nome e non per posizione: con quattro argomenti di
  * cui due stringhe, scambiare «categoria» e «parole cercate» è un difetto che il
  * compilatore non può vedere. */
@@ -9,14 +13,17 @@ export function searchRecipes({
   maxMissing = null,
   category = "",
   ingredientIds = [],
+  offset = 0,
 }: {
   query?: string;
   /** Quante cose si è disposti a comprare. `null` è «tutte»: non una soglia
    * altissima, ma l'assenza di soglia — il server le distingue, perché una soglia
-   * qualunque gli fa guardare tutto il ricettario invece dei cento più recenti. */
+   * nasconde le ricette oltre, e «tutte» non nasconde niente. */
   maxMissing?: number | null;
   category?: string;
   ingredientIds?: string[];
+  /** Da quale ricetta ripartire: «Mostra altre» (R4). */
+  offset?: number;
 } = {}) {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
@@ -27,6 +34,8 @@ export function searchRecipes({
   // backend li vuole tutti e due. Con `set` sopravviverebbe solo l'ultimo, e
   // l'elenco a video sarebbe più largo di quanto il filtro dichiara.
   for (const id of ingredientIds) params.append("ingredient_id", id);
+  params.set("limit", String(RECIPE_PAGE_SIZE));
+  if (offset > 0) params.set("offset", String(offset));
   return apiFetch<RecipeSummary[]>(`/recipes/search?${params.toString()}`);
 }
 
