@@ -101,3 +101,18 @@ async def test_il_database_rifiuta_un_costo_fuori_scala(db_session):
     db_session.add(Recipe(title="x", instructions="x", source=RecipeSource.MANUAL, cost=7))
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+async def test_la_rotta_della_bozza_consegna_il_costo(logged_client, monkeypatch):
+    """Il servizio lo propone (test_ai_recipes.py); qui si guarda che la rotta non lo perda."""
+    import app.api.recipes as rotte
+    from app.services.ai_recipes import RecipeDraft
+
+    async def bozza_finta(_session, _prompt):
+        return RecipeDraft(title="Filetto", description=None, instructions="Cuoci.",
+                           servings=2, ingredients=[], cost=4)
+
+    monkeypatch.setattr(rotte, "draft_recipe", bozza_finta)
+    response = await logged_client.post("/api/v1/recipes/ai-draft", json={"prompt": "filetto"})
+    assert response.status_code == 200
+    assert response.json()["cost"] == 4

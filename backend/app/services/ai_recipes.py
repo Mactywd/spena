@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.rules import IngredientKind, IngredientRole
+from app.domain.rules import IngredientKind, IngredientRole, cost_in_scale
 from app.services.ingredient_match import match_name
 from app.repositories.llm_calls import record_llm_call
 from app.services.llm import LlmCallSite, LlmUnavailable, LlmUsage, complete_json
@@ -31,6 +31,7 @@ Schema richiesto:
   "description": "string breve",
   "instructions": "string, passaggi numerati",
   "servings": numero intero,
+  "cost": numero intero da 1 a 5,
   "ingredients": [
     {"name": "nome generico dell'ingrediente", "role": "primary" oppure "secondary", "quantity_text": "string libera", "category": "reparto di supermercato"}
   ]
@@ -39,6 +40,7 @@ Schema richiesto:
 Regole:
 - "role" è "primary" se l'ingrediente caratterizza il piatto e senza di esso la ricetta non esiste; è "secondary" se serve in piccole dosi e si può ridurre senza snaturare il piatto, come spezie, erbe aromatiche e condimenti.
 - "name" deve essere il nome generico dell'ingrediente in italiano minuscolo, senza marche e senza aggettivi di preparazione. Scrivi "basilico", non "basilico fresco tritato finemente".
+- "cost" è quanto costano gli ingredienti della ricetta intera, su cinque gradini: 1 molto basso, 2 basso, 3 medio, 4 elevato, 5 molto elevato. Pasta e ceci è 1, un filetto di manzo è 4, un risotto al tartufo è 5.
 - Non inserire valori nutrizionali, calorie o macronutrienti.
 - "category" è il reparto di supermercato dell'ingrediente, scelto fra: verdura, frutta, carne, pesce, latticini, cereali, legumi, condimenti, spezie, bevande, dolci, altro. Serve nel caso l'ingrediente non sia ancora in anagrafica.
 """
@@ -50,6 +52,9 @@ DRAFT_SCHEMA = {
         "description": {"type": ["string", "null"]},
         "instructions": {"type": "string"},
         "servings": {"type": ["integer", "null"]},
+        # niente `minimum`/`maximum`: non tutti i fornitori li accettano in modalità
+        # rigorosa, e la scala la controlla comunque `cost_in_scale` qui sotto
+        "cost": {"type": ["integer", "null"]},
         "ingredients": {
             "type": "array",
             "items": {
@@ -65,7 +70,7 @@ DRAFT_SCHEMA = {
             },
         },
     },
-    "required": ["title", "description", "instructions", "servings", "ingredients"],
+    "required": ["title", "description", "instructions", "servings", "cost", "ingredients"],
     "additionalProperties": False,
 }
 
@@ -88,6 +93,7 @@ class RecipeDraft:
     instructions: str
     servings: int | None
     ingredients: list[DraftIngredient]
+    cost: int | None = None
 
 
 async def draft_recipe(
@@ -158,6 +164,9 @@ async def draft_recipe(
         instructions=str(payload.get("instructions", "")),
         servings=payload.get("servings"),
         ingredients=ingredients,
+        # fuori scala, non intero o assente è nessun costo: il modulo lo mostra vuoto,
+        # e un campo vuoto è meglio di un gradino inventato o arrotondato
+        cost=cost_in_scale(payload.get("cost")),
     )
 
 

@@ -310,4 +310,5 @@ async def ai_draft(
         title=draft.title, description=draft.description, instructions=draft.instructions,
         servings=draft.servings,
         ingredients=[DraftIngredientOut(**vars(i)) for i in draft.ingredients],
+        cost=draft.cost,
     )

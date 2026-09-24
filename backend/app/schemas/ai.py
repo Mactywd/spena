@@ -25,3 +25,4 @@ class DraftOut(BaseModel):
     instructions: str
     servings: int | None
     ingredients: list[DraftIngredientOut]
+    cost: int | None = None

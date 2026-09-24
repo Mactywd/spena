@@ -26,6 +26,7 @@ DRAFT = {
     "description": "Veloce e di sempre",
     "instructions": "Cuoci la pasta. Scalda il sugo. Unisci.",
     "servings": 2,
+    "cost": 1,
     "ingredients": [
         {"name": "pasta", "role": "primary", "quantity_text": "200 g", "category": "cereali"},
         {"name": "pomodoro", "role": "primary", "quantity_text": "400 g", "category": "verdura"},
@@ -302,3 +303,32 @@ async def test_un_modello_giu_durante_la_stesura_e_spesa_registrata_come_fallita
     riga = (await db_session.execute(select(LlmCall))).scalar_one()
     assert riga.ok is False
     assert riga.cost_usd is None
+
+
+async def test_la_bozza_propone_un_costo(db_session, anagrafica):
+    draft = await draft_recipe(db_session, "qualcosa di veloce", client=FakeLlm(DRAFT))
+    assert draft.cost == 1
+
+
+@pytest.mark.parametrize("cost", [0, 7, "3", 2.5, True, None])
+async def test_un_costo_fuori_scala_diventa_nessun_costo(db_session, anagrafica, cost):
+    """Un campo vuoto nel modulo è meglio di un gradino inventato o arrotondato."""
+    draft = await draft_recipe(
+        db_session, "qualcosa di veloce", client=FakeLlm({**DRAFT, "cost": cost})
+    )
+    assert draft.cost is None
+
+
+async def test_una_risposta_senza_costo_resta_una_bozza(db_session, anagrafica):
+    senza = {k: v for k, v in DRAFT.items() if k != "cost"}
+    draft = await draft_recipe(db_session, "qualcosa di veloce", client=FakeLlm(senza))
+    assert draft.cost is None
+    assert draft.title == "Pasta al pomodoro"
+
+
+def test_lo_schema_chiede_il_costo():
+    from app.services.ai_recipes import DRAFT_SCHEMA, SYSTEM_PROMPT
+
+    assert "cost" in DRAFT_SCHEMA["required"]
+    assert DRAFT_SCHEMA["properties"]["cost"] == {"type": ["integer", "null"]}
+    assert '"cost"' in SYSTEM_PROMPT
