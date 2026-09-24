@@ -54,6 +54,17 @@ def fonte_finta_con_una_ricetta() -> httpx.AsyncClient:
     return build_client()
 
 
+def fonte_finta_intera_con_una_ricetta() -> httpx.AsyncClient:
+    """Per `--tutto`, che prende tutta la sitemap: la stessa fonte con una ricetta
+    vera, e le altre due pagine sparite (404), cioè scartate e non guasti."""
+    client = fonte_finta_con_una_ricetta()
+    for nome in ("Due", "Tre"):
+        respx.get(f"https://ricette.giallozafferano.it/{nome}.html").mock(
+            return_value=httpx.Response(404)
+        )
+    return client
+
+
 async def nessuna_pausa(_seconds: float) -> None:
     """La suite non dorme: la cortesia si verifica contando le chiamate."""
 
@@ -390,3 +401,94 @@ async def test_una_unita_gia_vista_non_si_riconta(db_session, monkeypatch):
         assert esito.new_units == 0
     finally:
         get_settings.cache_clear()
+
+
+@respx.mock
+async def test_tutto_svuota_la_sitemap_leggendola_una_volta(db_session):
+    """`--tutto` va a lotti fino in fondo, e la sitemap (800 KB, vera) si chiede una
+    volta sola, non una per lotto."""
+    sitemap = respx.get(RECIPE_SITEMAP).mock(return_value=httpx.Response(200, text=SITEMAP))
+    for nome in ("Uno", "Due", "Tre"):
+        respx.get(f"https://ricette.giallozafferano.it/{nome}.html").mock(
+            return_value=httpx.Response(200, text=PAGINA.replace("TITOLO", nome))
+        )
+    righe: list[str] = []
+
+    async with build_client() as client:
+        esito = await import_gz.run_all(
+            db_session, client=client, sleep=nessuna_pausa, chunk=2, log=righe.append
+        )
+
+    assert esito.taken == 3
+    assert sitemap.call_count == 1
+    # una riga di avanzamento per lotto: due pagine, poi una
+    assert sum("pagine" in riga for riga in righe) == 2
+
+
+@respx.mock
+async def test_tutto_non_richiede_un_termine_gia_chiesto(db_session, monkeypatch):
+    """Il primo della coda ha una risposta non verificabile: senza esclusione ogni
+    giro richiederebbe lui, e il secondo non verrebbe mai chiesto."""
+    from app.core.config import get_settings
+    from app.db.models.recipe_import import ImportTerm, TermDecision
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setattr(import_gz, "MAX_TERMS_PER_RUN", 1)
+    try:
+        client = fonte_finta_intera_con_una_ricetta()
+        # a parità di frequenza la coda va per nome: «Rigatoni» prima di «Speck».
+        # Un «map» su un ingrediente che non esiste non è verificabile: resta in coda.
+        llm = ScriptedLlm(
+            {"Rigatoni": llm_map("non-esiste"), "Speck": llm_create("speck", "Speck", "carne")}
+        )
+        esito = await import_gz.run_all(
+            db_session, client=client, sleep=nessuna_pausa, llm_client=llm,
+            log=lambda _: None,
+        )
+
+        per_nome = {
+            t.display_name: t.decision
+            for t in (await db_session.execute(select(ImportTerm))).scalars()
+        }
+        assert per_nome["Rigatoni"] == TermDecision.PENDING
+        assert per_nome["Speck"] != TermDecision.PENDING
+        assert esito.decided == 1
+    finally:
+        get_settings.cache_clear()
+
+
+@respx.mock
+async def test_tutto_senza_chiave_finisce_e_lascia_i_termini_in_coda(db_session, monkeypatch):
+    """Nessun giro all'infinito quando l'AI non c'è: le pagine restano, i termini in
+    coda, e il comando esce."""
+    from app.core.config import get_settings
+    from app.db.models.recipe_import import ImportTerm, TermDecision
+
+    get_settings.cache_clear()
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    try:
+        client = fonte_finta_intera_con_una_ricetta()
+        esito = await import_gz.run_all(
+            db_session, client=client, sleep=nessuna_pausa, log=lambda _: None
+        )
+
+        assert esito.taken == 1
+        assert esito.decided == 0
+        in_coda = (
+            await db_session.execute(
+                select(ImportTerm).where(ImportTerm.decision == TermDecision.PENDING)
+            )
+        ).scalars().all()
+        assert in_coda != []
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_tutto_e_limit_insieme_sono_un_errore(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["app.cli.import_gz", "--tutto", "--limit", "5"])
+    with pytest.raises(SystemExit) as uscita:
+        await import_gz.main()
+    assert uscita.value.code == 2

@@ -1,8 +1,14 @@
-"""Scarico di un lotto di ricette da GialloZafferano.
+"""Scarico di ricette da GialloZafferano.
 
-Eseguire con `python -m app.cli.import_gz --limit 200` dentro il container del
-backend. Rieseguibile: le pagine già presenti non si riscaricano, quindi rilanciarlo
-prende il lotto successivo.
+Eseguire dentro il container del backend, in uno dei due modi:
+
+- `python -m app.cli.import_gz --limit 200`: un lotto, poi si ferma;
+- `python -m app.cli.import_gz --tutto`: tutta la sitemap a lotti, poi i termini
+  rimasti in coda (R4). Sono ore: si lancia in background, vedi
+  `docs/import-gz-runbook.md`.
+
+Rieseguibile: le pagine già presenti non si riscaricano, quindi rilanciarlo riprende
+da dove era.
 
 Sulla decisione di scaricare, e sul `robots.txt` della fonte che vieta
 esplicitamente i crawler AI, vedi §3 dello spec. Questo comando non è quei crawler,
@@ -12,8 +18,10 @@ stessa, e si ferma quando il sito chiede di smettere.
 
 import argparse
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 import httpx
 from sqlalchemy import func, select
@@ -46,6 +54,11 @@ from app.services.recipe_import.terms import sync_terms
 
 DEFAULT_LIMIT = 50  # prudente di proposito: il lotto si rilancia, la cortesia no
 
+# Quanti giri di fila senza una sola decisione prima di smettere di chiedere all'AI:
+# il credito finito (402), il modello giù e le risposte non verificabili si
+# somigliano tutti, e distinguerli non serve — rilanciare più tardi riprende.
+MAX_FRUITLESS_ROUNDS = 2
+
 # Quanti termini l'AI giudica in un giro. Una chiamata a termine: il tetto è
 # sull'attesa e sulla spesa di un singolo lancio, non sulla correttezza — i termini
 # che restano fuori li prende il lancio successivo, o il bottone «Riprova con l'AI».
@@ -64,40 +77,58 @@ class ImportRun:
     new_units: int = 0
 
 
-async def run_import(
-    session: AsyncSession,
-    *,
-    limit: int,
-    client: httpx.AsyncClient,
-    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-    llm_client: object | None = None,
-) -> ImportRun:
-    """Prende fino a `limit` pagine nuove, le analizza e le salva.
+def _log(message: str) -> None:
+    # `flush`: in background il log si legge mentre il comando gira, non alla fine
+    print(message, flush=True)
 
-    `sleep` è un parametro perché la suite non dorme e non tocca la rete: il test
-    conta le pause invece di aspettarle.
-    """
-    taken = 0
-    skipped = 0
-    consecutive_failures = 0
-    stopped_early = False
 
+@dataclass(frozen=True)
+class _Taken:
+    taken: int = 0
+    skipped: int = 0
+    stopped_early: bool = False
+    # i rifiuti di fila con cui il lotto è finito: il lotto dopo parte da lì, perché
+    # «due rifiuti di fila» non smette di valere al confine fra due lotti
+    trailing_failures: int = 0
+
+
+@dataclass(frozen=True)
+class _Settled:
+    decided: int = 0
+    still_pending: int = 0
+    new_units: int = 0
+    asked: frozenset[uuid.UUID] = frozenset()
+
+
+async def _new_urls(session: AsyncSession, client: httpx.AsyncClient) -> list[str] | None:
+    """Gli indirizzi della sitemap non ancora presi, o `None` se la fonte dice di no."""
     try:
         urls = await fetch_sitemap(client)
     except SourceUnavailable as exc:
         print(f"fonte dice di fermarsi: {exc}")
         print("Nessuna pagina presa oggi. Rilancia più tardi: costa nulla e riprende da dove era.")
-        todo = []
-        stopped_early = True
-    else:
-        already = await known_urls(session, GIALLOZAFFERANO)
-        # `dict.fromkeys` scarta i duplicati mantenendo l'ordine di arrivo: una
-        # sitemap con lo stesso `<loc>` due volte non deve far fallire `store_page`
-        # con un `IntegrityError` che abortirebbe tutto il giro per un solo
-        # indirizzo ripetuto.
-        todo = list(dict.fromkeys(url for url in urls if url not in already))[:limit]
+        return None
+    already = await known_urls(session, GIALLOZAFFERANO)
+    # `dict.fromkeys` scarta i duplicati mantenendo l'ordine di arrivo: una
+    # sitemap con lo stesso `<loc>` due volte non deve far fallire `store_page`
+    # con un `IntegrityError` che abortirebbe tutto il giro per un solo
+    # indirizzo ripetuto.
+    return list(dict.fromkeys(url for url in urls if url not in already))
 
-    for url in todo:
+
+async def _take_pages(
+    session: AsyncSession,
+    client: httpx.AsyncClient,
+    urls: list[str],
+    sleep: Callable[[float], Awaitable[None]],
+    consecutive_failures: int = 0,
+) -> _Taken:
+    """Scarica, analizza e salva queste pagine, una alla volta e con la pausa."""
+    taken = 0
+    skipped = 0
+    stopped_early = False
+
+    for url in urls:
         await sleep(DELAY_SECONDS)
         try:
             html = await fetch_page(client, url)
@@ -143,6 +174,20 @@ async def run_import(
         await session.commit()
         taken += 1
 
+    return _Taken(
+        taken=taken, skipped=skipped, stopped_early=stopped_early,
+        trailing_failures=consecutive_failures,
+    )
+
+
+async def _settle(
+    session: AsyncSession,
+    llm_client: object | None,
+    *,
+    exclude: frozenset[uuid.UUID] = frozenset(),
+    ask_ai: bool = True,
+) -> _Settled:
+    """Il lavoro dopo le pagine: allinea i termini, fa decidere l'AI, materializza."""
     # i termini si allineano sempre, anche dopo un giro fermato a metà: le pagine
     # prese devono comparire in coda, altrimenti il lavoro fatto non si vede
     await sync_terms(session, GIALLOZAFFERANO)
@@ -153,7 +198,13 @@ async def run_import(
     # coda, e il comando esce pulito. È la regola «mai un vicolo cieco».
     decided = 0
     still_pending = 0
-    waiting = await pending_terms(session, GIALLOZAFFERANO, limit=MAX_TERMS_PER_RUN)
+    waiting = (
+        await pending_terms(
+            session, GIALLOZAFFERANO, limit=MAX_TERMS_PER_RUN, exclude=exclude
+        )
+        if ask_ai
+        else []
+    )
     if waiting:
         try:
             outcome = await decide_terms(session, waiting, client=llm_client)
@@ -169,10 +220,115 @@ async def run_import(
     # Si dice, come fa `reparse_quantities`, e chi lancia decide.
     before = await _count_units(session)
     await materialize_ready(session, GIALLOZAFFERANO)
+    return _Settled(
+        decided=decided,
+        still_pending=still_pending,
+        new_units=await _count_units(session) - before,
+        asked=frozenset(term.id for term in waiting),
+    )
+
+
+async def run_import(
+    session: AsyncSession,
+    *,
+    limit: int,
+    client: httpx.AsyncClient,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    llm_client: object | None = None,
+) -> ImportRun:
+    """Prende fino a `limit` pagine nuove, le analizza e le salva.
+
+    `sleep` è un parametro perché la suite non dorme e non tocca la rete: il test
+    conta le pause invece di aspettarle.
+    """
+    urls = await _new_urls(session, client)
+    pages = (
+        _Taken(stopped_early=True)
+        if urls is None
+        else await _take_pages(session, client, urls[:limit], sleep)
+    )
+    settled = await _settle(session, llm_client)
+    return ImportRun(
+        taken=pages.taken, skipped=pages.skipped, stopped_early=pages.stopped_early,
+        decided=settled.decided, still_pending=settled.still_pending,
+        new_units=settled.new_units,
+    )
+
+
+async def run_all(
+    session: AsyncSession,
+    *,
+    client: httpx.AsyncClient,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    llm_client: object | None = None,
+    chunk: int = DEFAULT_LIMIT,
+    log: Callable[[str], None] = _log,
+) -> ImportRun:
+    """Tutta la sitemap, a lotti, poi i termini rimasti (R4).
+
+    La sitemap si legge una volta sola. Dopo ogni lotto si allinea, si decide e si
+    materializza, e si committa: il ricettario cresce mentre il comando gira, e un
+    comando interrotto ha perso al massimo il lotto in corso. Un termine chiesto in
+    questo giro non si richiede in questo giro. Quando l'AI non decide niente per
+    `MAX_FRUITLESS_ROUNDS` giri di fila smette di chiederle e il resto va avanti:
+    rilanciare più tardi riprende dai termini in coda.
+    """
+    urls = await _new_urls(session, client)
+    todo = urls or []
+    taken = skipped = decided = new_units = still_pending = failures = fruitless = 0
+    stopped_early = urls is None
+    asked: set[uuid.UUID] = set()
+
+    async def settle_and_report(label: str) -> _Settled:
+        nonlocal decided, new_units, still_pending, fruitless
+        settled = await _settle(
+            session, llm_client, exclude=frozenset(asked),
+            ask_ai=fruitless < MAX_FRUITLESS_ROUNDS,
+        )
+        await session.commit()
+        asked.update(settled.asked)
+        decided += settled.decided
+        new_units += settled.new_units
+        still_pending = settled.still_pending
+        if settled.asked:
+            fruitless = 0 if settled.decided else fruitless + 1
+            if fruitless == MAX_FRUITLESS_ROUNDS:
+                log(
+                    f"l'AI non ha deciso niente per {MAX_FRUITLESS_ROUNDS} giri di fila "
+                    "(credito finito, modello giù o risposte non verificabili): smetto di "
+                    "chiederle. Le pagine vanno avanti; rilancia --tutto più tardi."
+                )
+        totals = await counts(session, GIALLOZAFFERANO)
+        log(
+            f"{datetime.now():%H:%M} {label} · termini decisi {decided}, "
+            f"in coda {totals.pending_terms} · ricette {totals.imported}"
+        )
+        return settled
+
+    for start in range(0, len(todo), chunk):
+        pages = await _take_pages(
+            session, client, todo[start : start + chunk], sleep, failures
+        )
+        taken += pages.taken
+        skipped += pages.skipped
+        failures = pages.trailing_failures
+        await settle_and_report(
+            f"pagine {min(start + chunk, len(todo))}/{len(todo)} "
+            f"(prese {taken}, scartate {skipped})"
+        )
+        if pages.stopped_early:
+            stopped_early = True
+            break
+
+    # finite le pagine, i termini rimasti: a giri, finché ce n'è di mai chiesti
+    while not stopped_early and fruitless < MAX_FRUITLESS_ROUNDS:
+        settled = await settle_and_report("solo termini")
+        if not settled.asked:
+            break
+
     return ImportRun(
         taken=taken, skipped=skipped, stopped_early=stopped_early,
-        decided=decided, still_pending=still_pending,
-        new_units=await _count_units(session) - before,
+        decided=decided, still_pending=still_pending, new_units=new_units,
     )
 
 
@@ -181,13 +337,23 @@ async def _count_units(session: AsyncSession) -> int:
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Scarica un lotto di ricette.")
-    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    parser = argparse.ArgumentParser(description="Scarica ricette da GialloZafferano.")
+    modo = parser.add_mutually_exclusive_group()
+    modo.add_argument("--limit", type=int, default=None)
+    modo.add_argument(
+        "--tutto", action="store_true",
+        help="tutta la sitemap a lotti, poi i termini in coda (R4)",
+    )
     arguments = parser.parse_args()
 
     async with SessionLocal() as session:
         async with build_client() as client:
-            result = await run_import(session, limit=arguments.limit, client=client)
+            if arguments.tutto:
+                result = await run_all(session, client=client)
+            else:
+                result = await run_import(
+                    session, limit=arguments.limit or DEFAULT_LIMIT, client=client
+                )
         totals = await counts(session, GIALLOZAFFERANO)
         await session.commit()
 
