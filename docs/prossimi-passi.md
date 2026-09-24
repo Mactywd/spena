@@ -1,6 +1,8 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-24 (**due voci nuove**: R9, il costo della ricetta da uno a
+Aggiornato il 2026-09-24, due volte. La seconda: **R9 costruita** — il costo da uno a
+cinque `€` c'è, si sceglie nel dettaglio, la bozza AI lo propone e l'import lo legge
+dalla pagina; manca il deploy. La prima: **due voci nuove**: R9, il costo della ricetta da uno a
 cinque `€`, e P3, la pianificazione su più giorni con un budget — il brainstorming
 sulla forma del budget è stato fatto in giornata: conta solo la media per pasto,
 scelta con dei profili, e gli avanzi non ripagano). Prima: il 2026-09-23 (**la verifica a mano di S7 e R7 è stata fatta ed è
@@ -105,6 +107,11 @@ il viola si stacca dal verde e dall'ambra alla luce del giorno.
 
 **Con questo non resta lavoro già impegnato**: tutto quel che segue è scelta, e il
 prossimo passo vuole prima la sua spec.
+
+**Il 2026-09-24 R9 è stata costruita**, con la sua spec, sul ramo di lavoro della
+sessione: suite verdi (701 backend, 308 jsdom, 13 e2e su uno stack pulito). **Non è
+in `master` né in produzione**: il lavoro impegnato torna a essere uno — il deploy,
+con la migrazione `0010`, `reread_costs` una volta, e la verifica a mano del grigio.
 
 Due cose si sono viste solo sui dati veri, e hanno la loro voce in **Parte X**: due
 plurali sbagliati dall'AI su ventisette (uno dei quali l'`--azzera` non sapeva
@@ -788,29 +795,32 @@ Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
 
 TBD: se la nuova ricetta tiene un legame con quella da cui nasce, e se si vede.
 
-## R9. Il costo della ricetta **[D, con TBD]**
+## R9. Il costo della ricetta **[FATTO 2026-09-24, non ancora in produzione]**
 Ogni ricetta ha un costo da 1 a 5, disegnato come cinque `€` di cui i primi *n* neri
 e gli altri grigio chiaro: `€€€··` è una ricetta da 3. È un **livello**, non una
 cifra in euro — la stessa scelta della decisione fondante 1 sulle quantità, per la
 stessa ragione: un prezzo vero andrebbe tenuto aggiornato e comincerebbe a mentire il
-giorno in cui si smette.
+giorno in cui si smette. Spec: `docs/superpowers/specs/2026-09-24-costo-ricetta-design.md`.
 
-**Da dove arriva il valore.** GialloZafferano scrive già sulla pagina «Costo: Molto
-basso / Basso / Medio / Elevato / Molto elevato» — esattamente cinque gradini. Oggi
-l'import non lo legge (sta nell'HTML, non nel JSON-LD) e non conserva l'HTML, quindi
-per le ricette già importate va riscaricata la pagina: si fa insieme all'import
-completo di R4. Per le ricette scritte a mano o dall'AI il costo si sceglie nel
-modulo; per la bozza AI può proporlo l'AI, come propone il resto.
+**Com'è fatto.** `recipes.cost`, annullabile, con un CHECK sulla scala (migrazione
+`0010`): una ricetta senza costo non è una ricetta da 1. Si sceglie toccando i `€`
+nel dettaglio (ritoccare quello scelto lo toglie), con `PATCH /recipes/{id}`; nel
+modulo «Scrivi una ricetta» la bozza AI lo propone nella stessa chiamata, e a mano
+si sceglie uguale. Nessun filtro né ordinamento per costo: chi lo leggerà è P3.
 
-TBD:
-- annullabile o obbligatorio? La regola «ciò che manca resta mancante» vale anche
-  qui: una ricetta senza costo non è una ricetta da 1;
-- ~~il costo è della ricetta intera o della porzione?~~ **Chiusa il 2026-09-24 con
-  P3**: il costo è di quel che si cucina, e si conta una volta sola, nel pasto in cui
-  si cucina. Gli avanzi non lo ripagano (vedi P3);
-- se il costo di una ricetta cucinata «con quel che ho in dispensa» debba contare
-  meno. Proposta: no, almeno all'inizio — la dispensa non sa le quantità e non può
-  dire quanto di quella spesa è già pagata.
+**La fonte.** GialloZafferano scrive «Costo: …» fuori dal JSON-LD, e l'import ora lo
+legge: **R4 lo troverà fatto**, senza rifare niente. Due cose viste sulle pagine vere
+il 2026-09-24: le parole sono cinque come i nostri gradini, ma **non concordano nel
+genere** — «Elevato» sul filetto, «Molto elevata» sul risotto al tartufo — quindi il
+parser legge per radice; e qualunque parola diversa è nessun costo, mai un gradino
+indovinato.
+
+**Resta da fare, al deploy:** la migrazione `0010` si applica all'avvio, poi una volta
+sola `python -m app.cli.reread_costs` (vedi README), che riscarica le pagine delle
+ricette già importate e scrive solo il costo, solo dove manca. Poi la verifica a mano
+sul telefono: che il grigio dei gradini spenti si veda alla luce del giorno e non si
+confonda col nero — `e2e/style.spec.ts` misura i due colori, non come li legge un
+occhio in corsia.
 
 ---
 
@@ -1016,9 +1026,9 @@ distribuito il 2026-09-22 e verificato a mano il 2026-09-23.
 
 **Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
 
-**Indipendente e piccola, quando si vuole**: R9, il costo della ricetta — una colonna
-annullabile, un campo nel modulo e cinque `€`; il valore per le ricette importate
-arriva con R4.
+**Indipendente e piccola**: R9, il costo della ricetta, **fatta il 2026-09-24** — una
+colonna annullabile, un selettore e cinque `€`, più la lettura del costo dall'import,
+così R4 lo porta già.
 
 **Ultimo, quel che ha bisogno di tutto il resto**: Pasti (P1, P2, P3), M1, H1, H2.
 

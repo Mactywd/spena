@@ -183,6 +183,44 @@ test("i tasti delle porzioni sono bersagli da pollice, e il riporziona arriva a 
   await expect(meno).toBeDisabled();
 });
 
+test("i € del costo si distinguono accesi e spenti, e arrivano sulla scheda", async ({
+  page,
+}) => {
+  // R9: `€€€··` si legge «tre su cinque» solo se il nero e il grigio chiaro sono
+  // davvero due colori diversi a video, e quello lo dice Tailwind, non jsdom. Il
+  // costo scelto qui si toglie prima di finire: il file non lascia niente dietro.
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+
+  // per indirizzo e non per titolo: le altre prove e2e ne salvano una seconda con
+  // lo stesso nome, e `.first()` sceglierebbe ricette diverse qui e nell'elenco
+  const indirizzo = new URL(page.url()).pathname;
+
+  const tre = page.getByRole("button", { name: "Costo 3 su 5" });
+  const quattro = page.getByRole("button", { name: "Costo 4 su 5" });
+  await tre.click();
+  await expect(tre).toHaveAttribute("aria-pressed", "true");
+  // --color-ink #16281f acceso, --color-ink-ghost #b3bcb5 spento
+  await expect(tre).toHaveCSS("color", "rgb(22, 40, 31)");
+  await expect(quattro).toHaveCSS("color", "rgb(179, 188, 181)");
+  const box = await tre.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(40);
+  expect(box!.width).toBeGreaterThanOrEqual(40);
+
+  // dal dettaglio «Ricette» è due link, il tasto indietro e la scheda in basso: la
+  // barra delle schede li distingue
+  await page.getByRole("navigation").getByRole("link", { name: "Ricette", exact: true }).click();
+  const scheda = page.locator(`a[href="${indirizzo}"]`);
+  const segno = scheda.getByRole("img", { name: "Costo 3 su 5" });
+  await expect(segno).toBeVisible();
+  await expect(segno.locator("[data-cost-step='3']")).toHaveCSS("color", "rgb(22, 40, 31)");
+  await expect(segno.locator("[data-cost-step='4']")).toHaveCSS("color", "rgb(179, 188, 181)");
+
+  await scheda.click();
+  await page.getByRole("button", { name: "Costo 3 su 5" }).click();
+  await expect(page.getByText("non indicato")).toBeVisible();
+});
+
 test("il gradino scelto della scala si distingue, e si legge", async ({ page }) => {
   await page.getByRole("link", { name: "Ricette", exact: true }).click();
 
