@@ -1130,7 +1130,7 @@ nessuna rete.
 ```bash
 E2E="docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml"
 $E2E up -d --build --wait
-$E2E exec -T backend python -m app.cli.seed
+$E2E exec -T backend python -m app.cli.seed --con-ricette
 (cd frontend && E2E_BASE_URL=http://localhost:5174 npm run e2e)
 $E2E down -v
 ```
@@ -1183,12 +1183,9 @@ layout a 375px.
   preesistente `EMPTY_REASON` (`backend/app/services/recipe_import/materialize.py`).
   Una pagina `SKIPPED` non si ritenta da sola: chi vuole sapere perché deve
   aprire il database.
-- **La guardia sugli argomenti sconosciuti di `app.cli.seed` stampa il rifiuto
-  ma esce con codice 0** (`backend/app/cli/seed.py`, vicino a
-  `FLAG_SOLO_INGREDIENTI`): un refuso come `--solo-ingredient` viene detto a
-  schermo, ma niente lo farebbe fallire in uno script che controlla l'exit
-  code invece di leggere l'output. Innocuo finché quel comando resta digitato
-  a mano.
+- ~~**La guardia sugli argomenti sconosciuti di `app.cli.seed` stampa il rifiuto
+  ma esce con codice 0.**~~ **Chiusa con R4, il 2026-09-24**: un flag sconosciuto o
+  contraddittorio esce con codice 1.
 - **Il gate a password resta** — deciso il 2026-09-15. `SESSION_MAX_AGE` è già **un
   anno** (`backend/app/core/security.py:9`): in produzione la password si digita una
   volta per browser e poi mai più. Senza gate, `POST /api/v1/imports/...` diventerebbe

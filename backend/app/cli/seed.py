@@ -1,6 +1,8 @@
 """Caricamento dei dati di semina. Idempotente: si può rieseguire senza danni.
 
-Eseguire con `python -m app.cli.seed` dentro il container del backend.
+Eseguire con `python -m app.cli.seed` dentro il container del backend: carica
+l'anagrafica. `--con-ricette` carica anche le 26 ricette di semina, per sviluppo ed
+e2e; in produzione non servono più (R4).
 """
 
 import asyncio
@@ -140,28 +142,29 @@ async def load_recipes(session: AsyncSession, path: Path) -> RecipesLoaded:
     return RecipesLoaded(created=created, without_embedding=without_embedding)
 
 
+FLAG_CON_RICETTE = "--con-ricette"
+# Il default da R4, quindi non serve più: resta accettato perché è scritto nel README
+# e nelle mani di chi ha fatto i deploy precedenti.
 FLAG_SOLO_INGREDIENTI = "--solo-ingredienti"
+FLAGS = (FLAG_CON_RICETTE, FLAG_SOLO_INGREDIENTI)
 
 
 async def main() -> None:
-    # `--solo-ingredienti` per la messa in produzione di un'anagrafica allargata:
-    # il seme è idempotente e salta per titolo anche le ricette, ma «salta quelle
-    # che ci sono» non è «non ne rimette»: una ricetta del seme cancellata a mano
-    # tornerebbe. R4 prevede proprio di cancellarle, quindi la trappola è vicina.
+    # Da R4 il seme carica le ricette solo con `--con-ricette`: in produzione le
+    # ricette di semina si cancellano (`app.cli.drop_seed_recipes`), e un seme
+    # rilanciato senza pensarci non deve rimetterle. Sviluppo ed e2e le chiedono.
     #
-    # Un argomento che comincia per `--` e non è questo flag viene rifiutato: un
-    # refuso come `--solo-ingredient` altrimenti passerebbe inosservato come «nessun
-    # flag», il seme farebbe la passata piena, e niente distinguerebbe «capito» da
-    # «ignorato» — esattamente la trappola che il flag doveva evitare.
-    sconosciuti = [
-        arg for arg in sys.argv[1:] if arg.startswith("--") and arg != FLAG_SOLO_INGREDIENTI
-    ]
+    # Un argomento che comincia per `--` e non è uno dei flag viene rifiutato con
+    # codice 1: un refuso passato per «nessun flag» farebbe una passata diversa da
+    # quella chiesta, e uno script che guarda il codice d'uscita deve vederlo.
+    sconosciuti = [arg for arg in sys.argv[1:] if arg.startswith("--") and arg not in FLAGS]
     if sconosciuti:
-        print(
-            f"argomento sconosciuto: {sconosciuti[0]}. Valore valido: {FLAG_SOLO_INGREDIENTI}"
-        )
-        return
-    solo_ingredienti = FLAG_SOLO_INGREDIENTI in sys.argv
+        print(f"argomento sconosciuto: {sconosciuti[0]}. Valori validi: {', '.join(FLAGS)}")
+        raise SystemExit(1)
+    if FLAG_CON_RICETTE in sys.argv and FLAG_SOLO_INGREDIENTI in sys.argv:
+        print(f"{FLAG_CON_RICETTE} e {FLAG_SOLO_INGREDIENTI} si contraddicono: scegline uno.")
+        raise SystemExit(1)
+    solo_ingredienti = FLAG_CON_RICETTE not in sys.argv
     data_dir = find_data_dir()
     async with SessionLocal() as session:
         ingredients = await load_ingredients(session, data_dir / INGREDIENTS_FILE)

@@ -91,7 +91,7 @@ Poi:
 
 ```bash
 docker compose up -d --build --wait
-docker compose exec backend python -m app.cli.seed   # 187 ingredienti, 26 ricette
+docker compose exec backend python -m app.cli.seed --con-ricette   # anagrafica e 26 ricette
 ```
 
 Le migrazioni non sono un passo a mano: il backend esegue `alembic upgrade head`
@@ -297,7 +297,7 @@ dispensa vera.
 ```bash
 E2E="docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml"
 $E2E up -d --build --wait
-$E2E exec -T backend python -m app.cli.seed
+$E2E exec -T backend python -m app.cli.seed --con-ricette
 (cd frontend && E2E_BASE_URL=http://localhost:5174 npm run e2e)
 $E2E down -v
 ```
@@ -385,9 +385,10 @@ docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 12
 docker compose -f docker-compose.prod.yml exec backend python -m app.cli.seed --solo-ingredienti
 ```
 
-`--solo-ingredienti` carica la sola anagrafica e non tocca le ricette: il seme
-rimetterebbe altrimenti anche quelle di semina cancellate a mano, che R4 prevede
-di togliere (§8 di `docs/superpowers/specs/2026-09-17-non-alimentari-design.md`).
+Il seme carica la sola anagrafica e non tocca le ricette: da R4 è il default, e
+`--solo-ingredienti` resta accettato come sinonimo. Le ricette di semina servono solo
+a sviluppo ed e2e (`--con-ricette`); in produzione si tolgono con
+`python -m app.cli.drop_seed_recipes`, e un seme rilanciato non le rimette.
 
 Il `--wait-timeout` serve al caso in cui una migrazione futura fallisca. Qui il
 backend ha `restart: unless-stopped`: il container muore sulla migrazione, Docker lo

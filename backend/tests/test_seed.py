@@ -87,62 +87,54 @@ async def test_recipes_load_with_roles_and_aliases(db_session):
     assert all(r.source == "dataset" for r in recipes)
 
 
-async def test_main_con_solo_ingredienti_non_ricarica_le_ricette(db_session, monkeypatch):
-    """`main()` è la funzione vera invocata in produzione, non solo `load_ingredients`
-    e `load_recipes` chiamate a mano: nessun test la eseguiva, e decide se le
-    ricette vengono ricaricate su una macchina vera. `SessionLocal` viene sostituita
-    con la sessione di test, `sys.argv` con l'invocazione reale da riga di comando.
-    """
+async def _main_con(argv, db_session, monkeypatch):
+    """`main()` è la funzione vera invocata in produzione: `SessionLocal` viene
+    sostituita con la sessione di test, `sys.argv` con l'invocazione da riga di
+    comando."""
     from app.cli import seed as modulo_seme
 
     monkeypatch.setattr(modulo_seme, "SessionLocal", lambda: _SessioneDiTest(db_session))
-    monkeypatch.setattr(sys, "argv", ["app.cli.seed", "--solo-ingredienti"])
-
+    monkeypatch.setattr(sys, "argv", ["app.cli.seed", *argv])
     await modulo_seme.main()
-
     ingredients = list((await db_session.execute(select(Ingredient))).scalars())
     recipes = list((await db_session.execute(select(Recipe))).scalars())
+    return ingredients, recipes
+
+
+async def test_main_senza_flag_carica_solo_l_anagrafica(db_session, monkeypatch):
+    """Da R4 il default è quello sicuro in produzione: rilanciare il seme non fa
+    tornare le ricette di semina cancellate."""
+    ingredients, recipes = await _main_con([], db_session, monkeypatch)
     assert len(ingredients) > 0
-    assert recipes == [], "con --solo-ingredienti le ricette non devono entrare"
+    assert recipes == []
 
 
-async def test_main_senza_flag_carica_anche_le_ricette(db_session, monkeypatch):
-    """Il gemello del test sopra: senza il flag, il seme resta comportarsi come
-    prima, ricette comprese."""
-    from app.cli import seed as modulo_seme
+async def test_main_con_solo_ingredienti_resta_accettato(db_session, monkeypatch):
+    ingredients, recipes = await _main_con(["--solo-ingredienti"], db_session, monkeypatch)
+    assert len(ingredients) > 0
+    assert recipes == []
 
-    monkeypatch.setattr(modulo_seme, "SessionLocal", lambda: _SessioneDiTest(db_session))
-    monkeypatch.setattr(sys, "argv", ["app.cli.seed"])
 
-    await modulo_seme.main()
-
-    ingredients = list((await db_session.execute(select(Ingredient))).scalars())
-    recipes = list((await db_session.execute(select(Recipe))).scalars())
+async def test_main_con_ricette_carica_anche_le_ricette(db_session, monkeypatch):
+    """Sviluppo ed e2e le vogliono: si chiedono per nome."""
+    ingredients, recipes = await _main_con(["--con-ricette"], db_session, monkeypatch)
     assert len(ingredients) > 0
     assert len(recipes) > 0
 
 
-async def test_main_rifiuta_un_flag_sconosciuto_senza_toccare_niente(db_session, monkeypatch, capsys):
-    """Un refuso come --solo-ingredient (manca la i finale) prima faceva la passata
-    piena in silenzio: esattamente la trappola che --solo-ingredienti doveva
-    evitare. Deve invece rifiutare, dire cosa non ha capito e i valori validi,
-    e non toccare il database.
-    """
-    from app.cli import seed as modulo_seme
-
-    monkeypatch.setattr(modulo_seme, "SessionLocal", lambda: _SessioneDiTest(db_session))
-    monkeypatch.setattr(sys, "argv", ["app.cli.seed", "--solo-ingredient"])
-
-    await modulo_seme.main()
-
-    stampato = capsys.readouterr().out
-    assert "--solo-ingredient" in stampato
-    assert "--solo-ingredienti" in stampato
-
-    ingredients = list((await db_session.execute(select(Ingredient))).scalars())
-    recipes = list((await db_session.execute(select(Recipe))).scalars())
-    assert ingredients == [], "un flag sconosciuto non deve far entrare niente"
-    assert recipes == []
+@pytest.mark.parametrize(
+    "argv", [["--solo-ingredient"], ["--con-ricette", "--solo-ingredienti"]]
+)
+async def test_main_rifiuta_un_flag_sbagliato_con_codice_1(
+    db_session, monkeypatch, capsys, argv
+):
+    """Un refuso prima usciva con 0: uno script che guarda il codice d'uscita non se
+    ne accorgeva. E un flag sbagliato non tocca niente."""
+    with pytest.raises(SystemExit) as uscita:
+        await _main_con(argv, db_session, monkeypatch)
+    assert uscita.value.code == 1
+    assert "--con-ricette" in capsys.readouterr().out
+    assert list((await db_session.execute(select(Ingredient))).scalars()) == []
 
 
 async def test_il_seme_conta_e_annuncia_le_ricette_salvate_senza_vettore(
