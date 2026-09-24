@@ -235,3 +235,27 @@ async def test_i_conteggi_dicono_dove_sta_l_import(db_session, anagrafica):
     assert numeri.imported == 0
     assert numeri.skipped == 0
     assert numeri.pending_terms == 1
+
+
+async def test_pending_terms_salta_quelli_esclusi(db_session):
+    """`import_gz --tutto` esclude i termini già chiesti nel giro: senza, un primo
+    per frequenza con una risposta non verificabile verrebbe richiesto a ogni giro e
+    il resto della coda mai."""
+    from app.db.models.recipe_import import ImportTerm
+
+    frequente = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="a", display_name="A",
+        occurrences=9, decision=TermDecision.PENDING,
+    )
+    raro = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="b", display_name="B",
+        occurrences=1, decision=TermDecision.PENDING,
+    )
+    db_session.add_all([frequente, raro])
+    await db_session.flush()
+
+    primo = await pending_terms(db_session, GIALLOZAFFERANO, limit=1)
+    dopo = await pending_terms(db_session, GIALLOZAFFERANO, limit=1, exclude={frequente.id})
+
+    assert [t.term_key for t in primo] == ["a"]
+    assert [t.term_key for t in dopo] == ["b"]

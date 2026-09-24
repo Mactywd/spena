@@ -6,6 +6,7 @@ scritta tre volte si scolla tre volte.
 """
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
@@ -95,19 +96,29 @@ async def counts(session: AsyncSession, source: str) -> ImportCounts:
 
 
 async def pending_terms(
-    session: AsyncSession, source: str, limit: int = 20
+    session: AsyncSession,
+    source: str,
+    limit: int = 20,
+    exclude: Collection[uuid.UUID] = (),
 ) -> list[ImportTerm]:
     """I termini da decidere, da quello che sblocca più ricette.
 
     È l'unico ordine in cui vale la pena revisionare: più della metà dei termini
     compare in una ricetta sola, e decidere prima i frequenti è ciò che fa vedere il
     ricettario crescere.
+
+    `exclude` serve a `import_gz --tutto`: un termine a cui l'AI ha già risposto
+    qualcosa di non verificabile resta in coda e resta primo per frequenza, e senza
+    esclusione ogni giro rifarebbe le stesse domande mentre il resto della coda non
+    verrebbe mai chiesto.
     """
+    statement = select(ImportTerm).where(
+        ImportTerm.source == source, ImportTerm.decision == TermDecision.PENDING
+    )
+    if exclude:
+        statement = statement.where(ImportTerm.id.not_in(list(exclude)))
     rows = await session.execute(
-        select(ImportTerm)
-        .where(ImportTerm.source == source, ImportTerm.decision == TermDecision.PENDING)
-        .order_by(ImportTerm.occurrences.desc(), ImportTerm.display_name)
-        .limit(limit)
+        statement.order_by(ImportTerm.occurrences.desc(), ImportTerm.display_name).limit(limit)
     )
     return list(rows.scalars())
 
