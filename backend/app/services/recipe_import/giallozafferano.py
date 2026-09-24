@@ -98,6 +98,7 @@ class ParsedRecipe:
     cook_minutes: int | None
     ingredients: list[ParsedIngredient] = field(default_factory=list)
     nutrition: dict | None = None
+    cost: int | None = None
 
     def as_payload(self) -> dict:
         """La forma che finisce in `recipe_imports.payload`, serializzabile in JSON."""
@@ -115,6 +116,7 @@ class ParsedRecipe:
                 for i in self.ingredients
             ],
             "nutrition": self.nutrition,
+            "cost": self.cost,
         }
 
 
@@ -246,6 +248,45 @@ def parse_ingredients(soup: BeautifulSoup) -> list[ParsedIngredient]:
     return ingredients
 
 
+# Le cinque parole della fonte, per radice: la pagina non è coerente sul genere
+# («Molto elevata» sul risotto al tartufo, «Elevato» sul filetto), e la desinenza
+# non cambia il gradino. Qualunque altra parola è nessun costo, mai un gradino
+# indovinato (spec R9, §4).
+COST_STEMS = {
+    "molto bass": 1,
+    "bass": 2,
+    "medi": 3,
+    "elevat": 4,
+    "molto elevat": 5,
+}
+COST_LABEL = re.compile(r"^(?P<stem>.+?)[oa]$")
+
+
+def cost_from_label(label: str) -> int | None:
+    """`Medio` è 3, `Molto elevata` è 5, `Alto` non è niente."""
+    normalized = " ".join(label.split()).lower()
+    found = COST_LABEL.match(normalized)
+    if found is None:
+        return None
+    return COST_STEMS.get(found.group("stem"))
+
+
+def cost_from_page(soup: BeautifulSoup) -> int | None:
+    """Il gradino scritto fra i dati in evidenza, fuori dal JSON-LD.
+
+    `<span class="gz-name-featured-data">Costo: <strong>Medio</strong></span>`: si
+    cerca l'etichetta e non la posizione, perché accanto c'è «Difficoltà» con la
+    stessa forma e parole che si somigliano («Media»).
+    """
+    for item in soup.find_all("span", class_="gz-name-featured-data"):
+        label = item.get_text(" ", strip=True)
+        if not label.lower().startswith("costo"):
+            continue
+        value = item.find("strong")
+        return cost_from_label(value.get_text(" ", strip=True)) if value else None
+    return None
+
+
 def parse_recipe(html: str) -> ParsedRecipe:
     """Il testo di una pagina → una ricetta leggibile, o `UnparsablePage` col perché.
 
@@ -274,6 +315,7 @@ def parse_recipe(html: str) -> ParsedRecipe:
         cook_minutes=iso_minutes(data.get("cookTime")),
         ingredients=parse_ingredients(soup),
         nutrition=data.get("nutrition") if isinstance(data.get("nutrition"), dict) else None,
+        cost=cost_from_page(soup),
     )
 
 

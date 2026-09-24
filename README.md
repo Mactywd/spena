@@ -186,6 +186,18 @@ docker compose exec backend python -m app.cli.reparse_quantities
 Rilegge `quantity_text` — che non si riscrive mai — e riempie le colonne che servono a
 riporzionare. È rieseguibile per costruzione, e dice quante unità nuove ha depositato.
 
+Una volta sola dopo la migrazione `0010`, per il costo delle ricette già importate:
+
+```bash
+docker compose exec backend python -m app.cli.reread_costs
+```
+
+Le pagine prese prima di R9 non avevano il costo, e l'HTML non si conserva: il comando
+le riscarica una alla volta, con la stessa pausa dell'import, e scrive solo il costo,
+solo dove manca. Un costo scelto a mano non si tocca; se la fonte chiede di smettere
+si ferma, e rilanciato riprende da dove era. Le pagine importate da qui in avanti il
+costo lo portano già.
+
 ### I vettori della ricerca semantica
 
 Se tieni accesa la ricerca semantica (`INSTALL_EMBEDDINGS=1`), dopo un import esegui:

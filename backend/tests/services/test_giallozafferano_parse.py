@@ -5,6 +5,7 @@ import pytest
 from app.services.recipe_import.giallozafferano import (
     TERM_KEY_MAX_CHARS,
     UnparsablePage,
+    cost_from_label,
     parse_recipe,
     term_key,
 )
@@ -142,3 +143,39 @@ def test_il_payload_e_serializzabile_in_json():
     payload = parse_recipe(fixture("semplice")).as_payload()
 
     assert json.loads(json.dumps(payload))["ingredients"][0]["key"] == "ricette-con-i-Rigatoni"
+
+
+def test_il_costo_si_legge_dai_dati_in_evidenza():
+    """Sta nell'HTML e non nel JSON-LD, accanto alla difficoltà che non va confusa."""
+    recipe = parse_recipe(fixture("semplice"))
+    assert recipe.cost == 3
+    assert recipe.as_payload()["cost"] == 3
+
+
+def test_una_pagina_senza_costo_non_ne_inventa_uno():
+    recipe = parse_recipe(fixture("gruppi"))
+    assert recipe.cost is None
+    assert recipe.as_payload()["cost"] is None
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("Molto basso", 1),
+        ("Basso", 2),
+        ("Medio", 3),
+        ("Elevato", 4),
+        ("Molto elevato", 5),
+        # la fonte non è coerente sul genere: «Molto elevata» è sul risotto al
+        # tartufo, visto il 2026-09-24
+        ("Molto elevata", 5),
+        ("Media", 3),
+        ("Bassa", 2),
+        ("  molto   BASSO ", 1),
+        ("Alto", None),
+        ("Facile", None),
+        ("", None),
+    ],
+)
+def test_le_parole_della_fonte_diventano_gradini(label, expected):
+    assert cost_from_label(label) == expected

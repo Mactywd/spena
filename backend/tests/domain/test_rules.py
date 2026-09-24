@@ -14,6 +14,7 @@ from app.domain.rules import (
     PantryStatus,
     SECONDARY_CATEGORIES,
     availability_of,
+    cost_in_scale,
     default_role,
     expiry_state,
     is_cookable,
@@ -294,3 +295,11 @@ def test_il_giorno_della_dispensa_non_e_quello_di_utc():
 
     assert istante.date() == date(2026, 7, 15)
     assert today_in_pantry(istante) == date(2026, 7, 16)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(1, 1), (5, 5), (0, None), (6, None), (True, None), (2.5, None), ("3", None), (None, None)],
+)
+def test_il_costo_sta_nella_scala_o_non_c_e(value, expected):
+    assert cost_in_scale(value) == expected

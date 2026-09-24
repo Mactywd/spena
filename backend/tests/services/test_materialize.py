@@ -314,3 +314,35 @@ async def test_una_categoria_troppo_lunga_viene_troncata(db_session, anagrafica)
     ricetta = (await db_session.execute(select(Recipe))).scalars().one()
     assert len(ricetta.category) == 60
     assert ricetta.category == long_category[:60]
+
+
+async def test_il_costo_della_pagina_arriva_sulla_ricetta(db_session, anagrafica):
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/pane.html",
+        payload={**payload("Pane", [("farina-00", "Farina 00", "500 g")]), "cost": 2},
+    )
+    await materialize_ready(db_session)
+    ricetta = (await db_session.execute(select(Recipe))).scalars().one()
+    assert ricetta.cost == 2
+
+
+async def test_una_pagina_salvata_prima_del_costo_resta_senza(db_session, anagrafica):
+    """Le pagine scaricate prima di R9 non hanno la chiave: niente costo, non un errore."""
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/pane.html",
+        payload=payload("Pane", [("farina-00", "Farina 00", "500 g")]),
+    )
+    await materialize_ready(db_session)
+    ricetta = (await db_session.execute(select(Recipe))).scalars().one()
+    assert ricetta.cost is None
+
+
+async def test_un_costo_fuori_scala_nel_payload_non_ferma_il_lotto(db_session, anagrafica):
+    """Il CHECK lo rifiuterebbe facendo fallire tutte le pagine della chiamata."""
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio/pane.html",
+        payload={**payload("Pane", [("farina-00", "Farina 00", "500 g")]), "cost": 9},
+    )
+    await materialize_ready(db_session)
+    ricetta = (await db_session.execute(select(Recipe))).scalars().one()
+    assert ricetta.cost is None

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.ingredient import Ingredient
 from app.db.models.recipe import RecipeSource
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportState, TermDecision
-from app.domain.rules import IngredientRole, default_role
+from app.domain.rules import IngredientRole, cost_in_scale, default_role
 from app.repositories.imports import pending_pages, terms_by_key
 from app.repositories.recipes import NonFoodInRecipe, create_recipe
 from app.services.embeddings import (
@@ -147,6 +147,10 @@ async def materialize_ready(
         recipe.image_url = (page.payload.get("image_url") or None) and str(page.payload["image_url"])[:500]
         recipe.prep_minutes = page.payload.get("prep_minutes")
         recipe.cook_minutes = page.payload.get("cook_minutes")
+        # Assente sulle pagine scaricate prima di R9, e un valore fuori scala non
+        # deve arrivare al CHECK di `recipes.cost`: lì farebbe fallire il flush di
+        # tutte le pagine pronte di questa chiamata, non solo di questa.
+        recipe.cost = cost_in_scale(page.payload.get("cost"))
         page.state = ImportState.IMPORTED
         page.recipe_id = recipe.id
         created += 1

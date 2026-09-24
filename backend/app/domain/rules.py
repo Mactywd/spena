@@ -200,3 +200,17 @@ def default_role(category: str, quantity_text: str | None) -> IngredientRole:
     if category in SECONDARY_CATEGORIES:
         return IngredientRole.SECONDARY
     return IngredientRole.PRIMARY
+
+
+# La scala del costo di una ricetta (R9): un livello, non una cifra. Gli stessi
+# estremi del CHECK `ck_recipe_cost` sulla tabella; stanno qui perché li leggono la
+# rotta, l'import e la bozza AI, e tre copie divergono.
+COST_MIN = 1
+COST_MAX = 5
+
+
+def cost_in_scale(value: object) -> int | None:
+    """Un gradino valido, o nessuno. `True` non è 1 e `2.5` non è 2 o 3."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if COST_MIN <= value <= COST_MAX else None

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe import RecipeSource
-from app.domain.rules import Availability, IngredientRole
+from app.domain.rules import COST_MAX, COST_MIN, Availability, IngredientRole
 
 
 class RecipeIngredientIn(BaseModel):
@@ -32,11 +32,6 @@ class RecipeIngredientIn(BaseModel):
             # indovinare «altro» popolerebbe il registro di voci che nessuno correggerà
             raise ValueError("per creare un ingrediente serve anche `category`")
         return self
-
-
-# La scala di R9. Stessi estremi del CHECK `ck_recipe_cost` sulla tabella.
-COST_MIN = 1
-COST_MAX = 5
 
 
 class RecipeCreate(BaseModel):
