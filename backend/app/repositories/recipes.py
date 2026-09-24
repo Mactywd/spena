@@ -35,6 +35,7 @@ async def create_recipe(
     source_ref: str | None,
     ingredients: list[tuple[uuid.UUID, str, str | None, str | None]],
     embedding: list[float] | None,
+    cost: int | None = None,
 ) -> Recipe:
     """`ingredients` è una lista di (ingredient_id, role, quantity_text, note)."""
     # Prima di scrivere qualunque cosa. Una query sola per tutta la ricetta, e sul
@@ -62,7 +63,7 @@ async def create_recipe(
 
     recipe = Recipe(
         title=title, description=description, instructions=instructions, servings=servings,
-        source=source, source_ref=source_ref, embedding=embedding,
+        source=source, source_ref=source_ref, embedding=embedding, cost=cost,
     )
     for ingredient_id, role, quantity_text, note in ingredients:
         # Il parser gira qui e non nei chiamanti: questo è già l'unico punto che

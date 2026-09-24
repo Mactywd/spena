@@ -26,6 +26,7 @@ from app.schemas.recipe import (
     RecipeIngredientOut,
     RecipeOut,
     RecipeSummaryOut,
+    RecipeUpdate,
     SearchModeOut,
 )
 from app.services.ai_recipes import draft_recipe
@@ -119,7 +120,7 @@ async def _to_out(
         missing=missing_count(requirements), cookable=is_cookable(requirements),
         missing_names=sorted(missing_names),
         image_url=recipe.image_url, prep_minutes=recipe.prep_minutes,
-        cook_minutes=recipe.cook_minutes, category=recipe.category,
+        cook_minutes=recipe.cook_minutes, category=recipe.category, cost=recipe.cost,
         scaled_to=servings if factor is not None else None,
         unscalable_lines=unscalable, dose_lines=dose_lines,
     )
@@ -168,6 +169,7 @@ async def search(
             missing_names=r.missing_names,
             image_url=r.recipe.image_url, prep_minutes=r.recipe.prep_minutes,
             cook_minutes=r.recipe.cook_minutes, category=r.recipe.category,
+            cost=r.recipe.cost,
         )
         for r in results
     ]
@@ -209,6 +211,20 @@ async def detail(
     if recipe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
     return await _to_out(session, recipe, servings=servings)
+
+
+@router.patch("/{recipe_id}", response_model=RecipeOut)
+async def update(
+    recipe_id: uuid.UUID, payload: RecipeUpdate, session: AsyncSession = Depends(get_session)
+) -> RecipeOut:
+    """Cambia quel che `RecipeUpdate` dichiara, e solo i campi mandati davvero."""
+    recipe = await get_recipe(session, recipe_id)
+    if recipe is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
+    if "cost" in payload.model_fields_set:
+        recipe.cost = payload.cost
+    await session.commit()
+    return await _to_out(session, recipe)
 
 
 @router.post("", response_model=RecipeOut, status_code=status.HTTP_201_CREATED)
@@ -254,6 +270,7 @@ async def create(
             source=payload.source, source_ref=payload.source_ref,
             ingredients=resolved,
             embedding=embedding,
+            cost=payload.cost,
         )
         await session.commit()
     except NonFoodInRecipe as exc:

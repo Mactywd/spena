@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -46,6 +47,7 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
             postgresql_using="hnsw", postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
         Index("ix_recipes_category", "category"),
+        CheckConstraint("cost IS NULL OR cost BETWEEN 1 AND 5", name="ck_recipe_cost"),
     )
 
     title: Mapped[str] = mapped_column(String(200))
@@ -62,6 +64,10 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
     # testo libero e non enum: la tassonomia è della fonte, e un enum costringerebbe
     # a una migrazione il giorno che aggiungono una voce
     category: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Un livello da 1 a 5, non una cifra: un prezzo andrebbe tenuto aggiornato e
+    # mentirebbe il giorno in cui si smette (R9). Annullabile, perché una ricetta
+    # senza costo non è una ricetta da 1 — e il budget di P3 dovrà saperle contare.
+    cost: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
     search_tsv: Mapped[str] = mapped_column(
         TSVECTOR,

@@ -34,6 +34,11 @@ class RecipeIngredientIn(BaseModel):
         return self
 
 
+# La scala di R9. Stessi estremi del CHECK `ck_recipe_cost` sulla tabella.
+COST_MIN = 1
+COST_MAX = 5
+
+
 class RecipeCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
@@ -42,6 +47,18 @@ class RecipeCreate(BaseModel):
     source: RecipeSource
     source_ref: str | None = Field(default=None, max_length=500)
     ingredients: list[RecipeIngredientIn] = Field(default_factory=list)
+    cost: int | None = Field(default=None, ge=COST_MIN, le=COST_MAX)
+
+
+class RecipeUpdate(BaseModel):
+    """Quel che si cambia di una ricetta dopo averla salvata: oggi il costo e basta.
+
+    Un campo assente non si tocca, `null` lo azzera: per questo la rotta legge
+    `model_fields_set` e non il valore. `strict` perché `2.5` o `"3"` non sono un
+    gradino, e arrotondarli sarebbe decidere al posto di chi ha toccato.
+    """
+
+    cost: int | None = Field(default=None, ge=COST_MIN, le=COST_MAX, strict=True)
 
 
 class RecipeIngredientOut(BaseModel):
@@ -80,6 +97,7 @@ class RecipeOut(BaseModel):
     prep_minutes: int | None = None
     cook_minutes: int | None = None
     category: str | None = None
+    cost: int | None = None
     scaled_to: int | None = None
     unscalable_lines: int = 0
     # il denominatore di `unscalable_lines`: quante righe una dose ce l'hanno. Lo
@@ -105,6 +123,7 @@ class RecipeSummaryOut(BaseModel):
     prep_minutes: int | None = None
     cook_minutes: int | None = None
     category: str | None = None
+    cost: int | None = None
 
 
 class SearchModeOut(BaseModel):
