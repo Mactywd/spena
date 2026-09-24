@@ -1,6 +1,9 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-24, sette volte. La settima: **R4 costruita, non eseguita** — in
+Aggiornato il 2026-09-24, otto volte. L'ottava: **R4 eseguita** — in produzione ci
+sono **8.136 ricette**, 56 termini aspettano una decisione a mano e trattengono 315
+pagine, l'AI è costata **0,66 $** e il database pesa **72 MB**; i numeri sono in R4.
+La settima: **R4 costruita, non eseguita** — in
 `master`, con il runbook per la sessione che la eseguirà
 (`docs/import-gz-runbook.md`). Misurando, R4 ha trovato i filtri del ricettario in
 errore oltre le ~3.300 ricette: corretti prima che l'import li raggiungesse. La sesta: **un ricontrollo del lavoro della
@@ -150,6 +153,14 @@ plurali sbagliati dall'AI su ventisette (uno dei quali l'`--azzera` non sapeva
 correggere, il che ha prodotto `--imposta` lo stesso giorno), e circa settanta dosi
 che contengono una dose vera che il parser non legge, perché l'import le ha scritte
 con un aggettivo e lo spazio bianco della pagina davanti al numero.
+
+**Lo stesso 2026-09-24, più tardi, R4 è stata eseguita in produzione** con
+`docs/import-gz-runbook.md`, da una sessione locale: deploy di `343d117` (pacchetto
+servito `index-CUXgt-G-.js`, alembic `0010 (head)`), backup, via le 26 ricette di
+semina, `import_gz --tutto` dalle 15:29 alle 20:15 UTC, `decide_units` in cinque giri.
+Il ricettario ha **8.136 ricette**; 56 termini aspettano la mano in «Ingredienti da
+abbinare», e con loro 315 pagine che entreranno da sé. I numeri sono in **R4**; una
+cosa vista solo sui dati veri (le dosi del tipo «36 mesi») è in **Parte X**.
 
 ---
 
@@ -797,16 +808,52 @@ service worker dalla sua cache, ne manda ancora uno solo e continua a filtrare b
 invece di vedersi ignorare il parametro e mostrare il ricettario intero sotto
 l'etichetta di un filtro acceso.
 
-## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[COSTRUITA 2026-09-24, da eseguire]**
+## R4. Via le ricette di semina, e l'import completo di GialloZafferano **[FATTO 2026-09-24, in produzione]**
 L'obiettivo è tutto il catalogo. La strategia di partenza era «prima uno scarico
 locale completo, poi la messa online e il parsing a ondate»: nata per lo storage, che
 non è più un problema, e sostituita dal brainstorming del 2026-09-24 con un comando che
 svuota la sitemap direttamente sul server.
 
-> **Costruita, non eseguita.** Il codice è in `master` e su `origin` dal 2026-09-24,
-> **non in produzione**. Deploy, cancellazione delle ricette di semina e lancio
+> **Eseguita il 2026-09-24**, seguendo `docs/import-gz-runbook.md` passo per passo.
+> Deploy di `343d117` verificato sul pacchetto servito (`index-CUXgt-G-.js`, diverso
+> da quello di prima) e con alembic a `0010 (head)`; backup
+> `~/spena-prima-di-r4-2026-09-24.sql.gz` (126 kB, 13 tabelle su 13) — **si può
+> cancellare dopo qualche giorno**; cancellate le 26 ricette di semina.
+>
+> - **Tempo**: `import_gz --tutto` dalle 15:29 alle 20:15 UTC, 4 ore e 46 minuti,
+>   senza una fermata. Circa 450 pagine ogni quarto d'ora.
+> - **Pagine**: la sitemap ne aveva 8.469, 40 già importate; delle 8.429 nuove,
+>   **8.410 prese e 19 scartate**, tutte con lo stesso motivo: «nessuna riga
+>   dd.gz-ingredient nella pagina». In `recipe_imports`: 8.135 `imported`,
+>   315 `pending`, 19 `skipped`.
+> - **Ricette**: **8.136** (le 8.135 importate più una scritta a mano), con 79.833
+>   righe d'ingrediente, di cui 49.058 (61 %) con una dose strutturata.
+> - **Termini**: 1.563 abbinati dall'AI e 12 ignorati dall'AI, 247 abbinati da sé,
+>   24 a mano (tutti di prima), **56 ancora in coda**. Sono loro a trattenere le 315
+>   pagine `pending`: si decidono da «Ingredienti da abbinare» in cima al ricettario,
+>   e le ricette entrano da sé. I più frequenti: Stracciatella (50 righe), Farina di
+>   mais fioretto (33), Cioccolato al latte (30), Filetto di manzo (24), Carne di
+>   suino (20). L'anagrafica è arrivata a 935 ingredienti.
+> - **Unità**: 70 parole nuove, decise da `decide_units` in cinque giri (dodici per
+>   giro, 0 risposte rifiutate). Non tutte sono unità: vedi Parte X, «36 mesi».
+> - **Costo**: **0,66 $** in tutto, dentro il limite di credito di 1 $ messo sulla
+>   chiave per l'occasione. `term_decision` 1.562 chiamate per 0,656 $,
+>   `term_collapse` 155 per 0,005 $, `unit_forms` 10 per 0,0007 $. Il limite non è
+>   mai scattato, e l'AI non è mai stata lasciata stare.
+> - **Spazio**: il database è passato da 10 MB a **72 MB**, meno della metà dei 150
+>   stimati; disco a 42 GB su 75, 30 liberi.
+> - **La ricerca sulle ricette vere**, lo script di §7 del runbook in tre giri: a
+>   caldo **92–244 ms** per ogni caso (ricettario intero, `offset` 3000, soglia 0 e 3,
+>   «pasta» con e senza soglia). La prima chiamata di un processo nuovo costa
+>   390–448 ms. Sopra i 73–143 ms delle 8.500 ricette sintetiche, sotto i 300 ms per
+>   i quali il runbook chiedeva un `EXPLAIN ANALYZE`.
+> - **La verifica a schermo sul telefono** (§7.5 del runbook) **resta da fare** a
+>   Mattia: vuole il login, e una sessione di Claude non scrive password.
+
+> **Costruita il 2026-09-24.** Il codice è entrato in `master` e su `origin` quel
+> giorno. Deploy, cancellazione delle ricette di semina e lancio
 > dell'import sono in **`docs/import-gz-runbook.md`**, scritto per la sessione che li
-> farà: si parte da lì. Spec: `docs/superpowers/specs/2026-09-24-import-completo-design.md`;
+> farà. Spec: `docs/superpowers/specs/2026-09-24-import-completo-design.md`;
 > piano: `docs/superpowers/plans/2026-09-24-import-completo.md`.
 >
 > Cosa c'è: il seme carica le ricette solo con `--con-ricette` (in produzione un seme
@@ -879,7 +926,8 @@ TBD grosso, da affrontare prima della spec: quante coppie sono, quanto costano c
 tetto di 1$/giorno, se la sostituibilità dipende dalla ricetta o solo dalla coppia di
 ingredienti (il burro nella besciamella non è il burro nei biscotti), e come si
 corregge una risposta sbagliata.
-↳ R4 (serve l'anagrafica ampia).
+↳ R4 (serve l'anagrafica ampia) — **fatta il 2026-09-24**: l'anagrafica ha 935
+ingredienti, e R5 non aspetta più niente se non la sua spec.
 
 ## R6. Filtra per ricette cucinabili **con sostituti** **[D]** ↳ R5
 Oggi si filtra per «cucinabile». Serve anche «cucinabile usando quel che ho al posto
@@ -1146,8 +1194,8 @@ ed è andata proprio così: non ha aspettato né S4 né lo storage, e il lavoro 
 quel che si diceva — una colonna annullabile, un campo data e un colore. Fuso,
 distribuito il 2026-09-22 e verificato a mano il 2026-09-23.
 
-**Poi**: R4, **costruita il 2026-09-24 e da eseguire** con `docs/import-gz-runbook.md`
-— e a valle R5, R6.
+**Poi**: R4, **eseguita il 2026-09-24** (8.136 ricette in produzione). A valle, R5 e
+R6 non aspettano più R4: aspettano la spec di R5.
 
 **Indipendente e piccola**: R9, il costo della ricetta, **fatta il 2026-09-24** — una
 colonna annullabile, un selettore e cinque `€`, più la lettura del costo dall'import,
@@ -1334,6 +1382,18 @@ layout a 375px.
   ogni parola prima del numero diventa un caso da decidere, ed è la strada che la
   spec ha già scartato una volta). Qualunque si scelga, poi basta rilanciare
   `reparse_quantities`: è rieseguibile apposta.
+- **Il rovescio della voce sopra, visto con R4: un numero nel nome letto come la
+  dose.** Misurato il 2026-09-24 sulle 8.136 ricette. `"36 mesi\n\t\t\t50\n\t\t\tg"`
+  (un Parmigiano stagionato) è parsato come 36 della unità `mesi`, e la dose vera,
+  `50 g`, si perde. Al doppio delle porzioni la riga direbbe **72 mesi**. Stessa
+  forma per `1 da … 150 g`, `2 intere … 600 g`, `2 per un totale di 150 g`,
+  `380/420 W … 410 g`, `24 K, in foglie`. Sono circa 90 righe su 79.833 (56 solo
+  `mesi`), e hanno portato in `units` parole che unità non sono: `mesi`, `da`, `di`,
+  `e`, `per`, `già`, `circa`, `q`, `k`, `w`, `grande`, `piccola`, `rossa`… —
+  `decide_units` le ha decise come qualunque parola, perché il suo compito è
+  singolare e plurale, non se sia un'unità. Il rimedio è quello della voce sopra:
+  ripulire `quantity_text` all'ingresso, poi `reparse_quantities`. Chi lo fa tenga
+  conto che le unità spurie restano in `units` finché qualcuno non le toglie.
 - **Ogni test di schermata si costruisce il proprio client react-query con
   `retry: false`, mentre `frontend/src/App.tsx` usa
   `defaultQueryRetryPredicate`.** È esattamente la prima lezione di `CLAUDE.md` —
