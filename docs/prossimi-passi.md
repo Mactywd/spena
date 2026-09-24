@@ -1,6 +1,8 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-23 (**la verifica a mano di S7 e R7 è stata fatta ed è
+Aggiornato il 2026-09-24 (**due voci nuove**: R9, il costo della ricetta da uno a
+cinque `€`, e P3, la pianificazione su più giorni con un budget — il brainstorming
+sulla forma del budget è aperto). Prima: il 2026-09-23 (**la verifica a mano di S7 e R7 è stata fatta ed è
 passata**: nessun difetto). Prima: il 2026-09-22 (**S7 e R7 in produzione**: la
 scadenza in dispensa e la scala a cinque gradini del ricettario girano su
 `spena.mattiagirellini.com`, migrazione `0009` applicata), il
@@ -785,6 +787,29 @@ Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
 
 TBD: se la nuova ricetta tiene un legame con quella da cui nasce, e se si vede.
 
+## R9. Il costo della ricetta **[D, con TBD]**
+Ogni ricetta ha un costo da 1 a 5, disegnato come cinque `€` di cui i primi *n* neri
+e gli altri grigio chiaro: `€€€··` è una ricetta da 3. È un **livello**, non una
+cifra in euro — la stessa scelta della decisione fondante 1 sulle quantità, per la
+stessa ragione: un prezzo vero andrebbe tenuto aggiornato e comincerebbe a mentire il
+giorno in cui si smette.
+
+**Da dove arriva il valore.** GialloZafferano scrive già sulla pagina «Costo: Molto
+basso / Basso / Medio / Elevato / Molto elevato» — esattamente cinque gradini. Oggi
+l'import non lo legge (sta nell'HTML, non nel JSON-LD) e non conserva l'HTML, quindi
+per le ricette già importate va riscaricata la pagina: si fa insieme all'import
+completo di R4. Per le ricette scritte a mano o dall'AI il costo si sceglie nel
+modulo; per la bozza AI può proporlo l'AI, come propone il resto.
+
+TBD:
+- annullabile o obbligatorio? La regola «ciò che manca resta mancante» vale anche
+  qui: una ricetta senza costo non è una ricetta da 1;
+- **il costo è della ricetta intera o della porzione?** Per il ricettario non cambia
+  niente; per P3, che somma pasti, cambia tutto (vedi lì);
+- se il costo di una ricetta cucinata «con quel che ho in dispensa» debba contare
+  meno. Proposta: no, almeno all'inizio — la dispensa non sa le quantità e non può
+  dire quanto di quella spesa è già pagata.
+
 ---
 
 # Parte IV — Pasti (sezione primaria nuova) ↳ D1, D2, D3
@@ -811,6 +836,54 @@ mangiare con quel che si è mangiato, e dà un punteggio.
   deve dire di esserlo.
 
 ↳ P1 per i dati mangiati, S4 per i nutrienti, D1 per le quantità.
+
+## P3. Pianificare più giorni **[TBD]** ↳ P1, P2, M1, R9
+Nella sezione Pasti, oltre al pasto singolo, si pianifica un periodo — una settimana,
+o più.
+
+Il giro, come l'ha descritto Mattia il 2026-09-24:
+1. si segnano i pasti **già decisi** — una cena fuori, un pranzo dai genitori — che il
+   piano non deve riempire;
+2. si dice **quanti pasti al giorno** si vogliono fare;
+3. si dà un **budget di costo** per il periodo, con un margine accettabile;
+4. il programma sceglie le ricette guardando nutrienti (↳ P2, S4), budget (↳ R9) e,
+   come M1, la dispensa.
+
+Il budget è una somma di livelli: ogni ricetta scelta sottrae tanti `€` quanti ne
+porta. Nella prima formulazione era «ideale 30 €, con margine di 10 €» — dove però
+«€» non sono euro ma gradini di costo, e **questo è il TBD principale: la forma del
+budget confonde**. Il brainstorming è partito il 2026-09-24; le opzioni e le domande
+aperte stanno sotto.
+
+**Opzioni sul budget** (nessuna decisa):
+- **a. Somma di gettoni con tetto** — la formulazione originale, con un nome che non
+  sia «euro» («30 gettoni, fino a 40»). Fedele all'idea, ma il numero giusto cambia
+  con i giorni e i pasti: 30 su sette giorni e due pasti è un'altra cosa che su tre.
+- **b. Media per pasto** — «in media `€€···`, al massimo `€€€··`». Si esprime con lo
+  stesso simbolo della ricetta, non cambia al cambiare della durata e dei pasti fuori,
+  e la somma la fa il programma. Proposta.
+- **c. Tre profili** — «risparmio / normale / mi concedo», tradotti dietro in b.
+  È b con meno manopole; si può aggiungere dopo senza toccare il resto.
+
+**Domande aperte:**
+- il margine è simmetrico? Proposta: no — spendere meno dell'ideale non è mai un
+  errore, quindi è un ideale e un tetto, non un ±;
+- sommare livelli è lecito? `€€€€` non costa per forza il doppio di `€€`: la somma
+  tratta una scala ordinale come se fosse in euro. Si può accettare come
+  approssimazione dichiarata, o dare ai gradini un peso non lineare nascosto;
+- **porzioni e avanzi**: una ricetta da 4 porzioni mangiata in due giorni sottrae il
+  suo costo una volta o due? E il piano deve saper proporre «ceni e ti avanza il
+  pranzo di domani»? Si lega a R2 e a «costo per ricetta o per porzione» di R9;
+- i pasti fuori pesano sul budget? Proposta: no di default — il budget è quello della
+  spesa — con un costo facoltativo per chi lo vuole;
+- cosa fa il piano quando budget e nutrienti non stanno insieme: rispetta il tetto e
+  lo dice, mai un «impossibile» secco (Mai un vicolo cieco);
+- il piano finito **chiude l'anello**: quel che manca per le ricette scelte va in
+  lista della spesa, come oggi va quel che finisce cucinando.
+
+**Cosa si può fare prima di P2 e S4.** I nutrienti per ricetta non esistono ancora:
+un primo piano può guardare solo budget, pasti al giorno, dispensa e varietà, e
+imparare i nutrienti quando arrivano — come P2 senza H2 impara l'attività dopo.
 
 ---
 
@@ -938,7 +1011,11 @@ distribuito il 2026-09-22 e verificato a mano il 2026-09-23.
 
 **Poi, quel che aspetta lo storage**: R4, e a valle R5, R6.
 
-**Ultimo, quel che ha bisogno di tutto il resto**: Pasti (P1, P2), M1, H1, H2.
+**Indipendente e piccola, quando si vuole**: R9, il costo della ricetta — una colonna
+annullabile, un campo nel modulo e cinque `€`; il valore per le ricette importate
+arriva con R4.
+
+**Ultimo, quel che ha bisogno di tutto il resto**: Pasti (P1, P2, P3), M1, H1, H2.
 
 ---
 
