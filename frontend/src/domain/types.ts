@@ -224,3 +224,76 @@ export interface UndoResult {
 export interface RestockResult {
   added: boolean;
 }
+
+// L'anagrafica (S9): la scheda dell'ingrediente, la fusione, i rifiuti.
+export interface AliasEntry {
+  id: string;
+  alias: string;
+  source: string;
+  /** Vero se l'alias è la metà di una decisione della coda: si corregge da lì. */
+  decided_in_queue: boolean;
+}
+
+export interface ProductBrief {
+  id: string;
+  name: string;
+  brand: string | null;
+  barcode: string | null;
+}
+
+export interface IngredientUsage {
+  recipes: number;
+  pantry: number;
+  shopping: number;
+}
+
+export interface IngredientDetail extends Ingredient {
+  aliases: AliasEntry[];
+  products: ProductBrief[];
+  usage: IngredientUsage;
+}
+
+/** Quel che una fusione muove. Gli stessi numeri escono dall'anteprima, che è la
+ * fusione stessa annullata (spec S9 §5.1). */
+export interface MergeCounts {
+  dry_run: boolean;
+  loser_name: string;
+  winner_id: string;
+  winner_name: string;
+  recipes_rebuilt: number;
+  recipe_lines_moved: number;
+  pantry_items: number;
+  shopping_items: number;
+  products: number;
+  aliases: number;
+  cooking_events_relinked: number;
+}
+
+export interface AliasMoved {
+  /** `null` se l'alias era il nome stesso dell'ingrediente d'arrivo, e quindi è sparito. */
+  alias: AliasEntry | null;
+  ingredient: Ingredient;
+}
+
+/** Il corpo di un 409 dell'anagrafica. `code` dice quale passo offrire (spec S9 §7),
+ * l'ostacolo accanto dice con chi. */
+export type RegistryRefusal =
+  | { code: "name_taken" | "kind_mismatch"; detail: string; existing?: Ingredient }
+  | {
+      code: "non_food_in_recipes";
+      detail: string;
+      recipe_count: number;
+      recipes: { id: string; title: string }[];
+    }
+  | { code: "import_alias"; detail: string; term: { id: string; display_name: string } }
+  | { code: "barcode_taken"; detail: string; existing: ProductBrief }
+  | {
+      code:
+        | "same_ingredient"
+        | "empty_name"
+        | "unknown_category"
+        | "decision_refused"
+        | "still_used"
+        | "bad_checksum";
+      detail: string;
+    };

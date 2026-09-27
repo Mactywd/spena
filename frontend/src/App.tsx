@@ -12,6 +12,7 @@ import { RecipeDetailScreen } from "./features/cooking/RecipeDetailScreen";
 import { PantryScreen } from "./features/pantry/PantryScreen";
 import { ImportQueueScreen } from "./features/recipe-import/ImportQueueScreen";
 import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
+import { IngredientScreen } from "./features/registry/IngredientScreen";
 import { RegistryScreen } from "./features/registry/RegistryScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/ricette/importa" element={<ImportQueueScreen />} />
             <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
             <Route path="/anagrafica" element={<RegistryScreen />} />
+            <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
           </Routes>
         </main>
         <TabBar />
