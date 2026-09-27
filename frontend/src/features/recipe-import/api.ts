@@ -25,6 +25,12 @@ export function fetchImportTerms(decidedBy?: "ai" | "human") {
   return apiFetch<ImportTerm[]>(`/imports/terms${query}`);
 }
 
+/** Un termine solo, deciso o no, nella forma dell'elenco a cui appartiene: quello a
+ * cui porta `?termine=` dai rifiuti dell'anagrafica. */
+export function fetchImportTerm(id: string) {
+  return apiFetch<ImportTerm>(`/imports/terms/${encodeURIComponent(id)}`);
+}
+
 /** Fa decidere all'AI i termini in coda, e applica. Non torna proposte da
  * confermare: le decisioni si rivedono dall'elenco «Decisioni recenti». Senza
  * `termIds` vale per tutta la coda, che è il caso del bottone. */

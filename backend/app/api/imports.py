@@ -86,45 +86,71 @@ async def read_terms(
     """
     if decided_by is not None:
         terms = await decided_terms(session, GIALLOZAFFERANO, decided_by, limit=limit)
-        return [
-            TermOut(
-                id=term.id, display_name=term.display_name, occurrences=term.occurrences,
-                suggestion=None, waiting_titles=[], decided_by=term.decided_by,
-                decided_action=_decided_action(term),
-                decided_name=await _ingredient_name(session, term.ingredient_id),
-                decided_at=term.decided_at,
-            )
-            for term in terms
-        ]
+        return [await _decided_out(session, term) for term in terms]
 
     terms = await pending_terms(session, GIALLOZAFFERANO, limit=limit)
     titles = await waiting_titles(
         session, GIALLOZAFFERANO, [term.term_key for term in terms]
     )
+    return [
+        await _pending_out(session, term, titles.get(term.term_key, [])) for term in terms
+    ]
 
-    out: list[TermOut] = []
-    for term in terms:
-        match = await match_name(session, term.display_name)
-        # Una voce non alimentare non si propone mai come scorciatoia: il tasto
-        # «Collega» chiamerebbe comunque la guardia 4.4 più sotto e tornerebbe un
-        # 422 garantito (finding 2 della revisione finale). Meglio nessuna
-        # scorciatoia che una che non porta da nessuna parte.
-        suggestion = (
-            SuggestionOut(
-                ingredient_id=match.ingredient_id, name=match.name, certain=match.certain
-            )
-            if match.ingredient_id is not None
-            and match.name is not None
-            and match.kind != IngredientKind.NON_FOOD
-            else None
+
+@router.get("/terms/{term_id:uuid}", response_model=TermOut)
+async def read_term(
+    term_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> TermOut:
+    """Un termine solo, deciso o no: quello a cui porta un rifiuto dell'anagrafica.
+
+    «Decisioni recenti» ne mostra al più cento, e nessuno deciso `auto`: senza questa
+    rotta un termine deciso tempo fa non si ritroverebbe in coda, e il rifiuto che
+    dice «annullalo lì» sarebbe un vicolo cieco. La forma è quella dell'elenco a cui il
+    termine appartiene, così la schermata lo disegna con la stessa riga.
+
+    `:uuid` nel percorso: senza, `/terms/proposals` — la vecchia rotta tolta, che deve
+    restare un 404 — combacerebbe con questa e risponderebbe 405.
+    """
+    term = await get_term(session, term_id)
+    if term is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "termine inesistente")
+    if term.decision != TermDecision.PENDING:
+        return await _decided_out(session, term)
+    titles = await waiting_titles(session, GIALLOZAFFERANO, [term.term_key])
+    return await _pending_out(session, term, titles.get(term.term_key, []))
+
+
+async def _decided_out(session: AsyncSession, term: ImportTerm) -> TermOut:
+    return TermOut(
+        id=term.id, display_name=term.display_name, occurrences=term.occurrences,
+        suggestion=None, waiting_titles=[], decided_by=term.decided_by,
+        decided_action=_decided_action(term),
+        decided_name=await _ingredient_name(session, term.ingredient_id),
+        decided_at=term.decided_at,
+    )
+
+
+async def _pending_out(
+    session: AsyncSession, term: ImportTerm, titles: list[str]
+) -> TermOut:
+    match = await match_name(session, term.display_name)
+    # Una voce non alimentare non si propone mai come scorciatoia: il tasto
+    # «Collega» chiamerebbe comunque la guardia 4.4 più sotto e tornerebbe un
+    # 422 garantito (finding 2 della revisione finale). Meglio nessuna
+    # scorciatoia che una che non porta da nessuna parte.
+    suggestion = (
+        SuggestionOut(
+            ingredient_id=match.ingredient_id, name=match.name, certain=match.certain
         )
-        out.append(
-            TermOut(
-                id=term.id, display_name=term.display_name, occurrences=term.occurrences,
-                suggestion=suggestion, waiting_titles=titles.get(term.term_key, []),
-            )
-        )
-    return out
+        if match.ingredient_id is not None
+        and match.name is not None
+        and match.kind != IngredientKind.NON_FOOD
+        else None
+    )
+    return TermOut(
+        id=term.id, display_name=term.display_name, occurrences=term.occurrences,
+        suggestion=suggestion, waiting_titles=titles,
+    )
 
 
 def _decided_action(term: ImportTerm) -> str | None:

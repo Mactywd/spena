@@ -15,7 +15,13 @@ from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCate
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
 from app.db.models.recipe import RecipeSource
-from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
+from app.db.models.recipe_import import (
+    GIALLOZAFFERANO,
+    ImportState,
+    ImportTerm,
+    RecipeImport,
+    TermDecision,
+)
 from app.domain.rules import IngredientKind, PantryStatus
 from app.repositories.ingredients import add_alias, remember_alias
 from app.repositories.recipes import create_recipe
@@ -155,6 +161,92 @@ async def test_il_non_alimentare_con_ricette_rifiuta_e_le_elenca(db_session, ana
     assert rifiuto.value.obstacle.recipes == (RecipeRef(id=risotto.id, title="Risotto al burro"),)
     assert "non può diventare non alimentare" in rifiuto.value.message
     assert burro.category == "latticini"
+
+
+def _termine(key: str, ingredient: Ingredient | None, decision: str = TermDecision.MAPPED):
+    return ImportTerm(
+        source=GIALLOZAFFERANO, term_key=key, display_name=key, occurrences=1,
+        decision=decision, ingredient_id=ingredient.id if ingredient else None,
+        decided_by="ai" if decision != TermDecision.PENDING else None,
+    )
+
+
+def _pagina(url: str, keys: list[str], state: str = ImportState.PENDING) -> RecipeImport:
+    return RecipeImport(
+        source=GIALLOZAFFERANO, url=f"https://esempio.invalid/{url}", state=state,
+        payload={"title": url, "ingredients": [{"key": key, "name": key} for key in keys]},
+    )
+
+
+async def test_il_non_alimentare_vede_le_pagine_dellimport_in_attesa(db_session, anagrafica):
+    """Revisione finale di S9: la guardia contava solo le righe già materializzate. Un
+    termine deciso su «burro» che sta su pagine ancora in attesa (aspettano un altro
+    termine) le avrebbe fatte finire SKIPPED con «riga non alimentare» il giorno in cui
+    quel termine si decide. Contano le pagine `pending`, una volta sola anche se il
+    termine vi compare due volte; non le scartate, non quelle di un termine ignorato o
+    deciso altrove.
+    """
+    burro, salvia = anagrafica["burro"], anagrafica["salvia"]
+    db_session.add_all([
+        _termine("k-burro", burro),
+        _termine("k-burro-fuso", burro),
+        _termine("k-ignorato", None, TermDecision.IGNORED),
+        _termine("k-salvia", salvia),
+        _termine("k-aperto", None, TermDecision.PENDING),
+        _pagina("uno", ["k-burro", "k-aperto"]),
+        _pagina("due", ["k-burro", "k-burro-fuso", "k-aperto"]),
+        _pagina("scartata", ["k-burro"], ImportState.SKIPPED),
+        _pagina("altrove", ["k-salvia", "k-ignorato", "k-aperto"]),
+    ])
+    await db_session.flush()
+
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await recategorize_ingredient(db_session, burro.id, "casa")
+
+    assert rifiuto.value.code == RefusalCode.NON_FOOD_IN_RECIPES
+    assert rifiuto.value.obstacle.count == 0
+    assert rifiuto.value.obstacle.pending_imports == 2
+    assert "2 ricette dell'import ancora in attesa" in rifiuto.value.message
+    assert "Ingredienti da abbinare" in rifiuto.value.message
+    assert burro.category == "latticini"
+
+
+async def test_il_non_alimentare_con_ricette_e_pagine_in_attesa_dice_entrambe(
+    db_session, anagrafica
+):
+    burro = anagrafica["burro"]
+    await create_recipe(
+        db_session, title="Risotto al burro", description=None, instructions="Manteca.",
+        servings=2, source=RecipeSource.AI, source_ref=None,
+        ingredients=[(burro.id, "primary", "50 g", None)], embedding=None,
+    )
+    db_session.add_all([
+        _termine("k-burro", burro),
+        _termine("k-aperto", None, TermDecision.PENDING),
+        _pagina("uno", ["k-burro", "k-aperto"]),
+    ])
+    await db_session.flush()
+
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await recategorize_ingredient(db_session, burro.id, "casa")
+
+    assert (rifiuto.value.obstacle.count, rifiuto.value.obstacle.pending_imports) == (1, 1)
+    assert "è in 1 ricetta e in 1 ricetta dell'import ancora in attesa" in rifiuto.value.message
+
+
+async def test_il_non_alimentare_senza_pagine_in_attesa_passa(db_session, anagrafica):
+    """Un termine deciso su «salvia» la cui sola pagina è già stata scartata non tiene
+    la salvia nel cibo: quella pagina non si materializzerà più."""
+    salvia = anagrafica["salvia"]
+    db_session.add_all([
+        _termine("k-salvia", salvia),
+        _pagina("scartata", ["k-salvia"], ImportState.SKIPPED),
+    ])
+    await db_session.flush()
+
+    await recategorize_ingredient(db_session, salvia.id, "casa")
+
+    assert salvia.kind == IngredientKind.NON_FOOD
 
 
 async def test_un_reparto_sconosciuto_rifiuta(db_session, anagrafica):

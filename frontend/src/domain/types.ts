@@ -232,6 +232,8 @@ export interface AliasEntry {
   source: string;
   /** Vero se l'alias è la metà di una decisione della coda: si corregge da lì. */
   decided_in_queue: boolean;
+  /** Il termine di quella decisione, `null` se l'alias non ne è la metà. */
+  term_id: string | null;
 }
 
 export interface ProductBrief {
@@ -264,6 +266,8 @@ export interface MergeCounts {
   recipe_lines_moved: number;
   pantry_items: number;
   shopping_items: number;
+  /** Voci attive del perdente tolte (archiviate): il vincitore era già in lista. */
+  shopping_items_dropped: number;
   products: number;
   aliases: number;
   cooking_events_relinked: number;
@@ -284,15 +288,20 @@ export type RegistryRefusal =
       detail: string;
       recipe_count: number;
       recipes: { id: string; title: string }[];
+      /** Le pagine dell'import in attesa che, materializzate, lo userebbero. */
+      pending_import_count: number;
     }
-  | { code: "import_alias"; detail: string; term: { id: string; display_name: string } }
+  | {
+      code: "import_alias" | "decision_refused";
+      detail: string;
+      term: { id: string; display_name: string };
+    }
   | { code: "barcode_taken"; detail: string; existing: ProductBrief }
   | {
       code:
         | "same_ingredient"
         | "empty_name"
         | "unknown_category"
-        | "decision_refused"
         | "still_used"
         | "bad_checksum";
       detail: string;

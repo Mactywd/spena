@@ -33,6 +33,19 @@ function listed(parts: Part[]): string {
   return parts.map((part) => `${part.n} ${part.n === 1 ? part.one : part.many}`).join(", ");
 }
 
+/** Le voci attive del perdente che la fusione toglie, perché il vincitore era già in
+ * lista: dirlo, altrimenti una voce sparisce dalla lista senza che nessuno l'abbia
+ * tolta. `done` sceglie il tempo del verbo, anteprima o esito. */
+function droppedText(counts: MergeCounts, done: boolean): string {
+  const n = counts.shopping_items_dropped;
+  if (n === 0) return "";
+  const where = `«${counts.winner_name}» ${done ? "era" : "è"} già in lista:`;
+  if (n === 1) {
+    return `${where} la voce di «${counts.loser_name}» ${done ? "è stata tolta" : "si toglie"}.`;
+  }
+  return `${where} le ${n} voci di «${counts.loser_name}» ${done ? "sono state tolte" : "si tolgono"}.`;
+}
+
 /** L'anteprima della fusione (spec §6.3): «Si spostano 3 ricette, 1 elemento di
  * dispensa, 2 alias. «pomodori» diventa un alias di «pomodoro». Non si annulla.» Le
  * cotture si dicono quando ci sono, perché chi fonde lo vuole sapere (§5.2). */
@@ -49,6 +62,7 @@ export function mergePreviewText(counts: MergeCounts): string {
         : `${n} cotture già registrate ritrovano la loro ricetta.`;
   return [
     moved,
+    droppedText(counts, false),
     `«${counts.loser_name}» diventa un alias di «${counts.winner_name}».`,
     cooked,
     "Non si annulla.",
@@ -63,6 +77,7 @@ export function mergeDoneText(counts: MergeCounts): string {
   return [
     `Uniti: «${counts.loser_name}» ora è un alias di «${counts.winner_name}».`,
     parts.length === 0 ? "" : `Spostati qui: ${listed(parts)}.`,
+    droppedText(counts, true),
   ]
     .filter((sentence) => sentence !== "")
     .join(" ");

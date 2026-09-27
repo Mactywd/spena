@@ -74,9 +74,10 @@ async def _imported_pages_with(
 async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     """Rimette il mondo come era prima che quella decisione fosse presa.
 
-    Quattro effetti, in quest'ordine: le pagine e le ricette, l'alias, l'ingrediente, il
-    termine. Nessuno rifiuta: le ricette già cucinate si rifanno come le altre, perché
-    le loro cotture aspettano nel `payload` (vedi la docstring del modulo).
+    Quattro effetti, in quest'ordine: le pagine e le ricette, l'alias, l'ingrediente
+    (solo se la decisione l'aveva creato), il termine. Nessuno rifiuta: le ricette già
+    cucinate si rifanno come le altre, perché le loro cotture aspettano nel `payload`
+    (vedi la docstring del modulo).
     """
     pages = await _imported_pages_with(session, term)
 
@@ -113,6 +114,7 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
         requeued += 1
 
     ingredient_id: uuid.UUID | None = term.ingredient_id
+    created_ingredient = term.created_ingredient
     alias_forgotten = False
     ingredient_deleted = False
 
@@ -123,11 +125,17 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     term.role_override = None
     term.decided_by = None
     term.decided_at = None
+    term.created_ingredient = None
     await session.flush()
 
     if ingredient_id is not None:
         alias_forgotten = await forget_alias(session, ingredient_id, term.display_name)
-        ingredient_deleted = await delete_ingredient_if_unused(session, ingredient_id)
+        # Solo un ingrediente che questa decisione ha creato, e che niente altro usa.
+        # Uno agganciato («Rigatoni» → «pasta», che c'era da prima) resta; e resta
+        # anche su NULL, le decisioni prese prima che il fatto si scrivesse: `mapped`
+        # da solo non distingue le due storie, e nel dubbio non si cancella.
+        if created_ingredient is True:
+            ingredient_deleted = await delete_ingredient_if_unused(session, ingredient_id)
 
     await session.flush()
     return Undone(

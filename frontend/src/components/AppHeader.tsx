@@ -104,6 +104,20 @@ export function AppHeader() {
     setOpen(false);
   }
 
+  // Col pannello aperto la pagina sotto non scorre: il dito che scorre sul velo o sul
+  // pannello muoverebbe la lista dietro, e chiuso il menu non si sarebbe più dove si
+  // era. Il valore di prima si rimette al ritorno dell'effetto, che corre a ogni
+  // chiusura — dal ☰, da Esc, dal velo, da una voce, da un cambio di pagina che
+  // chiude durante il disegno — e anche se l'intestazione sparisce a menu aperto.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     panelRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();

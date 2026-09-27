@@ -6,6 +6,7 @@ import { Alert } from "../../components/ui/Alert";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { AliasEntry, Ingredient } from "../../domain/types";
 import { deleteAlias, moveAlias, refreshAfterCorrection, registryRefusal } from "./api";
+import { queuePath } from "./origin";
 
 /** Un alias della scheda. Quelli che sono la metà di una decisione della coda non si
  * toccano da qui: dicono «Deciso nella coda» e portano lì (spec §4). Gli altri si
@@ -49,7 +50,7 @@ export function AliasRow({
         <span className="min-w-0 truncate">{alias.alias}</span>
         {alias.decided_in_queue ? (
           <Link
-            to="/ricette/importa"
+            to={queuePath(alias.term_id)}
             className="inline-flex min-h-11 shrink-0 items-center font-medium text-brand"
           >
             Deciso nella coda
@@ -93,7 +94,7 @@ export function AliasRow({
         <Alert>
           {refusal.detail}{" "}
           <Link
-            to="/ricette/importa"
+            to={queuePath(refusal.term.id)}
             className="inline-flex min-h-11 items-center font-medium text-brand"
           >
             Vai alla coda

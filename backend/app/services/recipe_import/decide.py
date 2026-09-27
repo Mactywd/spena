@@ -563,6 +563,7 @@ async def decide_terms(
         if proposal.action == "ignore":
             term.decision = TermDecision.IGNORED
             term.ingredient_id = None
+            term.created_ingredient = False
             # nessun alias: punterebbe a niente, e resterebbe
             ignored += 1
         else:
@@ -577,6 +578,7 @@ async def decide_terms(
             # dei due `create` dello stesso nome trova quello che il primo ha appena
             # scritto.
             ingredient_id = proposal.ingredient_id
+            created_here = False
             if ingredient_id is None and proposal.name:
                 match = await match_name(session, proposal.name)
                 if match.certain:
@@ -598,6 +600,7 @@ async def decide_terms(
                 )
                 ingredient_id = ingredient.id
                 created += 1
+                created_here = True
                 # Nasce qui, non in `load_registry`: senza questa riga la guardia
                 # sotto non troverebbe il suo stesso id e rifiuterebbe un `create`
                 # onesto di questa stessa passata. È quel che rende vero, un rigo
@@ -627,6 +630,8 @@ async def decide_terms(
 
             term.decision = TermDecision.MAPPED
             term.ingredient_id = ingredient_id
+            # l'annullamento cancella l'ingrediente solo se è nato qui
+            term.created_ingredient = created_here
             # `import_terms.display_name` è `String(200)` e `alias` è `String(120)`: un
             # termine lunghissimo si decide comunque e l'alias si salta, perché la
             # decisione vive su `import_terms` e perderla sarebbe sproporzionato —

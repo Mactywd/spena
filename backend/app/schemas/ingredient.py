@@ -34,6 +34,8 @@ class AliasOut(BaseModel):
     source: str
     # vero se l'alias è la metà di una decisione della coda: si corregge da lì (§4)
     decided_in_queue: bool
+    # quel termine, perché la scheda porti a lui in coda (`?termine=`) e non alla coda
+    term_id: uuid.UUID | None = None
 
 
 class ProductBriefOut(BaseModel):
@@ -90,6 +92,7 @@ class MergeOut(BaseModel):
     recipe_lines_moved: int
     pantry_items: int
     shopping_items: int
+    shopping_items_dropped: int
     products: int
     aliases: int
     cooking_events_relinked: int

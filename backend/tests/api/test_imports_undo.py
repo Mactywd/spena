@@ -30,6 +30,7 @@ async def prepara(db_session):
     term = ImportTerm(
         source=GIALLOZAFFERANO, term_key="k-speck", display_name="Speck",
         occurrences=1, decision=TermDecision.MAPPED, ingredient_id=speck.id, decided_by="ai",
+        created_ingredient=True,
     )
     db_session.add(term)
     await db_session.flush()
@@ -150,6 +151,7 @@ async def test_una_decisione_presa_a_mano_si_annulla_come_quella_dellai(
     assert response.status_code == 200
     corpo = response.json()
     assert corpo["recipes_requeued"] == 1
+    # creato da questa decisione, e la decisione l'ha scritto: si cancella
     assert corpo["ingredient_deleted"] is True
 
     await db_session.refresh(term)

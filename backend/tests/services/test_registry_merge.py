@@ -107,6 +107,23 @@ async def mondo(db_session):
     return {**voci, "scritta": scritta}
 
 
+def _voce_di_lista(ingredient: Ingredient, status: str, raw_text: str) -> ShoppingListItem:
+    return ShoppingListItem(
+        raw_text=raw_text, ingredient_id=ingredient.id, status=status,
+        reason=ShoppingReason.MANUAL,
+    )
+
+
+async def _lista(db_session) -> list[tuple[str, str, str]]:
+    """Ogni voce di lista: testo, ingrediente, stato."""
+    rows = await db_session.execute(
+        select(ShoppingListItem.raw_text, Ingredient.name, ShoppingListItem.status)
+        .join(Ingredient, Ingredient.id == ShoppingListItem.ingredient_id)
+        .order_by(ShoppingListItem.raw_text)
+    )
+    return [tuple(row) for row in rows.all()]
+
+
 async def _pagina(db_session, url: str) -> RecipeImport:
     return (
         await db_session.execute(select(RecipeImport).where(RecipeImport.url == url))
@@ -142,7 +159,7 @@ async def test_unire_porta_tutto_sul_vincitore_e_lo_conta(db_session, mondo):
     assert conti == MergeCounts(
         loser_name="pomodori", winner_name="pomodoro",
         recipes_rebuilt=2, recipe_lines_moved=1, pantry_items=1, shopping_items=1,
-        products=1, aliases=2, cooking_events_relinked=0,
+        shopping_items_dropped=0, products=1, aliases=2, cooking_events_relinked=0,
     )
     assert await db_session.get(Ingredient, perdente) is None
     assert "pomodoro" in await _righe(db_session, SUGO)
@@ -329,3 +346,46 @@ async def test_un_anteprima_rifiutata_per_decisione_lascia_l_ostacolo_leggibile(
     assert rifiuto.value.obstacle.decision == TermDecision.MAPPED
     assert rifiuto.value.obstacle.ingredient_id == fungo.id
     assert await _fotografia(db_session) == prima
+
+
+@pytest.mark.parametrize("stato_del_vincitore", [ShoppingStatus.PENDING, ShoppingStatus.CHECKED])
+async def test_se_il_vincitore_e_gia_in_lista_la_voce_del_perdente_si_toglie(
+    db_session, mondo, stato_del_vincitore
+):
+    """Revisione finale di S9: la fusione spostava ogni voce di lista senza guardare,
+    e il vincitore finiva due volte in lista. Se il vincitore ha già una voce attiva —
+    da comprare o nel carrello, come per `active_item_for` — quella attiva del
+    perdente si toglie come la toglie la X della lista: archiviata, e sul vincitore
+    per la storia. La voce che resta è quella del vincitore, col suo testo: il testo
+    del perdente («pomodori») non vi si aggiunge. La storia si sposta sempre."""
+    pomodoro, pomodori = mondo["pomodoro"], mondo["pomodori"]
+    db_session.add_all([
+        _voce_di_lista(pomodoro, stato_del_vincitore, "pomodoro"),
+        _voce_di_lista(pomodori, ShoppingStatus.DONE, "pomodori comprati"),
+    ])
+    await db_session.flush()
+
+    conti = await merge_ingredients(db_session, pomodori.id, pomodoro.id)
+
+    assert (conti.shopping_items, conti.shopping_items_dropped) == (1, 1)
+    assert await _lista(db_session) == [
+        ("pomodori", "pomodoro", ShoppingStatus.ARCHIVED),
+        ("pomodori comprati", "pomodoro", ShoppingStatus.DONE),
+        ("pomodoro", "pomodoro", stato_del_vincitore),
+    ]
+
+
+async def test_se_il_vincitore_ha_in_lista_solo_la_storia_la_voce_del_perdente_si_sposta(
+    db_session, mondo
+):
+    pomodoro, pomodori = mondo["pomodoro"], mondo["pomodori"]
+    db_session.add(_voce_di_lista(pomodoro, ShoppingStatus.ARCHIVED, "pomodoro tolto"))
+    await db_session.flush()
+
+    conti = await merge_ingredients(db_session, pomodori.id, pomodoro.id)
+
+    assert (conti.shopping_items, conti.shopping_items_dropped) == (1, 0)
+    assert await _lista(db_session) == [
+        ("pomodori", "pomodoro", ShoppingStatus.PENDING),
+        ("pomodoro tolto", "pomodoro", ShoppingStatus.ARCHIVED),
+    ]

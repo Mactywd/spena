@@ -86,6 +86,8 @@ async def test_un_termine_che_coincide_con_un_alias_si_decide_da_se(db_session, 
     term = (await terms_by_key(db_session, GIALLOZAFFERANO))["ricette-con-i-Rigatoni"]
     assert term.decision == TermDecision.MAPPED
     assert term.decided_by == "auto"
+    # un aggancio a un nome che c'era: annullarlo non deve cancellare «pasta»
+    assert term.created_ingredient is False
 
 
 async def test_un_termine_su_un_alias_non_alimentare_non_si_decide_da_se(

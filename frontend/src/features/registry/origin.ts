@@ -29,3 +29,10 @@ export function ingredientPath(id: string, origin: Origin): string {
 export function productPath(id: string, origin: Origin): string {
   return withOrigin(`/anagrafica/prodotto/${id}`, origin);
 }
+
+/** La coda dell'import con un termine in cima (`?termine=`, letto da
+ * `ImportQueueScreen`): dove un rifiuto dell'anagrafica manda a correggere una
+ * decisione. Senza termine, la coda com'è. */
+export function queuePath(termId?: string | null): string {
+  return termId ? `/ricette/importa?termine=${encodeURIComponent(termId)}` : "/ricette/importa";
+}

@@ -72,20 +72,39 @@ export function CategoryForm({
       {refusal?.code === "non_food_in_recipes" && (
         <div role="alert" className="flex flex-col gap-1 text-sm">
           <p className="text-danger">{refusal.detail}</p>
-          <ul>
-            {refusal.recipes.map((recipe) => (
-              <li key={recipe.id}>
-                <Link
-                  to={`/ricette/${recipe.id}`}
-                  className="inline-flex min-h-11 items-center font-medium text-brand"
-                >
-                  {recipe.title}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {refusal.recipes.length > 0 && (
+            <ul>
+              {refusal.recipes.map((recipe) => (
+                <li key={recipe.id}>
+                  <Link
+                    to={`/ricette/${recipe.id}`}
+                    className="inline-flex min-h-11 items-center font-medium text-brand"
+                  >
+                    {recipe.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
           {refusal.recipe_count > refusal.recipes.length && (
             <p className="text-ink-soft">e altre {refusal.recipe_count - refusal.recipes.length}.</p>
+          )}
+          {/* Le ricette dell'import in attesa non hanno ancora una pagina da aprire: il
+              passo è la decisione che le lega qui, e quei termini sono gli alias
+              «Deciso nella coda» di questa scheda, ciascuno col suo link. */}
+          {refusal.pending_import_count > 0 && (
+            <>
+              <p className="text-ink-soft">
+                I termini dell'import decisi qui sono fra gli alias qui sotto, segnati «Deciso
+                nella coda».
+              </p>
+              <Link
+                to="/ricette/importa"
+                className="inline-flex min-h-11 items-center font-medium text-brand"
+              >
+                Vai a «Ingredienti da abbinare»
+              </Link>
+            </>
           )}
         </div>
       )}

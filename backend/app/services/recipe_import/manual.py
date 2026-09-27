@@ -110,6 +110,7 @@ async def decide_by_hand(
         await remember_alias(session, ingredient.id, term.display_name)
 
     term.role_override = decision.role_override
+    term.created_ingredient = decision.action == "create"
     term.decided_by = "human"
     term.decided_at = datetime.now(UTC)
     await session.flush()

@@ -200,8 +200,11 @@ production, which is the first defect listed above.
   **The LLM decides these terms and the queue is the review**: every decision
   carries a `decided_by` — `"ai"` from the LLM, `"human"` for R11's manual
   decisions and for a term a merge re-decides on the winner — and has an undo
-  that puts the term, the alias, the created ingredient and the materialized
-  recipes back.
+  that puts the term, the alias and the materialized recipes back. The undo
+  removes the ingredient only when the decision recorded creating it
+  (`import_terms.created_ingredient`) and nothing else uses it: a `map` onto an
+  ingredient that already existed never deletes it, and decisions from before
+  2026-09-28 carry `NULL` there and never delete either.
   Undo never refuses over recipes already cooked: the ids of their cooking events wait
   in the page's `payload` under `cooking_event_ids`, and `materialize_ready` puts them
   back on the rebuilt recipe (S9 §5.2). A response

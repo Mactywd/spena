@@ -18,7 +18,7 @@ describe("usageText", () => {
 const CONTI: MergeCounts = {
   dry_run: true, loser_name: "pomodori", winner_id: "i-pomodoro", winner_name: "pomodoro",
   recipes_rebuilt: 2, recipe_lines_moved: 1, pantry_items: 1, shopping_items: 0,
-  products: 0, aliases: 2, cooking_events_relinked: 0,
+  shopping_items_dropped: 0, products: 0, aliases: 2, cooking_events_relinked: 0,
 };
 
 describe("mergePreviewText", () => {
@@ -42,6 +42,25 @@ describe("mergePreviewText", () => {
   it("dice le cotture che si ri-legano: chi fonde lo vuole sapere (spec §5.2)", () => {
     expect(mergePreviewText({ ...CONTI, cooking_events_relinked: 2 })).toContain(
       "2 cotture già registrate ritrovano la loro ricetta."
+    );
+  });
+});
+
+describe("la voce di lista doppia", () => {
+  it("l'anteprima dice che la voce del perdente si toglie, perché il vincitore è già in lista", () => {
+    expect(mergePreviewText({ ...CONTI, shopping_items_dropped: 1 })).toBe(
+      "Si spostano 3 ricette, 1 elemento di dispensa, 2 alias. «pomodoro» è già in lista: " +
+        "la voce di «pomodori» si toglie. «pomodori» diventa un alias di «pomodoro». Non si annulla."
+    );
+    expect(mergePreviewText({ ...CONTI, shopping_items_dropped: 2 })).toContain(
+      "«pomodoro» è già in lista: le 2 voci di «pomodori» si tolgono."
+    );
+  });
+
+  it("l'esito lo ripete sulla scheda del vincitore", () => {
+    expect(mergeDoneText({ ...CONTI, dry_run: false, shopping_items_dropped: 1 })).toBe(
+      "Uniti: «pomodori» ora è un alias di «pomodoro». Spostati qui: 3 ricette, 1 elemento di " +
+        "dispensa, 2 alias. «pomodoro» era già in lista: la voce di «pomodori» è stata tolta."
     );
   });
 });

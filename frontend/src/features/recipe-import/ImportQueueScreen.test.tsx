@@ -40,11 +40,12 @@ const STATO_NORMALE = { fetched: 20, pending_recipes: 19, imported: 1, skipped: 
 // questo file) non cambia niente: il predicato conta solo quando una query fallisce
 // per davvero, ed è lì che deve essere questo e non un altro.
 function renderScreen(
-  client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } })
+  client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } }),
+  path = "/ricette/importa"
 ) {
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>
         <ImportQueueScreen />
       </MemoryRouter>
     </QueryClientProvider>
@@ -71,6 +72,12 @@ type CodaOptions = {
   askAiResult?: [unknown, number];
   undoStatus?: number;
   undoDetail?: string;
+  /** `ingredient_deleted` di un annullamento riuscito */
+  undoDeleted?: boolean;
+  /** l'indirizzo della schermata, per `?termine=` */
+  path?: string;
+  /** la risposta di `GET /imports/terms/{id}`, il termine messo a fuoco */
+  focused?: [unknown, number];
 };
 
 /** Monta la schermata su un unico finto `fetch` che copre tutte le rotte che usa
@@ -97,10 +104,16 @@ function renderQueue(options: CodaOptions = {}) {
       if (options.undoStatus && options.undoStatus !== 200) {
         return [{ detail: options.undoDetail ?? "conflitto" }, options.undoStatus];
       }
-      return [{ recipes_requeued: 0, ingredient_deleted: false, remaining_terms: 0 }, 200];
+      return [
+        { recipes_requeued: 0, ingredient_deleted: options.undoDeleted ?? false, remaining_terms: 0 },
+        200,
+      ];
     }
     if (path.includes("/decision") && method === "POST") {
       return options.decideResult ?? [{ unlocked: 12, remaining_terms: 1 }, 200];
+    }
+    if (/\/imports\/terms\/[^/?]+$/.test(path) && method === "GET") {
+      return options.focused ?? [{ detail: "termine inesistente" }, 404];
     }
     if (path.includes("decided_by=ai")) return [decided, 200];
     if (path.includes("decided_by=human")) return [humanDecided, 200];
@@ -108,7 +121,7 @@ function renderQueue(options: CodaOptions = {}) {
     if (path.includes("/imports/status")) return [status, 200];
     return [{}, 404];
   });
-  renderScreen();
+  renderScreen(undefined, options.path);
   return spy;
 }
 
@@ -455,10 +468,33 @@ describe("coda di revisione dell'import", () => {
     ).toBeInTheDocument();
   });
 
-  it("l'elenco delle decisioni recenti avvisa che annullare può cancellare l'ingrediente creato", async () => {
-    // `decided_action` non distingue "map" da "creato" (nessun fatto scritto lo
-    // permette): la promessa che questo lascia cadere si sostituisce con qualcosa
-    // di sempre vero, invece di sparire e basta.
+  it("un annullamento che ha cancellato l'ingrediente creato lo dice, e solo allora", async () => {
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Speck", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "speck", decided_at: "2026-09-20T10:00:00Z",
+        },
+      ],
+      undoStatus: 200,
+      undoDeleted: true,
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Speck»/i })
+    );
+
+    expect(
+      await screen.findByText(/L'ingrediente che questa decisione aveva creato è stato eliminato/)
+    ).toBeInTheDocument();
+  });
+
+  it("l'elenco delle decisioni recenti dice quando annullare cancella l'ingrediente e quando no", async () => {
+    // Il backend cancella solo un ingrediente che la decisione ha scritto di aver
+    // creato (`created_ingredient`), e che niente altro usa: un aggancio a uno che
+    // c'era già («pasta» sotto «Rigatoni») e le decisioni di prima lo lasciano.
     renderQueue({
       pending: [],
       decided: [
@@ -471,7 +507,10 @@ describe("coda di revisione dell'import", () => {
     });
 
     await screen.findByText("Rigatoni");
-    expect(screen.getByText(/l'annullamento lo cancella/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/se questa decisione l'aveva creato e niente altro lo usa, l'annullamento lo cancella/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/altrimenti resta in anagrafica/i)).toBeInTheDocument();
   });
 
   describe("decisioni recenti (R11): quelle a mano accanto a quelle dell'AI", () => {
@@ -660,5 +699,58 @@ describe("coda di revisione dell'import", () => {
 
     expect((await screen.findByRole("link", { name: "Ricette" })).getAttribute("href"))
       .toBe("/ricette");
+  });
+});
+
+describe("un termine messo a fuoco con ?termine=", () => {
+  // deciso tanto tempo fa, e in automatico: in «Decisioni recenti» non c'è
+  const VECCHIO: ImportTerm = {
+    id: "t9", display_name: "Pomodori pelati", occurrences: 4, suggestion: null,
+    waiting_titles: [], decided_by: "auto", decided_action: "map", decided_name: "pomodori",
+    decided_at: "2026-01-02T10:00:00Z",
+  };
+
+  it("un termine deciso che le decisioni recenti non mostrano si vede in cima, e si annulla", async () => {
+    const spy = renderQueue({ path: "/ricette/importa?termine=t9", focused: [VECCHIO, 200] });
+
+    const cima = await screen.findByRole("region", { name: "Il termine che cercavi" });
+    expect(within(cima).getByText("collegato a pomodori")).toBeInTheDocument();
+    await userEvent.click(
+      within(cima).getByRole("button", { name: "Annulla la decisione su «Pomodori pelati»" })
+    );
+
+    await waitFor(() =>
+      expect(
+        spy.mock.calls.some(
+          ([url, init]) => String(url).endsWith("/imports/terms/t9/undo") && init?.method === "POST"
+        )
+      ).toBe(true)
+    );
+    // la coda resta sotto, com'è
+    expect(screen.getByText("Rigatoni")).toBeInTheDocument();
+  });
+
+  it("un termine ancora in coda sta in cima una volta sola, e lì si decide", async () => {
+    renderQueue({ path: "/ricette/importa?termine=t1", focused: [TERMINI[0], 200] });
+
+    const cima = await screen.findByRole("region", { name: "Il termine che cercavi" });
+    expect(within(cima).getByText("Rigatoni")).toBeInTheDocument();
+    await screen.findByText("Acqua");
+    expect(screen.getAllByText("Rigatoni")).toHaveLength(1);
+  });
+
+  it("un termine che non si trova lo dice in una riga, e la coda resta", async () => {
+    renderQueue({ path: "/ricette/importa?termine=sparito" });
+
+    expect(await screen.findByText(/Non trovo quel termine/)).toBeInTheDocument();
+    expect(screen.getByText("Rigatoni")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Il termine che cercavi" })).not.toBeInTheDocument();
+  });
+
+  it("senza ?termine= non chiede nessun termine per id", async () => {
+    const spy = renderQueue();
+
+    await screen.findByText("Rigatoni");
+    expect(spy.mock.calls.some(([url]) => /\/imports\/terms\/[^/?]+$/.test(String(url)))).toBe(false);
   });
 });
