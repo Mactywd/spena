@@ -331,6 +331,15 @@ Il `-p spena-e2e` e il `-f docker-compose.e2e.yml` vanno ripetuti in ogni comand
 Il percorso scrive in lista e in dispensa, quindi **vuole uno stack appena creato**:
 rieseguirlo senza `down -v` lo fa fallire dicendo che lo stack non è pulito.
 
+`e2e/import-review.spec.ts` semina le decisioni dell'AI da rivedere dentro il container
+del backend (`backend/tests/e2e_import_review.py`, con il modello finto della suite), quindi
+lancia da sé `docker compose exec` sul progetto `spena-e2e`: se il progetto ha un altro
+nome, lo si passa in `E2E_PROJECT`. L'aiutante che gira è quello montato nel container del
+backend, cioè quello della copia del repository da cui lo stack è stato avviato, non
+necessariamente quella da cui si lancia Playwright. Parte solo dove c'è `SPENA_E2E=1`, che
+sta in `.env.e2e`; lo stesso file lascia vuota `OPENROUTER_API_KEY`, così una chiamata al
+modello che sfuggisse a uno stub finisce in un 503 e nel ripiego a mano, non in una spesa.
+
 ## Lo stile, e dove abita il colore
 
 Tutti i colori, il raggio delle schede e il tipo di carattere stanno in un blocco

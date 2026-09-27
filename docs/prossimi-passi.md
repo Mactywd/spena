@@ -2079,7 +2079,7 @@ Solo dopo, la spec di T3 con l'elenco del giro in mano.
 
 ---
 
-# Parte IX — Lavoro già impegnato: i controlli end-to-end
+# Parte IX — Lavoro già impegnato: i controlli end-to-end **[FATTO 2026-09-28 — c fissa un difetto aperto]**
 
 Lo stile è l'unica parte dell'app che Vitest non può vedere: Tailwind genera il CSS
 alla costruzione e jsdom non lo calcola. Girano sullo stack `spena-e2e`, che ha una
@@ -2116,10 +2116,84 @@ e il riquadro di conferma dell'annullamento.
 il limite: è un test che si costruisce l'oggetto da sé, quindi vale solo per il
 layout a 375px.
 
+### Esito **[FATTO 2026-09-28]**
+Tre controlli nuovi, sullo stack `spena-e2e` appena creato: la suite intera fa **19
+prove, 19 verdi** — la c è verde perché asserisce il difetto com'è oggi (sotto). Le prove
+nuove si rieseguono sullo stesso stack senza lasciare niente dietro.
+
+Lo stack e2e ora è **chiuso sul modello**: `.env.e2e` porta `OPENROUTER_API_KEY=` vuota,
+che vince su quella del `.env` (per le chiavi ripetute vince l'ultimo `env_file`: provato
+con `docker compose config` su un `.env` con una chiave finta non vuota, e nel container
+con `env`, senza stampare valori). Una chiamata al modello che sfugga a uno stub risponde
+503 — misurato su `POST /recipes/ai-draft` — e nessuna prova della suite usava la chiave.
+Lo stesso file porta `SPENA_E2E=1`, il contrassegno senza il quale l'aiutante di semina
+della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_guard.py`).
+
+- **a.** In `frontend/e2e/style.spec.ts`, «il testo più chiaro dell'app regge 4.5:1 sul
+  fondo della pagina, misurato a video». Colore del testo e fondo vero dietro (il primo
+  antenato che ne dipinge uno) li legge il browser da `getComputedStyle`, e il rapporto
+  WCAG si calcola in pagina. Il test asserisce anche che il colore misurato è il token
+  **letto dal blocco `@theme` di `index.css`**, che il fondo è `--color-page`, che il
+  carattere è 12px (`text-xs`) e che nessun antenato ha un'opacità sotto 1: il numero
+  è di quel testo, non di un altro. I testi misurati sono veri: per `ink-faint` la
+  didascalia sotto la scala del ricettario («Tutto il ricettario.»); per `low` l'unico
+  `text-xs text-low` che sta direttamente sulla pagina, la frase «Parte escluso, perché
+  l'aggancio è solo un'ipotesi…» della bozza AI — la bozza la dà `page.route`, perché il
+  modello qui non si chiama, ma schermo e CSS sono quelli veri. **Misurati**:
+
+  | Token | Colore | Su `--color-page` `#eef1ee` | Margine |
+  |---|---|---|---|
+  | `--color-low` | `#9a5f0c` | **4.59:1** | +2% |
+  | `--color-ink-faint` | `#636e66` | **4.67:1** | +4% |
+
+  La tabella qui sopra, scritta a mano, diceva 4.58:1 per `ink-faint`: il conto rifatto
+  dà 4.67:1 (e 5.31:1 sul bianco di una scheda), quindi il margine è un po' più largo di
+  quanto si credeva. `low` coincide (4.594). Nessuno dei due è sotto soglia.
+
+- **b.** Nuovo `frontend/e2e/import-review.spec.ts`, senza stub di rete. Le decisioni le
+  semina `backend/tests/e2e_import_review.py` dentro il container del backend, passando
+  da `decide_terms` — il codice del bottone «Riprova con l'AI» — con `ScriptedLlm` di
+  `tests/llm_fakes.py` al posto di OpenRouter e una chiave finta forzata in testa al file:
+  alias, `decided_by = "ai"` e ingrediente creato sono quelli della produzione, e nessuna
+  chiamata esce. Il file per questo usa `docker compose exec` sullo stack e2e (il nome del
+  progetto si cambia con `E2E_PROJECT`), e pulisce sia prima di seminare sia in fondo. Il
+  termine lungo si collega a un ingrediente che l'aiutante crea e poi toglie, non a
+  «pasta»: annullare un `map` può cancellare l'ingrediente d'arrivo (difetto curato su
+  un altro ramo), e la pulizia non deve contare su una «pasta» che sopravvive perché le
+  ricette del seme la usano. A 375px: la riga con un nome di 88 caratteri non fa
+  scorrere la pagina, il nome è davvero troncato (`scrollWidth` > `clientWidth` del
+  testo), e l'etichetta «AI» e il tasto «Annulla» restano interi nello schermo, a destra
+  del nome. Poi annulla la decisione che aveva creato un ingrediente e controlla la
+  frase dell'esito, il termine tornato in coda e l'ingrediente sparito davvero. La pulizia
+  in `finally` passa dall'annulla vero. **Due parole del testo qui sopra erano vecchie**:
+  la sezione non si chiama più «Deciso dall'AI» ma «Decisioni recenti» (R11 ci ha messo
+  anche le decisioni a mano; chi ha deciso lo dice un'etichetta «AI»/«tu» per riga), e il
+  riquadro di conferma dell'annullamento non esiste più da S9 (f8a77b5): si prova la frase
+  con l'esito, che è quel che c'è.
+
+- **c.** Nuovo `frontend/e2e/ai-draft.spec.ts`, con `page.route` (lo stub porta
+  `satisfies RecipeDraft`) e il commento che ne dichiara il limite. La riga sta in
+  `frontend/src/features/ai-draft/AiDraftScreen.tsx`. **Ha trovato un difetto**: con un
+  nome di 60 caratteri («Guanciale di maiale stagionato al pepe nero dei Monti Lepini») la
+  pagina a 375px diventa **larga 562px**. La nota «…: da creare salvando» sta in uno
+  `span` `shrink-0` della riga `justify-between`, ripete il nome intero e non va a capo:
+  spinge la pagina di lato, e il testo della casella resta una colonna di una parola per
+  riga (alto 140px, 7 righe da 20px). Il test **fissa il difetto in positivo** — pagina
+  più larga dello schermo, nome più alto di due righe — con la nota trovata dal suo posto
+  nella riga e non dalla frase esatta. Come sistemare la riga (dove va la nota, se
+  ripetere il nome) è una scelta di disegno che spetta a R10 (`RecipeForm`): quel ramo
+  rovescia le due asserzioni in quelle giuste, e sistema anche il nome, non solo la
+  nota.
+
 ---
 
 # Parte X — Piccole cose aperte
 
+- **La riga «da creare salvando» della bozza AI fa scorrere la pagina di lato a 375px**
+  con un nome lungo (misurato: 562px con un nome di 60 caratteri). La nota ripete il nome
+  in uno `span` `shrink-0` della riga `justify-between` di `AiDraftScreen.tsx`. Lo tiene
+  fermo `frontend/e2e/ai-draft.spec.ts`, che lo asserisce com'è oggi; lo rovescia R10
+  (`RecipeForm`) quando sistema la riga: vedi Parte IX, c.
 - **Un 404 viene ritentato e poi offre «Riprova».** `lib/queryRetry.ts` ritenta ogni
   errore tranne il 401, 404 compreso. Così una ricetta che non c'è più risponde dopo
   qualche secondo con «Non sono riuscito a caricare questa ricetta. Riprova.», e
