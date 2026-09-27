@@ -9,13 +9,31 @@ import { deleteAlias, moveAlias, refreshAfterCorrection, registryRefusal } from 
 
 /** Un alias della scheda. Quelli che sono la metà di una decisione della coda non si
  * toccano da qui: dicono «Deciso nella coda» e portano lì (spec §4). Gli altri si
- * spostano sotto un altro ingrediente o si tolgono. */
-export function AliasRow({ ingredientId, alias }: { ingredientId: string; alias: AliasEntry }) {
+ * spostano sotto un altro ingrediente o si tolgono.
+ *
+ * `onVanished`: quando lo spostamento torna `alias: null` (il testo esisteva già, e
+ * `remember_alias` l'ha scartato invece di raddoppiarlo — spec S9 §4), il fatto va
+ * detto. Non uno stato qui dentro: l'invalidazione che segue fa sparire questa riga
+ * dall'elenco degli alias, e uno stato locale sparirebbe con lei — la stessa
+ * sparizione muta, solo di un giro più tardi. Il chiamante lo tiene lui, fuori
+ * dall'elenco (rilievo della revisione finale S9). */
+export function AliasRow({
+  ingredientId,
+  alias,
+  onVanished,
+}: {
+  ingredientId: string;
+  alias: AliasEntry;
+  onVanished?: (aliasText: string, targetName: string) => void;
+}) {
   const queryClient = useQueryClient();
   const [moving, setMoving] = useState(false);
   const move = useMutation({
     mutationFn: (target: Ingredient) => moveAlias(ingredientId, alias.id, target.id),
-    onSuccess: () => refreshAfterCorrection(queryClient),
+    onSuccess: (moved) => {
+      if (moved.alias === null) onVanished?.(alias.alias, moved.ingredient.display_name);
+      return refreshAfterCorrection(queryClient);
+    },
   });
   const remove = useMutation({
     mutationFn: () => deleteAlias(ingredientId, alias.id),

@@ -14,7 +14,7 @@ import { MergePanel } from "./MergePanel";
 import { RenameForm } from "./RenameForm";
 import { fetchIngredientDetail } from "./api";
 import { backFrom, originFrom, productPath } from "./origin";
-import { mergeDoneText, usageText } from "./wording";
+import { aliasVanishedText, mergeDoneText, usageText } from "./wording";
 
 /** La scheda dell'ingrediente (spec S9 §6.3).
  *
@@ -53,6 +53,11 @@ function IngredientCard({ id }: { id: string }) {
   // un pannello solo alla volta: due moduli aperti su una scheda del telefono
   // spingerebbero l'altro fuori schermo
   const [panel, setPanel] = useState<Panel | null>(null);
+
+  // sta qui e non dentro AliasRow: l'invalidazione dopo lo spostamento fa sparire
+  // quella riga dall'elenco (il server non la manda più), e uno stato suo
+  // sparirebbe con lei — la stessa sparizione muta di prima, solo un giro più tardi
+  const [vanishedAliasNote, setVanishedAliasNote] = useState<string | null>(null);
 
   // l'esito di una fusione arriva con la navigazione, dalla scheda del perdente che non
   // c'è più: è qui, sulla scheda del vincitore, che si dice (spec §6.3)
@@ -147,13 +152,23 @@ function IngredientCard({ id }: { id: string }) {
       )}
 
       <SectionHeading>Alias</SectionHeading>
+      {vanishedAliasNote && (
+        <p role="status" className="px-1 pb-1 text-sm text-low">
+          {vanishedAliasNote}
+        </p>
+      )}
       {ingredient.aliases.length === 0 ? (
         <p className="px-1 text-sm text-ink-soft">Nessun alias: si trova solo col suo nome.</p>
       ) : (
         <Card pad={false}>
           <ul className="divide-y divide-line px-3">
             {ingredient.aliases.map((alias) => (
-              <AliasRow key={alias.id} ingredientId={ingredient.id} alias={alias} />
+              <AliasRow
+                key={alias.id}
+                ingredientId={ingredient.id}
+                alias={alias}
+                onVanished={(text, targetName) => setVanishedAliasNote(aliasVanishedText(text, targetName))}
+              />
             ))}
           </ul>
         </Card>

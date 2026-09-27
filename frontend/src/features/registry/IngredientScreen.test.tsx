@@ -139,6 +139,42 @@ describe("IngredientScreen", () => {
     expect(spy.mock.calls.some(([url]) => String(url).includes("kind="))).toBe(false);
   });
 
+  it("uno spostamento che fa sparire l'alias (il testo esisteva già) lo dice, invece di sparire muto", async () => {
+    // AliasMovedOut.alias: null (backend/app/services/registry.py, move_alias): il
+    // testo esisteva già come nome o alias — sul bersaglio o su un terzo ingrediente —
+    // e `remember_alias` lo scarta invece di raddoppiarlo. Silenziosamente la riga
+    // spariva e basta: l'utente non aveva modo di sapere se lo spostamento fosse
+    // andato a segno o no
+    let mosso = false;
+    stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH" && path.includes("/aliases/")) {
+        mosso = true;
+        return [{ alias: null, ingredient: POMODORO }, 200];
+      }
+      if (path.includes("/ingredients/search")) return [[POMODORO], 200];
+      if (path.endsWith("/ingredients/i-pomodori")) {
+        return [
+          mosso
+            ? { ...POMODORI, aliases: POMODORI.aliases.filter((a) => a.alias !== "pomodorini") }
+            : POMODORI,
+          200,
+        ];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Sposta l'alias «pomodorini»" }));
+    await userEvent.type(screen.getByLabelText("Sposta «pomodorini» sotto"), "pomod");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    const nota = await screen.findByText(/«pomodorini».*esisteva già.*non si è spostato/);
+    // la riga dell'alias sparisce (il server non lo manda più) ma la nota resta:
+    // altrimenti sarebbe la stessa sparizione muta, solo ritardata di un giro
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Togli l'alias «pomodorini»" })).toBeNull());
+    expect(nota).toBeInTheDocument();
+  });
+
   it("un alias della coda rifiutato dice perché, e porta alla coda", async () => {
     stubRoutedFetch((path, init) => {
       if (init?.method === "DELETE") {

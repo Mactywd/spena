@@ -97,6 +97,18 @@ export function movedText(product: ProductDetail): string {
   return n === 0 ? `${where}.` : `${where}, con ${pantryItems(n)} di dispensa.`;
 }
 
+/** Quando lo spostamento di un alias lo fa sparire invece di spostarlo
+ * (`AliasMovedOut.alias: null`, `backend/app/services/registry.py` — `move_alias`):
+ * il testo esisteva già, come nome o come alias, sul bersaglio o su un terzo
+ * ingrediente, e `remember_alias` lo scarta invece di raddoppiarlo. Va detto, non
+ * lasciato sparire muto (rilievo della revisione finale S9). */
+export function aliasVanishedText(aliasText: string, targetName: string): string {
+  return (
+    `«${aliasText}» esisteva già — come nome o alias, qui o su un altro ingrediente — ` +
+    `e non si è spostato sotto «${targetName}»: è scomparso invece di raddoppiarsi.`
+  );
+}
+
 export function pantryText(n: number): string {
   return n === 0 ? "Nessun elemento in dispensa." : `${pantryItems(n)} in dispensa.`;
 }
