@@ -26,15 +26,13 @@ function decisionErrorMessage(error: unknown): string {
   return "Non sono riuscito a registrare la decisione. Niente è andato perso: riprova.";
 }
 
-/** Il messaggio da mostrare quando annullare una decisione fallisce per davvero.
+/** Il messaggio da mostrare quando annullare una decisione fallisce.
  *
- * Il 409 che chiede conferma («ci sono ricette già cucinate») non passa da qui: lo
- * gestisce `undoConfirm`, col suo dialogo. Da qui passano solo i rifiuti veri —
- * compreso lo stesso 409 quando torna con `force` già a `true`, perché a quel punto
- * non è più una domanda: il backend rifiuta perché il termine è già in coda (non
- * c'è niente da disfare), un fatto che `force` non supera mai. Il suo `detail` dice
- * perché, ed è un 4xx come quello di `decisionErrorMessage` — stessa forma, stesso
- * motivo per mostrarlo verbatim.
+ * Dalla S9 non c'è più un 409 che chiede conferma: le cotture delle ricette rifatte
+ * si ri-legano, quindi annullare non scollega niente. Da qui passano i rifiuti veri —
+ * il 409 del termine già in coda, che nel suo `detail` dice perché — e i guasti. È un
+ * 4xx come quello di `decisionErrorMessage`: stessa forma, stesso motivo per
+ * mostrarlo verbatim.
  */
 function undoErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
@@ -80,9 +78,8 @@ function aiRunMessage(result: DecideResult): string {
 
 /** L'esito di un annullamento riuscito: quante ricette sono tornate in coda, e se
  * ha cancellato l'ingrediente che quella decisione aveva creato. Il secondo fatto è
- * l'unica cosa che dice cosa è stato distrutto dall'unica conferma distruttiva di
- * questa funzione ("Rifai comunque"): senza dirlo qui, si scopre solo tornando
- * nell'anagrafica.
+ * l'unica cosa che dice cosa è stato distrutto dall'unico gesto distruttivo di
+ * questa schermata: senza dirlo qui, si scopre solo tornando nell'anagrafica.
  */
 function undoResultMessage({
   recipesRequeued,
@@ -177,10 +174,6 @@ export function ImportQueueScreen() {
   });
   const decided = recentDecisions(decidedByAi, decidedByHand);
 
-  const [undoConfirm, setUndoConfirm] = useState<{ termId: string; message: string } | null>(
-    null
-  );
-
   const askAi = useMutation({
     mutationFn: () => decideWithAi(),
     onSuccess: (result) => {
@@ -196,8 +189,7 @@ export function ImportQueueScreen() {
   });
 
   const undo = useMutation({
-    mutationFn: ({ termId, force }: { termId: string; force: boolean }) =>
-      undoTerm(termId, force),
+    mutationFn: (termId: string) => undoTerm(termId),
     onMutate: () => {
       // un nuovo tentativo non deve restare sull'errore del precedente: senza
       // questo, annullare un secondo termine con successo lascerebbe in vista
@@ -205,7 +197,6 @@ export function ImportQueueScreen() {
       setUndoError(null);
     },
     onSuccess: (result) => {
-      setUndoConfirm(null);
       setLastUndo({
         recipesRequeued: result.recipes_requeued,
         ingredientDeleted: result.ingredient_deleted,
@@ -215,26 +206,8 @@ export function ImportQueueScreen() {
       queryClient.invalidateQueries({ queryKey: ["import-status"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
     },
-    onError: (error, variables) => {
-      // Il 409 senza `force` non è un guasto: è la conseguenza sullo storico di
-      // cottura, detta prima che si applichi niente. Il messaggio arriva dal
-      // backend col numero dentro, e mostrarlo nel dialogo è l'unica cosa che
-      // permette di decidere se insistere.
-      if (error instanceof ApiError && error.status === 409 && !variables.force) {
-        setUndoConfirm({ termId: variables.termId, message: error.message });
-        return;
-      }
-      // Ogni altro esito è un rifiuto vero, non una domanda: il 409 che torna
-      // *con* `force` già a `true` (il termine è di nuovo in coda, o lo era già —
-      // il backend controlla questo prima di guardare `force`, quindi insistere
-      // non lo supera mai) tanto quanto un 500 o una rete caduta. Il dialogo si
-      // chiude perché non c'è più niente da confermare, e l'errore si vede: senza
-      // questo, il tocco sembra ignorato e l'unica uscita resta "Lascia com'è" —
-      // l'anello infinito che `force` esiste per evitare, raggiunto da un'altra
-      // porta.
-      setUndoConfirm(null);
-      setUndoError(undoErrorMessage(error));
-    },
+    // ogni esito diverso dal successo è un rifiuto vero, e si vede
+    onError: (error) => setUndoError(undoErrorMessage(error)),
   });
 
   const decide = useMutation({
@@ -357,34 +330,11 @@ export function ImportQueueScreen() {
                 key={term.id}
                 term={term}
                 pending={undo.isPending}
-                onUndo={() => undo.mutate({ termId: term.id, force: false })}
+                onUndo={() => undo.mutate(term.id)}
               />
             ))}
           </ul>
         </section>
-      )}
-
-      {undoConfirm && (
-        <div role="alertdialog" aria-label="Conferma l'annullamento" className="pt-3">
-          <Alert>{undoConfirm.message}</Alert>
-          <div className="flex gap-2 pt-2">
-            <button
-              type="button"
-              disabled={undo.isPending}
-              onClick={() => undo.mutate({ termId: undoConfirm.termId, force: true })}
-              className={buttonClasses("primary", "pill")}
-            >
-              Rifai comunque
-            </button>
-            <button
-              type="button"
-              onClick={() => setUndoConfirm(null)}
-              className={buttonClasses("ghost", "pill")}
-            >
-              Lascia com'è
-            </button>
-          </div>
-        </div>
       )}
     </Screen>
   );

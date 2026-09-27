@@ -35,13 +35,11 @@ export function decideWithAi(termIds?: string[]) {
   });
 }
 
-/** Rimette un termine deciso in coda, e con lui le ricette che ne erano nate.
- * `force` supera il 409 che avvisa di uno storico di cottura da scollegare. */
-export function undoTerm(termId: string, force = false) {
-  return apiFetch<UndoResult>(`/imports/terms/${termId}/undo`, {
-    method: "POST",
-    body: JSON.stringify({ force }),
-  });
+/** Rimette un termine deciso in coda, e con lui le ricette che ne erano nate. Non
+ * chiede conferma: dalla S9 le cotture delle ricette rifatte non si perdono,
+ * aspettano nella pagina e tornano sulla ricetta nuova. */
+export function undoTerm(termId: string) {
+  return apiFetch<UndoResult>(`/imports/terms/${termId}/undo`, { method: "POST" });
 }
 
 export function decideTerm(

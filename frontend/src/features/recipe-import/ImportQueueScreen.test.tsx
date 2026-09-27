@@ -349,9 +349,10 @@ describe("coda di revisione dell'import", () => {
     ).toBeInTheDocument();
   });
 
-  it("un 409 sull'annullamento chiede conferma invece di fallire", async () => {
-    // è l'unico punto della feature in cui si chiede qualcosa: se questo test non
-    // c'è, la perdita del collegamento allo storico diventa invisibile
+  it("un 409 sull'annullamento è un rifiuto detto col suo motivo, non una domanda", async () => {
+    // Dalla S9 il backend non chiede più conferma per le ricette già cucinate: le
+    // cotture si ri-legano alla ricetta rifatta. L'unico 409 che resta è il termine
+    // già in coda, e lì non c'è niente da confermare.
     renderQueue({
       pending: [],
       decided: [
@@ -362,104 +363,45 @@ describe("coda di revisione dell'import", () => {
         },
       ],
       undoStatus: 409,
-      undoDetail: "1 di queste ricette le hai già cucinate: conferma per procedere.",
+      undoDetail: "«Rigatoni» è già in coda: non c'è nessuna decisione da disfare.",
     });
-    await userEvent.click(
-      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
-    );
-    expect(await screen.findByText(/già cucinate/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /rifai comunque/i })).toBeInTheDocument();
-  });
-
-  it("confermare l'annullamento dopo il 409 lo rimanda con `force`", async () => {
-    // senza `force` il secondo tentativo tornerebbe di nuovo 409, e "Rifai
-    // comunque" sarebbe un pulsante che non fa mai quel che dice
-    const decisi: ImportTerm[] = [
-      {
-        id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
-        waiting_titles: [], decided_by: "ai", decided_action: "map",
-        decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
-      },
-    ];
-    let chiamateUndo = 0;
-    const spy = stubFetch((path, method) => {
-      if (path.includes("/undo") && method === "POST") {
-        chiamateUndo += 1;
-        if (chiamateUndo === 1) {
-          return [{ detail: "1 di queste ricette le hai già cucinate." }, 409];
-        }
-        return [{ recipes_requeued: 1, ingredient_deleted: false, remaining_terms: 0 }, 200];
-      }
-      if (path.includes("decided_by=ai")) return [decisi, 200];
-      if (path.includes("decided_by=human")) return [[], 200];
-      if (path.includes("/imports/terms")) return [[], 200];
-      if (path.includes("/imports/status")) return [STATO_NORMALE, 200];
-      return [{}, 404];
-    });
-    renderScreen();
 
     await userEvent.click(
       await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
     );
-    await screen.findByText(/già cucinate/i);
 
-    const rifaiComunque = screen.getByRole("button", { name: /rifai comunque/i });
-    await userEvent.click(rifaiComunque);
-
-    // Il numero di chiamate da solo non basta: uno stub che alterna risposta in
-    // base al conteggio le farebbe salire a due anche se il secondo tentativo non
-    // portasse `force`. La prova vera è nel corpo della seconda richiesta.
-    await waitFor(() => expect(chiamateUndo).toBe(2));
-    const chiamateUndoFatte = spy.mock.calls.filter(
-      ([url, init]) =>
-        String(url).includes("/undo") && (init as RequestInit | undefined)?.method === "POST"
-    );
-    expect(chiamateUndoFatte).toHaveLength(2);
-    expect(JSON.parse(String((chiamateUndoFatte[1][1] as RequestInit).body))).toEqual({
-      force: true,
-    });
-  });
-
-  it("un 409 sull'annullamento che torna anche dopo `force` è un rifiuto: il dialogo si chiude", async () => {
-    // Il termine è già in coda (PENDING): il backend controlla questo *prima* di
-    // guardare `force`, quindi "Rifai comunque" non lo supera mai. Se questo 409
-    // fosse letto come il primo (quello che chiede conferma), il dialogo
-    // resterebbe aperto per sempre: l'anello infinito che `force` esiste per
-    // evitare, raggiunto da un'altra porta. Un test che guardasse solo l'alert
-    // passerebbe anche col dialogo ancora lì: la prova vera è che sparisca.
-    const decisi: ImportTerm[] = [
-      {
-        id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
-        waiting_titles: [], decided_by: "ai", decided_action: "map",
-        decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
-      },
-    ];
-    stubFetch((path, method) => {
-      if (path.includes("/undo") && method === "POST") {
-        return [
-          { detail: "«Rigatoni» è già in coda: non c'è nessuna decisione da disfare." },
-          409,
-        ];
-      }
-      if (path.includes("decided_by=ai")) return [decisi, 200];
-      if (path.includes("decided_by=human")) return [[], 200];
-      if (path.includes("/imports/terms")) return [[], 200];
-      if (path.includes("/imports/status")) return [STATO_NORMALE, 200];
-      return [{}, 404];
-    });
-    renderScreen();
-
-    await userEvent.click(
-      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
-    );
-    await screen.findByRole("alertdialog");
-
-    await userEvent.click(screen.getByRole("button", { name: /rifai comunque/i }));
-
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(
       await screen.findByText(/«Rigatoni» è già in coda: non c'è nessuna decisione da disfare\./)
     ).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /rifai comunque/i })).not.toBeInTheDocument();
+  });
+
+  it("l'annullamento non manda più `force`", async () => {
+    const spy = renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
+        },
+      ],
+      undoStatus: 200,
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
+    );
+
+    await waitFor(() => {
+      const undo = spy.mock.calls.find(
+        ([url, init]) =>
+          String(url).includes("/undo") && (init as RequestInit | undefined)?.method === "POST"
+      );
+      expect(undo).toBeDefined();
+      expect((undo![1] as RequestInit).body).toBeUndefined();
+    });
   });
 
   it("un 500 sull'annullamento si vede, invece di sembrare un tocco ignorato", async () => {
