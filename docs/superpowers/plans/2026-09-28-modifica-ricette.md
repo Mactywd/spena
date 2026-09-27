@@ -6,7 +6,7 @@
 importata, si modifica con lo stesso modulo di «Scrivi una ricetta» e si elimina con la
 lapide e «Annulla»; e l'import non riscrive mai quel che si è toccato.
 
-**Architettura:** una migrazione (`0011`) aggiunge `recipes.archived_at` e lo stato
+**Architettura:** una migrazione (`0012`) aggiunge `recipes.archived_at` e lo stato
 `adopted` delle pagine d'import. La scrittura delle righe di ricetta resta in un punto
 solo, `write_recipe_ingredients` in `app/repositories/recipes.py`, che `create_recipe`
 e la nuova `PUT /recipes/{id}` chiamano entrambe; la `PATCH` guadagna `archived`. Il
@@ -52,6 +52,13 @@ produzione: il ri-legamento delle cotture e `merge_ingredients` esistono).
   radice del worktree) se `docker ps` non mostra `spena-db-1`.
 - **Frontend**, sempre da `<worktree>/frontend`: `npx vitest run` (il progetto **non
   ha** uno script `npm test`), `npm run lint`, `npm run typecheck`, `npm run build`.
+- **La linea di partenza**, misurata il 2026-09-28 su `36eb48b` (il ramo con `s9-note` ed
+  `e2e-ix` già fusi): backend **870** test verdi, vitest **428** test in 34 file. Ogni
+  task finisce con la sua suite verde; il conto cresce, non cala.
+- **Lo stack e2e `spena-e2e` può essere di un altro ramo.** Prima di alzarlo,
+  `docker ps --format '{{.Names}}' | grep spena-e2e`: se c'è e non l'hai alzato tu, non
+  fare `down`, aspetta che sparisca. `.env.e2e` (da `e2e-ix`) tiene vuota
+  `OPENROUTER_API_KEY` e mette `SPENA_E2E=1`: nessuna prova chiama il modello.
 - **Il type check è `npm run typecheck`** (`tsc -b`). Mai `tsc --noEmit`, che su questo
   progetto esce 0 sempre (settima lezione di `CLAUDE.md`). `RecipeSummary` e
   `RecipeDetail` guadagnano campi: i letterali dei test si rompono, e lo vede solo
@@ -116,20 +123,28 @@ richiamata nel task che la costruisce.
    importata: salvando diventa tua…» (spec §6.2) è vera solo se la pagina è ancora
    `imported`: su una ricetta già presa in carico «diventa tua» sarebbe falso. La spec
    non dice come lo schermo lo sappia: `RecipeOut` guadagna `owned_by_import: bool`.
-5. **«Se il termine aveva creato un ingrediente» non si può sapere.** Spec §4: la coda
-   deve dire che l'ingrediente resta perché una ricetta tua lo usa. Ma `import_terms`
-   non registra se la decisione ha creato l'ingrediente o ne ha usato uno esistente
-   (`_decided_action` in `api/imports.py` spiega perché nessuna deduzione regge).
-   L'annullamento restituisce quindi `ingredient_kept_for_adopted` — l'ingrediente non è
-   stato cancellato **e** una ricetta presa in carico lo usa — e la coda lo dice con una
-   frase vera in entrambi i casi: «L'ingrediente resta in anagrafica: lo usa una ricetta
-   tua.»
+5. **«Una ricetta tua» sono le ricette delle pagine `adopted`.** Spec §4: se il termine
+   aveva creato un ingrediente e una ricetta tua lo usa ancora, l'ingrediente resta e la
+   coda lo dice. Il fatto «aveva creato» ora esiste: la nota di S9 entrata nel ramo scrive
+   `import_terms.created_ingredient`, e `undo_decision` cancella l'ingrediente solo su
+   `True` e se niente altro lo usa. L'annullamento restituisce quindi, accanto al conto
+   `adopted_untouched`, `ingredient_kept_for_adopted`: vero quando `created_ingredient`
+   era `True` (letto **prima** che il termine si azzeri), l'ingrediente **non** è stato
+   cancellato, e lo usa una ricetta di una pagina `adopted`. «Tua» si legge così e non
+   come «qualunque ricetta non dell'import»: una ricetta scritta a mano che usa quell'
+   ingrediente lo tiene in vita anche oggi, senza che la coda lo dica, e non è R10 a
+   cambiarlo; la frase della spec parla delle ricette che R10 ha reso tue, le stesse
+   che `adopted_untouched` conta. La coda lo dice con le parole del §4: «L'ingrediente
+   creato da questa decisione resta in anagrafica: lo usa una ricetta tua.»
 6. **L'anagrafica continua a contare le ricette archiviate.** `recipes_using` (la guardia
    sul non alimentare) e `ingredient_usage` (la scheda dell'ingrediente) non escludono
    le archiviate: le loro righe esistono ancora, e una ricetta ripristinata non deve
    tornare con una riga che punta a un non alimentare. «Tutto quel che elenca ricette»
    (spec §5) si legge come l'elenco del §5 stesso: il ricettario, le categorie,
-   `reindex`.
+   `reindex`. Ma il rifiuto le **segna**: `RecipeRef` guadagna `archived`, e la scheda
+   dell'ingrediente scrive «(eliminata)» accanto al titolo — il link porta al dettaglio,
+   che offre «Ripristina», e l'utente capisce perché una ricetta che non vede più lo
+   blocca (Task 5 nel backend, Task 13 nella scheda).
 7. **`reread_costs` salta le pagine prese in carico.** La spec §4 elenca annullamento,
    materializzazione, fusione e risincronizzazione; `app.cli.reread_costs` è un quinto
    percorso dell'import che scrive sulle ricette (il costo dove manca). Una ricetta resa
@@ -150,21 +165,43 @@ richiamata nel task che la costruisce.
     «togli» ma «confermo che è questo» — ed è quel che due test esistenti provano, con
     le stesse etichette.
 11. **Le categorie del modulo si leggono quando si apre la scelta, non al montaggio.**
-    Leggerle al montaggio consumerebbe la prima delle risposte in sequenza
-    (`mockResolvedValueOnce`) con cui i test esistenti di «Scrivi una ricetta» fingono
-    la bozza, e li romperebbe: la spec §9 lo vieta. Aprire la scelta la carica; la chiave
-    è la stessa `["recipe-categories"]` del ricettario, quindi quasi sempre è già in cache.
+    Per l'uso: la categoria è il campo che si tocca meno, e una scelta che si apre e
+    carica (con il suo «Carico…» e il suo errore) serve meglio di una `<select>` nativa,
+    che sul telefono apre la sua lista subito, prima che le voci siano arrivate. La
+    chiave è la stessa `["recipe-categories"]` del ricettario, quindi quasi sempre la
+    risposta è già in cache. Come effetto, «Scrivi una ricetta» non fa una chiamata in più
+    al montaggio, e i suoi test esistenti — che fingono la bozza con risposte in sequenza
+    (`mockResolvedValueOnce`) — restano intatti come vuole la spec §9. I test nuovi non
+    contano le chiamate prima dell'apertura: provano che aprire carica e che si sceglie.
 12. **Il nome si scrive una volta** (spec §6.2) mostrando la nota dell'aggancio solo
-    quando dice qualcosa di diverso dall'etichetta: aggancio incerto, niente in
+    quando dice qualcosa di diverso dall'etichetta — aggancio incerto, niente in
     anagrafica, o un nome agganciato diverso da quello scritto («basilico fresco» →
-    «basilico»).
+    «basilico») — e su una riga sua, sotto il nome. Sulla riga da creare la nota perde il
+    nome ripetuto e dice solo «da creare salvando»: è il difetto che
+    `frontend/e2e/ai-draft.spec.ts` teneva fermo com'è (562 px a 375), e il Task 9 lo
+    chiude e rovescia quella prova. La nota «non in anagrafica, sarà escluso» tiene il
+    nome, perché un test esistente di «Scrivi una ricetta» lo cerca nella stessa frase.
+13. **`counts().imported` conta anche le pagine `adopted`.** Non è nella spec: senza, la
+    riga della coda «N ricette scaricate aspettano, M sono già dentro» perderebbe le
+    ricette rese tue, e i conti per stato non tornerebbero più a `fetched`. Una pagina
+    `adopted` è stata importata una volta, come dice il nome del campo; resta contata
+    anche se la sua ricetta è poi eliminata, come già una `imported` la cui ricetta è
+    stata cancellata a mano (Task 7).
+14. **La ricerca semantica chiede a pgvector la scansione iterativa.** Non è nella spec:
+    l'indice HNSW è approssimato, e con un filtro nella query (`archived_at IS NULL`,
+    come già la soglia di distanza) vede solo i primi `hnsw.ef_search` vicini (40): cento
+    eliminate vicine lascerebbero fuori la viva. `SET LOCAL hnsw.iterative_scan =
+    strict_order` (pgvector ≥ 0.8.0) fa continuare la scansione finché il limite è pieno,
+    nell'ordine esatto. Il test lo prova seguendo il piano di produzione, con
+    `enable_seqscan = off` (Task 6).
+
 
 ---
 
 ## Struttura dei file
 
 **Backend**
-- `backend/alembic/versions/0011_modifica_ricette.py` — *crea*: `archived_at` e `adopted`.
+- `backend/alembic/versions/0012_modifica_ricette.py` — *crea*: `archived_at` e `adopted`.
 - `backend/app/db/models/recipe.py` — *modifica*: `Recipe.archived_at`.
 - `backend/app/db/models/recipe_import.py` — *modifica*: `ImportState.ADOPTED`, il `CHECK`.
 - `backend/app/repositories/recipes.py` — *modifica*: `IngredientLine`,
@@ -181,9 +218,13 @@ richiamata nel task che la costruisce.
 - `backend/app/schemas/recipe_import.py`, `backend/app/api/imports.py` — *modifica*:
   `UndoOut` porta i due fatti nuovi.
 - `backend/app/cli/reread_costs.py` — *modifica*: salta le pagine `adopted`.
+- `backend/app/repositories/imports.py` — *modifica* anche per `counts()`, che conta le
+  pagine `adopted` fra le importate (Task 7).
+- `backend/app/services/registry.py`, `backend/app/api/refusals.py` — *modifica*:
+  `RecipeRef.archived`, e il rifiuto sul non alimentare che lo manda (Task 5).
 
 **Prove backend**
-- `backend/tests/db/test_migration_0011.py` — *crea* (Task 1).
+- `backend/tests/db/test_migration_0012.py` — *crea* (Task 1).
 - `backend/tests/db/test_import_schema.py` — *modifica* (Task 1).
 - `backend/tests/repositories/__init__.py`, `backend/tests/repositories/test_recipe_lines.py`
   — *crea* (Task 2).
@@ -193,6 +234,7 @@ richiamata nel task che la costruisce.
 - `backend/tests/api/test_recipes_archived_lists.py` — *crea* (Task 6).
 - `backend/tests/api/test_recipes_adoption.py` — *crea* (Task 7).
 - `backend/tests/test_reread_costs_cli.py` — *modifica* (Task 7).
+- `backend/tests/services/test_registry.py` — *modifica* (Task 5).
 
 **Frontend**
 - `frontend/src/domain/types.ts` — *modifica*: `archived_at`, `owned_by_import`,
@@ -216,6 +258,10 @@ richiamata nel task che la costruisce.
   — *modifica*: «Modifica», «Elimina», «Salvata», la ricetta archiviata.
 - `frontend/src/App.tsx` — *modifica*: la rotta `/ricette/:id/modifica`.
 - `frontend/src/features/recipe-import/ImportQueueScreen.tsx` (+ test) — *modifica*.
+- `frontend/src/features/registry/CategoryForm.tsx`, `IngredientScreen.test.tsx` —
+  *modifica*: «(eliminata)» accanto alle ricette del rifiuto (Task 13).
+- `frontend/e2e/ai-draft.spec.ts` — *modifica*: la riga «da creare salvando» sistemata,
+  le asserzioni rovesciate (Task 9).
 - I letterali `RecipeDetail`/`RecipeSummary` dei test esistenti
   (`CookSheet.test.tsx`, `RecipeDetailScreen.test.tsx`, `RecipeCard.test.tsx`) —
   *modifica*: un campo in più, niente altro.
@@ -232,21 +278,22 @@ Le rotte nuove esistono senza schermate, e l'import smette di rifare le ricette 
 carico. Si chiude con la suite intera verde (fine del Task 7); non si distribuisce da
 sola — la distribuzione la decide Mattia.
 
-### Task 1: La migrazione `0011` e i modelli
+### Task 1: La migrazione `0012` e i modelli
 
 **File:**
-- Create: `backend/alembic/versions/0011_modifica_ricette.py`
+- Create: `backend/alembic/versions/0012_modifica_ricette.py`
 - Modify: `backend/app/db/models/recipe.py` (classe `Recipe`, dopo `cost`)
 - Modify: `backend/app/db/models/recipe_import.py` (`ImportState`, `RecipeImport.__table_args__`)
-- Test: `backend/tests/db/test_migration_0011.py`, `backend/tests/db/test_import_schema.py`
+- Test: `backend/tests/db/test_migration_0012.py`, `backend/tests/db/test_import_schema.py`
 
 **Interfacce:**
 - Consuma: niente.
 - Produce:
   - `Recipe.archived_at: Mapped[datetime | None]` (`TIMESTAMPTZ`, annullabile)
   - `ImportState.ADOPTED = "adopted"`
-  - revisione Alembic `"0011"`, `down_revision = "0010"` (l'ultima esistente è davvero
-    la `0010_costo_ricette.py`: il numero della spec è giusto)
+  - revisione Alembic `"0012"`, `down_revision = "0011"`. La spec dice `0011`, ma quel
+    numero l'ha preso la nota di S9 entrata nel ramo (`0011_termine_crea_ingrediente.py`,
+    `import_terms.created_ingredient`): questa è la successiva.
 
 - [ ] **Step 0: il punto di partenza**
 
@@ -256,14 +303,15 @@ git status && git log --oneline -1   # r10-ricette, pulito, f390231 o successivo
 docker ps --format '{{.Names}}' | grep -q spena-db-1 || docker compose up -d db
 cd backend && $PYTEST -q
 ```
-Expected: tutto verde. Annota il numero di test: è la linea di partenza.
+Expected: 870 passed (la linea di partenza dei Vincoli globali). Se il numero è
+diverso, annota quello vero: è da lì che si conta.
 
 - [ ] **Step 1: scrivi i test che falliscono**
 
-Crea `backend/tests/db/test_migration_0011.py`:
+Crea `backend/tests/db/test_migration_0012.py`:
 
 ```python
-"""La migrazione 0011 sale e scende (R10 §8.1).
+"""La migrazione 0012 sale e scende (R10 §8.1).
 
 Su un database suo, creato e distrutto qui: far scendere quello della suite
 toglierebbe `archived_at` sotto i piedi a ogni altro test, e un fallimento a metà lo
@@ -335,14 +383,14 @@ async def _pagina(url: str, indirizzo: str, stato: str) -> None:
         await engine.dispose()
 
 
-async def test_la_0011_sale_scende_e_risale(scratch_url):
-    alembic(scratch_url, "upgrade", "0011")
+async def test_la_0012_sale_scende_e_risale(scratch_url):
+    alembic(scratch_url, "upgrade", "0012")
     assert await _scalar(scratch_url, ARCHIVED_AT) == "timestamp with time zone"
     await _pagina(scratch_url, "https://esempio.invalid/presa", "adopted")
     with pytest.raises(IntegrityError):
         await _pagina(scratch_url, "https://esempio.invalid/inventata", "quasi")
 
-    alembic(scratch_url, "downgrade", "0010")
+    alembic(scratch_url, "downgrade", "0011")
     assert await _scalar(scratch_url, ARCHIVED_AT) is None
     # scendendo, la presa in carico si perde: la pagina torna «imported», e il vecchio
     # CHECK non rifiuta niente di quel che c'è
@@ -384,25 +432,25 @@ async def test_una_ricetta_ha_la_data_di_eliminazione_vuota_finche_c_e(db_sessio
 
 - [ ] **Step 2: eseguili e verifica che falliscano**
 
-Run: `cd backend && $PYTEST -q tests/db/test_migration_0011.py tests/db/test_import_schema.py`
-Expected: FAIL — `alembic upgrade 0011` esce con «Can't locate revision identified by
-'0011'»; `AttributeError: ADOPTED` e `AttributeError: 'Recipe' object has no attribute
+Run: `cd backend && $PYTEST -q tests/db/test_migration_0012.py tests/db/test_import_schema.py`
+Expected: FAIL — `alembic upgrade 0012` esce con «Can't locate revision identified by
+'0012'»; `AttributeError: ADOPTED` e `AttributeError: 'Recipe' object has no attribute
 'archived_at'` negli altri due.
 
 - [ ] **Step 3: implementazione minima**
 
-Crea `backend/alembic/versions/0011_modifica_ricette.py`:
+Crea `backend/alembic/versions/0012_modifica_ricette.py`:
 
 ```python
 """modificare ed eliminare una ricetta salvata (R10)
 
-Revision ID: 0011
+Revision ID: 0012
 """
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0011"
-down_revision = "0010"
+revision = "0012"
+down_revision = "0011"
 
 
 def upgrade() -> None:
@@ -474,9 +522,9 @@ Expected: tutto verde, linea di partenza + 3.
 - [ ] **Step 5: commit**
 
 ```bash
-git add backend/alembic/versions/0011_modifica_ricette.py backend/app/db/models/recipe.py backend/app/db/models/recipe_import.py backend/tests/db/test_migration_0011.py backend/tests/db/test_import_schema.py
+git add backend/alembic/versions/0012_modifica_ricette.py backend/app/db/models/recipe.py backend/app/db/models/recipe_import.py backend/tests/db/test_migration_0012.py backend/tests/db/test_import_schema.py
 git commit -m "$(cat <<'EOF'
-ricette: la migrazione 0011, con la data di eliminazione e la pagina presa in carico
+ricette: la migrazione 0012, con la data di eliminazione e la pagina presa in carico
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
@@ -1008,16 +1056,28 @@ async def _writing_recipe(session: AsyncSession):
         ) from exc
     except IntegrityError as exc:
         await session.rollback()
+        # Le due frasi si mostrano così come sono: il modulo fa vedere il `detail` di un
+        # rifiuto 4xx (Task 9), quindi dicono il passo dopo invece del solo guasto.
         if is_missing_reference(exc):
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "Un ingrediente agganciato è inesistente, forse unito a un altro: togli "
+                "quella riga e aggiungilo di nuovo, poi salva.",
+            ) from exc
         # solo un duplicato è un "ripetuto": qualunque altra violazione è un difetto
         # nostro e deve restare visibile come 500, come in shopping.py e pantry.py
         if not is_unique_violation(exc):
             raise
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "ingrediente ripetuto nella ricetta"
+            status.HTTP_409_CONFLICT,
+            "Due righe puntano allo stesso ingrediente: togline una, poi salva.",
         ) from exc
 ```
+
+Le due frasi cambiano rispetto a prima («ingrediente inesistente», «ingrediente ripetuto
+nella ricetta»): nessun test le confronta intere, e
+`test_creating_with_a_dangling_ingredient_is_404_not_500` cerca solo «inesistente», che
+resta.
 
 e la rotta `create` diventa:
 
@@ -1083,7 +1143,7 @@ Spec §5 e §8.2.
   - `async adopt_import_page(session, recipe_id: uuid.UUID) -> bool` in
     `app/repositories/imports.py`
   - `RECIPE_ARCHIVED = "Questa ricetta è stata eliminata: ripristinala prima di modificarla."`
-    in `app/api/recipes.py` (il frontend riconosce il 409 da «eliminata», Task 9)
+    in `app/api/recipes.py` (il modulo mostra com'è il `detail` stringa di ogni rifiuto 4xx, Task 9)
   - `PUT /api/v1/recipes/{recipe_id}` → `RecipeOut`; 404 ricetta o ingrediente
     inesistente, 409 riga doppia o ricetta archiviata, 422 non alimentare o categoria
     sconosciuta.
@@ -1145,6 +1205,10 @@ async def importata(db_session, cucina):
         ],
         embedding=None, category="Primi piatti",
     )
+    # foto e tempi vengono solo dall'import: il modulo non li tocca (spec §7)
+    ricetta.image_url = "https://esempio.invalid/spaghetti.jpg"
+    ricetta.prep_minutes = 10
+    ricetta.cook_minutes = 15
     pagina = RecipeImport(
         source=GIALLOZAFFERANO, url=SPAGHETTI,
         payload={"title": "Spaghetti al pomodoro", "ingredients": []},
@@ -1263,6 +1327,11 @@ async def test_una_ricetta_importata_modificata_diventa_tua(
     # «tua» non è la provenienza: resta `dataset`, con il suo indirizzo
     assert (risposta.json()["source"], risposta.json()["source_ref"]) == ("dataset", SPAGHETTI)
     assert (await dal_database(RecipeImport, pagina.id)).state == ImportState.ADOPTED
+    # foto e tempi non sono nel modulo, e una modifica non li cancella (spec §7)
+    corpo = risposta.json()
+    assert (corpo["image_url"], corpo["prep_minutes"], corpo["cook_minutes"]) == (
+        "https://esempio.invalid/spaghetti.jpg", 10, 15,
+    )
 
 
 async def test_il_non_alimentare_e_rifiutato_e_la_ricetta_resta_com_era(logged_client, cucina):
@@ -1504,7 +1573,9 @@ Spec §5 e §8.4 (le cotture restano legate); deviazioni 4 e 8.
 - Modify: `backend/app/schemas/recipe.py` (`RecipeUpdate`, `RecipeOut`, `RecipeSummaryOut`)
 - Modify: `backend/app/repositories/imports.py` (in fondo)
 - Modify: `backend/app/api/recipes.py` (`_to_out`, `search`, `update`)
-- Test: `backend/tests/api/test_recipes_archive.py`
+- Modify: `backend/app/services/registry.py` (`RecipeRef`, `recipes_using`)
+- Modify: `backend/app/api/refusals.py` (il ramo `RecipesInUse`)
+- Test: `backend/tests/api/test_recipes_archive.py`, `backend/tests/api/test_registry_ingredients.py`
 
 **Interfacce:**
 - Consuma: `adopt_import_page`, `RECIPE_ARCHIVED` (Task 4).
@@ -1512,6 +1583,9 @@ Spec §5 e §8.4 (le cotture restano legate); deviazioni 4 e 8.
   - `RecipeUpdate.archived: bool | None` (strict); la `PATCH` accetta `{"archived": true|false}`
   - `RecipeOut.archived_at: datetime | None`, `RecipeOut.owned_by_import: bool`,
     `RecipeSummaryOut.archived_at: datetime | None`
+  - `RecipeRef.archived: bool = False` (registry), e nel 409 `non_food_in_recipes`
+    ogni voce di `recipes` porta `"archived": bool` (deviazione 6; lo schermo lo usa nel
+    Task 13)
   - `async owned_by_import(session, recipe_id: uuid.UUID) -> bool` in
     `app/repositories/imports.py`
 
@@ -1634,12 +1708,44 @@ async def test_archived_vuole_un_booleano(logged_client, db_session):
     assert risposta.status_code == 422
 ```
 
-- [ ] **Step 2: eseguilo e verifica che fallisca**
+In `backend/tests/api/test_registry_ingredients.py`: all'import da
+`app.db.models.recipe` aggiungi `Recipe`; nel test esistente
+`test_il_non_alimentare_con_ricette_e_un_409_che_le_elenca` l'asserzione su
+`corpo["recipes"]` guadagna la chiave nuova — è l'unica riga di un test esistente che
+questo task cambia, perché confronta il dizionario intero:
 
-Run: `cd backend && $PYTEST -q tests/api/test_recipes_archive.py`
+```python
+    assert corpo["recipes"] == [
+        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": False}
+    ]
+```
+
+e subito dopo quel test:
+
+```python
+async def test_il_rifiuto_segna_le_ricette_eliminate(logged_client, db_session, anagrafica):
+    """R10: una ricetta eliminata usa ancora il burro, e il rifiuto la conta — ripristinata
+    non deve tornare con una riga non alimentare. La segna, perché chi non la vede più nel
+    ricettario capisca da dove viene il blocco (deviazione 6 del piano)."""
+    risotto = await db_session.get(Recipe, anagrafica["risotto"])
+    risotto.archived_at = datetime.now(UTC)
+    await db_session.flush()
+
+    risposta = await logged_client.patch(f"{BASE}/{anagrafica['burro']}", json={"category": "casa"})
+
+    assert risposta.status_code == 409
+    assert risposta.json()["recipes"] == [
+        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": True}
+    ]
+```
+
+- [ ] **Step 2: eseguili e verifica che falliscano**
+
+Run: `cd backend && $PYTEST -q tests/api/test_recipes_archive.py tests/api/test_registry_ingredients.py`
 Expected: FAIL — `KeyError: 'archived_at'` e `KeyError: 'owned_by_import'` nelle
 risposte (i campi non esistono), e l'ultimo con 200 invece di 422: senza il campo
-`archived` Pydantic ignora `"sì"`.
+`archived` Pydantic ignora `"sì"`. I due dell'anagrafica falliscono sulla chiave
+`archived` che manca.
 
 - [ ] **Step 3: implementazione minima**
 
@@ -1745,9 +1851,53 @@ async def update(
     return await _to_out(session, recipe)
 ```
 
-- [ ] **Step 4: eseguilo e verifica che passi, poi la suite**
+In `backend/app/services/registry.py`:
 
-Run: `cd backend && $PYTEST -q tests/api/test_recipes_archive.py tests/api/test_recipes_cost.py`
+```python
+@dataclass(frozen=True)
+class RecipeRef:
+    id: uuid.UUID
+    title: str
+    # eliminata (R10): conta ancora — ripristinata tornerebbe con la sua riga — e lo
+    # schermo la segna, perché nel ricettario non si vede più
+    archived: bool = False
+```
+
+e in `recipes_using` la query dell'elenco e il costruttore:
+
+```python
+    rows = await session.execute(
+        select(Recipe.id, Recipe.title, Recipe.archived_at)
+        .join(RecipeIngredient, RecipeIngredient.recipe_id == Recipe.id)
+        .where(RecipeIngredient.ingredient_id == ingredient_id)
+        .order_by(Recipe.title, Recipe.id)
+        .limit(RECIPES_SHOWN)
+    )
+    return RecipesInUse(
+        count=count,
+        recipes=tuple(
+            RecipeRef(id=row.id, title=row.title, archived=row.archived_at is not None)
+            for row in rows
+        ),
+    )
+```
+
+(il conto resta com'è, archiviate comprese: deviazione 6). In
+`backend/app/api/refusals.py`, nel ramo `RecipesInUse`:
+
+```python
+        content["recipes"] = [
+            {"id": str(recipe.id), "title": recipe.title, "archived": recipe.archived}
+            for recipe in obstacle.recipes
+        ]
+```
+
+`tests/services/test_registry.py` confronta `RecipeRef(id=…, title=…)` senza `archived`:
+passa com'è, grazie al default.
+
+- [ ] **Step 4: eseguili e verifica che passino, poi la suite**
+
+Run: `cd backend && $PYTEST -q tests/api/test_recipes_archive.py tests/api/test_recipes_cost.py tests/api/test_registry_ingredients.py tests/services/test_registry.py`
 Expected: PASS — i test del costo di R9 non cambiano.
 
 Run: `cd backend && $PYTEST -q`
@@ -1756,7 +1906,7 @@ Expected: tutto verde.
 - [ ] **Step 5: commit**
 
 ```bash
-git add backend/app/schemas/recipe.py backend/app/repositories/imports.py backend/app/api/recipes.py backend/tests/api/test_recipes_archive.py
+git add backend/app/schemas/recipe.py backend/app/repositories/imports.py backend/app/api/recipes.py backend/app/services/registry.py backend/app/api/refusals.py backend/tests/api/test_recipes_archive.py backend/tests/api/test_registry_ingredients.py
 git commit -m "$(cat <<'EOF'
 ricette: eliminare archivia, ripristinare riporta, e il dettaglio risponde lo stesso
 
@@ -1769,7 +1919,18 @@ EOF
 
 ### Task 6: Tutto quel che elenca ricette esclude le archiviate
 
-Spec §5 (l'elenco da coprire) e §8.4; deviazioni 1 e 6.
+Spec §5 (l'elenco da coprire) e §8.4; deviazioni 1, 6 e 14.
+
+**pgvector.** `docker-compose.yml` e `docker-compose.prod.yml` usano entrambi l'immagine
+`pgvector/pgvector:pg16`, un'etichetta mobile. Sul database di sviluppo l'estensione è
+alla **0.8.6** (`SELECT extversion FROM pg_extension WHERE extname = 'vector'`), quindi
+`hnsw.iterative_scan` (0.8.0 in poi) c'è. In produzione non si può controllare (nessun
+accesso da qui): l'estensione ha la versione con cui fu creata, finché nessuno fa
+`ALTER EXTENSION vector UPDATE`. Per questo il codice chiede la scansione iterativa
+**solo se** `extversion` è almeno 0.8.0, e altrimenti fa quel che faceva: un
+parametro `hnsw.*` sconosciuto a una libreria vecchia sarebbe un errore in ogni ricerca,
+non una ricerca meno precisa. In produzione, oggi, gli embedding non ci sono e la metà
+semantica non gira comunque.
 
 **File:**
 - Modify: `backend/app/services/recipe_search.py` (`_semantic_ranking`, `_textual_ranking`, `_browse`)
@@ -1783,6 +1944,8 @@ Spec §5 (l'elenco da coprire) e §8.4; deviazioni 1 e 6.
   `reindex` filtrano `Recipe.archived_at IS NULL` **nella stessa query che porta il
   limite**. `recipes_using` e `ingredient_usage` dell'anagrafica restano come sono
   (deviazione 6): non si toccano, e nessun test qui li riguarda.
+  In `recipe_search.py`: `async _iterative_scan_available(session) -> bool`, con la
+  risposta tenuta per processo in `_iterative_scan_known: bool | None`.
 
 - [ ] **Step 1: scrivi il test che fallisce**
 
@@ -1969,11 +2132,12 @@ async def test_la_ricerca_semantica_esclude_le_eliminate_prima_della_piscina(
         )
     await _ricetta(db_session, "Ricetta vicina", embedding=_vettore_a_distanza(0.10))
     await db_session.flush()
-    # L'indice HNSW è approssimato: se il pianificatore lo usa, un filtro nella stessa
-    # query vede solo i primi `ef_search` vicini (40 di default). Alzarlo al massimo
-    # prova la cosa che questo test prova — dove sta il filtro rispetto al limite — e
-    # non la precisione dell'indice.
-    await db_session.execute(text("SET LOCAL hnsw.ef_search = 1000"))
+    # Con 106 righe il pianificatore sceglierebbe la scansione sequenziale, che è
+    # esatta; in produzione, con migliaia di vettori, sceglie l'indice HNSW, che è
+    # approssimato e con un filtro vede solo i primi `ef_search` vicini (40). Si segue
+    # il piano di produzione: senza la scansione iterativa, i 40 vicini sono tutti
+    # eliminati e la viva non arriva (deviazione 14).
+    await db_session.execute(text("SET LOCAL enable_seqscan = off"))
 
     assert await _titoli(logged_client, "q=xyzzy") == {"Ricetta vicina"}
 
@@ -2010,12 +2174,52 @@ Run: `cd backend && $PYTEST -q tests/api/test_recipes_archived_lists.py`
 Expected: FAIL — ogni prova trova ancora la ricetta archiviata (`{'Pasta in bianco',
 'Pasta al burro'} != {'Pasta in bianco'}`), le categorie contano ancora «Dolci»,
 `reindex` restituisce 1 invece di 0, e le tre prove della piscina non trovano la viva.
+Quella semantica della piscina resta rossa anche con il solo filtro sulla `where`: la
+fa passare la scansione iterativa. Se la vedi verde con il solo filtro, il pianificatore
+non sta usando l'indice — controlla che `SET LOCAL enable_seqscan = off` arrivi sulla
+stessa connessione della rotta (`logged_client` usa `db_session`, quindi sì).
 
 - [ ] **Step 3: implementazione minima**
 
 In `backend/app/services/recipe_search.py`:
 
-`_semantic_ranking`, la `where`:
+In testa al modulo, accanto a `_model_mismatch_logged`:
+
+```python
+# Se l'estensione vector sa scandire l'indice HNSW in modo iterativo (0.8.0 in poi).
+# Una volta per processo: la versione non cambia mentre il backend gira.
+_iterative_scan_known: bool | None = None
+ITERATIVE_SCAN_SINCE = (0, 8, 0)
+
+
+async def _iterative_scan_available(session: AsyncSession) -> bool:
+    """Se si può chiedere `hnsw.iterative_scan`. Letto dalla versione dell'estensione e
+    non dalla libreria: un'estensione a 0.8 ha per forza una libreria almeno a 0.8,
+    mentre il contrario non vale, e nel dubbio non si chiede niente — un parametro
+    `hnsw.*` sconosciuto sarebbe un errore a ogni ricerca."""
+    global _iterative_scan_known
+    if _iterative_scan_known is None:
+        version = await session.scalar(
+            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        )
+        parts = tuple(int(part) for part in str(version or "0").split(".")[:3] if part.isdigit())
+        _iterative_scan_known = parts >= ITERATIVE_SCAN_SINCE
+    return _iterative_scan_known
+```
+
+(`text` si aggiunge all'import da `sqlalchemy`.) In `_semantic_ranking`, subito prima
+di `distance = Recipe.embedding.cosine_distance(vector)`:
+
+```python
+    if await _iterative_scan_available(session):
+        # Con un filtro nella query l'indice HNSW vede solo i primi `hnsw.ef_search`
+        # vicini (40) e poi filtra: cento eliminate vicine lascerebbero fuori la viva.
+        # `strict_order` continua la scansione finché il limite è pieno, nell'ordine
+        # esatto. LOCAL: vale fino alla fine della transazione di questa richiesta.
+        await session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
+```
+
+e la sua `where`:
 
 ```python
         .where(
@@ -2091,12 +2295,13 @@ EOF
 
 ### Task 7: La presa in carico contro l'import
 
-Spec §4 e §8.3; deviazioni 5 e 7.
+Spec §4 e §8.3; deviazioni 5, 7 e 13.
 
 **File:**
 - Modify: `backend/app/services/recipe_import/undo.py` (`Undone`, `_imported_pages_with`, `undo_decision`)
 - Modify: `backend/app/schemas/recipe_import.py` (`UndoOut`, righe 91–94)
-- Modify: `backend/app/api/imports.py` (la rotta `undo`, righe 245–273)
+- Modify: `backend/app/api/imports.py` (la rotta `undo`: il suo `return UndoOut(...)`)
+- Modify: `backend/app/repositories/imports.py` (`counts`)
 - Modify: `backend/app/cli/reread_costs.py` (la query di `reread_costs`)
 - Test: `backend/tests/api/test_recipes_adoption.py`, `backend/tests/test_reread_costs_cli.py`
 
@@ -2108,10 +2313,19 @@ Spec §4 e §8.3; deviazioni 5 e 7.
   - `UndoOut.adopted_untouched: int = 0`, `UndoOut.ingredient_kept_for_adopted: bool = False`
   - `_pages_with(session, term, state: ImportState) -> list[RecipeImport]` (sostituisce
     `_imported_pages_with`)
+  - `counts(...).imported` = pagine `imported` **più** `adopted` (deviazione 13)
 
-**Tre prove su cinque passano già** dopo il Task 4, ed è il punto: la spec §4 dice che
-fusione, materializzazione e risincronizzazione lasciano stare una pagina `adopted`
-«senza codice nuovo». Qui lo provano; guidano codice solo l'annullamento e
+`undo.py` è quello già fuso da `s9-note`: legge `term.created_ingredient` prima di
+azzerare il termine, e chiama `delete_ingredient_if_unused` solo se era `True`. Qui ci
+si appoggia a quello, senza cambiarlo.
+
+**Delle cinque prove della presa in carico, quattro passano già** dopo il Task 4, ed è il
+punto: la spec §4 dice che rideciso il termine, fusione, materializzazione e
+risincronizzazione lasciano stare una pagina `adopted` «senza codice nuovo», e qui lo
+provano. La quinta, sulla risincronizzazione, è dichiarata per quel che è:
+**documentazione** di un comportamento che c'era già — `known_urls` restituisce ogni
+indirizzo preso, in qualunque stato — e non potrebbe fallire per un difetto di R10.
+Guidano codice solo l'annullamento (il conto e l'ingrediente tenuto), `counts()` e
 `reread_costs`.
 
 - [ ] **Step 1: scrivi i test che falliscono**
@@ -2140,7 +2354,7 @@ from app.db.models.recipe_import import (
     RecipeImport,
     TermDecision,
 )
-from app.repositories.imports import known_urls, store_page
+from app.repositories.imports import counts, known_urls, store_page
 from app.repositories.ingredients import remember_alias
 from app.services.recipe_import.materialize import materialize_ready
 from app.services.registry import merge_ingredients
@@ -2172,16 +2386,18 @@ async def mondo(db_session):
     db_session.add_all(voci.values())
     await db_session.flush()
 
-    def termine(key: str, display: str, voce_: str) -> ImportTerm:
+    def termine(key: str, display: str, voce_: str, *, creato: bool) -> ImportTerm:
         return ImportTerm(
             source=GIALLOZAFFERANO, term_key=key, display_name=display, occurrences=2,
             decision=TermDecision.MAPPED, ingredient_id=voci[voce_].id, decided_by="ai",
-            decided_at=datetime.now(UTC),
+            decided_at=datetime.now(UTC), created_ingredient=creato,
         )
 
     termini = {
-        "spaghetti": termine("k-spaghetti", "Spaghetti", "pasta"),
-        "t-guanciale": termine("k-guanciale", "Guanciale", "guanciale"),
+        # «Spaghetti» agganciato alla pasta che c'era già; «Guanciale» ha creato il suo
+        # ingrediente: è quello che l'annullamento cancellerebbe, se niente lo usasse
+        "spaghetti": termine("k-spaghetti", "Spaghetti", "pasta", creato=False),
+        "t-guanciale": termine("k-guanciale", "Guanciale", "guanciale", creato=True),
     }
     db_session.add_all(termini.values())
     await db_session.flush()
@@ -2292,9 +2508,29 @@ async def test_materialize_ready_non_tocca_la_pagina_presa_in_carico(
 async def test_la_risincronizzazione_salta_l_indirizzo_della_ricetta_tua(
     logged_client, db_session, mondo
 ):
-    """`_new_urls` di `import_gz` scarta ogni indirizzo che `known_urls` conosce."""
+    """DOCUMENTAZIONE, non guardia: passava prima di R10 e non può fallire per R10.
+
+    `_new_urls` di `import_gz` scarta ogni indirizzo che `known_urls` conosce, e
+    `known_urls` li restituisce tutti, in qualunque stato. Sta qui perché la spec §4
+    elenca la risincronizzazione fra i percorsi che lasciano stare una pagina `adopted`,
+    e chi legge questo file cerca la prova accanto alle altre. Se un giorno `known_urls`
+    filtrasse per stato, questo test diventerebbe una guardia vera.
+    """
     await _adotta(logged_client, db_session, CARBONARA, "La mia carbonara")
     assert CARBONARA in await known_urls(db_session, GIALLOZAFFERANO)
+
+
+async def test_la_coda_conta_la_ricetta_tua_fra_quelle_gia_dentro(
+    logged_client, db_session, mondo
+):
+    """«N ricette scaricate aspettano, M sono già dentro»: una pagina presa in carico è
+    stata importata una volta, e i conti per stato devono tornare a `fetched`
+    (deviazione 13)."""
+    await _adotta(logged_client, db_session, CARBONARA, "La mia carbonara")
+
+    numeri = await counts(db_session, GIALLOZAFFERANO)
+
+    assert (numeri.fetched, numeri.pending_recipes, numeri.imported, numeri.skipped) == (2, 0, 2, 0)
 ```
 
 In `backend/tests/test_reread_costs_cli.py`, in fondo (`pagina(costo)` è la funzione
@@ -2324,11 +2560,11 @@ async def test_una_ricetta_presa_in_carico_non_si_rilegge(db_session):
 - [ ] **Step 2: eseguili e verifica quali falliscono**
 
 Run: `cd backend && $PYTEST -q tests/api/test_recipes_adoption.py tests/test_reread_costs_cli.py`
-Expected: FAIL due — `KeyError: 'adopted_untouched'` nel primo test, e
-`assert not rotta.called` in quello di `reread_costs`. Gli altri quattro della presa in
-carico PASSANO già (vedi sopra): se uno di loro fallisce, fermati — vuol dire che un
-percorso dell'import rifà le ricette `adopted`, e la spec §4 va riletta prima di
-scrivere codice.
+Expected: FAIL tre — `KeyError: 'adopted_untouched'` nel primo test, `(2, 0, 1, 0) != (2,
+0, 2, 0)` in quello dei conti, e `assert not rotta.called` in quello di `reread_costs`.
+Gli altri quattro della presa in carico PASSANO già (vedi sopra): se uno fallisce,
+fermati — vuol dire che un percorso dell'import rifà le ricette `adopted`, e la spec §4
+va riletta prima di scrivere codice.
 
 - [ ] **Step 3: implementazione minima**
 
@@ -2398,12 +2634,18 @@ In `undo_decision`: la prima riga diventa
     adopted = await _pages_with(session, term, ImportState.ADOPTED)
 ```
 
-e dopo il blocco che chiama `delete_ingredient_if_unused`, prima dell'ultimo `flush`:
+e dopo il blocco `if ingredient_id is not None:` (quello che chiama
+`delete_ingredient_if_unused` solo su `created_ingredient is True`), prima dell'ultimo
+`flush`:
 
 ```python
+    # Spec §4: la decisione aveva creato l'ingrediente, l'annullamento non l'ha cancellato,
+    # e lo tiene una ricetta tua. `created_ingredient` è la variabile letta sopra, prima
+    # che il termine si azzerasse; «tua» è una ricetta di una pagina `adopted`, le stesse
+    # che `adopted_untouched` conta (deviazione 5). Una ricetta scritta a mano che lo usa
+    # lo tiene in vita anche lei, ma quello non è R10 e la coda non lo dice.
     kept_for_adopted = False
-    if ingredient_id is not None and not ingredient_deleted and adopted:
-        # l'ingrediente è rimasto: lo dice solo se è una ricetta tua a tenerlo
+    if created_ingredient is True and ingredient_id is not None and not ingredient_deleted and adopted:
         kept_for_adopted = (
             await session.scalar(
                 select(RecipeIngredient.id)
@@ -2449,6 +2691,15 @@ In `backend/app/api/imports.py`, nel `return UndoOut(...)` della rotta `undo`:
         ingredient_kept_for_adopted=undone.ingredient_kept_for_adopted,
 ```
 
+In `backend/app/repositories/imports.py`, in `counts`, la riga di `imported`:
+
+```python
+        # una pagina presa in carico (R10) è stata importata una volta come le altre: senza,
+        # «M sono già dentro» perderebbe le ricette rese tue e i conti per stato non
+        # tornerebbero a `fetched`
+        imported=by_state.get(ImportState.IMPORTED, 0) + by_state.get(ImportState.ADOPTED, 0),
+```
+
 In `backend/app/cli/reread_costs.py`: `from app.db.models.recipe_import import ImportState, RecipeImport`,
 e nella `where` della query di `reread_costs`, dopo la condizione su `source_ref`:
 
@@ -2465,7 +2716,7 @@ e nella `where` della query di `reread_costs`, dopo la condizione su `source_ref
 
 - [ ] **Step 4: eseguili e verifica che passino, poi la suite intera**
 
-Run: `cd backend && $PYTEST -q tests/api/test_recipes_adoption.py tests/test_reread_costs_cli.py tests/services/test_undo.py tests/api/test_imports_undo.py tests/services/test_registry_merge.py`
+Run: `cd backend && $PYTEST -q tests/api/test_recipes_adoption.py tests/test_reread_costs_cli.py tests/services/test_undo.py tests/api/test_imports_undo.py tests/services/test_registry_merge.py tests/services/test_import_terms.py tests/api/test_imports.py`
 Expected: PASS.
 
 Run: `cd backend && $PYTEST -q`
@@ -2474,7 +2725,7 @@ Expected: tutto verde. **Fine della Consegna 1**: annota il numero di test.
 - [ ] **Step 5: commit**
 
 ```bash
-git add backend/app/services/recipe_import/undo.py backend/app/schemas/recipe_import.py backend/app/api/imports.py backend/app/cli/reread_costs.py backend/tests/api/test_recipes_adoption.py backend/tests/test_reread_costs_cli.py
+git add backend/app/services/recipe_import/undo.py backend/app/schemas/recipe_import.py backend/app/api/imports.py backend/app/repositories/imports.py backend/app/cli/reread_costs.py backend/tests/api/test_recipes_adoption.py backend/tests/test_reread_costs_cli.py
 git commit -m "$(cat <<'EOF'
 import: le ricette prese in carico non si rifanno, e l'annullamento le conta
 
@@ -2530,6 +2781,7 @@ import {
   applyDraft,
   lineFromDraft,
   lineFromIngredient,
+  matchNote,
   recipeBody,
   showsMatch,
   validationProblem,
@@ -2642,6 +2894,17 @@ describe("prima di mandare", () => {
 });
 
 describe("il nome si scrive una volta", () => {
+  it("la nota di una riga da creare non ripete il nome", () => {
+    const speck = lineFromDraft(
+      bozza({ raw_name: "Speck", ingredient_id: null, matched_name: null, confident: false, proposed_category: "carne" }),
+      0
+    );
+    expect(matchNote(speck)).toBe("da creare salvando");
+    // «non in anagrafica» tiene il nome: un test di «Scrivi una ricetta» lo cerca lì
+    expect(matchNote(lineFromDraft(bozza({ raw_name: "Zafferano", ingredient_id: null, matched_name: null }), 1)))
+      .toBe("Zafferano non in anagrafica, sarà escluso");
+  });
+
   it("la nota dell'aggancio compare solo se dice qualcosa di diverso", () => {
     expect(showsMatch(lineFromIngredient(ZAFFERANO))).toBe(false);
     expect(showsMatch(valuesFromRecipe(DETAIL).lines[0])).toBe(false);
@@ -2908,7 +3171,9 @@ export function savableLines(lines: FormLine[]): FormLine[] {
 
 export function matchNote(line: FormLine): string {
   if (line.ingredientId === null) {
-    if (line.proposedCategory !== null) return `${line.label}: da creare salvando`;
+    // il nome sta già sulla riga, sopra la nota: ripeterlo è quel che a 375px allargava
+    // la pagina a 562px con un nome di 60 caratteri (e2e/ai-draft.spec.ts)
+    if (line.proposedCategory !== null) return "da creare salvando";
     return `${line.label} non in anagrafica, sarà escluso`;
   }
   if (line.uncertain) return `${line.matchedName}, da confermare`;
@@ -3014,7 +3279,8 @@ EOF
 
 ### Task 9: `RecipeForm`, e «Scrivi una ricetta» che lo usa
 
-Spec §6.2 e §9; deviazioni 10, 11 e 12.
+Spec §6.2 e §9; deviazioni 10, 11 e 12. Chiude il difetto «da creare salvando» che
+`frontend/e2e/ai-draft.spec.ts` (da `e2e-ix`) teneva fermo com'era, e rovescia quella prova.
 
 **File:**
 - Create: `frontend/src/features/recipe-form/RecipeForm.tsx`
@@ -3022,6 +3288,7 @@ Spec §6.2 e §9; deviazioni 10, 11 e 12.
 - Modify: `frontend/src/features/ai-draft/AiDraftScreen.tsx` (riscritta)
 - Modify: `frontend/src/features/ai-draft/AiDraftScreen.test.tsx` — **solo** i quattro test
   elencati allo Step 3
+- Modify: `frontend/e2e/ai-draft.spec.ts` (le asserzioni rovesciate, Step 4)
 - Test: `frontend/src/features/recipe-form/RecipeForm.test.tsx`
 
 **Interfacce:**
@@ -3048,6 +3315,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+import { ApiError } from "../../api/client";
 import { RecipeForm } from "./RecipeForm";
 import { lineFromDraft, valuesFromRecipe, type RecipeFormValues } from "./formModel";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
@@ -3089,9 +3357,11 @@ function Genitore({
   );
 }
 
-function renderForm(initial: RecipeFormValues) {
+function renderForm(
+  initial: RecipeFormValues,
   // quel che torna non conta qui: `onSaved` è vuoto, e il corpo mandato lo legge il test
-  const save = vi.fn((_body: RecipeBody) => Promise.resolve(DETAIL));
+  save = vi.fn((_body: RecipeBody) => Promise.resolve(DETAIL))
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
   });
@@ -3102,7 +3372,7 @@ function renderForm(initial: RecipeFormValues) {
       </MemoryRouter>
     </QueryClientProvider>
   );
-  return save;
+  return { save, client };
 }
 
 function stubCategories([body, status]: [unknown, number]) {
@@ -3115,10 +3385,6 @@ function stubCategories([body, status]: [unknown, number]) {
   );
   vi.stubGlobal("fetch", spy);
   return spy;
-}
-
-function categorieChieste(spy: ReturnType<typeof stubCategories>) {
-  return spy.mock.calls.filter(([url]) => String(url).includes("/recipes/categories")).length;
 }
 
 async function salva() {
@@ -3142,7 +3408,7 @@ describe("RecipeForm riempito da una ricetta", () => {
 
   it("una riga si toglie con la ✕, il ruolo si cambia, e la nota resta", async () => {
     stubCategories([[], 200]);
-    const save = renderForm(valuesFromRecipe(DETAIL));
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
 
     await userEvent.click(screen.getByRole("button", { name: "Togli basilico" }));
     await userEvent.click(
@@ -3167,7 +3433,7 @@ describe("RecipeForm riempito da una ricetta", () => {
 
   it("il ruolo si cambia anche su una riga proposta dall'AI", async () => {
     stubCategories([[], 200]);
-    const save = renderForm({
+    const { save } = renderForm({
       ...valuesFromRecipe(DETAIL),
       lines: [
         lineFromDraft(
@@ -3194,12 +3460,13 @@ describe("RecipeForm riempito da una ricetta", () => {
 });
 
 describe("la categoria", () => {
-  it("si legge solo aprendo la scelta, e si sceglie o si toglie", async () => {
-    const spy = stubCategories([["Dolci", "Primi piatti"], 200]);
-    const save = renderForm(valuesFromRecipe(DETAIL));
-    expect(categorieChieste(spy)).toBe(0);
+  it("si apre, legge le categorie del ricettario, e si sceglie o si toglie", async () => {
+    stubCategories([["Dolci", "Primi piatti"], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
 
     await userEvent.click(screen.getByRole("button", { name: "Cambia la categoria" }));
+    // «Categoria» è l'etichetta vera dell'elenco, non solo una scritta accanto
+    expect(await screen.findByRole("listbox", { name: "Categoria" })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("option", { name: "Dolci" }));
     expect(screen.getByText("Dolci")).toBeInTheDocument();
 
@@ -3215,7 +3482,7 @@ describe("la categoria", () => {
     async () => {
       // un 500 si ritenta due volte col predicato vero: da qui il tempo lungo
       stubCategories([{ detail: "giù" }, 500]);
-      const save = renderForm(valuesFromRecipe(DETAIL));
+      const { save } = renderForm(valuesFromRecipe(DETAIL));
 
       await userEvent.click(screen.getByRole("button", { name: "Cambia la categoria" }));
       expect(
@@ -3227,6 +3494,44 @@ describe("la categoria", () => {
     },
     10000
   );
+});
+
+describe("un salvataggio rifiutato", () => {
+  it("con la sua frase la mostra com'è, e un 422 fa rileggere le categorie", async () => {
+    stubCategories([["Primi piatti"], 200]);
+    const frase =
+      "«Primi piatti» non è una categoria del ricettario: scegline una dall'elenco, o nessuna.";
+    const { client } = renderForm(
+      valuesFromRecipe(DETAIL),
+      vi.fn(() => Promise.reject(new ApiError(frase, 422, { detail: frase })))
+    );
+    // la scelta aperta una volta: la query delle categorie esiste, e si può invalidare
+    await userEvent.click(screen.getByRole("button", { name: "Cambia la categoria" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Primi piatti" }));
+
+    await salva();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(frase);
+    expect(client.getQueryState(["recipe-categories"])?.isInvalidated).toBe(true);
+  });
+
+  it("con un elenco di errori di validazione non lo mostra grezzo, e non dice «riprova»", async () => {
+    stubCategories([[], 200]);
+    renderForm(
+      valuesFromRecipe(DETAIL),
+      vi.fn(() =>
+        Promise.reject(
+          new ApiError("troppo lungo", 422, { detail: [{ loc: ["body", "title"], msg: "troppo lungo" }] })
+        )
+      )
+    );
+
+    await salva();
+
+    const avviso = await screen.findByRole("alert");
+    expect(avviso).toHaveTextContent(/rifiutato/);
+    expect(avviso.textContent).not.toMatch(/riprova/i);
+  });
 });
 ```
 
@@ -3240,7 +3545,7 @@ Expected: FAIL — `Failed to resolve import "./RecipeForm"`.
 Crea `frontend/src/features/recipe-form/CategoryField.tsx`:
 
 ```tsx
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCategories } from "../recipes/api";
 import { Alert } from "../../components/ui/Alert";
@@ -3249,11 +3554,14 @@ import { buttonClasses } from "../../components/ui/buttonClasses";
 /** La categoria della ricetta: una di quelle che il ricettario ha già, o nessuna.
  *
  * Senza testo libero, per non creare «Primi» e «primi» (R10 §6.2): il backend rifiuta
- * comunque un nome che non conosce. L'elenco si legge quando si apre la scelta, non al
- * montaggio: il modulo è sempre in pagina in «Scrivi una ricetta», e una chiamata in
- * più all'apertura cambierebbe l'ordine delle risposte su cui quella schermata e i suoi
- * test contano. La chiave è quella del filtro del ricettario, quindi quasi sempre la
- * risposta è già in cache.
+ * comunque un nome che non conosce. Una scelta che si apre, e non una `<select>`: la
+ * categoria è il campo che si tocca meno, l'elenco si legge solo quando serve (con il
+ * suo «Carico…» e il suo errore), mentre una `<select>` nativa sul telefono apre la sua
+ * lista subito, prima che le voci siano arrivate (deviazione 11). La chiave è quella del
+ * filtro del ricettario, quindi quasi sempre la risposta è già in cache.
+ *
+ * «Categoria» è l'etichetta vera del gruppo e dell'elenco (`aria-labelledby`): un
+ * `<label>` non sa nominare una coppia bottone-elenco.
  */
 export function CategoryField({
   value,
@@ -3263,6 +3571,8 @@ export function CategoryField({
   onChange: (category: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const labelId = useId();
+  const listId = useId();
   const { data: categories = [], isLoading, isError } = useQuery({
     queryKey: ["recipe-categories"],
     queryFn: fetchCategories,
@@ -3275,14 +3585,15 @@ export function CategoryField({
   }
 
   return (
-    <div className="text-sm">
-      Categoria
+    <div role="group" aria-labelledby={labelId} className="text-sm">
+      <span id={labelId}>Categoria</span>
       <div className="flex min-h-11 items-center justify-between gap-2">
         <span className={value === null ? "text-ink-faint" : ""}>{value ?? "nessuna"}</span>
         <button
           type="button"
           aria-label={open ? "Chiudi la scelta della categoria" : "Cambia la categoria"}
           aria-expanded={open}
+          aria-controls={listId}
           onClick={() => setOpen((current) => !current)}
           className={buttonClasses("ghost")}
         >
@@ -3298,12 +3609,15 @@ export function CategoryField({
       )}
       {open && !isLoading && !isError && (
         <ul
+          id={listId}
           role="listbox"
-          aria-label="Categorie"
+          aria-labelledby={labelId}
           className="divide-y divide-line overflow-hidden rounded-card bg-card"
         >
           {[null, ...categories].map((category) => (
-            <li key={category ?? ""}>
+            // `presentation`: dentro un listbox contano solo le opzioni, e un `listitem`
+            // in mezzo romperebbe l'albero che uno screen reader si aspetta
+            <li key={category ?? ""} role="presentation">
               <button
                 type="button"
                 role="option"
@@ -3326,7 +3640,7 @@ Crea `frontend/src/features/recipe-form/RecipeForm.tsx`:
 
 ```tsx
 import type { Dispatch, SetStateAction } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { buttonClasses } from "../../components/ui/buttonClasses";
@@ -3352,22 +3666,20 @@ const ROLE_LABELS: Record<IngredientRole, string> = {
   secondary: "secondario",
 };
 
-/** Un salvataggio rifiutato per validazione non è un guasto passeggero: mandare di
- * nuovo gli stessi byte darà lo stesso esito, e dire "riprova" sarebbe un vicolo cieco
- * travestito da invito. Il messaggio lo distingue per stato.
+/** Cosa dire accanto al pulsante quando il salvataggio non va.
  *
- * Il `detail` di un 422 di FastAPI può essere una lista di oggetti, non una frase:
- * non si mostra grezzo. Il 409 di una ricetta eliminata nel frattempo porta invece
- * già la frase giusta, con l'uscita dentro (R10). */
+ * Un rifiuto 4xx con una frase — il `detail` stringa che le rotte delle ricette scrivono
+ * apposta: il non alimentare, la categoria sconosciuta, la riga doppia, l'ingrediente
+ * sparito, la ricetta eliminata nel frattempo — si mostra com'è: dice già il passo dopo.
+ * Un 422 di validazione di FastAPI porta invece un elenco di oggetti, che non è una
+ * frase: lì resta il testo generico, e non dice «riprova», perché rimandare gli stessi
+ * byte darà lo stesso esito. Un 5xx o una rete caduta non hanno niente di utile da dire:
+ * «riprova», che lì è vero. */
 function saveProblem(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 422)
-      return "Il backend ha rifiutato la ricetta: qualcosa nei campi qui sopra non va. Correggilo — rimandarla identica darà lo stesso esito.";
-    if (error.status === 409 && error.message.includes("eliminata")) return error.message;
-    if (error.status === 409)
-      return "Due righe puntano allo stesso ingrediente. Togline una con la ✕, poi salva.";
-    if (error.status === 404)
-      return "Un ingrediente agganciato non esiste più. Togli quella riga con la ✕, poi salva.";
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    const detail = (error.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string") return detail;
+    return "Il backend ha rifiutato la ricetta: qualcosa nei campi qui sopra non va. Correggilo — rimandarla identica darà lo stesso esito.";
   }
   return "Non sono riuscito a salvare la ricetta. Niente è andato perso: riprova.";
 }
@@ -3386,7 +3698,12 @@ function LineRow({
   const savableShape = line.ingredientId !== null || line.proposedCategory !== null;
   return (
     <li className="flex flex-col gap-2 py-2 text-sm">
-      <div className="flex items-center justify-between gap-2">
+      {/* Prima riga: [la casella, solo se l'aggancio è incerto] + il nome + la ✕. Il nome
+          prende lo spazio che resta e va a capo fra le parole; la ✕ non si stringe mai.
+          La nota dell'aggancio sta sotto, su una riga sua: accanto al nome, in una riga
+          `justify-between` che non si stringeva, allargava la pagina a 562px con un nome
+          di 60 caratteri (e2e/ai-draft.spec.ts). */}
+      <div className="flex items-center gap-2">
         <label className="flex min-h-11 min-w-0 flex-1 items-center gap-3">
           {/* La casella c'è solo dove l'AI ha un'ipotesi da confermare: lì vuol dire
               «è questo», non «tienila». Le righe si tolgono con la ✕ (R10 §6.2). */}
@@ -3399,17 +3716,8 @@ function LineRow({
               className="size-5 shrink-0"
             />
           )}
-          <span className="min-w-0 break-words">{line.label}</span>
+          <span className="min-w-0 flex-1 break-words">{line.label}</span>
         </label>
-        {showsMatch(line) && (
-          <span className="max-w-[45%] text-right text-xs">
-            {line.ingredientId === null || line.uncertain ? (
-              <em className="text-low">{matchNote(line)}</em>
-            ) : (
-              <span className="text-brand">{matchNote(line)}</span>
-            )}
-          </span>
-        )}
         {/* la stessa X delle pastiglie del filtro, e per la stessa ragione il nome
             accessibile nomina la riga: su dodici righe «Togli» da solo non dice quale */}
         <button
@@ -3431,6 +3739,16 @@ function LineRow({
           </svg>
         </button>
       </div>
+
+      {showsMatch(line) && (
+        <p
+          className={`text-xs ${
+            line.ingredientId === null || line.uncertain ? "italic text-low" : "text-brand"
+          }`}
+        >
+          {matchNote(line)}
+        </p>
+      )}
 
       {/* perché la casella parte vuota: senza questa frase "da confermare" sembra un
           avviso, non una cosa da fare */}
@@ -3518,11 +3836,19 @@ export function RecipeForm({
   onSaved: (recipe: RecipeDetail) => void;
   submitLabel: string;
 }) {
+  const queryClient = useQueryClient();
   const savable = savableLines(values.lines);
   const problem = validationProblem(values);
   const submit = useMutation({
     mutationFn: () => save(recipeBody(values)),
     onSuccess: onSaved,
+    onError: (error) => {
+      // Un 422 può voler dire che la categoria scelta non c'è più (l'ultima ricetta che
+      // la portava è stata eliminata nel frattempo): l'elenco si rilegge alla prossima
+      // apertura, invece di riproporre la stessa voce sparita.
+      if (error instanceof ApiError && error.status === 422)
+        void queryClient.invalidateQueries({ queryKey: ["recipe-categories"] });
+    },
   });
 
   function set(change: Partial<RecipeFormValues>) {
@@ -3842,10 +4168,138 @@ cambiati. Se ne fallisce un altro, è `RecipeForm` a essere sbagliato, non il te
 Run: `npm run lint && npm run typecheck`
 Expected: puliti.
 
-- [ ] **Step 5: commit**
+- [ ] **Step 5: la riga «da creare salvando» nel browser vero**
+
+`frontend/e2e/ai-draft.spec.ts` (da `e2e-ix`) asseriva il difetto com'era: pagina larga
+562px a 375, nome in colonna. Riscrivilo così — la riga si trova dalla sua ✕, la nota
+dentro la riga, e le asserzioni dicono com'è giusto:
+
+```ts
+import { expect, test } from "@playwright/test";
+import type { RecipeDraft } from "../src/domain/types.ts";
+
+/**
+ * La riga «da creare salvando» della bozza AI (`/ricette/nuova-ai`), a 375px.
+ *
+ * È la riga di un ingrediente che il modello propone e l'anagrafica non ha: porta il nome,
+ * la sua ✕, la nota «da creare salvando», il reparto da correggere, la quantità e il
+ * ruolo. Il nome viene dalla fonte, e può essere lungo. jsdom non calcola dove finisce
+ * una riga: lo misura solo un browser.
+ *
+ * IL LIMITE DI QUESTO TEST, detto chiaro: la bozza la scrive il modello, che qui non si
+ * chiama, quindi la risposta di `POST /recipes/ai-draft` la costruisce il test con
+ * `page.route`. È un test che si costruisce l'oggetto da sé — la prima lezione di
+ * CLAUDE.md — e non prova niente di quel che il backend manda davvero: né che una riga
+ * così arrivi, né con che campi (il `satisfies` tiene lo stub almeno nella forma del
+ * tipo del frontend). Vale per una cosa sola, il layout della riga a 375px, e lo schermo,
+ * il componente e il CSS sono quelli veri. Non scrive niente: il salvataggio non si tocca.
+ *
+ * Fino a R10 questa prova fissava un difetto (pagina larga 562px, il nome in colonna,
+ * alto 7 righe), perché la nota ripeteva il nome accanto a lui in uno `span` che non si
+ * stringeva. `RecipeForm` mette la nota su una riga sua e senza il nome: le asserzioni
+ * in fondo dicono com'è giusto.
+ */
+const PASSWORD = process.env.E2E_PASSWORD ?? "test";
+
+// Un nome da catalogo vero, di quelli che la fonte scrive per esteso
+const NOME_LUNGO = "Guanciale di maiale stagionato al pepe nero dei Monti Lepini";
+
+test.use({ viewport: { width: 375, height: 812 } });
+
+test("a 375px la riga «da creare salvando» con un nome lungo sta nello schermo", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Entra", exact: true }).click();
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+
+  let bozzeServite = 0;
+  await page.route("**/api/v1/recipes/ai-draft", (route) => {
+    bozzeServite += 1;
+    return route.fulfill({
+      json: {
+        title: "Gricia",
+        description: null,
+        instructions: "Rosola il guanciale, manteca la pasta.",
+        servings: 2,
+        cost: null,
+        ingredients: [
+          {
+            raw_name: NOME_LUNGO,
+            role: "primary",
+            quantity_text: "150 g",
+            ingredient_id: null,
+            matched_name: null,
+            confident: false,
+            proposed_category: "carne",
+          },
+        ],
+      } satisfies RecipeDraft,
+    });
+  });
+
+  await page.goto("/ricette/nuova-ai");
+  await page.getByLabel("Cosa vuoi cucinare").fill("una gricia");
+  await page.getByRole("button", { name: "Proponi", exact: true }).click();
+
+  // la riga si trova dalla sua ✕, che porta il nome nel nome accessibile
+  const togli = page.getByRole("button", { name: `Togli ${NOME_LUNGO}` });
+  await expect(togli).toBeVisible();
+  const riga = page.getByRole("listitem").filter({ has: togli });
+  const nome = riga.getByText(NOME_LUNGO, { exact: true });
+  // la nota non ripete il nome: sta su una riga sua, sotto
+  await expect(riga.getByText(/da creare salvando/)).toBeVisible();
+  await expect(riga.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(page.getByLabel(`Categoria per «${NOME_LUNGO}»`)).toHaveValue("carne");
+  await expect(page.getByLabel(`Quantità per ${NOME_LUNGO}`)).toHaveValue("150 g");
+  // la risposta l'ha data lo stub, non il modello: nessuna chiamata a OpenRouter
+  expect(bozzeServite).toBe(1);
+
+  await page.screenshot({ path: test.info().outputPath("bozza-375.png"), fullPage: true });
+
+  // la pagina non scorre di lato
+  const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+  const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+  expect(scrollWidth, "la bozza scorre di lato").toBeLessThanOrEqual(clientWidth);
+
+  // e il nome sta al più su due righe, non in una colonna di una parola per riga. `el` è
+  // `any` (tsconfig.node.json non ha la libreria DOM), e la finestra dell'elemento dà
+  // `getComputedStyle` senza un globale.
+  const forma = await nome.evaluate((el) => ({
+    altezza: el.getBoundingClientRect().height as number,
+    interlinea: parseFloat(el.ownerDocument.defaultView.getComputedStyle(el).lineHeight),
+  }));
+  test.info().annotations.push({
+    type: "misura",
+    description: `pagina ${scrollWidth}px su ${clientWidth}; nome alto ${forma.altezza}px, interlinea ${forma.interlinea}px`,
+  });
+  expect(forma.altezza, "il nome va a capo a ogni parola").toBeLessThanOrEqual(
+    2 * forma.interlinea
+  );
+});
+```
+
+Poi eseguilo sullo stack e2e. **Prima** `docker ps --format '{{.Names}}' | grep spena-e2e`:
+se lo stack c'è e non l'hai alzato tu, è di un altro ramo — non fare `down`, aspetta che
+sparisca. Dalla radice del worktree:
 
 ```bash
-git add src/features/recipe-form src/features/ai-draft
+E2E="docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml"
+$E2E up -d --build --wait
+$E2E exec -T backend python -m app.cli.seed --con-ricette
+(cd frontend && E2E_BASE_URL=http://localhost:5174 npx playwright test e2e/ai-draft.spec.ts)
+$E2E down -v
+```
+
+Expected: 1 passed, con l'annotazione «misura» che dice una pagina larga al più 375 e un
+nome alto al più due interlinee. Se il nome sta su tre righe, guarda `bozza-375.png`
+prima di toccare la prova: è la riga a essere stretta, non il test a essere severo.
+
+- [ ] **Step 6: commit**
+
+```bash
+git add src/features/recipe-form src/features/ai-draft e2e/ai-draft.spec.ts
 git commit -m "$(cat <<'EOF'
 ricette: il modulo diventa RecipeForm, con descrizione, categoria, ruolo e la ✕
 
@@ -4213,8 +4667,9 @@ Spec §6.1 e §6.2 («al termine si torna al dettaglio con “Salvata” in vist
   - «Modifica»: un link a `/ricette/:id/modifica` (la rotta arriva nel Task 12)
   - «Elimina» manda `PATCH {archived: true}` e naviga a `/ricette` con
     `{ deletedRecipe: { id, title } }`
-  - lo stato di navigazione `{ saved: true }` fa mostrare «Salvata.» (`role="status"`) in
-    cima e lo porta in vista — lo manda la modifica nel Task 12
+  - lo stato di navigazione `{ saved: true }` fa mostrare «Salvata.» (`role="status"`) e
+    si toglie subito dalla cronologia con `replace`, come la lapide; il messaggio sta in
+    cima e si porta in vista — lo stato lo manda la modifica nel Task 12
   - con `archived_at` valorizzato: titolo, «Questa ricetta è stata eliminata.» e
     «Ripristina», nient'altro
 
@@ -4227,7 +4682,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
 import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
@@ -4269,6 +4724,12 @@ function stubFetch(route: Rotta = () => undefined) {
   return spy;
 }
 
+/** Quel che la cronologia ricorda di questa voce: «Salvata» non deve restarci. */
+function StatoDellaVoce() {
+  const location = useLocation();
+  return <p data-testid="stato">{JSON.stringify(location.state)}</p>;
+}
+
 function renderAt(entry: string | { pathname: string; state: unknown }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
@@ -4278,7 +4739,15 @@ function renderAt(entry: string | { pathname: string; state: unknown }) {
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path="/ricette" element={<RecipeBookScreen />} />
-          <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+          <Route
+            path="/ricette/:id"
+            element={
+              <>
+                <RecipeDetailScreen />
+                <StatoDellaVoce />
+              </>
+            }
+          />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -4361,6 +4830,9 @@ describe("le azioni del dettaglio (R10 §6.1)", () => {
     const esito = await screen.findByRole("status");
     expect(esito).toHaveTextContent("Salvata.");
     await vi.waitFor(() => expect(scroll.mock.contexts).toContain(esito));
+    // la cronologia lo dimentica subito: un «indietro» e un «avanti» non lo ridicono
+    await vi.waitFor(() => expect(screen.getByTestId("stato")).toHaveTextContent("null"));
+    expect(screen.getByRole("status")).toHaveTextContent("Salvata.");
   });
 });
 ```
@@ -4382,10 +4854,16 @@ In `frontend/src/features/cooking/RecipeDetailScreen.tsx`:
 
 ```tsx
   const navigate = useNavigate();
-  // «Salvata» arriva con la navigazione dalla modifica (R10 §6.2), come l'esito di una
-  // fusione arriva alla scheda del vincitore
+  // «Salvata» arriva con la navigazione dalla modifica (R10 §6.2). Si legge una volta,
+  // nello stato di questo schermo, e la voce della cronologia si pulisce subito (sotto),
+  // come la lapide del ricettario: un «indietro» e un «avanti» non devono ridire
+  // «Salvata» di un salvataggio vecchio.
   const location = useLocation();
-  const justSaved = (location.state as { saved?: boolean } | null)?.saved === true;
+  const savedNow = (location.state as { saved?: boolean } | null)?.saved === true;
+  const [justSaved] = useState(savedNow);
+  useEffect(() => {
+    if (savedNow) navigate(location.pathname, { replace: true, state: null });
+  }, [savedNow, navigate, location.pathname]);
 
   // Eliminare e ripristinare cambiano cosa elencano ricettario e filtro per categoria,
   // oltre al dettaglio stesso: si rinfrescano tutti e tre.
@@ -4801,36 +5279,53 @@ EOF
 
 ---
 
-### Task 13: La coda dice quali ricette tue l'annullamento non ha toccato
+### Task 13: La coda e l'anagrafica dicono delle ricette tue
 
-Spec §4 («la coda lo dice»); deviazione 5.
+Spec §4 («la coda lo dice»); deviazioni 5 e 6.
 
 **File:**
 - Modify: `frontend/src/features/recipe-import/ImportQueueScreen.tsx` (`undoResultMessage`, lo stato `lastUndo`, `undo.onSuccess`)
-- Test: `frontend/src/features/recipe-import/ImportQueueScreen.test.tsx`
+- Modify: `frontend/src/domain/types.ts` (le `recipes` del rifiuto `non_food_in_recipes`)
+- Modify: `frontend/src/features/registry/CategoryForm.tsx` (l'elenco delle ricette del rifiuto)
+- Test: `frontend/src/features/recipe-import/ImportQueueScreen.test.tsx`, `frontend/src/features/registry/IngredientScreen.test.tsx`
 
 **Interfacce:**
-- Consuma: `UndoResult.adopted_untouched`, `UndoResult.ingredient_kept_for_adopted` (Task 8).
-- Produce: nessuna.
+- Consuma: `UndoResult.adopted_untouched`, `UndoResult.ingredient_kept_for_adopted`
+  (Task 8); `"archived"` nelle `recipes` del 409 `non_food_in_recipes` (Task 5).
+- Produce: nel tipo `RegistryRefusal`, `recipes: { id: string; title: string; archived: boolean }[]`.
 
-- [ ] **Step 1: scrivi il test che fallisce**
+Il file della coda è quello già fuso da `s9-note`: il suo apparato di prova ha
+`undoDeleted` per il caso dell'ingrediente cancellato, e `undoResultMessage` dice già
+che `ingredient_deleted` è un segnale vero (`created_ingredient`). Qui si aggiungono le
+ricette tue, sopra quello, senza toccare le frasi che ci sono.
+
+- [ ] **Step 1: scrivi i test che falliscono**
 
 In `frontend/src/features/recipe-import/ImportQueueScreen.test.tsx`:
 
-- in `CodaOptions`, dopo `undoDetail?: string;`: `undoResult?: unknown;`
+- in `CodaOptions`, dopo `undoDeleted?: boolean;`:
+
+```tsx
+  /** il corpo intero di un annullamento riuscito, quando `undoDeleted` non basta */
+  undoResult?: unknown;
+```
+
 - in `renderQueue`, il ritorno riuscito dell'annullamento diventa:
 
 ```tsx
       return [
-        options.undoResult ?? { recipes_requeued: 0, ingredient_deleted: false, remaining_terms: 0 },
+        options.undoResult ?? {
+          recipes_requeued: 0, ingredient_deleted: options.undoDeleted ?? false, remaining_terms: 0,
+        },
         200,
       ];
 ```
 
-- subito dopo il test «un annullamento riuscito dice quante ricette sono tornate in coda»:
+- subito dopo il test «un annullamento che ha cancellato l'ingrediente creato lo dice, e
+  solo allora»:
 
 ```tsx
-  it("un annullamento dice quali ricette tue non ha toccato, e perché l'ingrediente resta", async () => {
+  it("un annullamento dice quali ricette tue non ha toccato, e che l'ingrediente creato resta per loro", async () => {
     renderQueue({
       pending: [],
       decided: [
@@ -4840,6 +5335,7 @@ In `frontend/src/features/recipe-import/ImportQueueScreen.test.tsx`:
           decided_name: "guanciale", decided_at: "2026-09-20T10:00:00Z",
         },
       ],
+      undoStatus: 200,
       undoResult: {
         recipes_requeued: 1, ingredient_deleted: false, remaining_terms: 1,
         adopted_untouched: 1, ingredient_kept_for_adopted: true,
@@ -4852,31 +5348,76 @@ In `frontend/src/features/recipe-import/ImportQueueScreen.test.tsx`:
 
     expect(
       await screen.findByText(
-        "1 ricetta è tornata in coda. 1 ricetta tua non è stata toccata. L'ingrediente resta in anagrafica: lo usa una ricetta tua."
+        "1 ricetta è tornata in coda. 1 ricetta tua non è stata toccata. " +
+          "L'ingrediente creato da questa decisione resta in anagrafica: lo usa una ricetta tua."
       )
     ).toBeInTheDocument();
   });
 ```
 
-- [ ] **Step 2: eseguilo e verifica che fallisca**
+In `frontend/src/features/registry/IngredientScreen.test.tsx`, subito dopo il test «il
+rifiuto per le ricette le elenca, ciascuna col suo link»:
 
-Run: `npx vitest run src/features/recipe-import/ImportQueueScreen.test.tsx`
-Expected: FAIL — trovato solo «1 ricetta è tornata in coda.».
+```tsx
+  it("una ricetta eliminata nel rifiuto è segnata, e il suo link porta a «Ripristina»", async () => {
+    stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        return [{
+          code: "non_food_in_recipes",
+          detail:
+            "«Pomodori» è in 1 ricetta: non può diventare non alimentare finché una ricetta lo usa.",
+          recipe_count: 1,
+          recipes: [{ id: "r1", title: "Sugo semplice", archived: true }],
+          pending_import_count: 0,
+        }, 409];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia reparto" }));
+    await userEvent.selectOptions(screen.getByLabelText("Reparto"), "casa");
+    await userEvent.click(screen.getByRole("button", { name: "Salva il reparto" }));
+
+    // il link resta il titolo e basta: la segnatura gli sta accanto
+    expect(await screen.findByRole("link", { name: "Sugo semplice" })).toHaveAttribute(
+      "href", "/ricette/r1"
+    );
+    expect(screen.getByText("(eliminata)")).toBeInTheDocument();
+  });
+```
+
+- [ ] **Step 2: eseguili e verifica che falliscano**
+
+Run: `npx vitest run src/features/recipe-import/ImportQueueScreen.test.tsx src/features/registry/IngredientScreen.test.tsx`
+Expected: FAIL due — trovato solo «1 ricetta è tornata in coda.», e `Unable to find an
+element with the text: (eliminata)`.
 
 - [ ] **Step 3: implementazione minima**
 
-In `frontend/src/features/recipe-import/ImportQueueScreen.tsx`, `undoResultMessage`
-diventa:
+In `frontend/src/features/recipe-import/ImportQueueScreen.tsx`, sopra `undoResultMessage`:
+
+```tsx
+interface UndoSummary {
+  recipesRequeued: number;
+  ingredientDeleted: boolean;
+  adoptedUntouched: number;
+  ingredientKeptForAdopted: boolean;
+}
+```
+
+e `undoResultMessage` diventa:
 
 ```tsx
 /** L'esito di un annullamento riuscito: quante ricette sono tornate in coda, quante
- * ricette tue non ha toccato (R10), e che fine ha fatto l'ingrediente. È l'unica cosa
- * che dice cosa ha mosso l'unico gesto distruttivo di questa schermata: senza dirlo
- * qui, si scopre solo tornando nell'anagrafica o nel ricettario.
- *
- * «Resta perché lo usa una ricetta tua» è vero sia che la decisione l'avesse creato
- * sia che l'avesse trovato: nessun fatto scritto distingue le due storie (vedi
- * `_decided_action` in backend/app/api/imports.py), e la frase non ci prova. */
+ * ricette tue non ha toccato (R10), e che fine ha fatto l'ingrediente. Il backend lo
+ * cancella solo se la decisione ha scritto di averlo creato (`created_ingredient`) e
+ * niente altro lo usa, quindi `ingredient_deleted` vero vuol dire proprio questo; e
+ * `ingredient_kept_for_adopted` vuol dire che l'aveva creato, e che resta perché lo usa
+ * una ricetta resa tua (spec R10 §4). È l'unica cosa che dice cosa ha mosso l'unico
+ * gesto distruttivo di questa schermata: senza dirlo qui, si scopre solo
+ * nell'anagrafica o nel ricettario.
+ */
 function undoResultMessage({
   recipesRequeued,
   ingredientDeleted,
@@ -4898,20 +5439,9 @@ function undoResultMessage({
   const ingredientPart = ingredientDeleted
     ? " L'ingrediente che questa decisione aveva creato è stato eliminato, perché nessun'altra cosa lo usava."
     : ingredientKeptForAdopted
-      ? " L'ingrediente resta in anagrafica: lo usa una ricetta tua."
+      ? " L'ingrediente creato da questa decisione resta in anagrafica: lo usa una ricetta tua."
       : "";
   return `${recipesPart}${adoptedPart}${ingredientPart}`;
-}
-```
-
-con, sopra la funzione:
-
-```tsx
-interface UndoSummary {
-  recipesRequeued: number;
-  ingredientDeleted: boolean;
-  adoptedUntouched: number;
-  ingredientKeptForAdopted: boolean;
 }
 ```
 
@@ -4928,18 +5458,46 @@ Lo stato `lastUndo` diventa `useState<UndoSummary | null>(null)`, e in `undo.onS
       });
 ```
 
-- [ ] **Step 4: eseguilo e verifica che passi**
+In `frontend/src/domain/types.ts`, nel ramo `non_food_in_recipes` di `RegistryRefusal`:
 
-Run: `npx vitest run src/features/recipe-import`
-Expected: PASS, compreso «Nessuna ricetta è tornata in coda.» del test di prima, che
-confronta la frase intera.
+```ts
+      /** Le ricette che lo usano, eliminate comprese (R10): una ricetta eliminata si
+       * ripristina con le sue righe, quindi blocca come le altre, ma va segnata. */
+      recipes: { id: string; title: string; archived: boolean }[];
+```
+
+In `frontend/src/features/registry/CategoryForm.tsx`, dentro `refusal.recipes.map(...)`,
+il `<li>` diventa:
+
+```tsx
+                <li key={recipe.id}>
+                  <Link
+                    to={`/ricette/${recipe.id}`}
+                    className="inline-flex min-h-11 items-center font-medium text-brand"
+                  >
+                    {recipe.title}
+                  </Link>
+                  {/* eliminata: nel ricettario non si vede più, ma ripristinata tornerebbe
+                      con la sua riga — il link porta al dettaglio, che offre «Ripristina» */}
+                  {recipe.archived && <span className="text-ink-soft"> (eliminata)</span>}
+                </li>
+```
+
+Se `npm run typecheck` segnala letterali di `RegistryRefusal` senza `archived` nei test
+dell'anagrafica, aggiungi `archived: false` a ciascuno, e nient'altro.
+
+- [ ] **Step 4: eseguili e verifica che passino**
+
+Run: `npx vitest run src/features/recipe-import src/features/registry && npm run typecheck`
+Expected: PASS, compresi «Nessuna ricetta è tornata in coda.» e la frase dell'ingrediente
+eliminato dei test di prima, che confrontano la frase; typecheck pulito.
 
 - [ ] **Step 5: commit**
 
 ```bash
-git add src/features/recipe-import/ImportQueueScreen.tsx src/features/recipe-import/ImportQueueScreen.test.tsx
+git add src/features/recipe-import/ImportQueueScreen.tsx src/features/recipe-import/ImportQueueScreen.test.tsx src/domain/types.ts src/features/registry/CategoryForm.tsx src/features/registry/IngredientScreen.test.tsx
 git commit -m "$(cat <<'EOF'
-coda: l'annullamento dice quali ricette tue non ha toccato
+coda e anagrafica: le ricette tue non toccate, e quelle eliminate segnate nel rifiuto
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
@@ -5116,7 +5674,7 @@ Spec §10, da fare insieme. Solo documenti e una docstring: nessun test nuovo, m
 deve restare verde (la docstring sta in un modulo che la suite importa).
 
 **File:**
-- Modify: `docs/prossimi-passi.md` (la testata, la sezione R10, tre righe di T3)
+- Modify: `docs/prossimi-passi.md` (la testata, la sezione R10, tre righe di T3, una voce di Parte X)
 - Modify: `CLAUDE.md` (la sezione sul non alimentare e quella sull'import)
 - Modify: `backend/app/services/recipe_import/undo.py` (docstring del modulo, un commento)
 
@@ -5144,7 +5702,7 @@ applicato alle ricette. Non c'era una `DELETE`, e la `PATCH /recipes/{id}` cambi
 **Com'è fatto.** Ogni ricetta si modifica, anche importata, con lo stesso modulo di
 «Scrivi una ricetta» (`RecipeForm`, in `frontend/src/features/recipe-form/`), da
 «Modifica» in fondo al dettaglio, con `PUT /recipes/{id}`. «Elimina» archivia
-(`recipes.archived_at`, migrazione `0011`) e torna al ricettario con la lapide e
+(`recipes.archived_at`, migrazione `0012`) e torna al ricettario con la lapide e
 «Annulla» per sei secondi; una ricetta eliminata aperta da un collegamento vecchio dice
 «Questa ricetta è stata eliminata» e offre «Ripristina». Il primo salvataggio di una
 modifica, o l'eliminazione, passa la pagina d'import ad `adopted` nella stessa
@@ -5156,21 +5714,26 @@ di ricette — ricerca testuale e semantica, sfoglio con i suoi filtri, categori
 tre note del giro di T3: descrizione e categoria (scelta fra quelle del ricettario), il
 ruolo su ogni riga, la ✕ al posto della spunta.
 
-**Le deviazioni dalla spec** sono dodici, scritte in testa al piano con il loro perché.
-Le tre che si vedono: la categoria si sceglie anche creando, e il backend rifiuta con 422
-un nome che il ricettario non ha; il dettaglio manda `owned_by_import`, perché l'avviso
-«salvando diventa tua» sia vero solo quando lo è; l'anagrafica continua a contare le
-ricette eliminate, perché una ricetta ripristinata non torni con una riga non alimentare.
+**Le deviazioni dalla spec** sono quattordici, scritte in testa al piano con il loro
+perché. Quelle che si vedono: la categoria si sceglie anche creando, e il backend
+rifiuta con 422 un nome che il ricettario non ha; il dettaglio manda `owned_by_import`,
+perché l'avviso «salvando diventa tua» sia vero solo quando lo è; l'anagrafica continua
+a contare le ricette eliminate, perché una ricetta ripristinata non torni con una riga
+non alimentare, e nel rifiuto le segna «(eliminata)»; la coda conta le pagine prese in
+carico fra quelle «già dentro»; la migrazione è la `0012`, perché la `0011` è di S9
+(`created_ingredient`), su cui l'annullamento legge se l'ingrediente l'aveva creato la
+decisione.
 
 **Resta aperto:**
 - `POST /recipes/{id}/cook` non rifiuta una ricetta eliminata: il dettaglio non offre
   «Cucina», ma una PWA con la cache vecchia potrebbe ancora mandarla.
-- `counts().imported`, cioè «N sono già dentro» nella coda, non conta le pagine `adopted`.
-- La ricerca semantica esclude le eliminate nella query che ha il limite, ma l'indice
-  HNSW è approssimato: con molte eliminate vicine alla domanda, la query può vedere meno
-  di `CANDIDATE_POOL` candidati (`hnsw.ef_search`, 40 di default). Oggi non conta — in
-  produzione gli embedding non ci sono — e il test lo neutralizza alzando `ef_search`.
-- La distribuzione, con la migrazione `0011` all'avvio, la decide Mattia.
+- La scansione iterativa di HNSW (`hnsw.iterative_scan`, che tiene le eliminate fuori
+  senza perdere le vive) si accende solo se l'estensione `vector` è almeno alla 0.8.0.
+  Sul database di sviluppo è alla 0.8.6; in produzione non si è potuto guardare, e un
+  database creato con un'immagine più vecchia resta alla sua versione finché qualcuno non
+  fa `ALTER EXTENSION vector UPDATE`. Oggi non conta — in produzione gli embedding non ci
+  sono — ma va controllato il giorno in cui si accendono.
+- La distribuzione, con la migrazione `0012` all'avvio, la decide Mattia.
 ```
 
 Sotto «**Scrivi una ricetta**» dell'esito del giro di T3, in fondo a tre righe, dopo il
@@ -5178,6 +5741,11 @@ punto finale, ` *(Fatto con R10.)*`:
 - «**Il ruolo delle righe proposte dall'AI non si cambia**, …»
 - «**Mancano categoria e descrizione**, …»
 - «**Le righe a mano si tolgono solo togliendo la spunta**, …»
+
+In Parte X, la voce «**La riga «da creare salvando» della bozza AI fa scorrere la pagina
+di lato a 375px**» chiude così, dopo il suo ultimo punto: ` *(Fatto con R10: la nota sta
+su una riga sua e non ripete il nome, e `frontend/e2e/ai-draft.spec.ts` ora asserisce la
+pagina dentro i 375px e il nome su al più due righe.)*`
 
 - [ ] **Step 2: `CLAUDE.md`**
 
@@ -5221,8 +5789,9 @@ nella stessa transazione, e qui si selezionano solo le pagine `imported`. Una pa
 `adopted` non si cancella e non torna in coda: rifarla dal `payload` cancellerebbe il
 lavoro di chi l'ha corretta, ed è per questo che la presa in carico esiste. Le si conta
 soltanto (`adopted_untouched`), perché la coda dica che l'annullamento non le ha
-toccate; e se l'ingrediente del termine resta perché una di loro lo usa ancora
-(`delete_ingredient_if_unused` lo lascia), lo si dice (`ingredient_kept_for_adopted`).
+toccate; e se l'ingrediente che la decisione aveva creato (`created_ingredient`) resta
+perché una di loro lo usa ancora — `delete_ingredient_if_unused` lo lascia — lo si dice
+(`ingredient_kept_for_adopted`).
 Le loro righe restano sull'ingrediente di prima: spostarle è una modifica della ricetta,
 o una fusione in anagrafica, che le sposta in loco.
 ```
@@ -5266,8 +5835,8 @@ Se un passo fallisce, si torna al task che lo riguarda; qui non si corregge nien
 - [ ] **Step 1: il backend intero**
 
 Run: `cd backend && $PYTEST -q`
-Expected: tutto verde. Il numero di test è la linea di partenza del Task 1 più i nuovi
-(circa 60; annota il numero esatto).
+Expected: tutto verde. Il numero di test è 870 più i nuovi di questo piano (una
+settantina; annota il numero esatto).
 
 - [ ] **Step 2: il frontend**
 
@@ -5312,9 +5881,24 @@ $E2E exec -T backend python -m app.cli.seed --con-ricette
 $E2E down -v
 ```
 
-Expected: tutte le prove di `e2e/` passano (quelle di prima più `modifica-ricette.spec.ts`).
-La password dello stack è «test». Lo stack si alza da questo worktree, quindi costruisce
-questo ramo.
+Expected: **tutta** la suite di `e2e/` passa — quelle di prima, quelle fuse da `e2e-ix`
+(`ai-draft.spec.ts` rovesciata nel Task 9, `import-review.spec.ts`, `style.spec.ts`) e
+`modifica-ricette.spec.ts`. La password dello stack è «test». Lo stack si alza da questo
+worktree, quindi costruisce questo ramo.
+
+Se una prova fusa da `e2e-ix` fallisce perché il comportamento fuso da `s9-note` l'ha
+cambiata — l'annullamento che cancella l'ingrediente solo su `created_ingredient`, i
+conti della coda, il rifiuto che segna le eliminate — **si corregge l'attesa della
+prova, non il codice del prodotto**, con un commento che dice quale cambiamento l'ha
+spostata, in un commit suo (`e2e: <prova>, l'attesa dopo s9-note/R10`), e una riga in
+`docs/prossimi-passi.md` sotto R10. Il caso da guardare per primo è la frase
+dell'annullamento in `import-review.spec.ts`: leggendo il codice fuso non dovrebbe
+cambiare — il termine «creato» della semina passa da `decide_terms`, che ora scrive
+`created_ingredient = True`, quindi l'annullamento lo cancella ancora; e R10 aggiunge
+parti alla frase solo con `adopted_untouched > 0` — ma è la prova vera a deciderlo. Se
+invece fallisce una prova di R10, si torna al task che la riguarda.
+
+Il conto delle prove (K) per lo Step 6 è quello che Playwright stampa in fondo.
 
 - [ ] **Step 5: guarda lo screenshot**
 
