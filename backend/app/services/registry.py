@@ -20,7 +20,7 @@ import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, inspect, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
@@ -486,14 +486,18 @@ async def preview_merge(
     DECISION_REFUSED, già passato per `undo_decision`), è fra quelli scaduti dal
     rollback. Per questo, prima di rilanciare, lo ricarichiamo con `session.refresh`:
     l'ostacolo torna leggibile con il suo valore precedente alla fusione, senza che chi
-    chiama debba sapere di doverlo rileggere lui stesso.
+    chiama debba sapere di doverlo rileggere lui stesso. L'ostacolo non è sempre un
+    oggetto mappato dall'ORM (`RecipesInUse` di `recategorize_ingredient` non lo è, per
+    esempio, anche se qui dentro non compare mai): `inspect(obstacle, raiseerr=False)`
+    distingue i due casi, così un ostacolo non-ORM non fa mai sollevare
+    `UnmappedInstanceError` da `session.refresh` al posto del rifiuto vero.
     """
     savepoint = await session.begin_nested()
     try:
         counts = await merge_ingredients(session, loser_id, winner_id)
     except RegistryRefusal as refusal:
         await savepoint.rollback()
-        if refusal.obstacle is not None:
+        if refusal.obstacle is not None and inspect(refusal.obstacle, raiseerr=False) is not None:
             await session.refresh(refusal.obstacle)
         raise
     except BaseException:

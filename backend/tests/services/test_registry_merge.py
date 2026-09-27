@@ -299,7 +299,14 @@ async def test_un_anteprima_rifiutata_per_decisione_lascia_l_ostacolo_leggibile(
     termine di DECISION_REFUSED è uno di quelli, e leggerne un attributo dopo sarebbe un
     caricamento pigro, in una sessione async un MissingGreenlet. `preview_merge` deve
     quindi ricaricare l'ostacolo con `session.refresh` dopo il rollback, prima di
-    rilanciare, così chi chiama lo trova già leggibile."""
+    rilanciare, così chi chiama lo trova già leggibile.
+
+    Il campo che conta è `decision`/`ingredient_id`, non `display_name`: `undo_decision`
+    (dentro `merge_ingredients`, prima del rifiuto) li porta a `PENDING`/`None`, mentre
+    `display_name` non lo tocca mai — un test che guardasse solo `display_name`
+    passerebbe anche senza il rollback del SAVEPOINT (Task 6, round 1 di revisione). La
+    fotografia dell'intero database, prima e dopo, prova che l'anteprima rifiutata non
+    lascia scritto nient'altro."""
     fungo = Ingredient(name="fungo", display_name="Fungo", category=IngredientCategory.VERDURA)
     db_session.add(fungo)
     await db_session.flush()
@@ -312,8 +319,13 @@ async def test_un_anteprima_rifiutata_per_decisione_lascia_l_ostacolo_leggibile(
     await db_session.flush()
     await recategorize_ingredient(db_session, fungo.id, "casa")
 
+    prima = await _fotografia(db_session)
+
     with pytest.raises(RegistryRefusal) as rifiuto:
         await preview_merge(db_session, fungo.id, mondo["detersivo"].id)
 
     assert rifiuto.value.code == RefusalCode.DECISION_REFUSED
     assert rifiuto.value.obstacle.display_name == "Funghi"
+    assert rifiuto.value.obstacle.decision == TermDecision.MAPPED
+    assert rifiuto.value.obstacle.ingredient_id == fungo.id
+    assert await _fotografia(db_session) == prima
