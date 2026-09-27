@@ -10,6 +10,7 @@ Le ricette si rifanno da `payload`, che è ancora nel database esattamente per q
 
 from datetime import UTC, datetime
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
@@ -206,3 +207,91 @@ async def test_una_pagina_cancellata_dallutente_non_si_resuscita(db_session, dec
     assert esito.recipes_requeued == 0
     await db_session.refresh(page)
     assert page.state == ImportState.IMPORTED
+
+
+async def _scarta_con_ignora(db_session, term):
+    """Ogni riga ignorata: la ricetta resterebbe vuota, e la pagina finisce SKIPPED."""
+    await decide_by_hand(db_session, term, ManualDecision(action="ignore"))
+
+
+async def _scarta_con_non_alimentare(db_session, term):
+    """La riga punta a una voce diventata non alimentare mentre la pagina aspettava:
+    `create_recipe` rifiuta, e la pagina finisce SKIPPED col nome della voce. Il
+    reparto si scrive diretto, perché `recategorize_ingredient` quel buco lo chiude."""
+    sapone = await create_ingredient(
+        db_session, name="sapone", display_name="Sapone", category=IngredientCategory.CARNE
+    )
+    await decide_by_hand(db_session, term, ManualDecision(action="map", ingredient_id=sapone.id))
+    sapone.category = IngredientCategory.CASA
+    await db_session.flush()
+
+
+@pytest.mark.parametrize("scarta", [_scarta_con_ignora, _scarta_con_non_alimentare])
+async def test_una_pagina_che_finisce_scartata_tiene_gli_id_delle_cotture(
+    db_session, deciso, dal_database, scarta
+):
+    """Nota della revisione del Task 3 di S9: una pagina rimessa in coda da un
+    annullamento può finire SKIPPED invece che ricetta. Non c'è una ricetta a cui
+    rilegare le cotture, e non se ne inventa una: gli id restano nel `payload`, letto
+    dal database e non dalla memoria di `db_session`, e le cotture restano senza
+    ricetta ma col loro snapshot.
+    """
+    term, _, recipe, page = deciso
+    evento = CookingEvent(recipe_id=recipe.id, servings=2, snapshot={"titolo": "Pasta allo speck"})
+    db_session.add(evento)
+    await db_session.flush()
+    evento_id, page_id = evento.id, page.id
+
+    await undo_decision(db_session, term)
+    await scarta(db_session, term)
+    esito = await materialize_ready(db_session, GIALLOZAFFERANO)
+
+    assert (esito.created, esito.skipped, esito.relinked) == (0, 1, 0)
+    pagina = await dal_database(RecipeImport, page_id)
+    assert pagina.state == ImportState.SKIPPED
+    assert pagina.payload["cooking_event_ids"] == [str(evento_id)]
+    cottura = await dal_database(CookingEvent, evento_id)
+    assert cottura.recipe_id is None
+    assert cottura.snapshot == {"titolo": "Pasta allo speck"}
+
+
+async def test_una_pagina_scartata_rimessa_in_attesa_ritrova_le_cotture(
+    db_session, deciso, dal_database
+):
+    """Una pagina SKIPPED non torna in attesa da nessuna strada dell'app: né
+    annullando un'altra decisione (`undo_decision` rimette in coda solo le pagine
+    `imported` con la loro ricetta), né da un comando. Il giorno in cui una strada
+    così esisterà, o se la si rimette a `pending` a mano nel database, la
+    materializzazione vera rilega le cotture che il `payload` ha tenuto.
+    """
+    term, _, recipe, page = deciso
+    evento = CookingEvent(recipe_id=recipe.id, servings=2, snapshot={})
+    db_session.add(evento)
+    await db_session.flush()
+    evento_id, page_id = evento.id, page.id
+
+    await undo_decision(db_session, term)
+    await _scarta_con_ignora(db_session, term)
+    await materialize_ready(db_session, GIALLOZAFFERANO)
+
+    # annullare il termine ignorato non riporta indietro la pagina scartata
+    esito = await undo_decision(db_session, term)
+    assert esito.recipes_requeued == 0
+    assert (await dal_database(RecipeImport, page_id)).state == ImportState.SKIPPED
+
+    pancetta = await create_ingredient(
+        db_session, name="pancetta", display_name="Pancetta", category=IngredientCategory.CARNE
+    )
+    await decide_by_hand(db_session, term, ManualDecision(action="map", ingredient_id=pancetta.id))
+    await db_session.refresh(page)
+    page.state = ImportState.PENDING
+    page.skipped_reason = None
+    await db_session.flush()
+    esito = await materialize_ready(db_session, GIALLOZAFFERANO)
+
+    assert (esito.created, esito.relinked) == (1, 1)
+    pagina = await dal_database(RecipeImport, page_id)
+    cottura = await dal_database(CookingEvent, evento_id)
+    assert pagina.state == ImportState.IMPORTED
+    assert cottura.recipe_id == pagina.recipe_id
+    assert "cooking_event_ids" not in pagina.payload
