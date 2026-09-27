@@ -1,6 +1,10 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-27, due volte. La seconda: **dieci voci dall'uso vero**, portate
+Aggiornato il 2026-09-27, tre volte. La terza: **S13 e S8 fatti** — il cursore della
+dispensa cambia solo con un tocco e non più scorrendo, e il codice a barre letto segue
+anche le uscite dal catalogo — più quattro piccole cose di Parte X (il lint è verde, i
+campi data hanno un `max`, `StatusToggle` non è più nominato, e il «+ scadenza» che
+«sbordava» non sbordava). Il cursore aspetta la prova sul telefono vero. La seconda: **dieci voci dall'uso vero**, portate
 da Mattia. Sono S8–S15 in Parte II (codici a barre, correzione degli errori di
 registrazione, «Sistema la spesa», ricerca, riconoscibilità, cursore, cibo/casa e
 reparti in dispensa), S3 ripresa, e T3, la revisione di UI e UX che parte da un giro
@@ -773,7 +777,39 @@ Le voci da S8 a S15 le ha portate Mattia dopo qualche giorno di spesa e dispensa
 vere. Lo stato di oggi è stato controllato sul codice il giorno stesso. Nessuna ha
 ancora una spec. L'ordine proposto è in Parte VIII.
 
-## S8. Il codice a barre scansionato deve restare legato a quel che si crea a mano **[D — da verificare, poi chiudere i buchi]**
+## S8. Il codice a barre scansionato deve restare legato a quel che si crea a mano **[FATTO 2026-09-27]**
+
+> **Fatto il 2026-09-27**, sul ramo `dispensa-difetti`. I due buchi erano quelli
+> descritti sotto, e la causa comune era una: la schermata non ricordava per voce il
+> codice appena letto, che viveva solo in `creatingFor` e nello stato della ricerca,
+> azzerato a ogni apertura dello scanner. Ora `StockingScreen.tsx` tiene
+> `unlinkedCode` per voce: si scrive quando la lettura non trova un prodotto (o
+> fallisce), si cancella quando trova un prodotto qualunque, anche di un altro
+> ingrediente — quel codice non deve seguire la voce, porterebbe solo un 409 o un
+> furto. «Crea il prodotto a mano» dal catalogo lo passa al modulo; scegliere a
+> catalogo un prodotto lo manda nella conferma come `barcode` della voce. Lo sfuso
+> no.
+>
+> Lato server il codice viaggia **dentro la conferma già tutto-o-niente**
+> (`POST /shopping-list/stock`, campo facoltativo `barcode` di `StockEntryIn`) e non
+> in una rotta nuova: `give_barcode_if_missing` (`backend/app/repositories/products.py`)
+> lo dà al prodotto scelto **solo se il prodotto non ne ha uno e il codice non è già
+> di un altro**, e non solleva mai. Non riscrive un codice esistente — quello è un
+> legame da correggere, S9 — e non lo ruba a un altro prodotto; in quei casi la voce
+> entra in dispensa lo stesso e il legame semplicemente non si fa, senza che la
+> schermata lo dica (la risposta resta `{"created": n}`: la schermata se ne va subito,
+> e dirlo non costava poco). Nessuna migrazione: `products.barcode` era già
+> annullabile e unico. Quattro test sul server e quattro sulla schermata, uno per
+> uscita, scritti prima. **S3 deve riusare `give_barcode_if_missing`.**
+>
+> Resta vero, e non toccato: `openCatalog` non chiude un `CustomProductForm` aperto,
+> quindi i due pannelli possono stare aperti insieme. È materia di S10.
+>
+> **Da provare sul telefono**: (1) codice ignoto → chiudere il modulo → «Cerca a
+> catalogo» → «Crea il prodotto a mano» → salvare, e riscansionando lo trova; (2)
+> codice ignoto → chiudere il modulo → scegliere a catalogo un prodotto senza codice →
+> «Metti in dispensa», e riscansionando lo trova; (3) un prodotto che ha già un codice,
+> scelto dopo averne letto un altro, tiene il suo.
 Quando si scansiona un codice che né il catalogo né Open Food Facts conoscono e poi
 si inserisce il prodotto a mano, quel codice deve restare associato al prodotto
 creato. La prossima volta la scansione lo deve trovare.
@@ -862,7 +898,32 @@ Vincoli: un fondo colorato passa dal blocco `@theme`, con il contrasto sopra 4.5
 non deve confondersi con i colori che vogliono già dire qualcosa (le zone del cursore,
 il viola della scadenza). Da decidere insieme alla revisione di T3.
 
-## S13. Il cursore della dispensa si sposta mentre si scorre **[D — difetto]**
+## S13. Il cursore della dispensa si sposta mentre si scorre **[FATTO 2026-09-27 — manca la prova sul telefono]**
+
+> **Fatto il 2026-09-27**, sul ramo `dispensa-difetti`. `FillSlider.tsx` resta un
+> `<input type="range">` — ruolo, nome, valore letto a voce e frecce della tastiera
+> sono i suoi, e la tastiera scrive come prima, al rilascio del tasto o all'uscita —
+> ma con `pointer-events-none`: il trascinamento nativo non esiste più, e i gesti li
+> legge il contenitore. Un gesto è un tocco se il dito, dall'appoggio al sollievo, non
+> si è mai allontanato più di **10px** (il tragitto, non solo l'arrivo; Android usa 8dp
+> per la stessa distinzione); il valore è quello del punto in cui il dito si è
+> **posato**, sul passo di 5. Un `pointercancel` (il browser che si prende lo
+> scorrimento), un secondo dito o il mouse che esce annullano il gesto. Il contenitore
+> è `touch-manipulation` e non `pan-y`: lo scorrimento passa alla pagina, e lo zoom a
+> due dita resta a chi ne ha bisogno. Il mouse segue la stessa regola: un clic sposta,
+> un trascinamento no.
+>
+> Provato in Chromium con emulazione di un telefono e tocchi veri (375×812): prima
+> uno scorrimento verticale partito su un cursore lo portava da 70 a 20, ora la pagina
+> scorre e il valore resta, zero scritture; un trascinamento orizzontale non cambia
+> niente; un tocco a 20 scrive una volta. `e2e/non-alimentari.spec.ts` usava
+> `fill("0")` più un `pointerup` finto, che il cursore nuovo ignora giustamente: ora
+> tocca il contenitore a sinistra. **Quel file non è stato fatto girare**, vuole lo
+> stack e2e.
+>
+> **Sul telefono vero, da Mattia**: uno scorrimento che parte da un cursore scorre e
+> non cambia mai uno stato; un tocco lo cambia; lo zoom a due dita partito da un
+> cursore funziona; 10px di tolleranza si sentono giusti per un tocco svelto.
 Scorrendo la dispensa col dito, se il tocco parte sopra un cursore il valore cambia, e
 con lui lo stato: una voce può diventare «quasi finita» o «finita» senza che nessuno
 l'abbia voluto. È un dato sbagliato scritto in silenzio. `FillSlider.tsx` è un
@@ -1445,7 +1506,8 @@ così R4 lo porta già.
 di nuovo).** Proposta d'ordine, da confermare:
 1. **prima quel che scrive dati sbagliati o li lascia sbagliati**: S13 (il cursore
    che cambia lo stato scorrendo), S9 (niente si corregge) e S8 (il codice che non
-   resta). Sono difetti, non miglioramenti;
+   resta). Sono difetti, non miglioramenti. **S13 e S8 fatti il 2026-09-27**; resta
+   S9, che vuole prima un brainstorming sulla forma;
 2. **poi il giro del sottoagente di T3**, prima di toccare la forma delle schermate:
    S10, S11, S12, S14, S15 e l'ingresso diretto di S3 cambiano tutti le stesse due
    schermate, Dispensa e Sistema la spesa, e il giro porterà altre voci sulle stesse.
@@ -1556,7 +1618,14 @@ layout a 375px.
   del rientro in lista («Lo rimetto in lista?», con la sua lapide e il suo esito) come
   componente a sé è il taglio naturale, quando qualcuno ci tornerà; la scadenza è il
   secondo candidato.
-- **Il bersaglio di «+ scadenza» sborda di 4px su quello del cursore** in dispensa.
+- ~~**Il bersaglio di «+ scadenza» sborda di 4px su quello del cursore** in dispensa.~~
+  **Chiusa il 2026-09-27, e la premessa era sbagliata**: misurato in Chromium, il
+  bordo alto del bersaglio cade esattamente sul bordo basso del cursore, 0px di
+  sovrapposizione. Il testo di 16px sta centrato nella riga della pastiglia, alta 24px:
+  4 dei 14px di imbottitura cadono dentro la riga, 10 ne escono, cioè proprio il
+  `gap-2.5`. Il commento era giusto ma saltava quel passaggio; ora ha il conto intero e
+  avvisa che dipende dai 24px di `StatusChip`. Le classi sono rimaste. Il testo di
+  prima, per la storia:
   Il comando è alto 16px e viene portato a 44 con `-my-3.5 py-3.5`, cioè 14px per
   parte, mentre lo spazio fra i due controlli è un `gap-2.5` da 10px: restano 4px in
   cui il tocco può prendere «+ scadenza» invece del cursore. **E il commento accanto
@@ -1564,9 +1633,16 @@ layout a 375px.
   contenuto alto 24px, non 16. Trovato dalla revisione finale e lasciato lì di
   proposito: il giro di correzioni era speso e la suite era verde. Si sistema
   cambiando due classi e il commento.
-- **Nessuno dei due campi data ha un `max`**, quindi Chromium accetta un anno a sei
-  cifre. Non rompe niente — il backend prende qualunque `DATE` — ma si vede.
-- **`npm run lint` è rosso: 5 errori e 1 avviso.** Quattro errori sono preesistenti
+- ~~**Nessuno dei due campi data ha un `max`**, quindi Chromium accetta un anno a sei
+  cifre. Non rompe niente — il backend prende qualunque `DATE` — ma si vede.~~
+  **Chiusa il 2026-09-27**: `EXPIRY_INPUT_MAX = "9999-12-31"` in `expiryLabels.ts`,
+  lo stesso `date.max` di Python, usato da entrambi i campi. Nessun `min`: una data
+  passata è legittima (D5).
+- **Chiusa il 2026-09-27: `npm run lint` è verde**, zero problemi. `eslint.config.js`
+  esenta i nomi col trattino basso; gli altri errori sono stati corretti, non spenti
+  (i due `setState` in un effetto ora si riallineano durante il disegno, le costanti
+  di `MissingBudgetFilter` sono in `missingBudget.ts`). Il testo di prima:
+  ~~**`npm run lint` è rosso: 5 errori e 1 avviso.**~~ Quattro errori sono preesistenti
   (`FillSlider.tsx`, due in `PantryRow.tsx`, uno in `MissingBudgetFilter.tsx`). **Il
   quinto l'ha introdotto S7**: in `StockingScreen.test.tsx` un parametro inutilizzato
   è stato rinominato `_init` per soddisfare `noUnusedParameters` di TypeScript — che
@@ -1575,7 +1651,9 @@ layout a 375px.
   `argsIgnorePattern: "^_"` nella configurazione di ESLint, che è anche il modo di
   allineare le due regole una volta per tutte. Il lint non è nei comandi di verifica
   del progetto (Parte XI), quindi nessuna suite se n'è accorta.
-- **Restano riferimenti a `StatusToggle` in alcuni commenti**
+- **Chiusa il 2026-09-27**, `grep -rn StatusToggle frontend/src` non trova più niente
+  (erano quattro, c'era anche `StatusChip.test.tsx`). Il testo di prima:
+  ~~**Restano riferimenti a `StatusToggle` in alcuni commenti**~~
   (`frontend/src/components/ui/StatusChip.tsx`,
   `frontend/src/features/cooking/CookSheet.test.tsx`,
   `frontend/src/features/ai-draft/AiDraftScreen.tsx`), di un componente che questo
