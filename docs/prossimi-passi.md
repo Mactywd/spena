@@ -1640,7 +1640,7 @@ Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.
 
 # Parte VII — Trasversali
 
-## T1. Navigazione **[FATTO IN PARTE 2026-09-17]**
+## T1. Navigazione **[FATTO — l'hamburger con S9, 2026-09-27]**
 - **Header globale** «Spena», `AppHeader.tsx`: il TBD sul logo si è chiuso disegnando
   il segno a mano, in SVG dentro il componente stesso (una pentola col vapore, solo
   tratti, `currentColor`) — niente libreria di icone per un marchio solo.
@@ -1651,10 +1651,10 @@ Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.
   avviso e un fondo diverso solo quando c'è davvero qualcosa da fare. Il caso «non ho
   spesa da mettere a posto» non fa sparire il tasto.
 
-**Resta aperto l'hamburger**, e non è una dimenticanza: è rinviato di proposito alla
-prima sezione secondaria vera (Pasti, Spese, Profilo, Connettori). Un indice che
-ripete le tre schede della navbar non è un indice — costruirlo ora avrebbe significato
-disegnare un menu che porta esattamente dove portano già Lista, Dispensa e Ricette.
+**L'hamburger c'è** (S9): un ☰ in `AppHeader.tsx` apre un pannello laterale, un
+dialogo accessibile col fuoco intrappolato, che Esc e il tocco fuori chiudono. Dentro:
+«Sistema la spesa», «Ingredienti da abbinare», «Anagrafica». Pasti, Spese, Profilo e
+Connettori si aggiungeranno lì quando esisteranno.
 
 ## T2. Attribuzione delle chiamate su OpenRouter **[FATTO 2026-09-17]**
 Fatto e in produzione (merge `b7b842f`). Com'è finita, perché non è come era scritta
@@ -1978,9 +1978,7 @@ dal 2026-09-22 e verificata a mano il 2026-09-23.
 
 **Poi, indipendenti e piccole** — si potevano fare in qualunque momento e non
 aspettavano nessuno: **fatte il 2026-09-17** S1, S2, R1, R3, e in parte T1 (header,
-tasto indietro, schede d'ingresso). **Resta aperto** solo l'hamburger di T1,
-rinviato di proposito alla prima sezione secondaria vera — non c'è fretta, perché
-niente lo sblocca.
+tasto indietro, schede d'ingresso). T1 è chiusa: l'hamburger è arrivato con S9.
 
 **Poi, il blocco strutturale**: S4 (nutrienti ampi). D1 era qui ed è fatta il
 2026-09-20 — con lei la metà per porzioni di R2 — e D4/S5 (non alimentari) lo erano
