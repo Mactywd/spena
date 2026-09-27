@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { usageText } from "./wording";
+import { mergeDoneText, mergePreviewText, mergeSlowWarning, usageText } from "./wording";
+import type { MergeCounts } from "../../domain/types";
 
 describe("usageText", () => {
   it("dice dove è usato un ingrediente, come l'esempio della spec", () => {
@@ -11,5 +12,54 @@ describe("usageText", () => {
   it("al singolare, e senza le parti che non ci sono", () => {
     expect(usageText({ recipes: 1, pantry: 0, shopping: 0 })).toBe("in 1 ricetta");
     expect(usageText({ recipes: 0, pantry: 2, shopping: 0 })).toBe("in nessuna ricetta · 2 in dispensa");
+  });
+});
+
+const CONTI: MergeCounts = {
+  dry_run: true, loser_name: "pomodori", winner_id: "i-pomodoro", winner_name: "pomodoro",
+  recipes_rebuilt: 2, recipe_lines_moved: 1, pantry_items: 1, shopping_items: 0,
+  products: 0, aliases: 2, cooking_events_relinked: 0,
+};
+
+describe("mergePreviewText", () => {
+  it("è la frase della spec, parola per parola", () => {
+    expect(mergePreviewText(CONTI)).toBe(
+      "Si spostano 3 ricette, 1 elemento di dispensa, 2 alias. «pomodori» diventa un alias di «pomodoro». Non si annulla."
+    );
+  });
+
+  it("al singolare, e con niente da spostare", () => {
+    const una = { ...CONTI, recipes_rebuilt: 0, recipe_lines_moved: 1, pantry_items: 0, aliases: 0 };
+    expect(mergePreviewText(una)).toBe(
+      "Si sposta 1 ricetta. «pomodori» diventa un alias di «pomodoro». Non si annulla."
+    );
+    const niente = { ...una, recipe_lines_moved: 0 };
+    expect(mergePreviewText(niente)).toBe(
+      "Non si sposta niente. «pomodori» diventa un alias di «pomodoro». Non si annulla."
+    );
+  });
+
+  it("dice le cotture che si ri-legano: chi fonde lo vuole sapere (spec §5.2)", () => {
+    expect(mergePreviewText({ ...CONTI, cooking_events_relinked: 2 })).toContain(
+      "2 cotture già registrate ritrovano la loro ricetta."
+    );
+  });
+});
+
+describe("mergeDoneText", () => {
+  it("dice l'esito sulla scheda del vincitore", () => {
+    expect(mergeDoneText({ ...CONTI, dry_run: false })).toBe(
+      "Uniti: «pomodori» ora è un alias di «pomodoro». Spostati qui: 3 ricette, 1 elemento di dispensa, 2 alias."
+    );
+  });
+});
+
+describe("mergeSlowWarning", () => {
+  it("avvisa sopra la soglia delle 1.000 ricette (deciso con Mattia al Task 11)", () => {
+    expect(mergeSlowWarning(1001)).toContain("Può volerci qualche minuto");
+  });
+
+  it("non avvisa esattamente alla soglia", () => {
+    expect(mergeSlowWarning(1000)).toBeNull();
   });
 });

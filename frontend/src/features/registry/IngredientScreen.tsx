@@ -1,17 +1,19 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
 import { Card } from "../../components/ui/Card";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import type { Ingredient, MergeCounts } from "../../domain/types";
 import { AliasRow } from "./AliasRow";
 import { CategoryForm } from "./CategoryForm";
+import { MergePanel } from "./MergePanel";
 import { fetchIngredientDetail } from "./api";
 import { backFrom, originFrom, productPath } from "./origin";
-import { usageText } from "./wording";
+import { mergeDoneText, usageText } from "./wording";
 
 /** La scheda dell'ingrediente (spec S9 §6.3).
  *
@@ -23,7 +25,7 @@ export function IngredientScreen() {
   return <IngredientCard key={id} id={id} />;
 }
 
-type Panel = { kind: "category" };
+type Panel = { kind: "category" } | { kind: "merge"; winner: Ingredient | null };
 
 /** Prima dice cos'è e dove è usato — il peso di una correzione si vede prima di farla —
  * poi gli alias e i prodotti. Le correzioni stanno sopra, e vengono dal servizio unico
@@ -47,6 +49,11 @@ function IngredientCard({ id }: { id: string }) {
   // un pannello solo alla volta: due moduli aperti su una scheda del telefono
   // spingerebbero l'altro fuori schermo
   const [panel, setPanel] = useState<Panel | null>(null);
+
+  // l'esito di una fusione arriva con la navigazione, dalla scheda del perdente che non
+  // c'è più: è qui, sulla scheda del vincitore, che si dice (spec §6.3)
+  const location = useLocation();
+  const merged = (location.state as { merged?: MergeCounts } | null)?.merged ?? null;
 
   if (isLoading) {
     return (
@@ -86,6 +93,11 @@ function IngredientCard({ id }: { id: string }) {
       subtitle={`${ingredient.category} · ${usageText(ingredient.usage)}`}
       back={back}
     >
+      {merged && (
+        <p role="status" className="pb-2 text-sm font-medium text-brand">
+          {mergeDoneText(merged)}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2 pb-1">
         <button
           type="button"
@@ -94,9 +106,26 @@ function IngredientCard({ id }: { id: string }) {
         >
           Cambia reparto
         </button>
+        <button
+          type="button"
+          onClick={() => setPanel({ kind: "merge", winner: null })}
+          className={buttonClasses("secondary")}
+        >
+          Unisci a un altro…
+        </button>
       </div>
       {panel?.kind === "category" && (
         <CategoryForm ingredient={ingredient} onDone={() => setPanel(null)} />
+      )}
+      {panel?.kind === "merge" && (
+        <MergePanel
+          key={panel.winner?.id ?? "da-scegliere"}
+          ingredient={ingredient}
+          initialWinner={panel.winner}
+          origin={origin}
+          onClose={() => setPanel(null)}
+          onChangeCategory={() => setPanel({ kind: "category" })}
+        />
       )}
 
       <SectionHeading>Alias</SectionHeading>

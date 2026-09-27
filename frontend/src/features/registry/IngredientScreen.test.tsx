@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { IngredientScreen } from "./IngredientScreen";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
-import type { Ingredient, IngredientDetail } from "../../domain/types";
+import type { Ingredient, IngredientDetail, MergeCounts } from "../../domain/types";
 
 const POMODORI: IngredientDetail = {
   id: "i-pomodori", name: "pomodori", display_name: "Pomodori", category: "verdura", kind: "food",
@@ -18,6 +18,17 @@ const POMODORI: IngredientDetail = {
 };
 const POMODORO: Ingredient = {
   id: "i-pomodoro", name: "pomodoro", display_name: "Pomodoro", category: "verdura", kind: "food",
+};
+const POMODORO_SCHEDA: IngredientDetail = {
+  ...POMODORO, aliases: [], products: [], usage: { recipes: 3, pantry: 1, shopping: 0 },
+};
+const DETERSIVO: Ingredient = {
+  id: "i-detersivo", name: "detersivo", display_name: "Detersivo", category: "casa", kind: "non_food",
+};
+const ANTEPRIMA: MergeCounts = {
+  dry_run: true, loser_name: "pomodori", winner_id: "i-pomodoro", winner_name: "pomodoro",
+  recipes_rebuilt: 2, recipe_lines_moved: 1, pantry_items: 1, shopping_items: 0, products: 0,
+  aliases: 2, cooking_events_relinked: 0,
 };
 
 type FetchRoute = (path: string, init?: RequestInit) => [unknown, number];
@@ -225,5 +236,95 @@ describe("IngredientScreen", () => {
     expect(screen.getByText("e altre 41.")).toBeInTheDocument();
     // il reparto scelto resta scelto: si corregge, non si riscrive da capo
     expect(screen.getByLabelText("Reparto")).toHaveValue("casa");
+  });
+
+  it("l'anteprima dice cosa si sposta, e «Unisci» porta al vincitore con l'esito in vista", async () => {
+    const spy = stubRoutedFetch((path, init) => {
+      if (path.endsWith("/ingredients/i-pomodori/merge")) {
+        const { dry_run } = JSON.parse(String(init?.body));
+        return [{ ...ANTEPRIMA, dry_run }, 200];
+      }
+      if (path.endsWith("/ingredients/i-pomodoro")) return [POMODORO_SCHEDA, 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "pomod");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    expect(
+      await screen.findByText(
+        "Si spostano 3 ricette, 1 elemento di dispensa, 2 alias. «pomodori» diventa un alias di «pomodoro». Non si annulla."
+      )
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Unisci" }));
+
+    expect(await screen.findByRole("heading", { name: "Pomodoro" })).toBeInTheDocument();
+    expect(screen.getByText(/Uniti: «pomodori» ora è un alias di «pomodoro»\./)).toBeInTheDocument();
+    const corpi = callsTo(spy, "POST", "/ingredients/i-pomodori/merge").map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body))
+    );
+    expect(corpi).toEqual([
+      { into: "i-pomodoro", dry_run: true },
+      { into: "i-pomodoro", dry_run: false },
+    ]);
+  });
+
+  it("tra un alimento e una voce non alimentare offre il cambio di reparto", async () => {
+    stubRoutedFetch((path) => {
+      if (path.endsWith("/ingredients/i-pomodori/merge")) {
+        return [{
+          code: "kind_mismatch",
+          detail:
+            "«Pomodori» e «Detersivo» stanno in due metà diverse dell'anagrafica: un alimento e una voce non alimentare non si uniscono. Prima porta «Pomodori» nello stesso reparto di «Detersivo», poi uniscili.",
+          existing: DETERSIVO,
+        }, 409];
+      }
+      if (path.includes("/ingredients/search")) return [[DETERSIVO], 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "deter");
+    await userEvent.click(await screen.findByRole("option", { name: /Detersivo/ }));
+
+    const avviso = await screen.findByRole("alert");
+    expect(avviso).toHaveTextContent("poi uniscili");
+    await userEvent.click(within(avviso).getByRole("button", { name: "Cambia reparto" }));
+    expect(screen.getByLabelText("Reparto")).toBeInTheDocument();
+  });
+
+  it("avvisa dei tempi lunghi sopra 1.000 ricette, prima ancora che l'anteprima risponda", async () => {
+    stubRoutedFetch((path) => {
+      if (path.endsWith("/ingredients/i-pomodori")) {
+        return [{ ...POMODORI, usage: { recipes: 1001, pantry: 1, shopping: 1 } }, 200];
+      }
+      if (path.endsWith("/ingredients/i-pomodori/merge")) return [ANTEPRIMA, 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "pomod");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    expect(await screen.findByText(/Può volerci qualche minuto/)).toBeInTheDocument();
+  });
+
+  it("sotto la soglia delle 1.000 ricette non avvisa dei tempi lunghi", async () => {
+    stubRoutedFetch((path) => {
+      if (path.endsWith("/ingredients/i-pomodori/merge")) return [ANTEPRIMA, 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "pomod");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    await screen.findByText(/Si spostano/);
+    expect(screen.queryByText(/Può volerci qualche minuto/)).toBeNull();
   });
 });
