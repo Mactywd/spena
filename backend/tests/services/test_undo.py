@@ -466,3 +466,54 @@ async def test_una_creazione_dellai_annullata_cancella_lingrediente(db_session, 
     assert (await undo_decision(db_session, speck)).ingredient_deleted is True
     assert await db_session.get(Ingredient, pasta.id) is not None
     assert await db_session.get(Ingredient, speck_id) is None
+
+
+async def _creato_e_agganciato(db_session):
+    """«Speck» crea l'ingrediente, «Speck a cubetti» ci si aggancia dopo: due termini
+    sullo stesso ingrediente, uno solo con `created_ingredient=True` — come il collasso
+    di `decide.py` o due `create` dello stesso nome nella stessa passata."""
+    creatore, agganciato = (
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key=key, display_name=nome,
+            occurrences=1, decision=TermDecision.PENDING,
+        )
+        for key, nome in (("k-speck", "Speck"), ("k-speck-cubetti", "Speck a cubetti"))
+    )
+    db_session.add_all([creatore, agganciato])
+    await db_session.flush()
+    speck = await decide_by_hand(db_session, creatore, ManualDecision(
+        action="create", name="speck", display_name="Speck", category=IngredientCategory.CARNE,
+    ))
+    await decide_by_hand(
+        db_session, agganciato, ManualDecision(action="map", ingredient_id=speck.id)
+    )
+    return creatore, agganciato, speck.id
+
+
+@pytest.mark.parametrize("creatore_prima", [True, False])
+async def test_lingrediente_creato_si_cancella_in_qualunque_ordine_si_annulli(
+    db_session, creatore_prima
+):
+    """Revisione del ramo: annullando prima il creatore, la cancellazione era rifiutata
+    (l'altro termine lo usa ancora) e il flag spariva con lui; poi l'altro, `False`,
+    non cancellava mai. Ora il creatore rifiutato passa il flag a chi resta."""
+    creatore, agganciato, speck_id = await _creato_e_agganciato(db_session)
+    primo, secondo = (creatore, agganciato) if creatore_prima else (agganciato, creatore)
+
+    assert (await undo_decision(db_session, primo)).ingredient_deleted is False
+    assert await db_session.get(Ingredient, speck_id) is not None
+    assert (await undo_decision(db_session, secondo)).ingredient_deleted is True
+    assert await db_session.get(Ingredient, speck_id) is None
+
+
+async def test_il_flag_passato_non_cancella_un_ingrediente_ancora_in_dispensa(db_session):
+    creatore, agganciato, speck_id = await _creato_e_agganciato(db_session)
+    db_session.add(PantryItem(ingredient_id=speck_id, status=PantryStatus.AVAILABLE))
+    await db_session.flush()
+
+    await undo_decision(db_session, creatore)
+    assert agganciato.created_ingredient is True
+    esito = await undo_decision(db_session, agganciato)
+
+    assert esito.ingredient_deleted is False
+    assert await db_session.get(Ingredient, speck_id) is not None
