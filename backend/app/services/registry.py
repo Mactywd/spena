@@ -462,3 +462,42 @@ async def merge_ingredients(
         aliases=await _alias_count(session, winner.id) - aliases_before,
         cooking_events_relinked=materialized.relinked,
     )
+
+
+async def preview_merge(
+    session: AsyncSession, loser_id: uuid.UUID, winner_id: uuid.UUID
+) -> MergeCounts:
+    """L'anteprima della fusione è la fusione stessa, dentro un SAVEPOINT annullato.
+
+    Nessuna seconda funzione che stima: i numeri sono quelli dell'operazione, per
+    costruzione (spec §5.1). Una stima scritta a parte sarebbe giusta finché i dati sono
+    pochi — la lezione di `recipe_search.py` al contrario. Le ricette si rimaterializzano
+    anche qui, embedding compresi: sono poche per fusione, ed è il prezzo della garanzia.
+
+    Dopo il rollback del SAVEPOINT gli oggetti che la fusione ha toccato sono scaduti.
+    Chi chiama non li rilegge di sfuggita (in una sessione async un attributo scaduto
+    letto senza `await` è un MissingGreenlet): le rotte rispondono coi conteggi, che sono
+    valori, e i test rileggono per id.
+
+    Un `RegistryRefusal` con un `obstacle` (F12) fa eccezione a questa regola: il
+    chiamante lo legge subito dopo — la rotta di Task 9 serializza `refusal.obstacle`
+    nella risposta — e a quel punto il SAVEPOINT è già annullato. Se l'ostacolo è
+    l'oggetto che la fusione ha modificato prima di rifiutare (il termine di
+    DECISION_REFUSED, già passato per `undo_decision`), è fra quelli scaduti dal
+    rollback. Per questo, prima di rilanciare, lo ricarichiamo con `session.refresh`:
+    l'ostacolo torna leggibile con il suo valore precedente alla fusione, senza che chi
+    chiama debba sapere di doverlo rileggere lui stesso.
+    """
+    savepoint = await session.begin_nested()
+    try:
+        counts = await merge_ingredients(session, loser_id, winner_id)
+    except RegistryRefusal as refusal:
+        await savepoint.rollback()
+        if refusal.obstacle is not None:
+            await session.refresh(refusal.obstacle)
+        raise
+    except BaseException:
+        await savepoint.rollback()
+        raise
+    await savepoint.rollback()
+    return counts

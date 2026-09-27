@@ -12,6 +12,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
+from app.core.db import Base
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
@@ -34,6 +35,7 @@ from app.services.registry import (
     RefusalCode,
     RegistryRefusal,
     merge_ingredients,
+    preview_merge,
     recategorize_ingredient,
 )
 
@@ -231,3 +233,87 @@ async def test_un_termine_dell_import_non_si_puo_ridecidere_su_un_non_alimentare
     assert rifiuto.value.obstacle is termine
     assert "Funghi" in rifiuto.value.message
     assert "Ingredienti da abbinare" in rifiuto.value.message
+
+
+# Le tabelle che la fusione tocca (spec §5), più `units`: la rimaterializzazione passa
+# da `create_recipe`, che può crearne una. `embedding` e `search_tsv` restano fuori dal
+# confronto: un vettore non si confronta con `==`, e la seconda è calcolata dalle altre.
+TABELLE_TOCCATE = (
+    "ingredients", "ingredient_aliases", "import_terms", "recipe_imports", "recipes",
+    "recipe_ingredients", "units", "pantry_items", "shopping_list_items", "products",
+    "cooking_events",
+)
+NON_CONFRONTABILI = {"embedding", "search_tsv"}
+
+
+async def _fotografia(db_session) -> dict[str, list[str]]:
+    """Il contenuto di ogni tabella toccata, riga per riga. I conteggi da soli non
+    vedrebbero un UPDATE: un elemento di dispensa spostato e rimesso a posto a metà ha
+    lo stesso conteggio di uno mai toccato."""
+    foto: dict[str, list[str]] = {}
+    for nome in TABELLE_TOCCATE:
+        tabella = Base.metadata.tables[nome]
+        colonne = [c for c in tabella.c if c.name not in NON_CONFRONTABILI]
+        righe = (await db_session.execute(select(*colonne))).all()
+        foto[nome] = sorted(repr(tuple(riga)) for riga in righe)
+    return foto
+
+
+async def test_l_anteprima_non_scrive_niente_e_dice_i_numeri_della_fusione(db_session, mondo):
+    """Spec §5.1 e §9.4: dopo l'anteprima il database è identico — confrontato riga per
+    riga, non sul valore di ritorno — e la fusione vera fatta subito dopo dà gli stessi
+    numeri. Gli id si prendono prima: dopo il rollback del SAVEPOINT gli oggetti toccati
+    sono scaduti, e leggerne un attributo in una sessione async è un MissingGreenlet."""
+    pagina = await _pagina(db_session, SUGO)
+    db_session.add(CookingEvent(recipe_id=pagina.recipe_id, servings=2, snapshot={}))
+    await db_session.flush()
+    perdente, vincitore = mondo["pomodori"].id, mondo["pomodoro"].id
+
+    prima = await _fotografia(db_session)
+    anteprima = await preview_merge(db_session, perdente, vincitore)
+    dopo = await _fotografia(db_session)
+
+    assert dopo == prima
+    vera = await merge_ingredients(db_session, perdente, vincitore)
+    assert anteprima == vera
+    assert vera.cooking_events_relinked == 1
+
+
+async def test_un_anteprima_rifiutata_non_lascia_niente(db_session, mondo):
+    perdente, vincitore = mondo["pomodori"].id, mondo["detersivo"].id
+    prima = await _fotografia(db_session)
+
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await preview_merge(db_session, perdente, vincitore)
+
+    assert rifiuto.value.code == RefusalCode.KIND_MISMATCH
+    assert await _fotografia(db_session) == prima
+
+
+async def test_un_anteprima_rifiutata_per_decisione_lascia_l_ostacolo_leggibile(
+    db_session, mondo
+):
+    """Ruling F12: la rotta di Task 9 serializza `refusal.obstacle` dopo che
+    `preview_merge` è tornata o ha sollevato. A quel punto il SAVEPOINT è già stato
+    annullato, e un rollback annidato scade gli oggetti toccati al suo interno — il
+    termine di DECISION_REFUSED è uno di quelli, e leggerne un attributo dopo sarebbe un
+    caricamento pigro, in una sessione async un MissingGreenlet. `preview_merge` deve
+    quindi ricaricare l'ostacolo con `session.refresh` dopo il rollback, prima di
+    rilanciare, così chi chiama lo trova già leggibile."""
+    fungo = Ingredient(name="fungo", display_name="Fungo", category=IngredientCategory.VERDURA)
+    db_session.add(fungo)
+    await db_session.flush()
+    termine = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-fungo", display_name="Funghi", occurrences=1,
+        decision=TermDecision.MAPPED, ingredient_id=fungo.id, decided_by="ai",
+        decided_at=datetime.now(UTC),
+    )
+    db_session.add(termine)
+    await db_session.flush()
+    await recategorize_ingredient(db_session, fungo.id, "casa")
+
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await preview_merge(db_session, fungo.id, mondo["detersivo"].id)
+
+    assert rifiuto.value.code == RefusalCode.DECISION_REFUSED
+    assert rifiuto.value.obstacle.display_name == "Funghi"
