@@ -917,13 +917,16 @@ nell'hamburger per quel che in dispensa non c'è. Un servizio solo,
   la guardia non le vede finché non lo sono. *Chiusa il 2026-09-28: la guardia conta
   anche le pagine `pending` con un termine `mapped` sull'ingrediente, in una query sola
   (`pending_imports_using`), e lo stesso rifiuto `non_food_in_recipes` dice quante
-  ricette dell'import aspettano e porta alla coda.*
+  ricette dell'import aspettano e porta a ciascun termine nella coda (`?termine=`),
+  anche a quelli decisi da sé che non hanno alias. La query espande le righe una volta
+  sola: 0,08 s su 8.000 pagine in attesa sintetiche, contro 0,23–2 s di prima.*
 - una fusione può lasciare due voci di lista in attesa per il vincitore (`_repoint`
   di `shopping_list_items` in `merge_ingredients`, ereditato dalla CLI: nessun
   controllo su un duplicato già in lista per lo stesso ingrediente). *Chiusa il
   2026-09-28: se il vincitore è già in lista, le voci attive del perdente si
   archiviano (come la X della lista) e l'anteprima lo dice con
-  `shopping_items_dropped`; la storia si sposta sempre.*
+  `shopping_items_dropped`; la voce che resta prende lo stato più avanti dei due (nel
+  carrello vince su da comprare); la storia si sposta sempre.*
 - il rifiuto `decision_refused` porta alla coda ma senza un link diretto al termine:
   il backend manda `term` nel corpo del 409, il tipo TS `RegistryRefusal` no
   (`frontend/src/domain/types.ts`). *Chiusa il 2026-09-28: il tipo porta `term`, e il
@@ -944,7 +947,8 @@ fatto si scrive alla decisione: `import_terms.created_ingredient` (migrazione `0
 `true` se la decisione ha creato l'ingrediente, `false` se ne ha agganciato uno che
 c'era, scritto dall'AI (`decide.py`), a mano e dalla fusione (`manual.py`) e
 dall'aggancio automatico (`terms.py`). `undo_decision` cancella l'ingrediente solo su
-`true` e se niente altro lo usa. Le decisioni prese prima del 2026-09-28 hanno NULL e
+`true` e se niente altro lo usa; se altri termini lo indicano ancora, il `true` passa
+al primo di loro, così l'ultimo annullamento lo cancella in qualunque ordine. Le decisioni prese prima del 2026-09-28 hanno NULL e
 non cancellano mai: un ingrediente nato da una di quelle e poi annullata resta in
 anagrafica, da unire a mano.
 
@@ -2156,7 +2160,11 @@ layout a 375px.
   ricetta non arriva mai; le cotture che aspettavano nel suo `payload` restano senza
   ricetta. La guardia di S9 ora impedisce di crearne di nuove per quella via, ma quelle
   già scartate si rimettono solo a mano nel database. Verificato sul codice e con i test
-  del 2026-09-28 in `tests/services/test_undo.py`.
+  del 2026-09-28 in `tests/services/test_undo.py`. La guardia vede solo le pagine in
+  attesa: un termine deciso su un ingrediente le cui pagine sono tutte già scartate, o
+  che comparirà in pagine scaricate domani, non la ferma — rifiutare su qualunque
+  termine deciso bloccherebbe quasi ogni ingrediente di base, e per ora si lascia così
+  (deciso il 2026-09-28).
 - ~~**La guardia sugli argomenti sconosciuti di `app.cli.seed` stampa il rifiuto
   ma esce con codice 0.**~~ **Chiusa con R4, il 2026-09-24**: un flag sconosciuto o
   contraddittorio esce con codice 1.
