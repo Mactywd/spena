@@ -78,6 +78,18 @@ function ProductCard({ id }: { id: string }) {
     },
   });
 
+  /** Il guasto di `barcodeAction` (non un rifiuto: quello lo dice `barcodeRefusal`),
+   * con parole che dicono l'azione tentata invece di un generico «è ancora quello di
+   * prima» — che per «Sposta il codice qui» o «Usalo lo stesso» falliti non descrive
+   * quel che è successo, solo che il campo non è cambiato (rilievo della revisione
+   * finale S9). Letto dalle `variables` dell'ultima mutazione, non da uno stato a
+   * parte: sono già quel che si è tentato di mandare. */
+  function barcodeActionFailureText(variables: ProductPatchBody | undefined): string {
+    if (variables?.take_barcode) return "Non sono riuscito a spostare il codice qui. Riprova.";
+    if (variables?.accept_bad_checksum) return "Non sono riuscito a usare il codice lo stesso. Riprova.";
+    return "Non sono riuscito a togliere il codice. È ancora qui: riprova.";
+  }
+
   /** Il rifiuto del codice con la sua uscita (spec §7): un codice già usato si sposta
    * qui, un codice che non torna si usa lo stesso. */
   function barcodeRefusal(failure: unknown, draft: string) {
@@ -202,9 +214,7 @@ function ProductCard({ id }: { id: string }) {
             Togli il codice
           </button>
         )}
-        {barcodeAction.isError && (
-          <Alert>Non sono riuscito a cambiare il codice. È ancora quello di prima: riprova.</Alert>
-        )}
+        {barcodeAction.isError && <Alert>{barcodeActionFailureText(barcodeAction.variables)}</Alert>}
       </Card>
 
       <SectionHeading>Ingrediente</SectionHeading>

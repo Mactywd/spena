@@ -226,6 +226,80 @@ describe("ProductScreen", () => {
     );
   });
 
+  it("modificare il campo dopo un rifiuto barcode_taken toglie il pulsante, e salvare manda la bozza nuova senza spostamento", async () => {
+    // il difetto: le uscite del rifiuto agivano sulla bozza attuale del campo, non sul
+    // codice rifiutato. Chi cambia idea e scrive un altro codice, senza premere «Salva»,
+    // non deve poter far scattare uno spostamento sul valore nuovo mai confermato
+    let tentativi = 0;
+    const spy = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        tentativi += 1;
+        if (tentativi === 1) {
+          return [{
+            code: "barcode_taken",
+            detail: "Il codice è di «Grana Padano 200 g».",
+            existing: { id: "p-grana", name: "Grana Padano 200 g", brand: null, barcode: "8001234567897" },
+          }, 409];
+        }
+        return [{ ...REGGIANO, barcode: "9990000000000" }, 200];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/prodotto/p-reggiano");
+
+    const codice = await screen.findByLabelText("Codice");
+    await userEvent.clear(codice);
+    await userEvent.type(codice, "8001234567897");
+    await userEvent.click(screen.getByRole("button", { name: "Salva codice" }));
+    expect(await screen.findByText("Il codice è di «Grana Padano 200 g». Spostalo qui?")).toBeInTheDocument();
+
+    // si cambia idea, senza premere «Salva»
+    await userEvent.clear(codice);
+    await userEvent.type(codice, "9990000000000");
+
+    expect(screen.queryByRole("button", { name: "Sposta il codice qui" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Spostalo qui\?/)).not.toBeInTheDocument();
+
+    // e se ora si salva, va il valore scritto adesso, senza `take_barcode`
+    await userEvent.click(screen.getByRole("button", { name: "Salva codice" }));
+    await waitFor(() =>
+      expect(bodiesOf(spy, "PATCH")).toEqual([
+        { barcode: "8001234567897" },
+        { barcode: "9990000000000" },
+      ])
+    );
+  });
+
+  it("uno spostamento del codice che fallisce dice cos'è andato storto, non un generico «ancora quello di prima»", async () => {
+    let tentativi = 0;
+    stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        tentativi += 1;
+        if (tentativi === 1) {
+          return [{
+            code: "barcode_taken",
+            detail: "Il codice è di «Grana Padano 200 g».",
+            existing: { id: "p-grana", name: "Grana Padano 200 g", brand: null, barcode: "8001234567897" },
+          }, 409];
+        }
+        return [{ detail: "boom" }, 500];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/prodotto/p-reggiano");
+
+    const codice = await screen.findByLabelText("Codice");
+    await userEvent.clear(codice);
+    await userEvent.type(codice, "8001234567897");
+    await userEvent.click(screen.getByRole("button", { name: "Salva codice" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Sposta il codice qui" }));
+
+    expect(
+      await screen.findByText("Non sono riuscito a spostare il codice qui. Riprova.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ancora quello di prima/)).not.toBeInTheDocument();
+  });
+
   it("«Togli il codice» manda il codice vuoto", async () => {
     const spy = stubRoutedFetch((path, init) => {
       if (init?.method === "PATCH") return [{ ...REGGIANO, barcode: null, valid_checksum: null }, 200];

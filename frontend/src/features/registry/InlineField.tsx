@@ -12,7 +12,15 @@ import { buttonClasses } from "../../components/ui/buttonClasses";
  * `required` (F17): quando il campo non può restare vuoto in colonna — il nome del
  * prodotto, non la marca — «Salva» resta spento a bozza vuota e il motivo si legge
  * sotto, come CustomProductForm e RenameForm già fanno: un pulsante spento e muto non
- * si spiega da sé. */
+ * si spiega da sé.
+ *
+ * L'errore si cancella anche battendo un tasto, non solo quando il valore salvato
+ * cambia da fuori: `describeError` (ProductScreen la usa per il rifiuto del codice)
+ * riceve la bozza *attuale*, e le sue uscite (le due uscite del rifiuto §7, «Sposta il
+ * codice qui» e «Usalo lo stesso») agiscono su quel che le arriva. Senza cancellare
+ * l'errore a ogni battuta, un rifiuto rimasto a video dopo che si è scritto un codice
+ * diverso mostrerebbe ancora le sue uscite, che manderebbero il codice nuovo — mai
+ * confermato — come se fosse quello rifiutato (rilievo della revisione finale S9). */
 export function InlineField({
   label,
   value,
@@ -75,7 +83,10 @@ export function InlineField({
           placeholder={placeholder}
           inputMode={inputMode}
           disabled={saving}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setError(null);
+          }}
           className="min-w-0 flex-1"
         />
         <button
