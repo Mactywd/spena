@@ -76,6 +76,7 @@ async def sync_terms(session: AsyncSession, source: str = GIALLOZAFFERANO) -> Te
             if match.certain and match.kind != IngredientKind.NON_FOOD:
                 term.decision = TermDecision.MAPPED
                 term.ingredient_id = match.ingredient_id
+                term.created_ingredient = False
                 term.decided_by = "auto"
                 term.decided_at = datetime.now(UTC)
                 auto_decided += 1

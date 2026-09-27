@@ -939,10 +939,14 @@ nell'hamburger per quel che in dispensa non c'è. Un servizio solo,
 **Difetto trovato dopo, chiuso il 2026-09-28:** annullare una decisione cancellava
 l'ingrediente a cui puntava se niente altro lo usava, anche quando la decisione l'aveva
 solo agganciato («Rigatoni» → «pasta», che c'era da prima), e la coda diceva «aveva
-creato… è stato eliminato». `mapped` non distingue creato da agganciato, né oggi né per
-le decisioni passate, quindi `undo_decision` non cancella più nessun ingrediente:
-toglie l'alias e rimette il termine in coda; un ingrediente nato da una decisione poi
-annullata resta in anagrafica, riusabile o da unire.
+creato… è stato eliminato». `mapped` non distingue creato da agganciato, quindi ora il
+fatto si scrive alla decisione: `import_terms.created_ingredient` (migrazione `0011`),
+`true` se la decisione ha creato l'ingrediente, `false` se ne ha agganciato uno che
+c'era, scritto dall'AI (`decide.py`), a mano e dalla fusione (`manual.py`) e
+dall'aggancio automatico (`terms.py`). `undo_decision` cancella l'ingrediente solo su
+`true` e se niente altro lo usa. Le decisioni prese prima del 2026-09-28 hanno NULL e
+non cancellano mai: un ingrediente nato da una di quelle e poi annullata resta in
+anagrafica, da unire a mano.
 
 ## S10. «Sistema la spesa»: lo scanner e il modulo si aprono in fondo, fuori vista **[D]**
 Con molte voci, ognuna con le sue tre opzioni, premere «scansiona» su una voce in alto

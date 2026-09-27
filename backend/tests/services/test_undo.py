@@ -23,11 +23,14 @@ from app.db.models.recipe_import import (
     RecipeImport,
     TermDecision,
 )
+from app.db.models.pantry import PantryItem
+from app.domain.rules import PantryStatus
 from app.repositories.ingredients import create_ingredient, remember_alias
 from app.repositories.recipes import create_recipe
 from app.services.recipe_import.undo import undo_decision
 from app.services.recipe_import.manual import ManualDecision, decide_by_hand
 from app.services.recipe_import.materialize import materialize_ready
+from app.services.registry import merge_ingredients
 
 
 @pytest_asyncio.fixture
@@ -40,6 +43,7 @@ async def deciso(db_session):
         source=GIALLOZAFFERANO, term_key="k-speck", display_name="Speck",
         occurrences=1, decision=TermDecision.MAPPED, ingredient_id=speck.id,
         decided_by="ai", decided_at=datetime.now(UTC), role_override="secondary",
+        created_ingredient=True,
     )
     db_session.add(term)
     await db_session.flush()
@@ -81,12 +85,26 @@ async def test_lalias_scritto_dalla_decisione_si_cancella(db_session, deciso):
     assert trovati == []
 
 
-async def test_anche_lingrediente_nato_dalla_decisione_resta(db_session, deciso):
-    """Per le righe di oggi e per quelle passate: una decisione `mapped` non dice se ha
-    creato l'ingrediente o ne ha agganciato uno che c'era, quindi l'annullamento non ne
-    cancella nessuno. «Speck» resta in anagrafica, senza più l'alias del termine."""
+async def test_lingrediente_creato_dalla_decisione_e_non_piu_usato_si_cancella(
+    db_session, deciso
+):
     term, speck, _, _ = deciso
     esito = await undo_decision(db_session, term)
+    assert esito.ingredient_deleted is True
+    assert await db_session.get(Ingredient, speck.id) is None
+    assert term.created_ingredient is None
+
+
+async def test_una_decisione_di_prima_del_flag_non_cancella_lingrediente(db_session, deciso):
+    """Le decisioni prese prima del 2026-09-28 hanno `created_ingredient` NULL: non si
+    sa se hanno creato l'ingrediente o ne hanno agganciato uno che c'era, e nel dubbio
+    l'ingrediente resta — cancellare quello che c'era è il difetto peggiore."""
+    term, speck, _, _ = deciso
+    term.created_ingredient = None
+    await db_session.flush()
+
+    esito = await undo_decision(db_session, term)
+
     assert esito.ingredient_deleted is False
     assert await db_session.get(Ingredient, speck.id) is not None
 
@@ -103,7 +121,7 @@ async def test_annullare_un_aggancio_non_cancella_lingrediente_che_cera_gia(db_s
     term = ImportTerm(
         source=GIALLOZAFFERANO, term_key="k-rigatoni", display_name="Rigatoni",
         occurrences=1, decision=TermDecision.MAPPED, ingredient_id=pasta.id,
-        decided_by="ai", decided_at=datetime.now(UTC),
+        decided_by="ai", decided_at=datetime.now(UTC), created_ingredient=False,
     )
     db_session.add(term)
     await db_session.flush()
@@ -329,3 +347,122 @@ async def test_una_pagina_scartata_rimessa_in_attesa_ritrova_le_cotture(
     assert pagina.state == ImportState.IMPORTED
     assert cottura.recipe_id == pagina.recipe_id
     assert "cooking_event_ids" not in pagina.payload
+
+
+async def test_una_creazione_a_mano_annullata_cancella_lingrediente_se_non_lo_usa_nessuno(
+    db_session,
+):
+    """R11: la decisione a mano che crea scrive il fatto come quella dell'AI. Creato e
+    poi usato in dispensa, l'ingrediente resta: il flag dice «creato qui», non «si
+    cancella comunque»."""
+    usato, libero = (
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key=f"k-{nome}", display_name=nome.capitalize(),
+            occurrences=1, decision=TermDecision.PENDING,
+        )
+        for nome in ("bottarga", "colatura")
+    )
+    db_session.add_all([usato, libero])
+    await db_session.flush()
+    bottarga = await decide_by_hand(db_session, usato, ManualDecision(
+        action="create", name="bottarga", display_name="Bottarga", category=IngredientCategory.PESCE,
+    ))
+    colatura = await decide_by_hand(db_session, libero, ManualDecision(
+        action="create", name="colatura", display_name="Colatura", category=IngredientCategory.PESCE,
+    ))
+    assert (usato.created_ingredient, libero.created_ingredient) == (True, True)
+    db_session.add(PantryItem(ingredient_id=bottarga.id, status=PantryStatus.AVAILABLE))
+    await db_session.flush()
+    bottarga_id, colatura_id = bottarga.id, colatura.id
+
+    assert (await undo_decision(db_session, usato)).ingredient_deleted is False
+    assert (await undo_decision(db_session, libero)).ingredient_deleted is True
+    assert await db_session.get(Ingredient, bottarga_id) is not None
+    assert await db_session.get(Ingredient, colatura_id) is None
+
+
+async def test_un_aggancio_a_mano_scrive_che_non_ha_creato(db_session):
+    pasta = await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    term = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-penne", display_name="Penne",
+        occurrences=1, decision=TermDecision.PENDING,
+    )
+    db_session.add(term)
+    await db_session.flush()
+
+    await decide_by_hand(db_session, term, ManualDecision(action="map", ingredient_id=pasta.id))
+    assert term.created_ingredient is False
+    esito = await undo_decision(db_session, term)
+
+    assert esito.ingredient_deleted is False
+    assert await db_session.get(Ingredient, pasta.id) is not None
+
+
+async def test_un_termine_rideciso_dalla_fusione_non_cancella_il_vincitore(db_session):
+    """«Pomodorini» ha creato il suo ingrediente; la fusione lo unisce a «pomodoro», che
+    c'era da prima, e ridecide il termine sul vincitore: da lì il termine non ha creato
+    niente, e annullarlo lascia «pomodoro» dov'è."""
+    pomodoro = await create_ingredient(
+        db_session, name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
+    )
+    term = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-pomodorini", display_name="Pomodorini",
+        occurrences=1, decision=TermDecision.PENDING,
+    )
+    db_session.add(term)
+    await db_session.flush()
+    pomodorini = await decide_by_hand(db_session, term, ManualDecision(
+        action="create", name="pomodorini", display_name="Pomodorini",
+        category=IngredientCategory.VERDURA,
+    ))
+    assert term.created_ingredient is True
+
+    await merge_ingredients(db_session, pomodorini.id, pomodoro.id)
+    await db_session.refresh(term)
+    assert (term.ingredient_id, term.created_ingredient) == (pomodoro.id, False)
+
+    esito = await undo_decision(db_session, term)
+
+    assert esito.ingredient_deleted is False
+    assert await db_session.get(Ingredient, pomodoro.id) is not None
+
+
+async def test_una_creazione_dellai_annullata_cancella_lingrediente(db_session, monkeypatch):
+    """Il giro vero dell'AI: `decide_terms` crea «speck» e aggancia «Rigatoni» a
+    «pasta». Annullate tutte e due, lo speck sparisce e la pasta resta."""
+    from app.core.config import get_settings
+    from app.services.recipe_import.decide import decide_terms
+    from llm_fakes import ScriptedLlm, llm_create, llm_map
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    try:
+        pasta = await create_ingredient(
+            db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+        )
+        rigatoni, speck = (
+            ImportTerm(
+                source=GIALLOZAFFERANO, term_key=f"k-{nome.lower()}", display_name=nome,
+                occurrences=1, decision=TermDecision.PENDING,
+            )
+            for nome in ("Rigatoni", "Speck")
+        )
+        db_session.add_all([rigatoni, speck])
+        await db_session.flush()
+        finto = ScriptedLlm({
+            "Rigatoni": llm_map("pasta"),
+            "Speck": llm_create("speck", "Speck", "carne"),
+        })
+
+        await decide_terms(db_session, [rigatoni, speck], client=finto)
+    finally:
+        get_settings.cache_clear()
+
+    assert (rigatoni.created_ingredient, speck.created_ingredient) == (False, True)
+    speck_id = speck.ingredient_id
+    assert (await undo_decision(db_session, rigatoni)).ingredient_deleted is False
+    assert (await undo_decision(db_session, speck)).ingredient_deleted is True
+    assert await db_session.get(Ingredient, pasta.id) is not None
+    assert await db_session.get(Ingredient, speck_id) is None

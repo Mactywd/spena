@@ -1,4 +1,4 @@
-"""Disfare una decisione: il termine, l'alias, le pagine. L'ingrediente resta.
+"""Disfare una decisione: il termine, l'alias, l'ingrediente, le pagine.
 
 Un verbo solo, e non un editor delle decisioni. Dopo l'annullamento il termine è
 esattamente dov'era prima che l'AI lo toccasse, e si decide a mano con la scheda che
@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.recipe import CookingEvent, Recipe
 from app.db.models.recipe_import import ImportState, ImportTerm, RecipeImport, TermDecision
 from app.domain.rules import cost_in_scale
-from app.repositories.ingredients import forget_alias
+from app.repositories.ingredients import delete_ingredient_if_unused, forget_alias
 from app.services.recipe_import.materialize import COOKING_EVENTS_KEY
 
 
@@ -74,10 +74,10 @@ async def _imported_pages_with(
 async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     """Rimette il mondo come era prima che quella decisione fosse presa.
 
-    Tre effetti, in quest'ordine: le pagine e le ricette, il termine, l'alias.
-    L'ingrediente resta sempre, anche se niente altro lo usa più (vedi sotto). Nessuno
-    rifiuta: le ricette già cucinate si rifanno come le altre, perché
-    le loro cotture aspettano nel `payload` (vedi la docstring del modulo).
+    Quattro effetti, in quest'ordine: le pagine e le ricette, l'alias, l'ingrediente
+    (solo se la decisione l'aveva creato), il termine. Nessuno rifiuta: le ricette già
+    cucinate si rifanno come le altre, perché le loro cotture aspettano nel `payload`
+    (vedi la docstring del modulo).
     """
     pages = await _imported_pages_with(session, term)
 
@@ -114,28 +114,28 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
         requeued += 1
 
     ingredient_id: uuid.UUID | None = term.ingredient_id
+    created_ingredient = term.created_ingredient
     alias_forgotten = False
     ingredient_deleted = False
 
-    # il termine si libera prima di togliere l'alias, come quando qui si cancellava
-    # anche l'ingrediente
+    # il termine si libera prima di provare a cancellare l'ingrediente: finché lo
+    # indica, `delete_ingredient_if_unused` lo conta come un uso e rifiuta sempre
     term.decision = TermDecision.PENDING
     term.ingredient_id = None
     term.role_override = None
     term.decided_by = None
     term.decided_at = None
+    term.created_ingredient = None
     await session.flush()
 
     if ingredient_id is not None:
         alias_forgotten = await forget_alias(session, ingredient_id, term.display_name)
-        # L'ingrediente non si cancella, nemmeno se ora non lo usa più niente. Una
-        # decisione `mapped` non dice se l'ha creato o se ha agganciato uno che c'era
-        # già (vedi `_decided_action` in `app/api/imports.py`): cancellarlo quando
-        # «nient'altro lo usa» cancellava anche «pasta», che c'era da prima di
-        # «Rigatoni», e la coda diceva il falso. Vale anche per le decisioni passate,
-        # che non si distinguono comunque. Un ingrediente nato da una decisione poi
-        # annullata resta in anagrafica: si riusa ridecidendo il termine, o si unisce
-        # a un altro. `ingredient_deleted` resta nella risposta, sempre falso.
+        # Solo un ingrediente che questa decisione ha creato, e che niente altro usa.
+        # Uno agganciato («Rigatoni» → «pasta», che c'era da prima) resta; e resta
+        # anche su NULL, le decisioni prese prima che il fatto si scrivesse: `mapped`
+        # da solo non distingue le due storie, e nel dubbio non si cancella.
+        if created_ingredient is True:
+            ingredient_deleted = await delete_ingredient_if_unused(session, ingredient_id)
 
     await session.flush()
     return Undone(

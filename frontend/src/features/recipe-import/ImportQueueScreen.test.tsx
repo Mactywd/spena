@@ -72,6 +72,8 @@ type CodaOptions = {
   askAiResult?: [unknown, number];
   undoStatus?: number;
   undoDetail?: string;
+  /** `ingredient_deleted` di un annullamento riuscito */
+  undoDeleted?: boolean;
   /** l'indirizzo della schermata, per `?termine=` */
   path?: string;
   /** la risposta di `GET /imports/terms/{id}`, il termine messo a fuoco */
@@ -102,7 +104,10 @@ function renderQueue(options: CodaOptions = {}) {
       if (options.undoStatus && options.undoStatus !== 200) {
         return [{ detail: options.undoDetail ?? "conflitto" }, options.undoStatus];
       }
-      return [{ recipes_requeued: 0, ingredient_deleted: false, remaining_terms: 0 }, 200];
+      return [
+        { recipes_requeued: 0, ingredient_deleted: options.undoDeleted ?? false, remaining_terms: 0 },
+        200,
+      ];
     }
     if (path.includes("/decision") && method === "POST") {
       return options.decideResult ?? [{ unlocked: 12, remaining_terms: 1 }, 200];
@@ -463,10 +468,33 @@ describe("coda di revisione dell'import", () => {
     ).toBeInTheDocument();
   });
 
-  it("l'elenco delle decisioni recenti dice che annullare lascia l'ingrediente in anagrafica", async () => {
-    // `decided_action` non distingue "map" da "creato" (nessun fatto scritto lo
-    // permette), quindi l'annullamento non cancella più nessun ingrediente: cancellava
-    // anche quello che c'era da prima («pasta» sotto «Rigatoni»). La frase lo dice.
+  it("un annullamento che ha cancellato l'ingrediente creato lo dice, e solo allora", async () => {
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Speck", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "speck", decided_at: "2026-09-20T10:00:00Z",
+        },
+      ],
+      undoStatus: 200,
+      undoDeleted: true,
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Speck»/i })
+    );
+
+    expect(
+      await screen.findByText(/L'ingrediente che questa decisione aveva creato è stato eliminato/)
+    ).toBeInTheDocument();
+  });
+
+  it("l'elenco delle decisioni recenti dice quando annullare cancella l'ingrediente e quando no", async () => {
+    // Il backend cancella solo un ingrediente che la decisione ha scritto di aver
+    // creato (`created_ingredient`), e che niente altro usa: un aggancio a uno che
+    // c'era già («pasta» sotto «Rigatoni») e le decisioni di prima lo lasciano.
     renderQueue({
       pending: [],
       decided: [
@@ -479,8 +507,10 @@ describe("coda di revisione dell'import", () => {
     });
 
     await screen.findByText("Rigatoni");
-    expect(screen.getByText(/l'ingrediente a cui puntava resta in anagrafica/i)).toBeInTheDocument();
-    expect(screen.queryByText(/l'annullamento lo cancella/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/se questa decisione l'aveva creato e niente altro lo usa, l'annullamento lo cancella/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/altrimenti resta in anagrafica/i)).toBeInTheDocument();
   });
 
   describe("decisioni recenti (R11): quelle a mano accanto a quelle dell'AI", () => {

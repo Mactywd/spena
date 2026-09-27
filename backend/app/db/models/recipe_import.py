@@ -12,6 +12,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -123,6 +124,11 @@ class ImportTerm(UUIDMixin, Base):
     # proprietà dell'ingrediente.
     role_override: Mapped[str | None] = mapped_column(String(20), nullable=True)
     decided_by: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Se questa decisione ha creato l'ingrediente (`True`) o ne ha agganciato uno che
+    # c'era già (`False`). L'annullamento cancella l'ingrediente solo su `True`, e solo
+    # se niente altro lo usa. NULL è «non si sa»: le decisioni prese prima del
+    # 2026-09-28, e i termini mai decisi. Mai ricavato: `mapped` da solo non lo dice.
+    created_ingredient: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -86,10 +86,11 @@ function aiRunMessage(result: DecideResult): string {
 }
 
 /** L'esito di un annullamento riuscito: quante ricette sono tornate in coda, e se
- * ha cancellato l'ingrediente che quella decisione aveva creato. Dal 2026-09-28 il
- * backend non ne cancella più nessuno (`undo_decision`: `mapped` non distingue un
- * ingrediente creato da uno che c'era già) e `ingredient_deleted` è sempre falso; il
- * ramo resta perché la frase è vera se mai tornasse vero.
+ * ha cancellato l'ingrediente che quella decisione aveva creato. Il backend lo
+ * cancella solo se la decisione ha scritto di averlo creato (`created_ingredient`) e
+ * niente altro lo usa, quindi `ingredient_deleted` vero vuol dire proprio questo. Il
+ * secondo fatto è l'unica cosa che dice cosa è stato distrutto dall'unico gesto
+ * distruttivo di questa schermata: senza dirlo qui, si scopre solo nell'anagrafica.
  */
 function undoResultMessage({
   recipesRequeued,
@@ -384,9 +385,9 @@ export function ImportQueueScreen() {
           <h2 className="text-sm font-medium text-ink-soft">Decisioni recenti</h2>
           <p className="pt-1 text-xs text-ink-faint">
             Le più recenti, tue e dell'AI, non tutte quelle prese. Ogni riga si può
-            annullare: il termine torna in coda, le ricette che ne erano nate si
-            rifanno, e l'ingrediente a cui puntava resta in anagrafica, anche se
-            l'aveva creato questa decisione.
+            annullare: il termine torna in coda e le ricette che ne erano nate si
+            rifanno. Quanto all'ingrediente: se questa decisione l'aveva creato e niente
+            altro lo usa, l'annullamento lo cancella; altrimenti resta in anagrafica.
           </p>
           <ul className="pt-2">
             {decided.map((term) => (
