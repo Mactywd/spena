@@ -862,10 +862,16 @@ Consegna 2.
 backend 850, vitest 416, e2e 16/16, lint, typecheck e build puliti, e un giro a mano a
 375 px sullo stack e2e.
 
-**Nota aperta (dalla revisione del Task 3):** dopo un annullamento, una pagina
-rimessa in coda che finisce `SKIPPED` tiene gli id delle cotture nel `payload`; quelle
-cotture restano con `recipe_id` `NULL`. Raro, gli id sono recuperabili dal `payload`;
-la spec §5.2 non lo prevedeva.
+**Nota della revisione del Task 3, chiusa il 2026-09-28:** dopo un annullamento, una
+pagina rimessa in coda che finisce `SKIPPED` tiene gli id delle cotture nel `payload`;
+quelle cotture restano con `recipe_id` `NULL`. Raro, gli id sono recuperabili dal
+`payload`; la spec §5.2 non lo prevedeva. *Chiusa il 2026-09-28: verificato e fissato
+con due test in `tests/services/test_undo.py`, senza toccare il codice — gli id
+sopravvivono nel `payload` su entrambe le strade verso `SKIPPED` (righe tutte ignorate,
+riga non alimentare), e se la pagina torna `pending` `materialize_ready` rilega le
+cotture; nessuna strada dell'app oggi rimette in attesa una pagina `SKIPPED`
+(`undo_decision` riprende solo le `imported` con ricetta), quindi quel ritorno si fa a
+mano nel database.*
 
 **Task 17 costruito:** lo schermo della fusione avvisa «può volerci qualche minuto»
 quando l'ingrediente perdente è in più di 1.000 ricette. L'anteprima della fusione non
@@ -903,20 +909,32 @@ link alla scheda del prodotto, o dell'ingrediente se lo sfuso — e da «Anagraf
 nell'hamburger per quel che in dispensa non c'è. Un servizio solo,
 `app/services/registry.py`, per l'app e per `fix_registry`.
 
-**Note aperte dalla revisione finale (2026-09-27), da riprendere:**
+**Note della revisione finale (2026-09-27), chiuse il 2026-09-28:**
 - la guardia sul non alimentare in `recategorize_ingredient` conta solo le righe di
   ricetta già materializzate: un ingrediente i cui termini d'import mappati stanno
   ancora su pagine in attesa può diventare non alimentare, e quelle pagine finiscono
   poi `SKIPPED` con «riga non alimentare» quando la loro ricetta si materializza —
-  la guardia non le vede finché non lo sono.
+  la guardia non le vede finché non lo sono. *Chiusa il 2026-09-28: la guardia conta
+  anche le pagine `pending` con un termine `mapped` sull'ingrediente, in una query sola
+  (`pending_imports_using`), e lo stesso rifiuto `non_food_in_recipes` dice quante
+  ricette dell'import aspettano e porta alla coda.*
 - una fusione può lasciare due voci di lista in attesa per il vincitore (`_repoint`
   di `shopping_list_items` in `merge_ingredients`, ereditato dalla CLI: nessun
-  controllo su un duplicato già in lista per lo stesso ingrediente).
+  controllo su un duplicato già in lista per lo stesso ingrediente). *Chiusa il
+  2026-09-28: se il vincitore è già in lista, le voci attive del perdente si
+  archiviano (come la X della lista) e l'anteprima lo dice con
+  `shopping_items_dropped`; la storia si sposta sempre.*
 - il rifiuto `decision_refused` porta alla coda ma senza un link diretto al termine:
   il backend manda `term` nel corpo del 409, il tipo TS `RegistryRefusal` no
-  (`frontend/src/domain/types.ts`).
+  (`frontend/src/domain/types.ts`). *Chiusa il 2026-09-28: il tipo porta `term`, e il
+  link apre `/ricette/importa?termine=<id>`, che legge il termine con la nuova
+  `GET /imports/terms/{id}` e lo mette in cima da annullare o decidere, anche quando è
+  troppo vecchio per le decisioni recenti; ci portano anche `import_alias` e «Deciso
+  nella coda».*
 - l'hamburger (`AppHeader.tsx`) non blocca lo scorrimento del corpo della pagina
-  mentre il pannello è aperto.
+  mentre il pannello è aperto. *Chiusa il 2026-09-28: col pannello aperto `body` ha
+  `overflow: hidden`, e il valore di prima torna a ogni chiusura e allo smontaggio;
+  da provare sul telefono vero, perché jsdom non scorre.*
 
 ## S10. «Sistema la spesa»: lo scanner e il modulo si aprono in fondo, fuori vista **[D]**
 Con molte voci, ognuna con le sue tre opzioni, premere «scansiona» su una voce in alto
