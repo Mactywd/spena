@@ -1,13 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { AppHeader } from "./AppHeader";
 
 function renderHeader() {
   return render(
     <MemoryRouter>
       <AppHeader />
+    </MemoryRouter>
+  );
+}
+
+/** Un bottone che torna indietro nella cronologia: simula avanti/indietro del
+ * browser, che cambia l'indirizzo senza passare da un `Link` dentro l'header. */
+function IndietroButton() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      torna indietro
+    </button>
+  );
+}
+
+function renderHeaderConCronologia() {
+  return render(
+    <MemoryRouter initialEntries={["/anagrafica", "/dispensa"]} initialIndex={1}>
+      <AppHeader />
+      <IndietroButton />
     </MemoryRouter>
   );
 }
@@ -90,6 +110,19 @@ describe("AppHeader", () => {
     await userEvent.click(screen.getByRole("button", { name: "Apri il menu" }));
 
     await userEvent.click(screen.getByRole("link", { name: "Anagrafica" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("un avanti/indietro del browser mentre il menu è aperto lo chiude", async () => {
+    // il tocco su una voce chiude già da sé (test sopra): qui l'indirizzo cambia da
+    // fuori, come lo fa avanti/indietro del browser, senza passare da un `Link`
+    // dentro il pannello — quel percorso non chiudeva niente
+    renderHeaderConCronologia();
+    await userEvent.click(screen.getByRole("button", { name: "Apri il menu" }));
+    expect(screen.getByRole("dialog", { name: "Menu" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "torna indietro" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

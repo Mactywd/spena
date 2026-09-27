@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 // Il segno dell'app, disegnato qui come le tre icone della TabBar e per lo stesso
 // motivo: una libreria di icone peserebbe sul primo avvio di una PWA più di quanto
@@ -90,6 +90,15 @@ export function AppHeader() {
     setOpen(false);
     toggleRef.current?.focus();
   }, []);
+
+  // avanti/indietro del browser cambia l'indirizzo senza passare da un `Link` di
+  // qui dentro (quello chiude già da sé, scelto a mano sopra): senza questo il
+  // pannello restava aperto sopra una pagina che non è più la sua. Non `close()`:
+  // niente fuoco da riportare al ☰, la navigazione lo sta già spostando altrove.
+  const location = useLocation();
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!open) return;
