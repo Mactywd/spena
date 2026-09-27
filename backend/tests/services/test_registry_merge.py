@@ -34,6 +34,7 @@ from app.services.registry import (
     RefusalCode,
     RegistryRefusal,
     merge_ingredients,
+    recategorize_ingredient,
 )
 
 SUGO = "https://esempio.invalid/sugo"
@@ -197,3 +198,36 @@ async def test_un_ingrediente_non_si_unisce_a_se_stesso(db_session, mondo):
     with pytest.raises(RegistryRefusal) as rifiuto:
         await merge_ingredients(db_session, mondo["pomodoro"].id, mondo["pomodoro"].id)
     assert rifiuto.value.code == RefusalCode.SAME_INGREDIENT
+
+
+async def test_un_termine_dell_import_non_si_puo_ridecidere_su_un_non_alimentare(
+    db_session, mondo
+):
+    """Un ingrediente con un termine dell'AI ma senza righe di ricetta — la sua pagina
+    non è mai stata materializzata — non è bloccato da nessuna ricetta e può diventare
+    non alimentare, come farebbe la scheda dell'anagrafica. Unirlo in un altro non
+    alimentare (stesso `kind`, quindi oltre il controllo di KIND_MISMATCH) prova a
+    ridecidere quel termine sul vincitore, e lì `decide_by_hand` rifiuta sempre:
+    un termine di ricetta non si lega a una voce non alimentare, chiunque sia il
+    perdente. Il messaggio deve indicare la coda dove si annulla o si ignora, non
+    «scegline un'altra», che dentro una fusione non è un passo percorribile
+    (round 1 di revisione, F8)."""
+    fungo = Ingredient(name="fungo", display_name="Fungo", category=IngredientCategory.VERDURA)
+    db_session.add(fungo)
+    await db_session.flush()
+    termine = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-fungo", display_name="Funghi", occurrences=1,
+        decision=TermDecision.MAPPED, ingredient_id=fungo.id, decided_by="ai",
+        decided_at=datetime.now(UTC),
+    )
+    db_session.add(termine)
+    await db_session.flush()
+    await recategorize_ingredient(db_session, fungo.id, "casa")
+
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await merge_ingredients(db_session, fungo.id, mondo["detersivo"].id)
+
+    assert rifiuto.value.code == RefusalCode.DECISION_REFUSED
+    assert rifiuto.value.obstacle is termine
+    assert "Funghi" in rifiuto.value.message
+    assert "Ingredienti da abbinare" in rifiuto.value.message

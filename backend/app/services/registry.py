@@ -337,6 +337,9 @@ async def merge_ingredients(
 
     È l'unica correzione che non si annulla: per questo `preview_merge` la esegue
     tutta dentro un SAVEPOINT prima di chiedere conferma.
+
+    Un `RegistryRefusal` sollevato a metà lascia la sessione parzialmente cambiata
+    (termini annullati, righe spostate): chi chiama deve fare rollback, non salvare.
     """
     loser = await _ingredient(session, loser_id)
     winner = await _ingredient(session, winner_id)
@@ -383,8 +386,17 @@ async def merge_ingredients(
                 ManualDecision(action="map", ingredient_id=winner.id, role_override=role),
             )
         except DecisionRefused as exc:
+            # `exc.message` qui è sempre quello di `decide_by_hand` sul non
+            # alimentare («Scegline un'altra, oppure ignora il termine»): un vicolo
+            # cieco dentro una fusione, dove non si sceglie un altro ingrediente per
+            # il termine. Il passo vero è nella coda, dove il termine si annulla o si
+            # ignora; `obstacle=term` lascia lo schermo linkarcela.
             raise RegistryRefusal(
-                RefusalCode.DECISION_REFUSED, f"«{term.display_name}»: {exc.message}"
+                RefusalCode.DECISION_REFUSED,
+                f"Il termine «{term.display_name}» dell'import non può finire su "
+                f"«{winner.display_name}», che non è un alimento: annullalo o ignoralo "
+                "in «Ingredienti da abbinare», poi riprova.",
+                term,
             ) from exc
 
     pantry_items = await _repoint(session, PantryItem, loser_id, winner.id)
