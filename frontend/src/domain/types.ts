@@ -194,6 +194,9 @@ export interface ImportTerm {
   // per il perché, compreso perché la deduzione che sembra ovvia è sbagliata.
   decided_action: "map" | "ignored" | null;
   decided_name: string | null;
+  /** Se il "map" ha creato l'ingrediente (`true`) o l'ha agganciato (`false`).
+   * `null` o assente: non si sa (decisioni prima del 2026-09-28, o non deciso). */
+  created_ingredient?: boolean | null;
   /** Quando è stata presa, in ISO 8601. Ordina l'elenco delle decisioni recenti,
    * dove quelle dell'AI e quelle a mano stanno insieme (R11). */
   decided_at: string | null;

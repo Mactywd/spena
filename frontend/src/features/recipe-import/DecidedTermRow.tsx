@@ -36,6 +36,9 @@ function DecidedByLabel({ decidedBy }: { decidedBy: string | null }) {
 
 function decisionSummary(term: ImportTerm): string {
   if (term.decided_action === "ignored") return "ignorato: non si tiene in dispensa";
+  // «creato» solo quando la decisione l'ha scritto; le decisioni di prima non lo
+  // sanno, e «collegato» non promette niente in più
+  if (term.created_ingredient === true) return `creato: ${term.decided_name ?? "un ingrediente"}`;
   return `collegato a ${term.decided_name ?? "un ingrediente"}`;
 }
 

@@ -32,14 +32,14 @@ class TermOut(BaseModel):
     waiting_titles: list[str]
     # Valorizzati solo per un termine già deciso. Servono all'elenco della revisione,
     # che deve dire in una riga cosa è stato fatto: «Rigatoni → pasta», «Acqua →
-    # ignorato». `decided_action` distingue solo "map" da "ignored": non esiste un
-    # terzo valore "created", perché nessun fatto scritto oggi permette di dedurre se
-    # l'ingrediente di un "map" esisteva già o è nato con questa decisione (vedi
-    # `_decided_action` in `app/api/imports.py`, che spiega perché e perché la
-    # deduzione che sembra ovvia è sbagliata). "map" quindi copre entrambi i casi.
+    # ignorato». `decided_action` distingue solo "map" da "ignored"; se un "map" ha
+    # creato l'ingrediente lo dice `created_ingredient`, scritto alla decisione dal
+    # 2026-09-28 e NULL per quelle di prima (vedi `_decided_action` in
+    # `app/api/imports.py`).
     decided_by: str | None = None
     decided_action: Literal["map", "ignored"] | None = None
     decided_name: str | None = None
+    created_ingredient: bool | None = None
     # Quando la decisione è stata presa. La schermata mette in un elenco solo le
     # decisioni dell'AI e quelle a mano (R11), e le ordina con questa data: senza,
     # due elenchi già ordinati ciascuno per conto suo non si fondono.
