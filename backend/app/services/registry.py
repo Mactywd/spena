@@ -167,6 +167,29 @@ async def rename_ingredient(
                 f"«{new_name}» è già in anagrafica: uniscili invece di rinominare.",
                 taken,
             )
+        # Non solo un nome canonico: `new_name` è già normalizzato come
+        # `remember_alias` normalizza (`canonical_name` fa lo stesso strip+lower), e un
+        # alias di un ALTRO ingrediente è lo stesso doppione sotto altro nome — un
+        # `rename` che lo ignorasse creerebbe due voci che l'autocomplete confonde.
+        # L'alias della STESSA voce non è un ostacolo: rinominare al proprio vecchio
+        # nome è la correzione inversa, legittima.
+        alias_holder = (
+            await session.execute(
+                select(Ingredient)
+                .join(IngredientAlias, IngredientAlias.ingredient_id == Ingredient.id)
+                .where(
+                    IngredientAlias.alias == new_name,
+                    IngredientAlias.ingredient_id != ingredient.id,
+                )
+            )
+        ).scalars().first()
+        if alias_holder is not None:
+            raise RegistryRefusal(
+                RefusalCode.NAME_TAKEN,
+                f"«{new_name}» è già alias di «{alias_holder.display_name}»: uniscili "
+                "invece di rinominare.",
+                alias_holder,
+            )
 
     old_name = ingredient.name
     if new_name is not None and new_name != ingredient.name:

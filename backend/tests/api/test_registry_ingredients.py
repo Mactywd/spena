@@ -112,6 +112,18 @@ async def test_un_nome_gia_preso_e_un_409_con_l_omonimo(logged_client, anagrafic
     assert corpo["existing"]["display_name"] == "Pomodoro"
 
 
+async def test_rinominare_a_un_alias_altrui_e_un_409_con_chi_lo_tiene(logged_client, anagrafica):
+    """«Pomodorini» è alias di «pomodori» nel mondo di prova: rinominare «burro» lì è
+    un 409 con «pomodori» come ostacolo, come un nome preso — «Uniscili» funziona senza
+    che lo schermo debba distinguere i due casi."""
+    risposta = await logged_client.patch(f"{BASE}/{anagrafica['burro']}", json={"name": "Pomodorini"})
+
+    assert risposta.status_code == 409
+    corpo = risposta.json()
+    assert corpo["code"] == "name_taken"
+    assert corpo["existing"]["id"] == str(anagrafica["pomodori"])
+
+
 async def test_rinominare_scrive_i_nomi_e_tiene_il_vecchio_come_alias(logged_client, anagrafica):
     risposta = await logged_client.patch(
         f"{BASE}/{anagrafica['pomodori']}", json={"name": "Pomodori rossi"}

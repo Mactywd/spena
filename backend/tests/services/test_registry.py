@@ -85,6 +85,33 @@ async def test_un_nome_gia_preso_rifiuta_e_porta_l_omonimo(db_session, anagrafic
     assert anagrafica["pomodori"].name == "pomodori"
 
 
+async def test_rinominare_a_un_alias_di_un_altro_ingrediente_rifiuta_e_porta_chi_lo_tiene(
+    db_session, anagrafica
+):
+    """«Pomodorini» è un alias di «pomodori»: rinominare «salvia» in quel nome deve
+    rifiutare com'è un nome preso, con «pomodori» come ostacolo, così «Uniscili» dello
+    schermo funziona senza cambiare rotta."""
+    await remember_alias(db_session, anagrafica["pomodori"].id, "Pomodorini", source="manual")
+
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await rename_ingredient(db_session, anagrafica["salvia"].id, name=" Pomodorini ")
+
+    assert rifiuto.value.code == RefusalCode.NAME_TAKEN
+    assert rifiuto.value.obstacle is anagrafica["pomodori"]
+    assert anagrafica["salvia"].name == "salvia"
+
+
+async def test_rinominare_al_proprio_stesso_alias_e_legittimo(db_session, anagrafica):
+    """Un alias della STESSA voce non è un ostacolo: rinominare a un proprio vecchio
+    nome è la correzione inversa, legittima."""
+    pomodori = anagrafica["pomodori"]
+    await remember_alias(db_session, pomodori.id, "Pomodorini", source="manual")
+
+    await rename_ingredient(db_session, pomodori.id, name="Pomodorini", display_name="Pomodorini")
+
+    assert pomodori.name == "pomodorini"
+
+
 async def test_un_nome_vuoto_rifiuta_senza_toccare_niente(db_session, anagrafica):
     """Il controllo viene prima di ogni scrittura: un rifiuto a metà lascerebbe il nome
     nuovo con il nome a video vecchio."""
