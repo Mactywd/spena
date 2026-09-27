@@ -229,11 +229,16 @@ async def delete_ingredient_if_unused(
     if ingredient is None:
         return False
     # `Ingredient.aliases` porta già `cascade="all, delete-orphan"`: `session.delete`
-    # cancella i suoi alias da sola. Un `DELETE` bulk qui davanti cancellava le stesse
-    # righe una seconda volta quando la sessione aveva già in memoria la collezione
-    # (per esempio dopo `forget_alias` in `undo_decision`), 0 righe trovate la seconda
-    # volta — un `SAWarning`, non un errore, ma un doppio giro sulla stessa riga che
-    # il cascade fa già da solo.
+    # cancella i suoi alias da sola, senza bisogno di un `DELETE` bulk qui davanti.
+    # Ma se `ingredient.aliases` è già stata caricata in memoria *prima* che uno dei
+    # suoi alias sparisse da sotto (per esempio `forget_alias` dentro `undo_decision`,
+    # che cancella quell'istanza con `session.delete` e fa `flush`), la collezione
+    # resta con l'oggetto ormai cancellato: nessuno lo toglie da lì solo perché la riga
+    # non c'è più in database. Il cascade, al momento di cancellare l'ingrediente, la
+    # rilegge da quella copia in memoria e prova a cancellare *di nuovo* un alias già
+    # sparito — 0 righe trovate, un `SAWarning`. `expire` scarta quella copia: il
+    # cascade la ricarica da capo, e trova solo gli alias che ci sono ancora davvero.
+    session.expire(ingredient, ["aliases"])
     await session.delete(ingredient)
     await session.flush()
     return True
