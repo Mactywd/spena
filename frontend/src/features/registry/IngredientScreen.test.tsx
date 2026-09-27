@@ -143,7 +143,10 @@ describe("IngredientScreen", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Togli l'alias «pomodorini»" }));
 
     expect(await screen.findByText(/si corregge da lì/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Vai alla coda" })).toHaveAttribute("href", "/ricette/importa");
+    const queueLink = screen.getByRole("link", { name: "Vai alla coda" });
+    expect(queueLink).toHaveAttribute("href", "/ricette/importa");
+    // bersaglio da 44px (regola di casa): non deve regredire in silenzio
+    expect(queueLink).toHaveClass("min-h-11");
   });
 
   it("dalla dispensa: i prodotti portano alla loro scheda e l'origine li segue", async () => {

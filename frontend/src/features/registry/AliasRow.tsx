@@ -74,7 +74,10 @@ export function AliasRow({ ingredientId, alias }: { ingredientId: string; alias:
       {refusal?.code === "import_alias" && (
         <Alert>
           {refusal.detail}{" "}
-          <Link to="/ricette/importa" className="font-medium text-brand">
+          <Link
+            to="/ricette/importa"
+            className="inline-flex min-h-11 items-center font-medium text-brand"
+          >
             Vai alla coda
           </Link>
         </Alert>
