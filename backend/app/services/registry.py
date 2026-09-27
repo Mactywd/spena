@@ -20,14 +20,29 @@ import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
+from app.db.models.pantry import PantryItem
+from app.db.models.product import Product
 from app.db.models.recipe import Recipe, RecipeIngredient
-from app.db.models.recipe_import import ImportTerm
-from app.domain.rules import IngredientKind, kind_for_category
-from app.repositories.ingredients import canonical_name, find_by_name, remember_alias
+from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm
+from app.db.models.shopping import ShoppingListItem
+from app.domain.rules import IngredientKind, IngredientRole, kind_for_category
+from app.repositories.ingredients import (
+    canonical_name,
+    delete_ingredient_if_unused,
+    find_by_name,
+    remember_alias,
+)
+from app.services.recipe_import.manual import DecisionRefused, ManualDecision, decide_by_hand
+from app.services.recipe_import.materialize import (
+    materialize_ready,
+    merge_quantities,
+    stronger,
+)
+from app.services.recipe_import.undo import undo_decision
 
 # La fonte degli alias che nascono da una correzione a mano. Non sono la metà di una
 # decisione della coda, quindi l'anagrafica li può spostare e togliere.
@@ -74,6 +89,22 @@ class RecipeRef:
 class RecipesInUse:
     count: int
     recipes: tuple[RecipeRef, ...]
+
+
+@dataclass(frozen=True)
+class MergeCounts:
+    """Quel che una fusione ha mosso (spec §5.1). Gli stessi numeri escono
+    dall'anteprima, perché l'anteprima è questa stessa fusione annullata."""
+
+    loser_name: str
+    winner_name: str
+    recipes_rebuilt: int  # ricette dell'import rifatte dal loro `payload`
+    recipe_lines_moved: int  # righe di ricette non importate, spostate sul vincitore
+    pantry_items: int
+    shopping_items: int
+    products: int
+    aliases: int  # alias che il vincitore guadagna, nome del perdente compreso
+    cooking_events_relinked: int
 
 
 async def _ingredient(session: AsyncSession, ingredient_id: uuid.UUID) -> Ingredient:
@@ -271,3 +302,151 @@ async def delete_alias(session: AsyncSession, alias_id: uuid.UUID) -> None:
     await _refuse_import_alias(session, alias)
     await session.delete(alias)
     await session.flush()
+
+
+async def _repoint(
+    session: AsyncSession, model: type, loser_id: uuid.UUID, winner_id: uuid.UUID
+) -> int:
+    result = await session.execute(
+        update(model).where(model.ingredient_id == loser_id).values(ingredient_id=winner_id)
+    )
+    return result.rowcount or 0
+
+
+async def _alias_count(session: AsyncSession, ingredient_id: uuid.UUID) -> int:
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(IngredientAlias)
+            .where(IngredientAlias.ingredient_id == ingredient_id)
+        )
+    ).scalar_one()
+
+
+async def merge_ingredients(
+    session: AsyncSession, loser_id: uuid.UUID, winner_id: uuid.UUID
+) -> MergeCounts:
+    """Tutto quel che punta al perdente passa al vincitore, e il perdente sparisce.
+
+    Termini dell'import, dispensa, lista, prodotti, righe di ricetta, alias: i termini
+    si annullano e si ridecidono sul vincitore, così le loro ricette si rifanno dal
+    `payload` invece di una chirurgia su `recipe_ingredients`; le righe delle ricette
+    scritte a mano o dall'AI si spostano. Il nome del perdente resta come alias del
+    vincitore: chi lo scrive nella lista trova ancora qualcosa. Le pagine rimesse in
+    attesa tornano ricette qui dentro, e le loro cotture con loro (§5.2).
+
+    È l'unica correzione che non si annulla: per questo `preview_merge` la esegue
+    tutta dentro un SAVEPOINT prima di chiedere conferma.
+    """
+    loser = await _ingredient(session, loser_id)
+    winner = await _ingredient(session, winner_id)
+    if loser.id == winner.id:
+        raise RegistryRefusal(
+            RefusalCode.SAME_INGREDIENT,
+            f"«{loser.display_name}» non si unisce a sé stesso: scegli un altro ingrediente.",
+        )
+    if loser.kind != winner.kind:
+        raise RegistryRefusal(
+            RefusalCode.KIND_MISMATCH,
+            f"«{loser.display_name}» e «{winner.display_name}» stanno in due metà diverse "
+            "dell'anagrafica: un alimento e una voce non alimentare non si uniscono. "
+            f"Prima porta «{loser.display_name}» nello stesso reparto di "
+            f"«{winner.display_name}», poi uniscili.",
+            winner,
+        )
+    loser_name, winner_name = loser.name, winner.name
+    # I nomi si fotografano prima: l'annullamento dell'ultimo termine può cancellare
+    # l'ingrediente, e i suoi alias con lui. Gli alias con una query e non con
+    # `loser.aliases`: `session.get` restituisce l'oggetto che la sessione ha già, e se
+    # quella collezione non è mai stata caricata leggerla è un caricamento pigro — in
+    # una sessione async, un MissingGreenlet. La CLI non lo vedeva perché trovava
+    # l'ingrediente con una `select`, che la carica.
+    alias_names = list(
+        (
+            await session.execute(
+                select(IngredientAlias.alias).where(IngredientAlias.ingredient_id == loser.id)
+            )
+        ).scalars()
+    )
+    names = [loser.name, loser.display_name, *alias_names]
+    aliases_before = await _alias_count(session, winner.id)
+
+    terms = list(
+        (await session.execute(select(ImportTerm).where(ImportTerm.ingredient_id == loser_id))).scalars()
+    )
+    for term in terms:
+        role = term.role_override
+        await undo_decision(session, term)
+        try:
+            await decide_by_hand(
+                session, term,
+                ManualDecision(action="map", ingredient_id=winner.id, role_override=role),
+            )
+        except DecisionRefused as exc:
+            raise RegistryRefusal(
+                RefusalCode.DECISION_REFUSED, f"«{term.display_name}»: {exc.message}"
+            ) from exc
+
+    pantry_items = await _repoint(session, PantryItem, loser_id, winner.id)
+    shopping_items = await _repoint(session, ShoppingListItem, loser_id, winner.id)
+    products = await _repoint(session, Product, loser_id, winner.id)
+
+    # Le righe rimaste sono di ricette che non vengono dall'import (scritte a mano o
+    # con l'AI): quelle non si rifanno da un payload, si spostano. Se la ricetta ha
+    # già una riga del vincitore, le due diventano una come nella materializzazione.
+    lines = list(
+        (
+            await session.execute(
+                select(RecipeIngredient).where(RecipeIngredient.ingredient_id == loser_id)
+            )
+        ).scalars()
+    )
+    for line in lines:
+        twin = (
+            await session.execute(
+                select(RecipeIngredient).where(
+                    RecipeIngredient.recipe_id == line.recipe_id,
+                    RecipeIngredient.ingredient_id == winner.id,
+                )
+            )
+        ).scalars().first()
+        if twin is None:
+            line.ingredient_id = winner.id
+            continue
+        twin.role = stronger(IngredientRole(twin.role), IngredientRole(line.role))
+        twin.quantity_text = merge_quantities(twin.quantity_text, line.quantity_text)
+        # «500 g + 50 g» non è una dose che il riporziona sappia leggere: la riga
+        # smette di scalare, che è onesto, invece di scalare solo metà.
+        twin.quantity_value = None
+        twin.quantity_unit_id = None
+        await session.delete(line)
+    await session.flush()
+
+    await session.execute(delete(IngredientAlias).where(IngredientAlias.ingredient_id == loser_id))
+    await session.flush()
+    survivor = await session.get(Ingredient, loser_id)
+    if survivor is not None:
+        # la collezione in memoria ricorda ancora gli alias appena cancellati
+        await session.refresh(survivor)
+        if not await delete_ingredient_if_unused(session, loser_id):
+            raise RegistryRefusal(
+                RefusalCode.STILL_USED,
+                f"«{loser_name}» è ancora usato dopo l'unione: niente è stato salvato.",
+            )
+    for name in names:
+        if canonical_name(name) != winner_name:
+            await remember_alias(session, winner.id, name, source=MANUAL_ALIAS_SOURCE)
+    await session.flush()
+
+    materialized = await materialize_ready(session, GIALLOZAFFERANO)
+    return MergeCounts(
+        loser_name=loser_name,
+        winner_name=winner_name,
+        recipes_rebuilt=materialized.created,
+        recipe_lines_moved=len(lines),
+        pantry_items=pantry_items,
+        shopping_items=shopping_items,
+        products=products,
+        aliases=await _alias_count(session, winner.id) - aliases_before,
+        cooking_events_relinked=materialized.relinked,
+    )
