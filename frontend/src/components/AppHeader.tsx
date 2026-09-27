@@ -93,12 +93,16 @@ export function AppHeader() {
 
   // avanti/indietro del browser cambia l'indirizzo senza passare da un `Link` di
   // qui dentro (quello chiude già da sé, scelto a mano sopra): senza questo il
-  // pannello restava aperto sopra una pagina che non è più la sua. Non `close()`:
-  // niente fuoco da riportare al ☰, la navigazione lo sta già spostando altrove.
+  // pannello restava aperto sopra una pagina che non è più la sua. Durante il
+  // disegno e non in un effetto, come `seen` in InlineField: un effetto chiuderebbe
+  // un fotogramma dopo, con il pannello ancora a video sopra la pagina nuova; non
+  // `close()`, niente fuoco da riportare al ☰, che la navigazione sta già spostando.
   const location = useLocation();
-  useEffect(() => {
+  const [lastPathname, setLastPathname] = useState(location.pathname);
+  if (location.pathname !== lastPathname) {
+    setLastPathname(location.pathname);
     setOpen(false);
-  }, [location.pathname]);
+  }
 
   useEffect(() => {
     if (!open) return;

@@ -440,7 +440,7 @@ describe("IngredientScreen", () => {
     const secondaPendente = new Promise<Response>((resolve) => {
       risolviSeconda = resolve;
     });
-    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+    const spy = vi.fn((url: unknown) => {
       const path = String(url);
       if (path.endsWith("/ingredients/i-pomodori/merge")) {
         rilanci += 1;
