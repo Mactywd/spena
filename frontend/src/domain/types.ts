@@ -71,6 +71,11 @@ export interface ShoppingItem {
   created_at: string;
 }
 
+// La risposta dell'aggiunta in lista: la voce, più lo stesso `added` del rientro
+// dalla dispensa. Falso vuol dire che l'ingrediente era già da comprare e la voce è
+// quella che c'era (S18): il backend non scrive il doppione.
+export interface ShoppingItemAdded extends ShoppingItem, RestockResult {}
+
 export interface RecipeSummary {
   id: string;
   title: string;

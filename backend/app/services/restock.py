@@ -7,20 +7,21 @@ una seconda copia si sarebbe scollata sul punto che conta — il non duplicare.
 
 import uuid
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.pantry import PantryItem
 from app.db.models.shopping import ShoppingListItem, ShoppingReason, ShoppingStatus
+from app.repositories.shopping import active_item_for
 
 
 async def already_in_list(session: AsyncSession, ingredient_id: uuid.UUID) -> bool:
-    """Se quell'ingrediente è già da comprare. Archiviato non conta: è cancellato."""
-    statement = select(ShoppingListItem.id).where(
-        ShoppingListItem.ingredient_id == ingredient_id,
-        ShoppingListItem.status.in_([ShoppingStatus.PENDING, ShoppingStatus.CHECKED]),
-    )
-    return (await session.execute(statement)).first() is not None
+    """Se quell'ingrediente è già da comprare. Archiviato non conta: è cancellato.
+
+    La regola sta in `active_item_for`, che usa anche l'aggiunta a mano in lista
+    (S18): due copie di «che cosa è già in lista» si scollerebbero proprio sul
+    punto per cui esistono, il non duplicare.
+    """
+    return await active_item_for(session, ingredient_id) is not None
 
 
 async def restock(

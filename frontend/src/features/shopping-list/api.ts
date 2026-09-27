@@ -1,13 +1,15 @@
 import { apiFetch } from "../../api/client";
-import type { Ingredient, ShoppingItem } from "../../domain/types";
+import type { Ingredient, ShoppingItem, ShoppingItemAdded } from "../../domain/types";
 
 export function fetchShoppingList(statuses: string[] = ["pending", "checked"]) {
   const query = statuses.map((s) => `status=${s}`).join("&");
   return apiFetch<ShoppingItem[]>(`/shopping-list?${query}`);
 }
 
+/** Il testo va com'è: se coincide con un ingrediente lo aggancia il backend, e se
+ * quell'ingrediente è già da comprare risponde con la voce che c'era. */
 export function addShoppingItem(rawText: string, ingredientId?: string) {
-  return apiFetch<ShoppingItem>("/shopping-list", {
+  return apiFetch<ShoppingItemAdded>("/shopping-list", {
     method: "POST",
     body: JSON.stringify({ raw_text: rawText, ingredient_id: ingredientId ?? null }),
   });

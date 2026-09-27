@@ -2,7 +2,7 @@ import pytest_asyncio
 from llm_fakes import FakeLlm
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
-from app.services.ingredient_match import match_name
+from app.services.ingredient_match import exact_ingredient, match_name
 
 
 @pytest_asyncio.fixture
@@ -118,3 +118,40 @@ async def test_kind_e_davvero_lenum_anche_fuori_dalla_identity_map(db_session, a
     db_session.expire_all()
     match = await match_name(db_session, "Pomodoro")
     assert isinstance(match.kind, IngredientKind)
+
+
+# `exact_ingredient` è la sola metà «certa» di `match_name`, per chi non vuole mai
+# una proposta: la lista della spesa (S18), che aggancia in silenzio e quindi può
+# agganciare solo quel che coincide.
+
+
+async def test_exact_trova_nome_e_alias_senza_badare_a_maiuscole(db_session, anagrafica):
+    assert (await exact_ingredient(db_session, " Pomodoro ")).name == "pomodoro"
+    assert (await exact_ingredient(db_session, "POMODORI PELATI")).name == "pomodoro"
+
+
+async def test_exact_non_propone_somiglianze(db_session, anagrafica):
+    assert await exact_ingredient(db_session, "pomodorini") is None
+    assert await exact_ingredient(db_session, "   ") is None
+
+
+async def test_exact_col_nome_canonico_che_vince_su_un_alias_omonimo(db_session, anagrafica):
+    """Stessa precedenza di `match_name`: il nome è unico, l'alias no."""
+    db_session.add(
+        Ingredient(
+            name="pomodori pelati", display_name="Pomodori pelati",
+            category=IngredientCategory.VERDURA,
+        )
+    )
+    await db_session.flush()
+
+    assert (await exact_ingredient(db_session, "pomodori pelati")).name == "pomodori pelati"
+
+
+async def test_exact_non_sceglie_fra_due_ingredienti_con_lo_stesso_alias(db_session, anagrafica):
+    pelati = Ingredient(name="pelati", display_name="Pelati", category=IngredientCategory.VERDURA)
+    pelati.aliases.append(IngredientAlias(alias="pomodori pelati", source="import"))
+    db_session.add(pelati)
+    await db_session.flush()
+
+    assert await exact_ingredient(db_session, "pomodori pelati") is None

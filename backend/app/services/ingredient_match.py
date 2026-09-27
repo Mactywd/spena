@@ -2,7 +2,8 @@
 
 Unica implementazione nell'applicazione. La usano la stesura AI, per agganciare gli
 ingredienti che Claude propone, e l'import, per decidere da sé i termini che
-coincidono con qualcosa che già conosciamo. Due copie di questa regola si
+coincidono con qualcosa che già conosciamo; la lista della spesa ne usa la sola
+metà esatta, `exact_ingredient`. Due copie di questa regola si
 scollerebbero, e la prima a scollarsi sarebbe la definizione di «certo»: da lì
 passa la differenza fra un aggancio applicato in silenzio e uno che chiede
 conferma.
@@ -27,6 +28,50 @@ class NameMatch:
     kind: IngredientKind | None = None
 
 
+def _normalize(raw_name: str) -> str:
+    """La stessa forma in cui `create_ingredient` e `add_alias` scrivono nomi e alias."""
+    return raw_name.strip().lower()
+
+
+async def _by_canonical_name(session: AsyncSession, normalized: str) -> Ingredient | None:
+    # `ingredients.name` è unico: al più una riga, e nessun ordine da decidere
+    return (
+        await session.execute(select(Ingredient).where(Ingredient.name == normalized))
+    ).scalar_one_or_none()
+
+
+async def exact_ingredient(session: AsyncSession, raw_name: str) -> Ingredient | None:
+    """Solo la coincidenza esatta, e solo se indica un ingrediente e uno soltanto.
+
+    È la metà certa di `match_name`, per chi aggancia senza chiedere e non vuole
+    mai una proposta: la lista della spesa (S18). Stessa precedenza — il nome
+    canonico decide per primo — con una differenza voluta sugli alias: l'unicità
+    lì è per coppia (ingrediente, alias), quindi lo stesso alias può stare su due
+    ingredienti, e dove `match_name` ne prende uno in un ordine fisso questa
+    funzione non sceglie. Una voce di lista lasciata libera si abbina dopo con un
+    tocco; una agganciata all'ingrediente sbagliato non lo dice a nessuno.
+    """
+    normalized = _normalize(raw_name)
+    if not normalized:
+        return None
+    canonical = await _by_canonical_name(session, normalized)
+    if canonical is not None:
+        return canonical
+    via_alias = list(
+        (
+            await session.execute(
+                select(Ingredient)
+                .join(IngredientAlias, IngredientAlias.ingredient_id == Ingredient.id)
+                .where(IngredientAlias.alias == normalized)
+                # due bastano a sapere che non è uno solo; e due righe sono due
+                # ingredienti, perché la coppia (ingrediente, alias) è unica
+                .limit(2)
+            )
+        ).scalars()
+    )
+    return via_alias[0] if len(via_alias) == 1 else None
+
+
 async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
     """La certezza richiede una coincidenza esatta, col nome canonico o con un alias.
 
@@ -34,7 +79,7 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
     Tutto il resto si propone e si marca incerto, perché un ingrediente sbagliato
     in silenzio avvelena la disponibilità di tutte le ricette che lo usano.
     """
-    normalized = raw_name.strip().lower()
+    normalized = _normalize(raw_name)
     if not normalized:
         return NameMatch(None, None, False)
 
@@ -45,9 +90,7 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
     # con `.limit(1)` e senza `ORDER BY` lascerebbe Postgres scegliere a caso fra i
     # due, marcando «certo» un aggancio arbitrario che `sync_terms` applica da
     # solo, senza nessuno che lo rilegga.
-    canonical = (
-        await session.execute(select(Ingredient).where(Ingredient.name == normalized).limit(1))
-    ).scalar_one_or_none()
+    canonical = await _by_canonical_name(session, normalized)
     if canonical is not None:
         return NameMatch(canonical.id, canonical.name, True, IngredientKind(canonical.kind))
 

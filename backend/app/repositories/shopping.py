@@ -12,6 +12,7 @@ from app.db.models.shopping import ShoppingListItem, ShoppingReason, ShoppingSta
 from app.domain.rules import PantryStatus
 from app.repositories.pantry import add_pantry_item
 from app.repositories.products import give_barcode_if_missing
+from app.services.ingredient_match import exact_ingredient
 
 
 @dataclass(frozen=True)
@@ -38,19 +39,68 @@ async def list_items(
     return list((await session.execute(statement)).unique().scalars())
 
 
+@dataclass(frozen=True)
+class AddedItem:
+    item: ShoppingListItem
+    # falso non è un errore: l'ingrediente era già da comprare, e `item` è quella
+    # voce. Stessa informazione di `restock`, per poter dire «era già in lista»
+    added: bool
+
+
+async def active_item_for(
+    session: AsyncSession, ingredient_id: uuid.UUID
+) -> ShoppingListItem | None:
+    """La voce che ha già in lista quell'ingrediente, da comprare o nel carrello.
+
+    Sistemata o archiviata non conta: la prima è già in dispensa, la seconda è
+    stata tolta. Se per la storia ce ne fossero due, la più vecchia: è quella che
+    si legge per prima scorrendo la lista.
+    """
+    statement = (
+        select(ShoppingListItem)
+        .where(
+            ShoppingListItem.ingredient_id == ingredient_id,
+            ShoppingListItem.status.in_([ShoppingStatus.PENDING, ShoppingStatus.CHECKED]),
+        )
+        .order_by(ShoppingListItem.created_at.asc())
+        .limit(1)
+    )
+    return (await session.execute(statement)).scalar_one_or_none()
+
+
 async def add_item(
     session: AsyncSession,
     raw_text: str,
     ingredient_id: uuid.UUID | None = None,
     reason: ShoppingReason = ShoppingReason.MANUAL,
-) -> ShoppingListItem:
+) -> AddedItem:
+    """Scrive una voce in lista, agganciandola se il testo *è* un ingrediente (S18).
+
+    Senza id dal client si prova la coincidenza esatta col nome o con un alias —
+    mai una somiglianza: l'aggancio qui è silenzioso, e un ingrediente sbagliato in
+    silenzio sposta la voce di reparto e poi la manda in dispensa col nome d'altri.
+    Sta qui e non nel campo della lista perché valga per qualunque client.
+
+    Con un ingrediente, agganciato o mandato, non si scrive un doppione di una voce
+    ancora da comprare: si restituisce quella, con `added` falso. Il testo libero
+    non si confronta con nulla — senza ingrediente non c'è un'identità su cui
+    dire «è la stessa cosa».
+    """
+    cleaned = raw_text.strip()
+    if ingredient_id is None:
+        match = await exact_ingredient(session, cleaned)
+        ingredient_id = match.id if match is not None else None
+    if ingredient_id is not None:
+        existing = await active_item_for(session, ingredient_id)
+        if existing is not None:
+            return AddedItem(existing, added=False)
     item = ShoppingListItem(
-        raw_text=raw_text.strip(), ingredient_id=ingredient_id,
+        raw_text=cleaned, ingredient_id=ingredient_id,
         status=ShoppingStatus.PENDING, reason=reason,
     )
     session.add(item)
     await session.flush()
-    return item
+    return AddedItem(item, added=True)
 
 
 async def patch_item(

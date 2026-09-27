@@ -992,7 +992,31 @@ Toccare il nome non fa niente. Il nome è uno `<span>` nudo, e la casella ha sol
 **Cosa fare.** Mettere casella e nome dentro un `<label>` alto almeno 44 px. La X resta
 un bersaglio a parte.
 
-## S18. «latte» + Invio crea una voce libera accanto al «latte» vero **[D, difetto, dal giro di T3]**
+## S18. «latte» + Invio crea una voce libera accanto al «latte» vero **[FATTO 2026-09-27]**
+
+> **Fatto:** la prima strada, nel backend. `add_item`
+> (`backend/app/repositories/shopping.py`), quando il client non manda un
+> ingrediente, prova `exact_ingredient` (`backend/app/services/ingredient_match.py`):
+> la sola metà esatta di `match_name`, stessa normalizzazione (spazi attorno e
+> maiuscole, niente accenti: non c'è un normalizzatore che li tolga, e i nomi si
+> scrivono già così) e stessa precedenza — il nome canonico decide per primo, poi gli
+> alias. Mai trigram: l'aggancio è silenzioso, e un «latt» agganciato a latte
+> sposterebbe la voce di reparto senza che nessuno lo abbia chiesto. Una differenza
+> voluta da `match_name`: un alias che sta su due ingredienti non sceglie, e la voce
+> resta libera, abbinabile dopo come prima. I non alimentari si agganciano come il
+> resto: il filtro `kind=food` è delle ricette, non della lista.
+>
+> Il doppione: con un ingrediente, agganciato o mandato dal tocco sul suggerimento,
+> se ce n'è già una voce da comprare o nel carrello non se ne scrive una seconda. La
+> `POST /shopping-list` risponde con la voce che c'era, **200 invece di 201** e
+> `added: false` — lo stesso `added` di `RestockOut`, nella nuova
+> `ShoppingItemAddOut`. «Che cosa è già in lista» sta ora in un posto solo,
+> `active_item_for`, che anche `already_in_list` del rientro dalla dispensa usa. Il
+> testo libero non si confronta con niente: senza ingrediente non c'è un'identità su
+> cui dire «è la stessa cosa». Nel campo (`AddItemField.tsx`) la risposta diventa
+> «Era già in lista.», con le parole e il tono grigio della dispensa, `role="status"`;
+> il campo si svuota e l'avviso se ne va appena si scrive altro. Nessuna spec e2e
+> scriveva in lista col tasto Invio, quindi nessuna è cambiata.
 Si scrive «latte» nel campo della lista, e il primo suggerimento è proprio «Latte». Se
 si preme Invio o «Aggiungi», la voce entra come testo libero sotto «Senza reparto», e
 in lista compaiono due latte. Poi la sistemazione chiede di abbinarla.
@@ -1870,7 +1894,7 @@ revisione**: S16–S21, più la prima metà di T4, l'esito di «Ho cucinato» fu
 Sono piccoli, stanno su righe che la revisione non ridisegna, e alcuni scrivono dati
 sbagliati:
 - S20 lega prodotti a ingredienti sbagliati;
-- S18 e S19 lasciano voci senza ingrediente.
+- S18 (fatto il 2026-09-27) e S19 lasciano voci senza ingrediente.
 
 Proposta: **prima S20, S19, S18**, perché sporcano l'anagrafica; **poi S16, S17, S21 e
 T4-«Ho cucinato»**. R11 costa poco, perché il backend è già pronto, e può andare con

@@ -146,6 +146,31 @@ describe("ShoppingListScreen", () => {
     expect(within(other).getByRole("checkbox", { name: "yogurt greco" })).not.toBeDisabled();
   });
 
+  // S18: «pomodoro» + Invio con il pomodoro già in lista. Il backend aggancia il
+  // testo e risponde con la voce che c'era: nessuna riga in più, e lo si dice
+  it("un ingrediente già in lista non si doppia: «Era già in lista.»", async () => {
+    const spy = vi.fn().mockImplementation((url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? Promise.resolve(new Response(JSON.stringify({ ...ITEMS[0], added: false }),
+          { status: 200 }))
+        : String(url).includes("/ingredients/search")
+          ? Promise.resolve(new Response("[]", { status: 200 }))
+          : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
+    );
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    await screen.findByRole("checkbox", { name: "pomodoro" });
+    await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "pomodoro{Enter}");
+
+    expect(await screen.findByText("Era già in lista.")).toBeDefined();
+    const post = spy.mock.calls.find(([, init]) => init?.method === "POST");
+    // il testo va com'è: a riconoscerlo è il backend, non il campo
+    expect(JSON.parse(post?.[1].body)).toEqual({ raw_text: "pomodoro", ingredient_id: null });
+    expect(screen.getAllByRole("checkbox", { name: "pomodoro" })).toHaveLength(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("un caricamento fallito non viene spacciato per lista vuota", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 500 })));
     renderScreen();

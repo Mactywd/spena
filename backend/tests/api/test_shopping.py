@@ -3,7 +3,7 @@ from datetime import date
 import pytest_asyncio
 from sqlalchemy import select
 
-from app.db.models.ingredient import Ingredient, IngredientCategory
+from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
 from app.db.models.shopping import ShoppingListItem, ShoppingReason, ShoppingStatus
@@ -343,3 +343,139 @@ async def test_un_codice_gia_di_un_altro_prodotto_non_si_sposta_e_la_spesa_entra
     assert owner.barcode == "8001234567890"
     pantry = list((await db_session.execute(select(PantryItem))).scalars())
     assert {p.product_id for p in pantry} == {product.id, None}
+
+
+# S18: «latte» + Invio entrava come testo libero sotto «Senza reparto», accanto al
+# «latte» vero, perché solo il tocco su un suggerimento legava un ingrediente. Ora
+# lo lega il backend quando il testo *coincide* — col nome o con un alias, senza
+# badare a maiuscole e spazi attorno — così vale per qualunque client. E un
+# ingrediente già da comprare non si doppia: si risponde come la dispensa quando
+# rimette in lista, «era già in lista».
+
+
+@pytest_asyncio.fixture
+async def anagrafica_s18(db_session):
+    latte = Ingredient(name="latte", display_name="Latte", category=IngredientCategory.LATTICINI)
+    pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+    pasta.aliases.append(IngredientAlias(alias="rigatoni", source="import"))
+    detersivo = Ingredient(name="detersivo per i piatti", display_name="Detersivo per i piatti",
+                           category=IngredientCategory.CASA)
+    db_session.add_all([latte, pasta, detersivo])
+    await db_session.flush()
+    return {"latte": latte, "pasta": pasta, "detersivo": detersivo}
+
+
+async def _righe_in_lista(db_session) -> list[ShoppingListItem]:
+    return list((await db_session.execute(select(ShoppingListItem))).scalars())
+
+
+async def test_il_nome_esatto_scritto_a_mano_aggancia_l_ingrediente(
+    logged_client, anagrafica_s18
+):
+    response = await logged_client.post("/api/v1/shopping-list", json={"raw_text": "  Latte "})
+    assert response.status_code == 201
+    body = response.json()
+    assert body["ingredient_id"] == str(anagrafica_s18["latte"].id)
+    assert body["ingredient_category"] == "latticini"
+    assert body["added"] is True
+    # quel che hai scritto resta quel che leggi in lista
+    assert body["raw_text"] == "Latte"
+
+
+async def test_un_alias_esatto_aggancia_il_suo_ingrediente(logged_client, anagrafica_s18):
+    response = await logged_client.post("/api/v1/shopping-list", json={"raw_text": "Rigatoni"})
+    assert response.status_code == 201
+    assert response.json()["ingredient_id"] == str(anagrafica_s18["pasta"].id)
+
+
+async def test_anche_un_non_alimentare_si_aggancia(logged_client, anagrafica_s18):
+    """In lista i non alimentari sono di casa: il filtro kind=food è delle ricette."""
+    response = await logged_client.post(
+        "/api/v1/shopping-list", json={"raw_text": "detersivo per i piatti"}
+    )
+    assert response.status_code == 201
+    assert response.json()["ingredient_id"] == str(anagrafica_s18["detersivo"].id)
+    assert response.json()["ingredient_kind"] == "non_food"
+
+
+async def test_una_somiglianza_non_basta_e_la_voce_resta_libera(logged_client, anagrafica_s18):
+    """Solo l'uguaglianza aggancia in silenzio: «latt» somiglia, ma non è latte."""
+    for testo in ["latt", "latte intero"]:
+        response = await logged_client.post("/api/v1/shopping-list", json={"raw_text": testo})
+        assert response.status_code == 201
+        assert response.json()["ingredient_id"] is None
+
+
+async def test_un_alias_di_due_ingredienti_non_sceglie_a_caso(
+    logged_client, db_session, anagrafica_s18
+):
+    """Lo stesso alias su due ingredienti è raggiungibile — l'unicità è per coppia
+    (ingrediente, alias) — e sceglierne uno sarebbe un aggancio arbitrario."""
+    riso = Ingredient(name="riso", display_name="Riso", category=IngredientCategory.CEREALI)
+    riso.aliases.append(IngredientAlias(alias="rigatoni", source="import"))
+    db_session.add(riso)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list", json={"raw_text": "rigatoni"})
+    assert response.status_code == 201
+    assert response.json()["ingredient_id"] is None
+
+
+async def test_un_ingrediente_gia_in_lista_non_si_doppia(
+    logged_client, db_session, anagrafica_s18
+):
+    first = await logged_client.post("/api/v1/shopping-list", json={"raw_text": "latte"})
+    again = await logged_client.post("/api/v1/shopping-list", json={"raw_text": "LATTE"})
+
+    # 200 e non 201: niente è stato creato, e non è un errore
+    assert again.status_code == 200
+    assert again.json()["added"] is False
+    assert again.json()["id"] == first.json()["id"]
+    assert len(await _righe_in_lista(db_session)) == 1
+
+
+async def test_anche_il_suggerimento_scelto_non_doppia(
+    logged_client, db_session, anagrafica_s18
+):
+    """Il tocco sul suggerimento manda l'id: stesso controllo. E una voce già nel
+    carrello conta come in lista, come per la dispensa."""
+    esistente = ShoppingListItem(raw_text="latte", ingredient_id=anagrafica_s18["latte"].id,
+                                 status=ShoppingStatus.CHECKED, reason=ShoppingReason.MANUAL)
+    db_session.add(esistente)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list", json={
+        "raw_text": "latte", "ingredient_id": str(anagrafica_s18["latte"].id),
+    })
+    assert response.status_code == 200
+    assert response.json()["added"] is False
+    assert response.json()["id"] == str(esistente.id)
+    assert len(await _righe_in_lista(db_session)) == 1
+
+
+async def test_una_voce_gia_sistemata_o_tolta_non_blocca(
+    logged_client, db_session, anagrafica_s18
+):
+    """Quel che è già in dispensa o è stato tolto dalla lista non è «da comprare»."""
+    db_session.add_all([
+        ShoppingListItem(raw_text="latte", ingredient_id=anagrafica_s18["latte"].id,
+                         status=ShoppingStatus.DONE, reason=ShoppingReason.MANUAL),
+        ShoppingListItem(raw_text="latte", ingredient_id=anagrafica_s18["latte"].id,
+                         status=ShoppingStatus.ARCHIVED, reason=ShoppingReason.MANUAL),
+    ])
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list", json={"raw_text": "latte"})
+    assert response.status_code == 201
+    assert response.json()["added"] is True
+
+
+async def test_il_testo_libero_non_si_confronta_col_testo_libero(logged_client, db_session):
+    """Senza ingrediente non c'è un'identità su cui dire «è la stessa cosa»: due
+    voci libere uguali restano due, come prima."""
+    for _ in range(2):
+        response = await logged_client.post(
+            "/api/v1/shopping-list", json={"raw_text": "quella cosa verde"}
+        )
+        assert response.status_code == 201
+    assert len(await _righe_in_lista(db_session)) == 2

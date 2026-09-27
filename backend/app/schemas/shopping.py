@@ -18,6 +18,14 @@ class ShoppingItemOut(BaseModel):
     created_at: datetime
 
 
+class ShoppingItemAddOut(ShoppingItemOut):
+    """La risposta dell'aggiunta. `added` falso non è un errore: l'ingrediente era
+    già da comprare e la voce è quella che c'era (S18) — lo stesso `added` di
+    `RestockOut`, perché chi scrive possa dire «era già in lista»."""
+
+    added: bool
+
+
 class ShoppingItemCreate(BaseModel):
     raw_text: str = Field(min_length=1, max_length=200)
     ingredient_id: uuid.UUID | None = None

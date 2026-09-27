@@ -6,16 +6,20 @@ import { useDebounced } from "../../hooks/useDebounced";
 import { Alert } from "../../components/ui/Alert";
 import { OptionList } from "../../components/ui/OptionList";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import type { RestockResult } from "../../domain/types";
 
 const DEBOUNCE_MS = 180;
 
 export function AddItemField({
   onAdd,
 }: {
-  onAdd: (rawText: string, ingredientId?: string) => Promise<unknown> | void;
+  onAdd: (rawText: string, ingredientId?: string) => Promise<RestockResult>;
 }) {
   const [text, setText] = useState("");
   const [failed, setFailed] = useState(false);
+  // l'ingrediente era già da comprare e il backend non ha scritto il doppione
+  // (S18). Resta finché non si scrive altro: è la risposta all'ultima aggiunta
+  const [alreadyListed, setAlreadyListed] = useState(false);
   const term = useDebounced(text, DEBOUNCE_MS).trim();
   // sotto 2 caratteri non vale la pena interrogare il backend: il testo resta libero
   const enabled = term.length >= 2;
@@ -40,22 +44,27 @@ export function AddItemField({
 
   async function add(rawText: string, ingredientId?: string) {
     setFailed(false);
+    setAlreadyListed(false);
+    let result: RestockResult;
     try {
-      await onAdd(rawText, ingredientId);
+      result = await onAdd(rawText, ingredientId);
     } catch {
       // il testo resta nel campo. Svuotarlo prima di sapere com'è andata perde
       // quello che l'utente ha scritto, che è il peggiore dei vicoli ciechi
       setFailed(true);
       return;
     }
+    // svuotato anche quando c'era già: quel che si voleva in lista ci sta
     setText("");
+    setAlreadyListed(!result.added);
   }
 
   function submitFreeText(event: FormEvent) {
     event.preventDefault();
     const trimmed = text.trim();
     if (!trimmed) return;
-    // niente corrispondenza non è un errore: la voce entra grezza
+    // il testo va com'è. Se coincide con un ingrediente lo aggancia il backend
+    // (S18), e niente corrispondenza non è un errore: la voce entra grezza
     void add(trimmed, undefined);
   }
 
@@ -70,7 +79,10 @@ export function AddItemField({
           id="add-item"
           aria-label="Aggiungi alla lista"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setAlreadyListed(false);
+          }}
           placeholder="Cosa serve?"
           className="min-w-0 flex-1"
         />
@@ -88,6 +100,13 @@ export function AddItemField({
         <Alert className="pt-2">
           Non sono riuscito ad aggiungere la voce. Il testo è ancora qui: riprova.
         </Alert>
+      )}
+      {/* le stesse parole e lo stesso tono della dispensa quando rimette in lista
+          (PantryRow): un'informazione, non un errore */}
+      {alreadyListed && (
+        <p role="status" className="pt-2 text-sm text-ink-soft">
+          Era già in lista.
+        </p>
       )}
       {/* una ricerca che non risponde non deve bloccare la scrittura, e nemmeno
           restare muta: il testo libero passa comunque, e va detto che passerà

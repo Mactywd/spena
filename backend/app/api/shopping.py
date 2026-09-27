@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from app.db.models.shopping import ShoppingListItem
 from app.repositories.pantry import ProductIngredientMismatch
 from app.repositories.shopping import StockEntry, add_item, list_items, patch_item, stock_items
 from app.schemas.shopping import (
+    ShoppingItemAddOut,
     ShoppingItemCreate,
     ShoppingItemOut,
     ShoppingItemPatch,
@@ -43,12 +44,19 @@ async def read_list(
     return [_to_out(item) for item in await list_items(session, status_filter)]
 
 
-@router.post("", response_model=ShoppingItemOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ShoppingItemAddOut, status_code=status.HTTP_201_CREATED)
 async def create(
-    payload: ShoppingItemCreate, session: AsyncSession = Depends(get_session)
-) -> ShoppingItemOut:
+    payload: ShoppingItemCreate,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+) -> ShoppingItemAddOut:
+    """Scrive in lista, o restituisce la voce che c'era già (`added` falso, 200).
+
+    Un ingrediente già da comprare non è un conflitto da rifiutare: chi l'ha
+    scritto voleva che fosse in lista, e lo è.
+    """
     try:
-        item = await add_item(session, payload.raw_text, payload.ingredient_id)
+        result = await add_item(session, payload.raw_text, payload.ingredient_id)
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
@@ -57,8 +65,10 @@ async def create(
         if not is_missing_reference(exc):
             raise
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
-    await session.refresh(item, ["ingredient"])
-    return _to_out(item)
+    if not result.added:
+        response.status_code = status.HTTP_200_OK
+    await session.refresh(result.item, ["ingredient"])
+    return ShoppingItemAddOut(**_to_out(result.item).model_dump(), added=result.added)
 
 
 @router.patch("/{item_id}", response_model=ShoppingItemOut)
