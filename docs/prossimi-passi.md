@@ -936,6 +936,14 @@ nell'hamburger per quel che in dispensa non c'è. Un servizio solo,
   `overflow: hidden`, e il valore di prima torna a ogni chiusura e allo smontaggio;
   da provare sul telefono vero, perché jsdom non scorre.*
 
+**Difetto trovato dopo, chiuso il 2026-09-28:** annullare una decisione cancellava
+l'ingrediente a cui puntava se niente altro lo usava, anche quando la decisione l'aveva
+solo agganciato («Rigatoni» → «pasta», che c'era da prima), e la coda diceva «aveva
+creato… è stato eliminato». `mapped` non distingue creato da agganciato, né oggi né per
+le decisioni passate, quindi `undo_decision` non cancella più nessun ingrediente:
+toglie l'alias e rimette il termine in coda; un ingrediente nato da una decisione poi
+annullata resta in anagrafica, riusabile o da unire.
+
 ## S10. «Sistema la spesa»: lo scanner e il modulo si aprono in fondo, fuori vista **[D]**
 Con molte voci, ognuna con le sue tre opzioni, premere «scansiona» su una voce in alto
 apre lo scanner **in fondo alla pagina**, dove non si vede. Lo stesso succede al
@@ -2136,6 +2144,15 @@ layout a 375px.
   preesistente `EMPTY_REASON` (`backend/app/services/recipe_import/materialize.py`).
   Una pagina `SKIPPED` non si ritenta da sola: chi vuole sapere perché deve
   aprire il database.
+- **Una pagina `SKIPPED` non torna mai in coda, nemmeno dopo aver corretto la causa.**
+  Nessuna strada dell'app la rimette `pending`: `undo_decision` riprende solo le pagine
+  `imported` con la loro ricetta, e né la coda né `fix_registry` né un comando toccano le
+  scartate. Così una pagina finita `SKIPPED` con «riga non alimentare» resta scartata
+  anche dopo che l'ingrediente è tornato cibo (o che il termine è stato rideciso), e la
+  ricetta non arriva mai; le cotture che aspettavano nel suo `payload` restano senza
+  ricetta. La guardia di S9 ora impedisce di crearne di nuove per quella via, ma quelle
+  già scartate si rimettono solo a mano nel database. Verificato sul codice e con i test
+  del 2026-09-28 in `tests/services/test_undo.py`.
 - ~~**La guardia sugli argomenti sconosciuti di `app.cli.seed` stampa il rifiuto
   ma esce con codice 0.**~~ **Chiusa con R4, il 2026-09-24**: un flag sconosciuto o
   contraddittorio esce con codice 1.

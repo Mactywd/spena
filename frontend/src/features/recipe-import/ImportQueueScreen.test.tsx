@@ -463,10 +463,10 @@ describe("coda di revisione dell'import", () => {
     ).toBeInTheDocument();
   });
 
-  it("l'elenco delle decisioni recenti avvisa che annullare può cancellare l'ingrediente creato", async () => {
+  it("l'elenco delle decisioni recenti dice che annullare lascia l'ingrediente in anagrafica", async () => {
     // `decided_action` non distingue "map" da "creato" (nessun fatto scritto lo
-    // permette): la promessa che questo lascia cadere si sostituisce con qualcosa
-    // di sempre vero, invece di sparire e basta.
+    // permette), quindi l'annullamento non cancella più nessun ingrediente: cancellava
+    // anche quello che c'era da prima («pasta» sotto «Rigatoni»). La frase lo dice.
     renderQueue({
       pending: [],
       decided: [
@@ -479,7 +479,8 @@ describe("coda di revisione dell'import", () => {
     });
 
     await screen.findByText("Rigatoni");
-    expect(screen.getByText(/l'annullamento lo cancella/i)).toBeInTheDocument();
+    expect(screen.getByText(/l'ingrediente a cui puntava resta in anagrafica/i)).toBeInTheDocument();
+    expect(screen.queryByText(/l'annullamento lo cancella/i)).not.toBeInTheDocument();
   });
 
   describe("decisioni recenti (R11): quelle a mano accanto a quelle dell'AI", () => {

@@ -56,7 +56,7 @@ async def test_annulla_e_dice_quante_ricette_sono_tornate_in_coda(logged_client,
     assert response.status_code == 200
     corpo = response.json()
     assert corpo["recipes_requeued"] == 1
-    assert corpo["ingredient_deleted"] is True
+    assert corpo["ingredient_deleted"] is False
     assert corpo["remaining_terms"] == 1
 
     await db_session.refresh(term)
@@ -150,12 +150,14 @@ async def test_una_decisione_presa_a_mano_si_annulla_come_quella_dellai(
     assert response.status_code == 200
     corpo = response.json()
     assert corpo["recipes_requeued"] == 1
-    assert corpo["ingredient_deleted"] is True
+    # anche creato da questa decisione, l'ingrediente resta: `mapped` non dice se
+    # l'ha creato o se c'era già, e cancellare quello che c'era è il difetto peggiore
+    assert corpo["ingredient_deleted"] is False
 
     await db_session.refresh(term)
     assert term.decision == TermDecision.PENDING
     assert term.decided_by is None
     assert (
         await db_session.execute(select(Ingredient).where(Ingredient.name == "bottarga"))
-    ).scalars().first() is None
+    ).scalars().first() is not None
     assert (await logged_client.get("/api/v1/imports/terms?decided_by=human")).json() == []

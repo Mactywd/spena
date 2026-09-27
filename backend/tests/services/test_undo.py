@@ -81,11 +81,45 @@ async def test_lalias_scritto_dalla_decisione_si_cancella(db_session, deciso):
     assert trovati == []
 
 
-async def test_lingrediente_creato_e_non_piu_usato_si_cancella(db_session, deciso):
+async def test_anche_lingrediente_nato_dalla_decisione_resta(db_session, deciso):
+    """Per le righe di oggi e per quelle passate: una decisione `mapped` non dice se ha
+    creato l'ingrediente o ne ha agganciato uno che c'era, quindi l'annullamento non ne
+    cancella nessuno. «Speck» resta in anagrafica, senza più l'alias del termine."""
     term, speck, _, _ = deciso
     esito = await undo_decision(db_session, term)
-    assert esito.ingredient_deleted is True
-    assert await db_session.get(Ingredient, speck.id) is None
+    assert esito.ingredient_deleted is False
+    assert await db_session.get(Ingredient, speck.id) is not None
+
+
+async def test_annullare_un_aggancio_non_cancella_lingrediente_che_cera_gia(db_session):
+    """«Rigatoni» agganciato a «pasta», che c'era da prima e che niente altro usa:
+    annullare toglie l'alias «rigatoni» e rimette il termine in coda, ma «pasta»
+    resta. Prima la cancellava, e la coda diceva «L'ingrediente che questa decisione
+    aveva creato è stato eliminato», che era falso.
+    """
+    pasta = await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    term = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-rigatoni", display_name="Rigatoni",
+        occurrences=1, decision=TermDecision.MAPPED, ingredient_id=pasta.id,
+        decided_by="ai", decided_at=datetime.now(UTC),
+    )
+    db_session.add(term)
+    await db_session.flush()
+    await remember_alias(db_session, pasta.id, "Rigatoni")
+    pasta_id = pasta.id
+
+    esito = await undo_decision(db_session, term)
+
+    assert esito.ingredient_deleted is False
+    assert esito.alias_forgotten is True
+    db_session.expunge_all()
+    assert await db_session.get(Ingredient, pasta_id) is not None
+    alias = (
+        await db_session.execute(select(IngredientAlias).where(IngredientAlias.alias == "rigatoni"))
+    ).scalars().all()
+    assert alias == []
 
 
 async def test_la_ricetta_torna_in_coda_e_la_pagina_torna_pending(db_session, deciso):
