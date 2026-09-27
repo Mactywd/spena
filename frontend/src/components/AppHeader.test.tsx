@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useNavigate } from "react-router-dom";
@@ -125,5 +125,45 @@ describe("AppHeader", () => {
     await userEvent.click(screen.getByRole("button", { name: "torna indietro" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  describe("lo scorrimento della pagina sotto il pannello", () => {
+    // un valore di partenza non vuoto: il pannello deve rimettere quello che c'era, non
+    // una stringa vuota scelta da lui
+    afterEach(() => {
+      document.body.style.overflow = "";
+    });
+
+    it("aperto il pannello la pagina non scorre, e chiuso torna com'era", async () => {
+      document.body.style.overflow = "clip";
+      renderHeader();
+
+      await userEvent.click(screen.getByRole("button", { name: "Apri il menu" }));
+      expect(document.body.style.overflow).toBe("hidden");
+
+      await userEvent.keyboard("{Escape}");
+      expect(document.body.style.overflow).toBe("clip");
+    });
+
+    it("torna com'era anche quando il pannello si chiude per un cambio di pagina", async () => {
+      renderHeaderConCronologia();
+      await userEvent.click(screen.getByRole("button", { name: "Apri il menu" }));
+      expect(document.body.style.overflow).toBe("hidden");
+
+      await userEvent.click(screen.getByRole("button", { name: "torna indietro" }));
+
+      expect(document.body.style.overflow).toBe("");
+    });
+
+    it("torna com'era se l'intestazione sparisce col pannello aperto", async () => {
+      document.body.style.overflow = "auto";
+      const { unmount } = renderHeader();
+      await userEvent.click(screen.getByRole("button", { name: "Apri il menu" }));
+      expect(document.body.style.overflow).toBe("hidden");
+
+      unmount();
+
+      expect(document.body.style.overflow).toBe("auto");
+    });
   });
 });
