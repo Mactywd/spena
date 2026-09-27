@@ -2049,7 +2049,7 @@ Solo dopo, la spec di T3 con l'elenco del giro in mano.
 
 ---
 
-# Parte IX — Lavoro già impegnato: i controlli end-to-end **[FATTO 2026-09-28 — c resta rossa: difetto aperto]**
+# Parte IX — Lavoro già impegnato: i controlli end-to-end **[FATTO 2026-09-28 — c fissa un difetto aperto]**
 
 Lo stile è l'unica parte dell'app che Vitest non può vedere: Tailwind genera il CSS
 alla costruzione e jsdom non lo calcola. Girano sullo stack `spena-e2e`, che ha una
@@ -2088,8 +2088,16 @@ layout a 375px.
 
 ### Esito **[FATTO 2026-09-28]**
 Tre controlli nuovi, sullo stack `spena-e2e` appena creato: la suite intera fa **19
-prove, 19 verdi** — una delle quali è la c, contata verde perché *attesa* rossa (sotto).
-Le prove nuove si rieseguono sullo stesso stack senza lasciare niente dietro.
+prove, 19 verdi** — la c è verde perché asserisce il difetto com'è oggi (sotto). Le prove
+nuove si rieseguono sullo stesso stack senza lasciare niente dietro.
+
+Lo stack e2e ora è **chiuso sul modello**: `.env.e2e` porta `OPENROUTER_API_KEY=` vuota,
+che vince su quella del `.env` (per le chiavi ripetute vince l'ultimo `env_file`: provato
+con `docker compose config` su un `.env` con una chiave finta non vuota, e nel container
+con `env`, senza stampare valori). Una chiamata al modello che sfugga a uno stub risponde
+503 — misurato su `POST /recipes/ai-draft` — e nessuna prova della suite usava la chiave.
+Lo stesso file porta `SPENA_E2E=1`, il contrassegno senza il quale l'aiutante di semina
+della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_guard.py`).
 
 - **a.** In `frontend/e2e/style.spec.ts`, «il testo più chiaro dell'app regge 4.5:1 sul
   fondo della pagina, misurato a video». Colore del testo e fondo vero dietro (il primo
@@ -2117,8 +2125,12 @@ Le prove nuove si rieseguono sullo stesso stack senza lasciare niente dietro.
   da `decide_terms` — il codice del bottone «Riprova con l'AI» — con `ScriptedLlm` di
   `tests/llm_fakes.py` al posto di OpenRouter e una chiave finta forzata in testa al file:
   alias, `decided_by = "ai"` e ingrediente creato sono quelli della produzione, e nessuna
-  chiamata esce. Il file per questo usa `docker compose exec` sullo stack e2e
-  (sovrascrivibile con `E2E_COMPOSE`). A 375px: la riga con un nome di 90 caratteri non fa
+  chiamata esce. Il file per questo usa `docker compose exec` sullo stack e2e (il nome del
+  progetto si cambia con `E2E_PROJECT`), e pulisce sia prima di seminare sia in fondo. Il
+  termine lungo si collega a un ingrediente che l'aiutante crea e poi toglie, non a
+  «pasta»: annullare un `map` può cancellare l'ingrediente d'arrivo (difetto curato su
+  un altro ramo), e la pulizia non deve contare su una «pasta» che sopravvive perché le
+  ricette del seme la usano. A 375px: la riga con un nome di 88 caratteri non fa
   scorrere la pagina, il nome è davvero troncato (`scrollWidth` > `clientWidth` del
   testo), e l'etichetta «AI» e il tasto «Annulla» restano interi nello schermo, a destra
   del nome. Poi annulla la decisione che aveva creato un ingrediente e controlla la
@@ -2129,16 +2141,19 @@ Le prove nuove si rieseguono sullo stesso stack senza lasciare niente dietro.
   riquadro di conferma dell'annullamento non esiste più da S9 (f8a77b5): si prova la frase
   con l'esito, che è quel che c'è.
 
-- **c.** Nuovo `frontend/e2e/ai-draft.spec.ts`, con `page.route` e il commento che ne
-  dichiara il limite. La riga sta in `frontend/src/features/ai-draft/AiDraftScreen.tsx`.
-  **Il test è rosso, e marcato `test.fail()`**: con un nome di 60 caratteri («Guanciale di
-  maiale stagionato al pepe nero dei Monti Lepini») la pagina a 375px diventa **larga
-  562px**. La nota «…: da creare salvando» sta in uno `span` `shrink-0` della riga
-  `justify-between`, ripete il nome intero e non va a capo: spinge la pagina di lato, e il
-  testo della casella resta una colonna di una parola per riga. Il test asserisce la cosa
-  giusta; come sistemare la riga (dove va la nota, se ripetere il nome) è una scelta di
-  disegno, da fare. Il giorno in cui la riga si sistema, `test.fail()` fa fallire la prova
-  e va tolto.
+- **c.** Nuovo `frontend/e2e/ai-draft.spec.ts`, con `page.route` (lo stub porta
+  `satisfies RecipeDraft`) e il commento che ne dichiara il limite. La riga sta in
+  `frontend/src/features/ai-draft/AiDraftScreen.tsx`. **Ha trovato un difetto**: con un
+  nome di 60 caratteri («Guanciale di maiale stagionato al pepe nero dei Monti Lepini») la
+  pagina a 375px diventa **larga 562px**. La nota «…: da creare salvando» sta in uno
+  `span` `shrink-0` della riga `justify-between`, ripete il nome intero e non va a capo:
+  spinge la pagina di lato, e il testo della casella resta una colonna di una parola per
+  riga (alto 140px, 7 righe da 20px). Il test **fissa il difetto in positivo** — pagina
+  più larga dello schermo, nome più alto di due righe — con la nota trovata dal suo posto
+  nella riga e non dalla frase esatta. Come sistemare la riga (dove va la nota, se
+  ripetere il nome) è una scelta di disegno che spetta a R10 (`RecipeForm`): quel ramo
+  rovescia le due asserzioni in quelle giuste, e sistema anche il nome, non solo la
+  nota.
 
 ---
 
@@ -2147,8 +2162,8 @@ Le prove nuove si rieseguono sullo stesso stack senza lasciare niente dietro.
 - **La riga «da creare salvando» della bozza AI fa scorrere la pagina di lato a 375px**
   con un nome lungo (misurato: 562px con un nome di 60 caratteri). La nota ripete il nome
   in uno `span` `shrink-0` della riga `justify-between` di `AiDraftScreen.tsx`. Lo tiene
-  `frontend/e2e/ai-draft.spec.ts`, marcato `test.fail()` finché non si decide come
-  disegnarla: vedi Parte IX, c.
+  fermo `frontend/e2e/ai-draft.spec.ts`, che lo asserisce com'è oggi; lo rovescia R10
+  (`RecipeForm`) quando sistema la riga: vedi Parte IX, c.
 - **Un 404 viene ritentato e poi offre «Riprova».** `lib/queryRetry.ts` ritenta ogni
   errore tranne il 401, 404 compreso. Così una ricetta che non c'è più risponde dopo
   qualche secondo con «Non sono riuscito a caricare questa ricetta. Riprova.», e
