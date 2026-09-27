@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.recipe import Recipe, RecipeIngredient
+from app.db.models.recipe_import import ImportTerm
 from app.domain.rules import IngredientKind, kind_for_category
 from app.repositories.ingredients import canonical_name, find_by_name, remember_alias
 
@@ -177,3 +178,96 @@ async def recategorize_ingredient(
     ingredient.category = str(category)
     await session.flush()
     return ingredient
+
+
+async def queue_terms_by_alias(
+    session: AsyncSession, ingredient_id: uuid.UUID
+) -> dict[str, ImportTerm]:
+    """I termini della coda decisi su questo ingrediente, per l'alias che hanno scritto.
+
+    La chiave è normalizzata come in `remember_alias` (strip e minuscole), in Python e
+    non in SQL: è la stessa operazione che ha scritto l'alias, quindi le due non
+    possono dare risposte diverse sullo stesso nome.
+    """
+    rows = await session.execute(
+        select(ImportTerm).where(ImportTerm.ingredient_id == ingredient_id)
+    )
+    return {term.display_name.strip().lower(): term for term in rows.scalars()}
+
+
+def queue_decision_for(
+    alias: IngredientAlias, terms_by_alias: dict[str, ImportTerm]
+) -> ImportTerm | None:
+    """Il termine della coda che ha scritto `alias`, se ce n'è uno.
+
+    Un alias è la metà di una decisione dell'import quando `source == "import"` **e**
+    un termine in coda porta ancora il suo nome (normalizzato come `queue_terms_by_alias`).
+    Regola scritta una volta sola: la usano sia la guardia qui sotto, che rifiuta di
+    toccare l'alias da qui, sia le rotte dell'anagrafica (Task 9), che decidono se
+    mostrare «Sposta» accanto a un alias.
+    """
+    if alias.source != "import":
+        return None
+    return terms_by_alias.get(alias.alias)
+
+
+async def _alias(session: AsyncSession, alias_id: uuid.UUID) -> IngredientAlias:
+    alias = await session.get(IngredientAlias, alias_id)
+    if alias is None:
+        raise LookupError(f"nessun alias {alias_id}")
+    return alias
+
+
+async def _refuse_import_alias(session: AsyncSession, alias: IngredientAlias) -> None:
+    """Un alias `import` che ha il suo termine nella coda è la metà di una decisione.
+
+    Spostarlo da qui lascerebbe la coda a dire una cosa e l'anagrafica un'altra: si
+    corregge dalla coda, dove R11 mostra anche le decisioni prese a mano. Un alias
+    `import` *senza* termine — il vecchio nome scritto da un `merge` o da un `rename`
+    della CLI prima di S9 — non è la metà di niente, e si corregge da qui: rifiutarlo
+    sarebbe un vicolo cieco, perché nella coda non c'è niente da correggere.
+    """
+    terms_by_alias = await queue_terms_by_alias(session, alias.ingredient_id)
+    term = queue_decision_for(alias, terms_by_alias)
+    if term is not None:
+        raise RegistryRefusal(
+            RefusalCode.IMPORT_ALIAS,
+            f"«{alias.alias}» viene dalla decisione su «{term.display_name.strip()}» nella "
+            "coda: si corregge da lì, così la coda e l'anagrafica dicono la stessa cosa.",
+            term,
+        )
+
+
+async def move_alias(
+    session: AsyncSession, alias_id: uuid.UUID, target_id: uuid.UUID
+) -> IngredientAlias | None:
+    """L'alias passa a `target_id`. Torna la riga che ora lo porta su quell'ingrediente,
+    oppure `None`: se l'alias era il nome stesso dell'ingrediente d'arrivo (un alias
+    uguale al nome è un doppione, e sparisce) o se un terzo ingrediente lo porta già.
+
+    `remember_alias` e non un inserimento diretto: è la regola che impedisce lo stesso
+    alias su due ingredienti, cioè un autocomplete con due risposte.
+    """
+    alias = await _alias(session, alias_id)
+    target = await _ingredient(session, target_id)
+    await _refuse_import_alias(session, alias)
+    text = alias.alias
+    await session.delete(alias)
+    await session.flush()
+    if text != target.name:
+        await remember_alias(session, target.id, text, source=MANUAL_ALIAS_SOURCE)
+    return (
+        await session.execute(
+            select(IngredientAlias).where(
+                IngredientAlias.ingredient_id == target.id, IngredientAlias.alias == text
+            )
+        )
+    ).scalars().first()
+
+
+async def delete_alias(session: AsyncSession, alias_id: uuid.UUID) -> None:
+    """Toglie un alias che non è la metà di una decisione della coda."""
+    alias = await _alias(session, alias_id)
+    await _refuse_import_alias(session, alias)
+    await session.delete(alias)
+    await session.flush()

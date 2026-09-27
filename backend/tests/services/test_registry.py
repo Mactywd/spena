@@ -5,6 +5,7 @@ query, e un finto database proverebbe una copia di quelle query.
 """
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
@@ -12,12 +13,17 @@ from sqlalchemy import select
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.recipe import RecipeSource
+from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
 from app.domain.rules import IngredientKind
+from app.repositories.ingredients import add_alias, remember_alias
 from app.repositories.recipes import create_recipe
 from app.services.registry import (
     RecipeRef,
     RefusalCode,
     RegistryRefusal,
+    delete_alias,
+    move_alias,
+    queue_terms_by_alias,
     recategorize_ingredient,
     rename_ingredient,
 )
@@ -122,3 +128,90 @@ async def test_un_reparto_sconosciuto_rifiuta(db_session, anagrafica):
     with pytest.raises(RegistryRefusal) as rifiuto:
         await recategorize_ingredient(db_session, anagrafica["salvia"].id, "bagno")
     assert rifiuto.value.code == RefusalCode.UNKNOWN_CATEGORY
+
+
+@pytest_asyncio.fixture
+async def deciso(db_session, anagrafica):
+    """Un termine della coda deciso su «pomodori», con il suo alias «import».
+
+    Lo spazio in coda al nome è voluto: `remember_alias` normalizza, e la guardia deve
+    riconoscere l'alias con la stessa normalizzazione, non con una sua.
+    """
+    term = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-pelati", display_name="Pomodori pelati ",
+        occurrences=1, decision=TermDecision.MAPPED, ingredient_id=anagrafica["pomodori"].id,
+        decided_by="ai", decided_at=datetime.now(UTC),
+    )
+    db_session.add(term)
+    await db_session.flush()
+    await remember_alias(db_session, term.ingredient_id, term.display_name)
+    alias = (
+        await db_session.execute(
+            select(IngredientAlias).where(IngredientAlias.alias == "pomodori pelati")
+        )
+    ).scalar_one()
+    return term, alias
+
+
+async def test_un_alias_scritto_a_mano_si_sposta(db_session, anagrafica):
+    pomodori, pomodoro = anagrafica["pomodori"], anagrafica["pomodoro"]
+    alias = await add_alias(db_session, pomodori.id, "pomodoro ciliegino", source="manual")
+
+    spostato = await move_alias(db_session, alias.id, pomodoro.id)
+
+    assert spostato is not None
+    assert spostato.ingredient_id == pomodoro.id
+    assert spostato.source == "manual"
+    assert await _alias(db_session, pomodori.id) == {}
+
+
+async def test_un_alias_uguale_al_nome_di_arrivo_sparisce(db_session, anagrafica):
+    """Un alias uguale al nome è un doppione del nome: spostarlo lì vuol dire toglierlo."""
+    alias = await add_alias(db_session, anagrafica["pomodori"].id, "pomodoro", source="seed")
+
+    assert await move_alias(db_session, alias.id, anagrafica["pomodoro"].id) is None
+    rimasti = (
+        await db_session.execute(select(IngredientAlias).where(IngredientAlias.alias == "pomodoro"))
+    ).scalars().all()
+    assert rimasti == []
+
+
+async def test_un_alias_della_coda_non_si_tocca_e_porta_il_termine(db_session, anagrafica, deciso):
+    """Spostarlo da qui lascerebbe la coda a dire una cosa e l'anagrafica un'altra."""
+    term, alias = deciso
+
+    with pytest.raises(RegistryRefusal) as spostamento:
+        await move_alias(db_session, alias.id, anagrafica["pomodoro"].id)
+    with pytest.raises(RegistryRefusal) as rimozione:
+        await delete_alias(db_session, alias.id)
+
+    assert spostamento.value.code == RefusalCode.IMPORT_ALIAS
+    assert spostamento.value.obstacle is term
+    assert "nella coda" in spostamento.value.message
+    assert rimozione.value.code == RefusalCode.IMPORT_ALIAS
+    assert await _alias(db_session, anagrafica["pomodori"].id) == {"pomodori pelati": "import"}
+
+
+async def test_un_alias_import_senza_termine_si_corregge_da_qui(db_session, anagrafica):
+    """Il vecchio nome scritto da un `merge` o da un `rename` della CLI prima di S9 porta
+    `source="import"` ma non è la metà di nessuna decisione: rifiutarlo sarebbe un
+    vicolo cieco, perché nella coda non c'è niente da correggere."""
+    alias = await add_alias(
+        db_session, anagrafica["pomodori"].id, "pomodoro san marzano", source="import"
+    )
+
+    await delete_alias(db_session, alias.id)
+
+    assert await _alias(db_session, anagrafica["pomodori"].id) == {}
+
+
+async def test_i_termini_della_coda_per_alias(db_session, anagrafica, deciso):
+    term, _ = deciso
+    assert await queue_terms_by_alias(db_session, anagrafica["pomodori"].id) == {
+        "pomodori pelati": term
+    }
+
+
+async def test_un_alias_che_non_c_e(db_session):
+    with pytest.raises(LookupError):
+        await delete_alias(db_session, uuid.uuid4())
