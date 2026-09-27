@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -7,6 +8,7 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { AliasRow } from "./AliasRow";
+import { CategoryForm } from "./CategoryForm";
 import { fetchIngredientDetail } from "./api";
 import { backFrom, originFrom, productPath } from "./origin";
 import { usageText } from "./wording";
@@ -20,6 +22,8 @@ export function IngredientScreen() {
   const { id = "" } = useParams();
   return <IngredientCard key={id} id={id} />;
 }
+
+type Panel = { kind: "category" };
 
 /** Prima dice cos'è e dove è usato — il peso di una correzione si vede prima di farla —
  * poi gli alias e i prodotti. Le correzioni stanno sopra, e vengono dal servizio unico
@@ -39,6 +43,10 @@ function IngredientCard({ id }: { id: string }) {
     queryKey: ["registry", "ingredient", id],
     queryFn: () => fetchIngredientDetail(id),
   });
+
+  // un pannello solo alla volta: due moduli aperti su una scheda del telefono
+  // spingerebbero l'altro fuori schermo
+  const [panel, setPanel] = useState<Panel | null>(null);
 
   if (isLoading) {
     return (
@@ -78,6 +86,19 @@ function IngredientCard({ id }: { id: string }) {
       subtitle={`${ingredient.category} · ${usageText(ingredient.usage)}`}
       back={back}
     >
+      <div className="flex flex-wrap gap-2 pb-1">
+        <button
+          type="button"
+          onClick={() => setPanel({ kind: "category" })}
+          className={buttonClasses("secondary")}
+        >
+          Cambia reparto
+        </button>
+      </div>
+      {panel?.kind === "category" && (
+        <CategoryForm ingredient={ingredient} onDone={() => setPanel(null)} />
+      )}
+
       <SectionHeading>Alias</SectionHeading>
       {ingredient.aliases.length === 0 ? (
         <p className="px-1 text-sm text-ink-soft">Nessun alias: si trova solo col suo nome.</p>

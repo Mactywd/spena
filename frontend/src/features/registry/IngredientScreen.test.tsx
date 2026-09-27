@@ -183,4 +183,47 @@ describe("IngredientScreen", () => {
     },
     10000
   );
+
+  it("«Cambia reparto» manda il reparto scelto, e si richiude", async () => {
+    const spy = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") return [{ ...POMODORI, category: "legumi" }, 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia reparto" }));
+    await userEvent.selectOptions(screen.getByLabelText("Reparto"), "legumi");
+    await userEvent.click(screen.getByRole("button", { name: "Salva il reparto" }));
+
+    await waitFor(() => expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(1));
+    const [, init] = callsTo(spy, "PATCH", "/ingredients/i-pomodori")[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ category: "legumi" });
+    await waitFor(() => expect(screen.queryByLabelText("Reparto")).toBeNull());
+  });
+
+  it("il rifiuto per le ricette le elenca, ciascuna col suo link", async () => {
+    stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        return [{
+          code: "non_food_in_recipes",
+          detail:
+            "«Pomodori» è in 42 ricette: non può diventare non alimentare finché una ricetta lo usa.",
+          recipe_count: 42,
+          recipes: [{ id: "r1", title: "Sugo semplice" }],
+        }, 409];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia reparto" }));
+    await userEvent.selectOptions(screen.getByLabelText("Reparto"), "casa");
+    await userEvent.click(screen.getByRole("button", { name: "Salva il reparto" }));
+
+    expect(await screen.findByText(/non può diventare non alimentare/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sugo semplice" })).toHaveAttribute("href", "/ricette/r1");
+    expect(screen.getByText("e altre 41.")).toBeInTheDocument();
+    // il reparto scelto resta scelto: si corregge, non si riscrive da capo
+    expect(screen.getByLabelText("Reparto")).toHaveValue("casa");
+  });
 });
