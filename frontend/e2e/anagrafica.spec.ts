@@ -49,74 +49,109 @@ test("il parmigiano sotto «burro» si sposta dalla dispensa, e a 375px niente s
   });
   expect(creato.ok()).toBe(true);
   const { id: prodottoId } = (await creato.json()) as { id: string };
-  const inDispensa = await page.request.post("/api/v1/pantry", {
-    data: { ingredient_id: burro.id, product_id: prodottoId },
-  });
-  expect(inDispensa.ok()).toBe(true);
-  const { id: voceId } = (await inDispensa.json()) as { id: string };
+  // fuori dal `try`: la pulizia in `finally` la legge anche se la creazione della
+  // voce di dispensa qui sotto non arrivasse mai a scriverla
+  let voceId: string | undefined;
 
-  // tocco 1: il nome nella riga della dispensa, un bersaglio da pollice
-  await page.getByRole("link", { name: "Dispensa", exact: true }).click();
-  const link = page.getByRole("link", { name: nome });
-  await expect(link).toBeVisible();
-  const box = await link.boundingBox();
-  expect(box!.height).toBeGreaterThanOrEqual(44);
-  await link.click();
-  await expect(page).toHaveURL(new RegExp(`/anagrafica/prodotto/${prodottoId}\\?da=dispensa$`));
-  await expect(page.getByRole("link", { name: "Burro", exact: true })).toBeVisible();
+  // rilievo di revisione: la pulizia in fondo girava solo se ogni asserzione fra la
+  // creazione e qui sotto passava. Un'asserzione fallita a metà lasciava il prodotto
+  // e la voce di dispensa (col nome timestampato) nel database condiviso dello
+  // stack e2e, a inquinare le prove che girano dopo. Da qui in poi sta tutto in un
+  // `try`/`finally`: la pulizia gira comunque, anche a test interrotto a metà.
+  try {
+    const inDispensa = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: burro.id, product_id: prodottoId },
+    });
+    expect(inDispensa.ok()).toBe(true);
+    voceId = (await inDispensa.json()).id as string;
 
-  // tocco 2 e la scelta
-  await page.getByRole("button", { name: "Spostalo" }).click();
-  await page.getByLabel("Sposta sotto").fill("parmig");
-  await page.getByRole("option", { name: /^Parmigiano\b/ }).click();
-  await expect(
-    page.getByText("Spostato sotto «Parmigiano», con 1 elemento di dispensa.")
-  ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Parmigiano", exact: true })).toBeVisible();
+    // tocco 1: il nome nella riga della dispensa, un bersaglio da pollice
+    await page.getByRole("link", { name: "Dispensa", exact: true }).click();
+    const link = page.getByRole("link", { name: nome });
+    await expect(link).toBeVisible();
+    const box = await link.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    await link.click();
+    await expect(page).toHaveURL(
+      new RegExp(`/anagrafica/prodotto/${prodottoId}\\?da=dispensa$`)
+    );
+    await expect(page.getByRole("link", { name: "Burro", exact: true })).toBeVisible();
 
-  // la riga della dispensa mostra il nome del prodotto, non l'ingrediente: che ora stia
-  // sotto «parmigiano» lo dice la risposta che la dispensa legge
-  await page.getByRole("main").getByRole("link", { name: "Dispensa" }).click();
-  await expect(page.getByRole("link", { name: nome })).toBeVisible();
-  const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
-    id: string;
-    ingredient_name: string;
-  }[];
-  expect(dispensa.find((voce) => voce.id === voceId)?.ingredient_name).toBe("parmigiano");
+    // tocco 2 e la scelta
+    await page.getByRole("button", { name: "Spostalo" }).click();
+    await page.getByLabel("Sposta sotto").fill("parmig");
+    await page.getByRole("option", { name: /^Parmigiano\b/ }).click();
+    await expect(
+      page.getByText("Spostato sotto «Parmigiano», con 1 elemento di dispensa.")
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Parmigiano", exact: true })).toBeVisible();
 
-  // a 375px: le tre pagine nuove e il pannello dell'hamburger
-  await page.setViewportSize({ width: 375, height: 812 });
-  const parmigiano = await ingrediente(page, "parmigiano");
+    // la riga della dispensa mostra il nome del prodotto, non l'ingrediente: che ora
+    // stia sotto «parmigiano» lo dice la risposta che la dispensa legge
+    await page.getByRole("main").getByRole("link", { name: "Dispensa" }).click();
+    await expect(page.getByRole("link", { name: nome })).toBeVisible();
+    const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
+      id: string;
+      ingredient_name: string;
+    }[];
+    expect(dispensa.find((voce) => voce.id === voceId)?.ingredient_name).toBe("parmigiano");
 
-  await page.goto(`/anagrafica/prodotto/${prodottoId}?da=dispensa`);
-  await expect(page.getByRole("heading", { name: nome })).toBeVisible();
-  await page.screenshot({ path: test.info().outputPath("prodotto-375.png"), fullPage: true });
-  await nonScorreDiLato(page, "la scheda del prodotto");
+    // a 375px: le tre pagine nuove e il pannello dell'hamburger
+    await page.setViewportSize({ width: 375, height: 812 });
+    const parmigiano = await ingrediente(page, "parmigiano");
 
-  await page.goto(`/anagrafica/ingrediente/${parmigiano.id}`);
-  await expect(page.getByRole("heading", { name: "Parmigiano" })).toBeVisible();
-  // il prodotto dal nome lungo sta nell'elenco della scheda: è il caso che allarga
-  await expect(page.getByRole("link", { name: new RegExp(nome) })).toBeVisible();
-  await page.screenshot({ path: test.info().outputPath("ingrediente-375.png"), fullPage: true });
-  await nonScorreDiLato(page, "la scheda dell'ingrediente");
+    await page.goto(`/anagrafica/prodotto/${prodottoId}?da=dispensa`);
+    await expect(page.getByRole("heading", { name: nome })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("prodotto-375.png"), fullPage: true });
+    await nonScorreDiLato(page, "la scheda del prodotto");
 
-  await page.goto("/anagrafica");
-  await page.getByLabel("Cerca in anagrafica").fill("parmigiano");
-  await expect(page.getByRole("heading", { name: "Prodotti" })).toBeVisible();
-  await expect(page.getByRole("link", { name: new RegExp(nome) })).toBeVisible();
-  await page.screenshot({ path: test.info().outputPath("anagrafica-375.png"), fullPage: true });
-  await nonScorreDiLato(page, "l'anagrafica");
+    await page.goto(`/anagrafica/ingrediente/${parmigiano.id}`);
+    await expect(page.getByRole("heading", { name: "Parmigiano" })).toBeVisible();
+    // il prodotto dal nome lungo sta nell'elenco della scheda: è il caso che allarga
+    await expect(page.getByRole("link", { name: new RegExp(nome) })).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath("ingrediente-375.png"),
+      fullPage: true,
+    });
+    await nonScorreDiLato(page, "la scheda dell'ingrediente");
 
-  await page.getByRole("button", { name: "Apri il menu" }).click();
-  await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
-  await page.screenshot({ path: test.info().outputPath("menu-375.png") });
-  await nonScorreDiLato(page, "il pannello dell'hamburger");
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
+    await page.goto("/anagrafica");
+    await page.getByLabel("Cerca in anagrafica").fill("parmigiano");
+    await expect(page.getByRole("heading", { name: "Prodotti" })).toBeVisible();
+    await expect(page.getByRole("link", { name: new RegExp(nome) })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("anagrafica-375.png"), fullPage: true });
+    await nonScorreDiLato(page, "l'anagrafica");
 
-  // la pulizia: la voce esce dalla dispensa, il prodotto dal catalogo
-  await page.goto("/dispensa");
-  await page.getByRole("button", { name: `Togli ${nome} dalla dispensa` }).click();
-  await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
-  expect((await page.request.delete(`/api/v1/products/${prodottoId}`)).ok()).toBe(true);
+    await page.getByRole("button", { name: "Apri il menu" }).click();
+    await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("menu-375.png") });
+    await nonScorreDiLato(page, "il pannello dell'hamburger");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
+
+    // la pulizia del percorso felice: la voce esce dalla dispensa dal gesto vero
+    // (il tocco sulla X), il prodotto dal catalogo. Resta qui, dentro il `try`: è
+    // anche l'unica prova di questo file sul tasto che archivia una voce dalla sua
+    // riga. Il `finally` qui sotto è la rete di sicurezza per quando non ci si arriva.
+    await page.goto("/dispensa");
+    await page.getByRole("button", { name: `Togli ${nome} dalla dispensa` }).click();
+    await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+    expect((await page.request.delete(`/api/v1/products/${prodottoId}`)).ok()).toBe(true);
+  } finally {
+    // la rete di sicurezza: gira sempre, che il `try` sia arrivato in fondo o si sia
+    // interrotto a metà con un'asserzione fallita. Deve tollerare un test già finito
+    // di pulirsi da solo — altrimenti un errore qui nasconderebbe quello vero.
+    //
+    // Archiviare è idempotente (spec: l'annulla della X rossa riporta indietro
+    // `archived_at`, e archiviare due volte lo stesso `id` non fallisce mai — vedi
+    // `archive_item` nel backend): richiamarla su una voce già tolta la lascia
+    // semplicemente archiviata, senza sollevare niente.
+    if (voceId) {
+      await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+    }
+    // il prodotto può essere già sparito (il `try` l'ha eliminato per primo): un 404
+    // qui è l'esito atteso quanto un 200, non un guasto della pulizia
+    const eliminato = await page.request.delete(`/api/v1/products/${prodottoId}`);
+    expect(eliminato.ok() || eliminato.status() === 404).toBe(true);
+  }
 });
