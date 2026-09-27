@@ -10,8 +10,8 @@ import type { Ingredient, IngredientDetail, MergeCounts } from "../../domain/typ
 const POMODORI: IngredientDetail = {
   id: "i-pomodori", name: "pomodori", display_name: "Pomodori", category: "verdura", kind: "food",
   aliases: [
-    { id: "a-pelati", alias: "pomodori pelati", source: "import", decided_in_queue: true },
-    { id: "a-pomodorini", alias: "pomodorini", source: "manual", decided_in_queue: false },
+    { id: "a-pelati", alias: "pomodori pelati", source: "import", decided_in_queue: true, term_id: "t-pelati" },
+    { id: "a-pomodorini", alias: "pomodorini", source: "manual", decided_in_queue: false, term_id: null },
   ],
   products: [{ id: "p-cirio", name: "Pelati Cirio", brand: "Cirio", barcode: "8004567890120" }],
   usage: { recipes: 42, pantry: 1, shopping: 1 },
@@ -97,8 +97,9 @@ describe("IngredientScreen", () => {
     stubRoutedFetch((path) => base(path) ?? [{}, 404]);
     renderAt("/anagrafica/ingrediente/i-pomodori");
 
+    // dritto al termine della decisione, non in cima alla coda a cercarlo
     expect(await screen.findByRole("link", { name: "Deciso nella coda" })).toHaveAttribute(
-      "href", "/ricette/importa"
+      "href", "/ricette/importa?termine=t-pelati"
     );
     expect(screen.getByRole("button", { name: "Sposta l'alias «pomodorini»" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Togli l'alias «pomodorini»" })).toBeInTheDocument();
@@ -193,7 +194,7 @@ describe("IngredientScreen", () => {
 
     expect(await screen.findByText(/si corregge da lì/)).toBeInTheDocument();
     const queueLink = screen.getByRole("link", { name: "Vai alla coda" });
-    expect(queueLink).toHaveAttribute("href", "/ricette/importa");
+    expect(queueLink).toHaveAttribute("href", "/ricette/importa?termine=t1");
     // bersaglio da 44px (regola di casa): non deve regredire in silenzio
     expect(queueLink).toHaveClass("min-h-11");
   });
@@ -530,6 +531,33 @@ describe("IngredientScreen", () => {
     expect(avviso).toHaveTextContent("poi uniscili");
     await userEvent.click(within(avviso).getByRole("button", { name: "Cambia reparto" }));
     expect(screen.getByLabelText("Reparto")).toBeInTheDocument();
+  });
+
+  it("il rifiuto decision_refused porta al termine nella coda, dove si annulla", async () => {
+    stubRoutedFetch((path) => {
+      if (path.endsWith("/ingredients/i-pomodori/merge")) {
+        return [{
+          code: "decision_refused",
+          detail:
+            "Il termine «Pomodori pelati» dell'import non può finire su «Detersivo», che non è " +
+            "un alimento: annullalo o ignoralo in «Ingredienti da abbinare», poi riprova.",
+          term: { id: "t-pelati", display_name: "Pomodori pelati" },
+        }, 409];
+      }
+      if (path.includes("/ingredients/search")) return [[DETERSIVO], 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "deter");
+    await userEvent.click(await screen.findByRole("option", { name: /Detersivo/ }));
+
+    const avviso = await screen.findByRole("alert");
+    expect(avviso).toHaveTextContent("annullalo o ignoralo");
+    const link = within(avviso).getByRole("link", { name: "Vai a «Pomodori pelati» nella coda" });
+    expect(link).toHaveAttribute("href", "/ricette/importa?termine=t-pelati");
+    expect(link).toHaveClass("min-h-11");
   });
 
   it("il rifiuto kind_mismatch offre anche il link alla scheda del vincitore", async () => {

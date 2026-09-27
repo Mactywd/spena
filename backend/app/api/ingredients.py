@@ -116,9 +116,10 @@ def _alias_out(alias: IngredientAlias, terms_by_alias: dict[str, ImportTerm]) ->
     dallo spostamento (PATCH alias): la domanda «è la metà di una decisione della
     coda?» la risponde solo `registry.queue_decision_for` (F5), mai una riscrittura
     della regola qui."""
+    term = registry.queue_decision_for(alias, terms_by_alias)
     return AliasOut(
         id=alias.id, alias=alias.alias, source=alias.source,
-        decided_in_queue=registry.queue_decision_for(alias, terms_by_alias) is not None,
+        decided_in_queue=term is not None, term_id=term.id if term is not None else None,
     )
 
 

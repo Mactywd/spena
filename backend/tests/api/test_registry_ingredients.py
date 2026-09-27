@@ -97,6 +97,9 @@ async def test_la_scheda_dice_alias_prodotti_e_uso(logged_client, anagrafica):
     assert alias["pomodori pelati"]["source"] == "import"
     assert alias["pomodori pelati"]["decided_in_queue"] is True
     assert alias["pomodorini"]["decided_in_queue"] is False
+    # il termine della decisione, perché «Deciso nella coda» porti a lui e non alla coda
+    assert alias["pomodori pelati"]["term_id"] == str(anagrafica["term"])
+    assert alias["pomodorini"]["term_id"] is None
     assert [(p["name"], p["brand"], p["barcode"]) for p in corpo["products"]] == [
         ("Pelati Cirio", "Cirio", "8004567890120")
     ]

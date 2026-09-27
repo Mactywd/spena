@@ -1,11 +1,20 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
+import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { DecideResult, ImportTerm } from "../../domain/types";
-import { decideTerm, decideWithAi, fetchImportStatus, fetchImportTerms, undoTerm } from "./api";
+import {
+  decideTerm,
+  decideWithAi,
+  fetchImportStatus,
+  fetchImportTerm,
+  fetchImportTerms,
+  undoTerm,
+} from "./api";
 import { DecidedTermRow } from "./DecidedTermRow";
 import { TermCard, type Decision } from "./TermCard";
 
@@ -149,10 +158,32 @@ export function ImportQueueScreen() {
   } | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
 
-  const { data: terms = [], isLoading, isError } = useQuery({
+  const { data: queue = [], isLoading, isError } = useQuery({
     queryKey: ["import-terms"],
     queryFn: () => fetchImportTerms(),
   });
+
+  // `?termine=<id>`: il termine a cui porta un rifiuto dell'anagrafica («annullalo in
+  // coda»). Si legge per id e non si cerca fra quelli caricati: «Decisioni recenti»
+  // ne tiene al più cento e nessuno deciso `auto`, e un termine deciso tempo fa non
+  // ci sarebbe. Sotto la chiave `import-terms`, così ogni decisione e ogni
+  // annullamento lo rileggono, e dopo un annulla la stessa riga diventa la scheda
+  // per decidere di nuovo.
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("termine");
+  const focus = useQuery({
+    queryKey: ["import-terms", "focus", focusId],
+    queryFn: () => fetchImportTerm(focusId ?? ""),
+    enabled: focusId !== null,
+    // un 404 è già la risposta — quel termine non c'è — e ritentarlo terrebbe la riga
+    // che lo dice fuori vista per secondi; il resto si ritenta come ovunque
+    retry: (count, error) =>
+      !(error instanceof ApiError && error.status === 404) &&
+      defaultQueryRetryPredicate(count, error),
+  });
+  const focused = focus.data ?? null;
+  // una volta in cima, non anche più sotto: due schede dello stesso termine
+  const terms = queue.filter((term) => term.id !== focused?.id);
 
   const { data: status } = useQuery({
     queryKey: ["import-status"],
@@ -172,7 +203,9 @@ export function ImportQueueScreen() {
     queryKey: ["import-terms", "human"],
     queryFn: () => fetchImportTerms("human"),
   });
-  const decided = recentDecisions(decidedByAi, decidedByHand);
+  const decided = recentDecisions(decidedByAi, decidedByHand).filter(
+    (term) => term.id !== focused?.id
+  );
 
   const askAi = useMutation({
     mutationFn: () => decideWithAi(),
@@ -265,6 +298,37 @@ export function ImportQueueScreen() {
 
       {undoError && <Alert className="pt-2">{undoError}</Alert>}
 
+      {focused && (
+        <section aria-labelledby="termine-a-fuoco" className="pt-4">
+          <h2 id="termine-a-fuoco" className="text-sm font-medium text-ink-soft">
+            Il termine che cercavi
+          </h2>
+          <ul className="pt-2">
+            {focused.decided_action === null ? (
+              <TermCard
+                key={`${focused.id}-in-coda`}
+                term={focused}
+                suggestionName={focused.suggestion?.name ?? null}
+                pending={decide.isPending}
+                onDecide={(decision) => decide.mutate({ termId: focused.id, decision })}
+              />
+            ) : (
+              <DecidedTermRow
+                term={focused}
+                pending={undo.isPending}
+                onUndo={() => undo.mutate(focused.id)}
+              />
+            )}
+          </ul>
+        </section>
+      )}
+
+      {focusId !== null && focus.isError && (
+        <p className="pt-2 text-sm text-ink-soft">
+          Non trovo quel termine. La coda e le decisioni recenti sono qui sotto.
+        </p>
+      )}
+
       {isLoading && <p className="pt-4 text-ink-soft">Carico la coda…</p>}
 
       {!isLoading && isError && (
@@ -274,14 +338,14 @@ export function ImportQueueScreen() {
         </Alert>
       )}
 
-      {!isLoading && !isError && terms.length === 0 && (
+      {!isLoading && !isError && queue.length === 0 && (
         <p className="pt-4 text-ink-soft">
           Niente da abbinare. Ogni ingrediente delle ricette scaricate ha la sua
           decisione.
         </p>
       )}
 
-      {terms.length > 0 && (
+      {queue.length > 0 && (
         <button
           type="button"
           disabled={askAi.isPending}

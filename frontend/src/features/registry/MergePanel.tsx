@@ -8,7 +8,7 @@ import { Card } from "../../components/ui/Card";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Ingredient, IngredientDetail } from "../../domain/types";
 import { mergeIngredient, refreshAfterCorrection, registryRefusal } from "./api";
-import { ingredientPath, type Origin } from "./origin";
+import { ingredientPath, queuePath, type Origin } from "./origin";
 import { mergePreviewText, mergeSlowWarning } from "./wording";
 
 /** «Unisci a un altro…» (spec §6.3): la scelta del vincitore, l'anteprima, «Unisci».
@@ -165,7 +165,22 @@ export function MergePanel({
           </div>
         </div>
       )}
-      {refusal !== null && refusal.code !== "kind_mismatch" && <Alert>{refusal.detail}</Alert>}
+      {/* Il termine si annulla o si ignora nella coda: il link porta a lui, in cima,
+          anche se è stato deciso tanto tempo fa da non stare fra le decisioni recenti. */}
+      {refusal?.code === "decision_refused" && (
+        <Alert>
+          {refusal.detail}{" "}
+          <Link
+            to={queuePath(refusal.term.id)}
+            className="inline-flex min-h-11 items-center font-medium text-brand"
+          >
+            Vai a «{refusal.term.display_name}» nella coda
+          </Link>
+        </Alert>
+      )}
+      {refusal !== null && refusal.code !== "kind_mismatch" && refusal.code !== "decision_refused" && (
+        <Alert>{refusal.detail}</Alert>
+      )}
       {refusal === null && preview.isError && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-danger">Non sono riuscito a calcolare l'anteprima.</span>
