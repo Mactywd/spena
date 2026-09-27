@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -17,6 +17,7 @@ const TERMINI: ImportTerm[] = [
     decided_by: null,
     decided_action: null,
     decided_name: null,
+    decided_at: null,
   },
   {
     id: "t2",
@@ -27,6 +28,7 @@ const TERMINI: ImportTerm[] = [
     decided_by: null,
     decided_action: null,
     decided_name: null,
+    decided_at: null,
   },
 ];
 
@@ -63,6 +65,7 @@ function stubFetch(route: (path: string, method: string) => [unknown, number]) {
 type CodaOptions = {
   pending?: ImportTerm[];
   decided?: ImportTerm[];
+  humanDecided?: ImportTerm[];
   status?: typeof STATO_NORMALE;
   decideResult?: [unknown, number];
   askAiResult?: [unknown, number];
@@ -78,6 +81,7 @@ type CodaOptions = {
 function renderQueue(options: CodaOptions = {}) {
   const pending = options.pending ?? TERMINI;
   const decided = options.decided ?? [];
+  const humanDecided = options.humanDecided ?? [];
   const status = options.status ?? STATO_NORMALE;
 
   const spy = stubFetch((path, method) => {
@@ -99,6 +103,7 @@ function renderQueue(options: CodaOptions = {}) {
       return options.decideResult ?? [{ unlocked: 12, remaining_terms: 1 }, 200];
     }
     if (path.includes("decided_by=ai")) return [decided, 200];
+    if (path.includes("decided_by=human")) return [humanDecided, 200];
     if (path.includes("/imports/terms")) return [pending, 200];
     if (path.includes("/imports/status")) return [status, 200];
     return [{}, 404];
@@ -225,6 +230,7 @@ describe("coda di revisione dell'import", () => {
         decided_by: null,
         decided_action: null,
         decided_name: null,
+        decided_at: null,
       },
     ];
     renderQueue({
@@ -333,7 +339,7 @@ describe("coda di revisione dell'import", () => {
         {
           id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
           waiting_titles: [], decided_by: "ai", decided_action: "map",
-          decided_name: "pasta",
+          decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
         },
       ],
     });
@@ -352,7 +358,7 @@ describe("coda di revisione dell'import", () => {
         {
           id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
           waiting_titles: [], decided_by: "ai", decided_action: "map",
-          decided_name: "pasta",
+          decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
         },
       ],
       undoStatus: 409,
@@ -372,7 +378,7 @@ describe("coda di revisione dell'import", () => {
       {
         id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
         waiting_titles: [], decided_by: "ai", decided_action: "map",
-        decided_name: "pasta",
+        decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
       },
     ];
     let chiamateUndo = 0;
@@ -385,6 +391,7 @@ describe("coda di revisione dell'import", () => {
         return [{ recipes_requeued: 1, ingredient_deleted: false, remaining_terms: 0 }, 200];
       }
       if (path.includes("decided_by=ai")) return [decisi, 200];
+      if (path.includes("decided_by=human")) return [[], 200];
       if (path.includes("/imports/terms")) return [[], 200];
       if (path.includes("/imports/status")) return [STATO_NORMALE, 200];
       return [{}, 404];
@@ -424,7 +431,7 @@ describe("coda di revisione dell'import", () => {
       {
         id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
         waiting_titles: [], decided_by: "ai", decided_action: "map",
-        decided_name: "pasta",
+        decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
       },
     ];
     stubFetch((path, method) => {
@@ -435,6 +442,7 @@ describe("coda di revisione dell'import", () => {
         ];
       }
       if (path.includes("decided_by=ai")) return [decisi, 200];
+      if (path.includes("decided_by=human")) return [[], 200];
       if (path.includes("/imports/terms")) return [[], 200];
       if (path.includes("/imports/status")) return [STATO_NORMALE, 200];
       return [{}, 404];
@@ -461,7 +469,7 @@ describe("coda di revisione dell'import", () => {
         {
           id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
           waiting_titles: [], decided_by: "ai", decided_action: "map",
-          decided_name: "pasta",
+          decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
         },
       ],
       undoStatus: 500,
@@ -487,7 +495,7 @@ describe("coda di revisione dell'import", () => {
         {
           id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
           waiting_titles: [], decided_by: "ai", decided_action: "map",
-          decided_name: "pasta",
+          decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
         },
       ],
       undoStatus: 200,
@@ -505,7 +513,7 @@ describe("coda di revisione dell'import", () => {
     ).toBeInTheDocument();
   });
 
-  it("l'elenco «Deciso dall'AI» avvisa che annullare può cancellare l'ingrediente creato", async () => {
+  it("l'elenco delle decisioni recenti avvisa che annullare può cancellare l'ingrediente creato", async () => {
     // `decided_action` non distingue "map" da "creato" (nessun fatto scritto lo
     // permette): la promessa che questo lascia cadere si sostituisce con qualcosa
     // di sempre vero, invece di sparire e basta.
@@ -515,13 +523,113 @@ describe("coda di revisione dell'import", () => {
         {
           id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
           waiting_titles: [], decided_by: "ai", decided_action: "map",
-          decided_name: "pasta",
+          decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
         },
       ],
     });
 
     await screen.findByText("Rigatoni");
     expect(screen.getByText(/l'annullamento lo cancella/i)).toBeInTheDocument();
+  });
+
+  describe("decisioni recenti (R11): quelle a mano accanto a quelle dell'AI", () => {
+    function deciso(overrides: Partial<ImportTerm>): ImportTerm {
+      return {
+        id: "t0", display_name: "?", occurrences: 1, suggestion: null,
+        waiting_titles: [], decided_by: "ai", decided_action: "map",
+        decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
+        ...overrides,
+      };
+    }
+
+    it("chiede anche le decisioni prese a mano, con lo stesso tetto di quelle dell'AI", async () => {
+      const spy = renderQueue({ pending: [] });
+      await waitFor(() =>
+        expect(
+          spy.mock.calls.some(([url]) =>
+            String(url).includes("/imports/terms?decided_by=human&limit=50")
+          )
+        ).toBe(true)
+      );
+    });
+
+    it("una decisione presa a mano compare nell'elenco con l'etichetta «tu», e si annulla", async () => {
+      const spy = renderQueue({
+        pending: [],
+        humanDecided: [
+          deciso({ id: "h1", display_name: "Bottarga", decided_by: "human", decided_name: "bottarga" }),
+        ],
+      });
+
+      expect(
+        await screen.findByRole("heading", { name: "Decisioni recenti" })
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Deciso dall'AI")).not.toBeInTheDocument();
+      const riga = screen.getByText("Bottarga").closest("li")!;
+      expect(riga).toHaveTextContent("tu");
+
+      await userEvent.click(
+        screen.getByRole("button", { name: /annulla la decisione su «Bottarga»/i })
+      );
+      await waitFor(() =>
+        expect(
+          spy.mock.calls.some(
+            ([url, init]) =>
+              String(url).includes("/imports/terms/h1/undo") &&
+              (init as RequestInit | undefined)?.method === "POST"
+          )
+        ).toBe(true)
+      );
+      expect(await screen.findByText("Nessuna ricetta è tornata in coda.")).toBeInTheDocument();
+    });
+
+    it("un elenco solo, dalla decisione più recente, con chi ha deciso su ogni riga", async () => {
+      renderQueue({
+        pending: [],
+        decided: [
+          deciso({ id: "a1", display_name: "Rigatoni", decided_at: "2026-09-22T10:00:00Z" }),
+          deciso({ id: "a2", display_name: "Acqua", decided_action: "ignored", decided_name: null, decided_at: "2026-09-20T10:00:00Z" }),
+        ],
+        humanDecided: [
+          deciso({ id: "h1", display_name: "Bottarga", decided_by: "human", decided_at: "2026-09-23T10:00:00Z" }),
+          deciso({ id: "h2", display_name: "Speck", decided_by: "human", decided_at: "2026-09-21T10:00:00Z" }),
+        ],
+      });
+
+      await screen.findByText("Bottarga");
+      const sezione = screen.getByRole("heading", { name: "Decisioni recenti" }).closest("section")!;
+      const righe = within(sezione).getAllByRole("listitem");
+      expect(righe).toHaveLength(4);
+      ["Bottarga", "Rigatoni", "Speck", "Acqua"].forEach((nome, i) =>
+        expect(within(righe[i]).getByText(nome)).toBeInTheDocument()
+      );
+      expect(righe.map((riga) => within(riga).getByTestId("decided-by").textContent)).toEqual([
+        "tu", "AI", "tu", "AI",
+      ]);
+    });
+
+    it("l'elenco fuso tiene lo stesso tetto di 50, e sono le 50 più recenti", async () => {
+      // 30 dell'AI e 30 a mano, intercalate per data: dopo la fusione restano le 50
+      // più recenti, non le prime 50 di un elenco e le altre in coda
+      const giorno = (i: number) => new Date(Date.UTC(2026, 8, 1, 0, i)).toISOString();
+      renderQueue({
+        pending: [],
+        decided: Array.from({ length: 30 }, (_, i) =>
+          deciso({ id: `a${i}`, display_name: `ai-${i}`, decided_at: giorno(2 * i) })
+        ),
+        humanDecided: Array.from({ length: 30 }, (_, i) =>
+          deciso({ id: `h${i}`, display_name: `mano-${i}`, decided_by: "human", decided_at: giorno(2 * i + 1) })
+        ),
+      });
+
+      await screen.findByText("mano-29");
+      const sezione = screen.getByRole("heading", { name: "Decisioni recenti" }).closest("section")!;
+      expect(within(sezione).getAllByRole("listitem")).toHaveLength(50);
+      // le dieci più vecchie (minuti 0–9) restano fuori
+      expect(screen.queryByText("ai-4")).not.toBeInTheDocument();
+      expect(screen.queryByText("mano-4")).not.toBeInTheDocument();
+      expect(screen.getByText("ai-5")).toBeInTheDocument();
+    });
   });
 
   it("chiedere all'AI applica la coda e dice cosa ha sbloccato", async () => {

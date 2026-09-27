@@ -194,6 +194,9 @@ export interface ImportTerm {
   // per il perché, compreso perché la deduzione che sembra ovvia è sbagliata.
   decided_action: "map" | "ignored" | null;
   decided_name: string | null;
+  /** Quando è stata presa, in ISO 8601. Ordina l'elenco delle decisioni recenti,
+   * dove quelle dell'AI e quelle a mano stanno insieme (R11). */
+  decided_at: string | null;
 }
 
 export interface TermDecisionResult {

@@ -8,7 +8,7 @@ compilare.
 Il riconoscimento con l'AI sta in una rotta separata dall'elenco di proposito: la coda
 deve caricarsi subito, e un guasto del modello non deve poter svuotare una schermata
 che funziona anche senza. Quella rotta applica, non propone: la revisione umana viene
-dopo, dall'elenco «Deciso dall'AI», con un annullamento per ognuna.
+dopo, dall'elenco «Decisioni recenti», con un annullamento per ognuna.
 """
 
 import uuid
@@ -93,6 +93,7 @@ async def read_terms(
                 suggestion=None, waiting_titles=[], decided_by=term.decided_by,
                 decided_action=_decided_action(term),
                 decided_name=await _ingredient_name(session, term.ingredient_id),
+                decided_at=term.decided_at,
             )
             for term in terms
         ]
@@ -173,7 +174,7 @@ async def decide_with_ai(
     """Fa decidere all'AI i termini in coda, e applica.
 
     Non torna proposte da confermare: le decisioni si applicano, con `decided_by="ai"`,
-    e si rivedono dall'elenco «Deciso dall'AI» con un annullamento per ognuna. Un
+    e si rivedono dall'elenco «Decisioni recenti» con un annullamento per ognuna. Un
     termine la cui risposta non passa la verifica resta in coda, e la coda manuale è
     identica a prima.
     """

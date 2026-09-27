@@ -1463,7 +1463,7 @@ La proposta: «Modifica» riapre lo stesso modulo di «Scrivi una ricetta», pre
 solo per le ricette scritte qui. «Elimina» archivia, con la lapide, invece di
 cancellare.
 
-## R11. Le decisioni prese a mano nella coda non si annullano dall'app **[D, dal giro di T3]**
+## R11. Le decisioni prese a mano nella coda non si annullano dall'app **[FATTO 2026-09-27]**
 In «Ingredienti da abbinare», una decisione dell'AI ha il suo «Annulla» sotto «Deciso
 dall'AI». Una decisione presa a mano sparisce dalla schermata, eppure si sbaglia
 altrettanto.
@@ -1474,6 +1474,18 @@ funziona per qualunque termine deciso. È `ImportQueueScreen.tsx` che chiede sol
 
 **Cosa fare.** Chiedere anche `human` e mostrarle con lo stesso `DecidedTermRow`, sotto
 «Decisioni recenti» con un'etichetta «AI» / «tu», oppure in una seconda sezione.
+
+**Fatto:** un elenco solo. La schermata chiede `decided_by=ai` e `decided_by=human`,
+50 per ciascuno come prima, e li fonde dalla decisione più recente; fusi, ne tiene di
+nuovo 50, così il tetto non raddoppia (le 50 più recenti dell'unione stanno per forza
+fra le 50 di ciascun autore). Per ordinarle serviva la data: `TermOut` porta ora
+`decided_at`, la colonna c'era già, nessuna migrazione. La sezione si chiama
+«Decisioni recenti», e ogni riga dice chi ha deciso con un'etichetta «AI» o «tu» (a
+chi ascolta, «deciso dall'AI» / «deciso da te»). L'annulla è lo stesso per le due:
+il backend già non guardava l'autore, e un test ora fa il giro intero dalle rotte —
+decisione a mano che crea l'ingrediente, elenco `human`, annulla, ingrediente
+cancellato. Le due note del giro su questa schermata restano aperte, sotto T3: nessuna
+delle due si chiudeva dentro la schermata.
 
 ---
 
@@ -1877,10 +1889,19 @@ Queste restano per il telefono.
 **Ingredienti da abbinare** (oltre a R11)
 - **Il messaggio dell'AI non configurata** è rosso, cita il nome della variabile e
   resta anche con la coda vuota.
-- **«1 ricetta in attesa»** compare con due ricette elencate sotto.
+- **«1 ricetta in attesa»** compare con due ricette elencate sotto. La causa è nel
+  backend, non nel plurale: `occurrences` si ricalcola solo in `sync_terms`, cioè a
+  ogni scarico, e `undo_decision` rimette le pagine in `pending` senza ricontarlo.
+  Riprodotto il 2026-09-27: «Ics» deciso, poi una seconda ricetta con «Ics» scaricata
+  e importata (il conto resta 1, perché al secondo scarico la prima era già dentro),
+  poi annulla: in coda «1 ricetta in attesa» con «Pasta P · Pasta Q». Il rimedio è
+  ricontare le pagine in attesa del termine dentro `undo_decision`.
 - **Il suggerimento testuale è enorme anche quando è assurdo** («Aragosta» → «lonza di
   maiale»).
-- **Un ingrediente creato è detto «collegato a»**.
+- **Un ingrediente creato è detto «collegato a»**. Non si corregge nella riga:
+  `import_terms` non scrive se la decisione ha creato l'ingrediente o ne ha usato uno
+  esistente, e la deduzione che sembra ovvia è sbagliata (`_decided_action` in
+  `api/imports.py` spiega perché). Serve una colonna, quindi una migrazione.
 - **Non si cerca** nell'elenco delle decisioni.
 - **«Annulla» parte senza lapide.**
 

@@ -14,17 +14,19 @@ export function fetchImportStatus() {
 /** Senza `decidedBy`, la coda da decidere: il default del backend (20) è quello
  * pensato per quella lista (vedi `pending_terms` in
  * `backend/app/repositories/imports.py`), quindi non serve dirlo esplicito.
- * Con `decidedBy`, l'elenco «Deciso dall'AI»: qui il `limit` va mandato esplicito
- * a 50, il tetto che la rotta accetta (`le=50`), perché una singola passata
- * dell'AI decide fino a 40 termini (`MAX_TERMS_PER_CALL` nel backend) e con il
- * default di 20 metà di quella passata sparirebbe dalla revisione. */
-export function fetchImportTerms(decidedBy?: "ai") {
+ * Con `decidedBy`, le decisioni già prese da quell'autore, per l'elenco
+ * «Decisioni recenti»: qui il `limit` va mandato esplicito a 50, il tetto che la
+ * rotta accetta (`le=50`), perché una singola passata dell'AI decide fino a 40
+ * termini (`MAX_TERMS_PER_CALL` nel backend) e con il default di 20 metà di quella
+ * passata sparirebbe dalla revisione. Le decisioni a mano chiedono lo stesso
+ * tetto, così l'elenco fuso non ne ha due. */
+export function fetchImportTerms(decidedBy?: "ai" | "human") {
   const query = decidedBy ? `?decided_by=${decidedBy}&limit=50` : "";
   return apiFetch<ImportTerm[]>(`/imports/terms${query}`);
 }
 
 /** Fa decidere all'AI i termini in coda, e applica. Non torna proposte da
- * confermare: le decisioni si rivedono dall'elenco «Deciso dall'AI». Senza
+ * confermare: le decisioni si rivedono dall'elenco «Decisioni recenti». Senza
  * `termIds` vale per tutta la coda, che è il caso del bottone. */
 export function decideWithAi(termIds?: string[]) {
   return apiFetch<DecideResult>("/imports/terms/decide", {

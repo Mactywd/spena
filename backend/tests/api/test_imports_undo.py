@@ -6,7 +6,9 @@ Le rotte di `/imports` sono dietro `require_session` (vedi
 modulo.
 """
 
-from app.db.models.ingredient import IngredientCategory
+from sqlalchemy import select
+
+from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe import CookingEvent, RecipeSource
 from app.db.models.recipe_import import (
     GIALLOZAFFERANO,
@@ -15,8 +17,10 @@ from app.db.models.recipe_import import (
     RecipeImport,
     TermDecision,
 )
+from app.repositories.imports import store_page
 from app.repositories.ingredients import create_ingredient, remember_alias
 from app.repositories.recipes import create_recipe
+from app.services.recipe_import.terms import sync_terms
 
 
 async def prepara(db_session):
@@ -105,3 +109,53 @@ async def test_un_termine_ancora_in_coda_non_si_annulla(logged_client, db_sessio
     response = await logged_client.post(f"/api/v1/imports/terms/{term.id}/undo", json={})
     assert response.status_code == 409
     assert "già in coda" in response.json()["detail"]
+
+
+async def test_una_decisione_presa_a_mano_si_annulla_come_quella_dellai(
+    logged_client, db_session
+):
+    """R11: l'annulla non guarda chi ha deciso. Il giro intero passa dalle rotte —
+    decisione a mano che crea l'ingrediente, elenco `decided_by=human`, annulla — perché
+    è quello il percorso che la schermata fa, e un termine costruito a mano nel test
+    non direbbe se la decisione vera lascia qualcosa che l'annulla non sa disfare."""
+    await store_page(
+        db_session, source=GIALLOZAFFERANO, url="https://esempio.invalid/bottarga",
+        payload={
+            "title": "Crostini alla bottarga", "description": "Breve",
+            "instructions": "Cuoci.", "servings": 2, "category": "Antipasti",
+            "image_url": None, "prep_minutes": 5, "cook_minutes": 5,
+            "ingredients": [
+                {"key": "k-bottarga", "name": "Bottarga", "quantity_text": "20 g"}
+            ],
+            "nutrition": None,
+        },
+    )
+    await sync_terms(db_session)
+    term = (
+        await db_session.execute(select(ImportTerm).where(ImportTerm.term_key == "k-bottarga"))
+    ).scalars().one()
+
+    decisa = await logged_client.post(
+        f"/api/v1/imports/terms/{term.id}/decision",
+        json={"action": "create", "name": "bottarga", "display_name": "Bottarga",
+              "category": "pesce"},
+    )
+    assert decisa.status_code == 200
+    assert decisa.json()["unlocked"] == 1
+
+    elenco = (await logged_client.get("/api/v1/imports/terms?decided_by=human")).json()
+    assert [v["id"] for v in elenco] == [str(term.id)]
+
+    response = await logged_client.post(f"/api/v1/imports/terms/{term.id}/undo", json={})
+    assert response.status_code == 200
+    corpo = response.json()
+    assert corpo["recipes_requeued"] == 1
+    assert corpo["ingredient_deleted"] is True
+
+    await db_session.refresh(term)
+    assert term.decision == TermDecision.PENDING
+    assert term.decided_by is None
+    assert (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "bottarga"))
+    ).scalars().first() is None
+    assert (await logged_client.get("/api/v1/imports/terms?decided_by=human")).json() == []

@@ -14,6 +14,7 @@ function term(overrides: Partial<ImportTerm> = {}): ImportTerm {
     decided_by: "ai",
     decided_action: "map",
     decided_name: "pasta",
+    decided_at: "2026-09-20T10:00:00Z",
     ...overrides,
   };
 }
@@ -52,5 +53,20 @@ describe("DecidedTermRow", () => {
     expect(
       screen.getByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
     ).toBeDisabled();
+  });
+
+  it("dice chi ha deciso: «AI» per l'AI, «tu» per una decisione a mano", () => {
+    // un elenco solo per le due (R11): senza l'etichetta, una decisione a mano
+    // sbagliata si legge come un errore dell'AI, e viceversa
+    const { unmount } = render(<DecidedTermRow term={term()} pending={false} onUndo={vi.fn()} />);
+    expect(screen.getByTestId("decided-by")).toHaveTextContent("AI");
+    expect(screen.getByText("deciso dall'AI")).toBeInTheDocument();
+    unmount();
+
+    render(
+      <DecidedTermRow term={term({ decided_by: "human" })} pending={false} onUndo={vi.fn()} />
+    );
+    expect(screen.getByTestId("decided-by")).toHaveTextContent("tu");
+    expect(screen.getByText("deciso da te")).toBeInTheDocument();
   });
 });

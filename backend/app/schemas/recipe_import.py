@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -39,6 +40,10 @@ class TermOut(BaseModel):
     decided_by: str | None = None
     decided_action: Literal["map", "ignored"] | None = None
     decided_name: str | None = None
+    # Quando la decisione è stata presa. La schermata mette in un elenco solo le
+    # decisioni dell'AI e quelle a mano (R11), e le ordina con questa data: senza,
+    # due elenchi già ordinati ciascuno per conto suo non si fondono.
+    decided_at: datetime | None = None
 
 
 class DecideRequest(BaseModel):

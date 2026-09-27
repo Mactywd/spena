@@ -35,7 +35,7 @@ export function TermCard({
 
   // l'aggancio testuale, che è sempre meglio di nessun pulsante: un termine senza
   // scorciatoia costa tre tocchi. Non ci sono più proposte dell'AI da confermare
-  // qui: quelle si rivedono, già applicate, dall'elenco «Deciso dall'AI».
+  // qui: quelle si rivedono, già applicate, dall'elenco «Decisioni recenti».
   const shortcut: { ingredient_id: string; name: string } | null =
     suggestionName !== null && term.suggestion !== null
       ? { ingredient_id: term.suggestion.ingredient_id, name: suggestionName }

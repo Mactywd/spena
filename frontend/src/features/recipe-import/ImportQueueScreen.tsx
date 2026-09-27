@@ -4,7 +4,7 @@ import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
 import { buttonClasses } from "../../components/ui/buttonClasses";
-import type { DecideResult } from "../../domain/types";
+import type { DecideResult, ImportTerm } from "../../domain/types";
 import { decideTerm, decideWithAi, fetchImportStatus, fetchImportTerms, undoTerm } from "./api";
 import { DecidedTermRow } from "./DecidedTermRow";
 import { TermCard, type Decision } from "./TermCard";
@@ -102,6 +102,28 @@ function undoResultMessage({
     : recipesPart;
 }
 
+/** Quante decisioni recenti mostra l'elenco: lo stesso tetto che `fetchImportTerms`
+ * chiede per ciascun autore. */
+const RECENT_DECISIONS_LIMIT = 50;
+
+/** Le decisioni dell'AI e quelle a mano in un elenco solo, dalla più recente.
+ *
+ * Ciascun elenco arriva già ordinato e tagliato a 50 dal backend; fusi, se ne
+ * tengono di nuovo 50, così il tetto resta quello di prima e non raddoppia. Le 50
+ * più recenti dell'unione stanno per forza fra le 50 più recenti di ciascun autore,
+ * quindi il taglio non perde niente che dovrebbe vedersi. Una decisione senza data
+ * (le più vecchie potrebbero non averla) va in fondo, come la mette il backend.
+ */
+function recentDecisions(byAi: ImportTerm[], byHand: ImportTerm[]): ImportTerm[] {
+  const time = (term: ImportTerm) =>
+    term.decided_at === null ? Number.NEGATIVE_INFINITY : Date.parse(term.decided_at);
+  return [...byAi, ...byHand]
+    .sort(
+      (a, b) => time(b) - time(a) || a.display_name.localeCompare(b.display_name, "it")
+    )
+    .slice(0, RECENT_DECISIONS_LIMIT);
+}
+
 /** La revisione dei termini dell'import.
  *
  * Una decisione per volta, e ogni decisione materializza subito le ricette che
@@ -109,8 +131,11 @@ function undoResultMessage({
  * lavoro con un risultato visibile invece di un modulo da compilare.
  *
  * L'AI decide in blocco su richiesta (`decideWithAi`), non termine per termine: le
- * sue decisioni si rivedono dall'elenco «Deciso dall'AI» qui sotto, ognuna con il
- * suo annulla, invece che come proposte da confermare una a una.
+ * sue decisioni si rivedono dall'elenco «Decisioni recenti» qui sotto, ognuna con il
+ * suo annulla, invece che come proposte da confermare una a una. Nello stesso elenco
+ * stanno le decisioni prese a mano, con lo stesso annulla (R11): si sbagliano
+ * altrettanto, e una decisione a mano che sparisse dalla schermata si correggerebbe
+ * solo dall'anagrafica.
  */
 // Che una decisione l'abbia presa una persona o l'AI in blocco cambia cosa c'è da
 // dire dopo: una sola frase condivisa tra le due o mostrerebbe contatori dell'AI
@@ -137,13 +162,20 @@ export function ImportQueueScreen() {
     queryFn: fetchImportStatus,
   });
 
-  // Le decisioni dell'AI, le più recenti fra le ultime 50: il backend non ne
-  // conta il totale, quindi il sottotitolo qui sotto lo dice invece di lasciare
-  // credere che l'elenco sia tutta la storia.
-  const { data: decided = [] } = useQuery({
+  // Le decisioni dell'AI e quelle a mano, le 50 più recenti di ciascuna: il
+  // backend non ne conta il totale, quindi il sottotitolo qui sotto lo dice invece
+  // di lasciare credere che l'elenco sia tutta la storia. Due richieste e non una
+  // perché la rotta filtra per un autore solo; un guasto di una delle due lascia
+  // comunque l'altra in vista.
+  const { data: decidedByAi = [] } = useQuery({
     queryKey: ["import-terms", "ai"],
     queryFn: () => fetchImportTerms("ai"),
   });
+  const { data: decidedByHand = [] } = useQuery({
+    queryKey: ["import-terms", "human"],
+    queryFn: () => fetchImportTerms("human"),
+  });
+  const decided = recentDecisions(decidedByAi, decidedByHand);
 
   const [undoConfirm, setUndoConfirm] = useState<{ termId: string; message: string } | null>(
     null
@@ -311,9 +343,9 @@ export function ImportQueueScreen() {
 
       {decided.length > 0 && (
         <section className="pt-6">
-          <h2 className="text-sm font-medium text-ink-soft">Deciso dall'AI</h2>
+          <h2 className="text-sm font-medium text-ink-soft">Decisioni recenti</h2>
           <p className="pt-1 text-xs text-ink-faint">
-            Le decisioni più recenti, non tutte quelle prese. Ogni riga si può
+            Le più recenti, tue e dell'AI, non tutte quelle prese. Ogni riga si può
             annullare: il termine torna in coda, le ricette che ne erano nate si
             rifanno, e se questa decisione aveva creato un ingrediente nuovo
             l'annullamento lo cancella, sempre che nient'altro lo usi nel
