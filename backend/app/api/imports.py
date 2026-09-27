@@ -97,7 +97,7 @@ async def read_terms(
     ]
 
 
-@router.get("/terms/{term_id}", response_model=TermOut)
+@router.get("/terms/{term_id:uuid}", response_model=TermOut)
 async def read_term(
     term_id: uuid.UUID, session: AsyncSession = Depends(get_session)
 ) -> TermOut:
@@ -107,6 +107,9 @@ async def read_term(
     rotta un termine deciso tempo fa non si ritroverebbe in coda, e il rifiuto che
     dice «annullalo lì» sarebbe un vicolo cieco. La forma è quella dell'elenco a cui il
     termine appartiene, così la schermata lo disegna con la stessa riga.
+
+    `:uuid` nel percorso: senza, `/terms/proposals` — la vecchia rotta tolta, che deve
+    restare un 404 — combacerebbe con questa e risponderebbe 405.
     """
     term = await get_term(session, term_id)
     if term is None:
