@@ -117,7 +117,8 @@ async def add_alias(
 
 
 async def remember_alias(
-    session: AsyncSession, ingredient_id: uuid.UUID, display_name: str
+    session: AsyncSession, ingredient_id: uuid.UUID, display_name: str,
+    *, source: str = "import",
 ) -> bool:
     """L'alias è ciò che fa valere una decisione per sempre, e anche fuori dall'import.
 
@@ -139,6 +140,12 @@ async def remember_alias(
     (api/imports.py), quella dell'AI (services/recipe_import/decide.py) e il collasso.
     Due copie di questa regola si scollerebbero, e la prima cosa a scollarsi sarebbe
     il vincolo su cui poggia l'autocomplete.
+
+    `source` resta `"import"` per i chiamanti di sempre, che sono decisioni della coda.
+    Le correzioni dell'anagrafica (`app/services/registry.py`) scrivono `"manual"`: il
+    vecchio nome di un ingrediente rinominato non è la metà di nessuna decisione, e
+    marcato «import» sarebbe un alias che l'anagrafica rifiuta di toccare e che la
+    coda non sa di avere.
     """
     cleaned = display_name.strip().lower()
     if not cleaned or len(cleaned) > NAME_MAX_LENGTH:
@@ -148,7 +155,7 @@ async def remember_alias(
     ).scalars().first()
     if already is not None:
         return False
-    await add_alias(session, ingredient_id, cleaned, source="import")
+    await add_alias(session, ingredient_id, cleaned, source=source)
     return True
 
 
