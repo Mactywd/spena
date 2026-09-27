@@ -29,6 +29,7 @@ from app.db.models.product import Product
 from app.db.models.recipe import Recipe, RecipeIngredient
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm
 from app.db.models.shopping import ShoppingListItem
+from app.domain.barcodes import has_valid_check_digit
 from app.domain.rules import IngredientKind, IngredientRole, kind_for_category
 from app.repositories.ingredients import (
     canonical_name,
@@ -36,6 +37,7 @@ from app.repositories.ingredients import (
     find_by_name,
     remember_alias,
 )
+from app.repositories.products import find_by_barcode
 from app.services.recipe_import.manual import DecisionRefused, ManualDecision, decide_by_hand
 from app.services.recipe_import.materialize import (
     materialize_ready,
@@ -505,3 +507,127 @@ async def preview_merge(
         raise
     await savepoint.rollback()
     return counts
+
+
+async def _product(session: AsyncSession, product_id: uuid.UUID) -> Product:
+    product = await session.get(Product, product_id)
+    if product is None:
+        raise LookupError(f"nessun prodotto {product_id}")
+    return product
+
+
+async def update_product(
+    session: AsyncSession,
+    product_id: uuid.UUID,
+    *,
+    name: str | None = None,
+    brand: str | None = None,
+) -> Product:
+    """Nome e marca. `brand=""` toglie la marca; `None` la lascia com'è."""
+    product = await _product(session, product_id)
+    if name is not None:
+        cleaned = name.strip()
+        if not cleaned:
+            raise RegistryRefusal(RefusalCode.EMPTY_NAME, "Il nome non può essere vuoto.")
+        product.name = cleaned
+    if brand is not None:
+        product.brand = brand.strip() or None
+    await session.flush()
+    return product
+
+
+async def move_product(
+    session: AsyncSession, product_id: uuid.UUID, ingredient_id: uuid.UUID
+) -> int:
+    """Il prodotto passa sotto un altro ingrediente, e **tutti** i suoi elementi di
+    dispensa con lui, attivi e archiviati: `add_pantry_item` rifiuta la coppia
+    ingrediente–prodotto incoerente, e un archiviato lasciato indietro tornerebbe
+    incoerente al primo annulla. Torna quanti degli attivi si sono spostati: sono quelli
+    che chi guarda la dispensa vede.
+
+    Nessun filtro sul `kind`: in anagrafica si corregge anche il non alimentare.
+    """
+    product = await _product(session, product_id)
+    target = await _ingredient(session, ingredient_id)
+    active = (
+        await session.execute(
+            select(func.count())
+            .select_from(PantryItem)
+            .where(PantryItem.product_id == product.id, PantryItem.archived_at.is_(None))
+        )
+    ).scalar_one()
+    product.ingredient_id = target.id
+    await session.execute(
+        update(PantryItem).where(PantryItem.product_id == product.id).values(ingredient_id=target.id)
+    )
+    await session.flush()
+    return active
+
+
+async def set_barcode(
+    session: AsyncSession,
+    product_id: uuid.UUID,
+    barcode: str | None,
+    *,
+    take: bool = False,
+    accept_bad_checksum: bool = False,
+) -> Product:
+    """Il codice a barre, o nessun codice.
+
+    Un codice che è già di un altro prodotto si rifiuta portando quel prodotto, e con
+    `take=True` gli si toglie: spostarlo è una decisione di chi ha la confezione in
+    mano, non un effetto collaterale. Un codice che la cifra di controllo non conferma
+    si rifiuta finché non si dice `accept_bad_checksum=True` — l'avviso e «Usalo lo
+    stesso» di S20, mai un rifiuto che non si supera. Chi prende un codice già in
+    catalogo non passa dal controllo: qualcuno l'ha già confermato con la confezione in
+    mano, come in «Sistema la spesa».
+    """
+    product = await _product(session, product_id)
+    code = (barcode or "").strip()
+    if not code:
+        product.barcode = None
+        await session.flush()
+        return product
+    if code == product.barcode:
+        return product
+    holder = await find_by_barcode(session, code)
+    if holder is not None and holder.id != product.id:
+        if not take:
+            raise RegistryRefusal(
+                RefusalCode.BARCODE_TAKEN, f"Il codice è di «{holder.name}».", holder
+            )
+        holder.barcode = None
+        # il vincolo di unicità deve vedere il vuoto prima del codice nuovo
+        await session.flush()
+    elif not accept_bad_checksum and not has_valid_check_digit(code):
+        raise RegistryRefusal(
+            RefusalCode.BAD_CHECKSUM,
+            "Il codice non torna con la sua cifra di controllo: controlla le cifre. "
+            "Se è un codice del negozio, usalo lo stesso.",
+        )
+    product.barcode = code
+    await session.flush()
+    return product
+
+
+async def delete_product(session: AsyncSession, product_id: uuid.UUID) -> int:
+    """Cancella il prodotto. Gli elementi di dispensa restano, sfusi.
+
+    `pantry_items.product_id` è già ON DELETE SET NULL; l'UPDATE esplicito prima del
+    DELETE tiene d'accordo anche gli oggetti che la sessione ha in memoria. Torna quanti
+    elementi attivi restano sfusi: è quel che la conferma ha promesso.
+    """
+    product = await _product(session, product_id)
+    loose = (
+        await session.execute(
+            select(func.count())
+            .select_from(PantryItem)
+            .where(PantryItem.product_id == product.id, PantryItem.archived_at.is_(None))
+        )
+    ).scalar_one()
+    await session.execute(
+        update(PantryItem).where(PantryItem.product_id == product.id).values(product_id=None)
+    )
+    await session.delete(product)
+    await session.flush()
+    return loose

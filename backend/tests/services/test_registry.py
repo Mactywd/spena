@@ -12,9 +12,11 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
+from app.db.models.pantry import PantryItem
+from app.db.models.product import Product
 from app.db.models.recipe import RecipeSource
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
-from app.domain.rules import IngredientKind
+from app.domain.rules import IngredientKind, PantryStatus
 from app.repositories.ingredients import add_alias, remember_alias
 from app.repositories.recipes import create_recipe
 from app.services.registry import (
@@ -22,10 +24,14 @@ from app.services.registry import (
     RefusalCode,
     RegistryRefusal,
     delete_alias,
+    delete_product,
     move_alias,
+    move_product,
     queue_terms_by_alias,
     recategorize_ingredient,
     rename_ingredient,
+    set_barcode,
+    update_product,
 )
 
 
@@ -215,3 +221,102 @@ async def test_i_termini_della_coda_per_alias(db_session, anagrafica, deciso):
 async def test_un_alias_che_non_c_e(db_session):
     with pytest.raises(LookupError):
         await delete_alias(db_session, uuid.uuid4())
+
+
+@pytest_asyncio.fixture
+async def scaffale(db_session, anagrafica):
+    """Il caso del parmigiano (spec §1): un prodotto sotto «burro», con un elemento di
+    dispensa attivo e uno archiviato, e un secondo prodotto che ha già un codice."""
+    reggiano = Product(
+        ingredient_id=anagrafica["burro"].id, name="Parmigiano Reggiano 24 mesi",
+        brand="Latteria", barcode="8009876543217", source="custom",
+    )
+    grana = Product(
+        ingredient_id=anagrafica["parmigiano"].id, name="Grana Padano 200 g",
+        barcode="8001234567897", source="custom",
+    )
+    db_session.add_all([reggiano, grana])
+    await db_session.flush()
+    attivo = PantryItem(
+        ingredient_id=anagrafica["burro"].id, product_id=reggiano.id,
+        status=PantryStatus.AVAILABLE,
+    )
+    archiviato = PantryItem(
+        ingredient_id=anagrafica["burro"].id, product_id=reggiano.id,
+        status=PantryStatus.FINISHED, archived_at=datetime.now(UTC),
+    )
+    db_session.add_all([attivo, archiviato])
+    await db_session.flush()
+    return {"reggiano": reggiano, "grana": grana, "attivo": attivo, "archiviato": archiviato}
+
+
+async def test_spostare_un_prodotto_porta_con_se_tutta_la_sua_dispensa(db_session, anagrafica, scaffale):
+    """Anche gli archiviati: `add_pantry_item` rifiuta la coppia ingrediente–prodotto
+    incoerente, e un archiviato rimasto sotto «burro» tornerebbe in dispensa incoerente
+    al primo annulla."""
+    parmigiano = anagrafica["parmigiano"]
+
+    attivi = await move_product(db_session, scaffale["reggiano"].id, parmigiano.id)
+
+    assert attivi == 1
+    assert scaffale["reggiano"].ingredient_id == parmigiano.id
+    for voce in (scaffale["attivo"], scaffale["archiviato"]):
+        await db_session.refresh(voce)
+        assert voce.ingredient_id == parmigiano.id
+
+
+async def test_nome_e_marca_si_correggono_e_la_marca_si_toglie(db_session, scaffale):
+    reggiano = scaffale["reggiano"]
+
+    await update_product(db_session, reggiano.id, name=" Parmigiano Reggiano 30 mesi ", brand="")
+
+    assert reggiano.name == "Parmigiano Reggiano 30 mesi"
+    assert reggiano.brand is None
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await update_product(db_session, reggiano.id, name="  ")
+    assert rifiuto.value.code == RefusalCode.EMPTY_NAME
+
+
+async def test_togliere_il_codice(db_session, scaffale):
+    await set_barcode(db_session, scaffale["reggiano"].id, None)
+    assert scaffale["reggiano"].barcode is None
+
+
+async def test_un_codice_gia_preso_rifiuta_e_porta_chi_lo_ha(db_session, scaffale):
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await set_barcode(db_session, scaffale["reggiano"].id, "8001234567897")
+
+    assert rifiuto.value.code == RefusalCode.BARCODE_TAKEN
+    assert rifiuto.value.obstacle is scaffale["grana"]
+    assert scaffale["reggiano"].barcode == "8009876543217"
+
+
+async def test_prendere_il_codice_lo_toglie_all_altro(db_session, scaffale):
+    await set_barcode(db_session, scaffale["reggiano"].id, "8001234567897", take=True)
+
+    assert scaffale["reggiano"].barcode == "8001234567897"
+    assert scaffale["grana"].barcode is None
+
+
+async def test_un_codice_che_non_torna_avvisa_e_si_usa_lo_stesso(db_session, scaffale):
+    """S20: l'avviso e «Usalo lo stesso», mai un rifiuto che non si supera — i codici
+    interni dei negozi esistono."""
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await set_barcode(db_session, scaffale["reggiano"].id, "8001234567890")
+    assert rifiuto.value.code == RefusalCode.BAD_CHECKSUM
+
+    await set_barcode(
+        db_session, scaffale["reggiano"].id, "8001234567890", accept_bad_checksum=True
+    )
+    assert scaffale["reggiano"].barcode == "8001234567890"
+
+
+async def test_eliminare_un_prodotto_lascia_la_dispensa_sfusa(db_session, anagrafica, scaffale):
+    sfusi = await delete_product(db_session, scaffale["reggiano"].id)
+
+    assert sfusi == 1
+    assert await db_session.get(Product, scaffale["reggiano"].id) is None
+    for voce in (scaffale["attivo"], scaffale["archiviato"]):
+        await db_session.refresh(voce)
+        assert voce.product_id is None
+        assert voce.ingredient_id == anagrafica["burro"].id
