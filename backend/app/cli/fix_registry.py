@@ -197,7 +197,7 @@ async def merge(session: AsyncSession, step: dict, outcome: Outcome) -> str:
     return (
         f"{step['from']} → {merged.winner_name}: {merged.recipes_rebuilt} ricette rifatte, "
         f"{merged.recipe_lines_moved} righe fuori dall'import, "
-        f"{merged.pantry_items + merged.shopping_items + merged.products} fra dispensa, "
+        f"{merged.pantry_items + merged.shopping_items + merged.shopping_items_dropped + merged.products} fra dispensa, "
         f"lista e prodotti, {merged.cooking_events_relinked} cotture ri-legate"
     )
 

@@ -34,7 +34,7 @@ from app.db.models.recipe_import import (
     RecipeImport,
     TermDecision,
 )
-from app.db.models.shopping import ShoppingListItem
+from app.db.models.shopping import ShoppingListItem, ShoppingStatus
 from app.domain.barcodes import has_valid_check_digit
 from app.domain.rules import IngredientKind, IngredientRole, kind_for_category
 from app.repositories.ingredients import (
@@ -112,6 +112,8 @@ class MergeCounts:
     recipe_lines_moved: int  # righe di ricette non importate, spostate sul vincitore
     pantry_items: int
     shopping_items: int
+    # voci attive del perdente tolte (archiviate) perché il vincitore era già in lista
+    shopping_items_dropped: int
     products: int
     aliases: int  # alias che il vincitore guadagna, nome del perdente compreso
     cooking_events_relinked: int
@@ -401,6 +403,48 @@ async def _repoint(
     return result.rowcount or 0
 
 
+# «Già in lista»: da comprare o nel carrello, come per `active_item_for`
+ACTIVE_SHOPPING = (ShoppingStatus.PENDING, ShoppingStatus.CHECKED)
+
+
+async def _repoint_shopping(
+    session: AsyncSession, loser_id: uuid.UUID, winner_id: uuid.UUID
+) -> tuple[int, int]:
+    """Le voci di lista passano al vincitore, senza metterlo in lista due volte.
+
+    Se il vincitore ha già una voce attiva, quelle attive del perdente si tolgono come
+    le toglie la X della lista — archiviate — e passano al vincitore con la storia.
+    Resta la voce del vincitore col suo testo: il testo del perdente non vi si unisce,
+    perché una voce di lista è una riga scritta da qualcuno, non un campo da fondere.
+    Torna (spostate e ancora com'erano, tolte).
+    """
+    winner_listed = (
+        await session.execute(
+            select(
+                select(ShoppingListItem.id)
+                .where(
+                    ShoppingListItem.ingredient_id == winner_id,
+                    ShoppingListItem.status.in_(ACTIVE_SHOPPING),
+                )
+                .exists()
+            )
+        )
+    ).scalar_one()
+    dropped = 0
+    if winner_listed:
+        result = await session.execute(
+            update(ShoppingListItem)
+            .where(
+                ShoppingListItem.ingredient_id == loser_id,
+                ShoppingListItem.status.in_(ACTIVE_SHOPPING),
+            )
+            .values(status=ShoppingStatus.ARCHIVED)
+        )
+        dropped = result.rowcount or 0
+    moved = await _repoint(session, ShoppingListItem, loser_id, winner_id)
+    return moved - dropped, dropped
+
+
 async def _alias_count(session: AsyncSession, ingredient_id: uuid.UUID) -> int:
     return (
         await session.execute(
@@ -488,7 +532,7 @@ async def merge_ingredients(
             ) from exc
 
     pantry_items = await _repoint(session, PantryItem, loser_id, winner.id)
-    shopping_items = await _repoint(session, ShoppingListItem, loser_id, winner.id)
+    shopping_items, shopping_dropped = await _repoint_shopping(session, loser_id, winner.id)
     products = await _repoint(session, Product, loser_id, winner.id)
 
     # Le righe rimaste sono di ricette che non vengono dall'import (scritte a mano o
@@ -546,6 +590,7 @@ async def merge_ingredients(
         recipe_lines_moved=len(lines),
         pantry_items=pantry_items,
         shopping_items=shopping_items,
+        shopping_items_dropped=shopping_dropped,
         products=products,
         aliases=await _alias_count(session, winner.id) - aliases_before,
         cooking_events_relinked=materialized.relinked,

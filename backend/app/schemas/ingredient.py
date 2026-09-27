@@ -90,6 +90,7 @@ class MergeOut(BaseModel):
     recipe_lines_moved: int
     pantry_items: int
     shopping_items: int
+    shopping_items_dropped: int
     products: int
     aliases: int
     cooking_events_relinked: int

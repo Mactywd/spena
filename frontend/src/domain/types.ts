@@ -264,6 +264,8 @@ export interface MergeCounts {
   recipe_lines_moved: number;
   pantry_items: number;
   shopping_items: number;
+  /** Voci attive del perdente tolte (archiviate): il vincitore era già in lista. */
+  shopping_items_dropped: number;
   products: number;
   aliases: number;
   cooking_events_relinked: number;

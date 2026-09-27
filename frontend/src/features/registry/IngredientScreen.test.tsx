@@ -27,7 +27,8 @@ const DETERSIVO: Ingredient = {
 };
 const ANTEPRIMA: MergeCounts = {
   dry_run: true, loser_name: "pomodori", winner_id: "i-pomodoro", winner_name: "pomodoro",
-  recipes_rebuilt: 2, recipe_lines_moved: 1, pantry_items: 1, shopping_items: 0, products: 0,
+  recipes_rebuilt: 2, recipe_lines_moved: 1, pantry_items: 1, shopping_items: 0,
+  shopping_items_dropped: 0, products: 0,
   aliases: 2, cooking_events_relinked: 0,
 };
 
