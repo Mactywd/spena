@@ -246,3 +246,100 @@ async def test_una_voce_di_lista_porta_il_kind_del_suo_ingrediente(logged_client
     voci = (await logged_client.get("/api/v1/shopping-list")).json()
 
     assert voci[0]["ingredient_kind"] == "non_food"
+
+
+# S8: il codice appena letto segue la scelta dal catalogo. Chi scansiona un codice
+# che nessuno conosce e poi sceglie a catalogo un prodotto che un codice non ce
+# l'ha, la prossima volta deve ritrovarlo scansionando. Il codice viaggia con la
+# voce della sistemazione, e il backend lo dà al prodotto solo se il prodotto non
+# ne ha uno e il codice non è già di un altro: correggere un legame sbagliato è
+# un'altra cosa (S9), non un effetto collaterale del mettere in dispensa.
+async def _yogurt_da_sistemare(db_session, ingredienti, **product_fields):
+    product = Product(ingredient_id=ingredienti["yogurt"].id, name="Total 0%", brand="Fage",
+                      source="custom", **product_fields)
+    item = ShoppingListItem(raw_text="yogurt greco", ingredient_id=ingredienti["yogurt"].id,
+                            status=ShoppingStatus.CHECKED, reason=ShoppingReason.MANUAL)
+    db_session.add_all([product, item])
+    await db_session.flush()
+    return product, item
+
+
+def _voce(item, product, barcode):
+    return {"shopping_item_id": str(item.id), "ingredient_id": str(product.ingredient_id),
+            "product_id": str(product.id), "barcode": barcode}
+
+
+async def test_il_codice_letto_va_al_prodotto_scelto_che_non_ne_ha(
+    logged_client, db_session, ingredienti
+):
+    product, item = await _yogurt_da_sistemare(db_session, ingredienti)
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={
+        "entries": [_voce(item, product, "8001234567890")]})
+    assert response.status_code == 201
+
+    await db_session.refresh(product)
+    assert product.barcode == "8001234567890"
+    # ed è quel che rende vero il «la prossima volta lo trova»
+    found = (await logged_client.get("/api/v1/products/barcode/8001234567890")).json()
+    assert found["product"]["id"] == str(product.id)
+
+
+async def test_lo_stesso_codice_gia_sul_prodotto_non_cambia_niente(
+    logged_client, db_session, ingredienti
+):
+    product, item = await _yogurt_da_sistemare(db_session, ingredienti, barcode="52010")
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={
+        "entries": [_voce(item, product, "52010")]})
+    assert response.status_code == 201
+
+    await db_session.refresh(product)
+    assert product.barcode == "52010"
+
+
+async def test_un_prodotto_con_un_altro_codice_non_viene_riscritto(
+    logged_client, db_session, ingredienti
+):
+    """Il burro col codice del parmigiano (S9) è esattamente questo: un legame
+    sbagliato. Sovrascrivere il codice di un prodotto ne farebbe uno nuovo, in
+    silenzio, a ogni sistemazione."""
+    product, item = await _yogurt_da_sistemare(db_session, ingredienti, barcode="52010")
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={
+        "entries": [_voce(item, product, "8001234567890")]})
+    assert response.status_code == 201
+
+    await db_session.refresh(product)
+    assert product.barcode == "52010"
+    assert len(list((await db_session.execute(select(PantryItem))).scalars())) == 1
+
+
+async def test_un_codice_gia_di_un_altro_prodotto_non_si_sposta_e_la_spesa_entra(
+    logged_client, db_session, ingredienti
+):
+    """Né furto né muro: il codice resta dov'era, e la voce entra in dispensa lo
+    stesso. Rifiutare l'intera sistemazione — che è tutto-o-niente — per un legame
+    che non si può fare sarebbe il vicolo cieco che CLAUDE.md vieta."""
+    owner = Product(ingredient_id=ingredienti["yogurt"].id, name="Yogurt greco pesca",
+                    brand="Carrefour", barcode="8001234567890", source="custom")
+    db_session.add(owner)
+    product, item = await _yogurt_da_sistemare(db_session, ingredienti)
+    mele = ShoppingListItem(raw_text="mele", ingredient_id=ingredienti["mela"].id,
+                            status=ShoppingStatus.CHECKED, reason=ShoppingReason.MANUAL)
+    db_session.add(mele)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={"entries": [
+        _voce(item, product, "8001234567890"),
+        {"shopping_item_id": str(mele.id), "ingredient_id": str(ingredienti["mela"].id),
+         "product_id": None},
+    ]})
+    assert response.status_code == 201
+
+    await db_session.refresh(product)
+    await db_session.refresh(owner)
+    assert product.barcode is None
+    assert owner.barcode == "8001234567890"
+    pantry = list((await db_session.execute(select(PantryItem))).scalars())
+    assert {p.product_id for p in pantry} == {product.id, None}

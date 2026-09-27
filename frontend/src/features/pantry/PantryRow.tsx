@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FillSlider } from "./FillSlider";
 import { fillForStatus } from "./fillZones";
+import { EXPIRY_INPUT_MAX } from "./expiryLabels";
 import { Alert } from "../../components/ui/Alert";
 import { ExpiryChip } from "../../components/ui/ExpiryChip";
 import { StatusChip } from "../../components/ui/StatusChip";
@@ -9,7 +10,7 @@ import type { PantryItem, RestockResult } from "../../domain/types";
 /** Il nome con cui l'utente chiama questa voce: la marca se c'è, l'ingrediente
  * altrimenti. Entra anche nel nome accessibile della X, perché «Togli dalla
  * dispensa» ripetuto identico su trenta righe non dice quale riga si sta togliendo. */
-export function itemLabel(item: PantryItem): string {
+function itemLabel(item: PantryItem): string {
   return item.product_name ?? item.ingredient_name;
 }
 
@@ -61,13 +62,16 @@ export function PantryRow({
   // nessun gesto nuovo dell'utente. Il difetto è fra due rami della stessa riga,
   // non fra due righe: si azzera qui, seguendo `removed`, in entrambe le direzioni.
   // `editingExpiry` segue la stessa regola: un campo aperto non deve riapparire
-  // da sé dopo un annulla.
-  useEffect(() => {
+  // da sé dopo un annulla. Si azzera durante il disegno, non in un effetto: un
+  // effetto mostrerebbe per un disegno la domanda vecchia, e poi ridisegnerebbe.
+  const [wasRemoved, setWasRemoved] = useState(removed);
+  if (removed !== wasRemoved) {
+    setWasRemoved(removed);
     setAsking(false);
     setRestocked(null);
     setRestockFailed(false);
     setEditingExpiry(false);
-  }, [removed]);
+  }
 
   async function fill(percent: number) {
     setRestocked(null);
@@ -210,6 +214,7 @@ export function PantryRow({
             <input
               id={`expiry-${item.id}`}
               type="date"
+              max={EXPIRY_INPUT_MAX}
               disabled={busy}
               // il campo prende fuoco appena compare: è stato chiesto con un tocco,
               // e così l'uscita — cioè la scrittura — è a un tocco qualsiasi di
@@ -255,11 +260,17 @@ export function PantryRow({
             onClick={() => setEditingExpiry(true)}
             // il disegno resta minuscolo (12px, tinta smorta: su venti righe dev'essere
             // una colonnina grigia, non una fila di bottoni), il bersaglio no. Il
-            // padding porta il riquadro a 44px, il margine negativo lo ritoglie dal
-            // flusso: la riga della pastiglia resta alta quanto lo StatusChip (24px) e
-            // la dispensa non si allunga di un pixel. La sporgenza è di 10px per parte,
-            // cioè esattamente il `gap-2.5` che separa questa riga dal cursore: il
-            // bersaglio cresce fin dove c'è vuoto e non si mangia quello del vicino.
+            // conto: il testo è alto 16px (`text-xs`), 14px di padding per parte
+            // portano il riquadro a 44px, e il margine negativo uguale lo ritoglie dal
+            // flusso — la riga della pastiglia resta alta quanto lo StatusChip (24px) e
+            // la dispensa non si allunga di un pixel. Il testo sta centrato in quei
+            // 24px, quindi 4 dei 14px di padding cadono dentro la riga e ne escono 10
+            // per parte: esattamente il `gap-2.5` che separa questa riga dal cursore.
+            // Il bersaglio cresce fin dove c'è vuoto e non si mangia quello del
+            // vicino: misurato in Chromium, il bordo alto del pulsante coincide al
+            // pixel con quello basso del cursore. Il conto regge finché lo StatusChip
+            // è alto 24px: una pastiglia più bassa farebbe sporgere questo bersaglio
+            // sul cursore.
             className="-my-3.5 py-3.5 text-xs font-medium text-ink-faint"
           >
             + scadenza

@@ -11,6 +11,7 @@ from app.db.models.pantry import PantryItem
 from app.db.models.shopping import ShoppingListItem, ShoppingReason, ShoppingStatus
 from app.domain.rules import PantryStatus
 from app.repositories.pantry import add_pantry_item
+from app.repositories.products import give_barcode_if_missing
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,9 @@ class StockEntry:
     ingredient_id: uuid.UUID
     product_id: uuid.UUID | None
     expires_on: date | None
+    # il codice letto per questa voce, da dare al prodotto scelto se non ne ha
+    # uno (S8): vedi give_barcode_if_missing
+    barcode: str | None = None
 
 
 async def list_items(
@@ -89,6 +93,10 @@ async def stock_items(session: AsyncSession, entries: list[StockEntry]) -> list[
             session, ingredient_id=entry.ingredient_id, product_id=entry.product_id,
             status=PantryStatus.AVAILABLE, expires_on=entry.expires_on,
         )
+        # dopo add_pantry_item e non prima: il codice va solo a un prodotto che
+        # quel controllo ha già riconosciuto come dell'ingrediente della voce
+        if entry.product_id is not None and entry.barcode:
+            await give_barcode_if_missing(session, entry.product_id, entry.barcode)
         shopping_item.ingredient_id = entry.ingredient_id
         shopping_item.status = ShoppingStatus.DONE
         shopping_item.done_at = now

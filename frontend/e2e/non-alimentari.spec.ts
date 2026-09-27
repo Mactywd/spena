@@ -48,8 +48,10 @@ test("un detersivo fa il giro: lista, dispensa, e ritorno in lista", async ({ pa
 
   // 4. lo porto a zero e la domanda del rientro arriva
   const cursore = page.getByRole("slider", { name: "Quanto ne resta di detersivo per i piatti" });
-  await cursore.fill("0");
-  await cursore.dispatchEvent("pointerup");
+  // un tocco sul bordo sinistro, come col pollice: il cursore si cambia solo
+  // toccando (S13), e il tocco lo riceve il contenitore, non l'`<input>` — che
+  // non riceve il puntatore e che Playwright rifiuterebbe di cliccare
+  await cursore.locator("..").click({ position: { x: 1, y: 22 } });
   await expect(page.getByText("Lo rimetto in lista?")).toBeVisible();
   await page.getByRole("button", { name: "Sì" }).click();
   await expect(page.getByText("Rimesso in lista.")).toBeVisible();

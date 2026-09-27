@@ -93,8 +93,12 @@ describe("PantryScreen", () => {
     renderScreen();
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
+    // In questo file il cursore si muove dalla tastiera (`change`, poi il tasto
+    // che si alza): è una delle due strade vere per scrivere, e qui conta quello
+    // che succede dopo la scrittura. Il tocco — l'altra strada, e il suo rifiuto
+    // di ogni trascinamento — lo prova FillSlider.test.tsx, che ha la geometria.
     fireEvent.change(cursore, { target: { value: "15" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
 
     await waitFor(() => {
       const patch = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "PATCH");
@@ -127,7 +131,7 @@ describe("PantryScreen", () => {
     const row = (await screen.findByText("Total 0%")).closest("li")!;
     const cursore = within(row).getByRole("slider");
     fireEvent.change(cursore, { target: { value: "10" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
 
     expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     const other = screen.getByText("Pesca").closest("li")!;
@@ -165,7 +169,7 @@ describe("PantryScreen", () => {
     const row = (await screen.findByText("Total 0%")).closest("li")!;
     const cursore = within(row).getByRole("slider");
     fireEvent.change(cursore, { target: { value: "10" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
 
     await waitFor(() => expect(within(row).getByRole("slider")).toBeDisabled());
     expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
@@ -408,7 +412,7 @@ describe("PantryScreen", () => {
 
     const cursore = screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" });
     fireEvent.change(cursore, { target: { value: "15" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
 
     expect(await screen.findByText(/Non sono riuscito a caricare la dispensa/)).toBeDefined();
     expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
@@ -504,7 +508,7 @@ describe("PantryScreen", () => {
     const altra = screen.getByText("Total 0%").closest("li")!;
     const cursore = within(altra).getByRole("slider");
     fireEvent.change(cursore, { target: { value: "50" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
 
     await waitFor(() =>
       expect(
@@ -540,7 +544,7 @@ describe("PantryScreen", () => {
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
 
     expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
     expect(screen.getByRole("button", { name: "Sì" })).toBeDefined();
@@ -559,7 +563,7 @@ describe("PantryScreen", () => {
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursore, { target: { value: "20" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
 
     expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
     expect(screen.getByRole("button", { name: "Sì" })).toBeDefined();
@@ -576,7 +580,7 @@ describe("PantryScreen", () => {
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
     await screen.findByText("Lo rimetto in lista?");
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit)?.method === "POST")).toBe(false);
 
@@ -597,7 +601,7 @@ describe("PantryScreen", () => {
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
     await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
 
     expect(await screen.findByText("Era già in lista.")).toBeDefined();
@@ -612,7 +616,7 @@ describe("PantryScreen", () => {
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
     await userEvent.click(await screen.findByRole("button", { name: "No" }));
 
     await waitFor(() => expect(screen.queryByText("Lo rimetto in lista?")).toBeNull());
@@ -635,7 +639,7 @@ describe("PantryScreen", () => {
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
     await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito a rimettere/i);
@@ -662,13 +666,13 @@ describe("PantryScreen", () => {
     // A: la mela a zero
     const cursoreMela = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursoreMela, { target: { value: "0" } });
-    fireEvent.pointerUp(cursoreMela);
+    fireEvent.keyUp(cursoreMela);
     await screen.findByText("Lo rimetto in lista?");
 
     // B: Total 0% a zero, prima di aver risposto per la mela
     const cursoreTotal = await screen.findByRole("slider", { name: "Quanto ne resta di Total 0%" });
     fireEvent.change(cursoreTotal, { target: { value: "0" } });
-    fireEvent.pointerUp(cursoreTotal);
+    fireEvent.keyUp(cursoreTotal);
 
     // le due domande convivono
     await waitFor(() => expect(screen.getAllByText("Lo rimetto in lista?")).toHaveLength(2));
@@ -714,7 +718,7 @@ describe("PantryScreen", () => {
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
     await screen.findByText("Lo rimetto in lista?");
 
     // la domanda resta a video, ma «Togli dalla dispensa» resta cliccabile: non è
@@ -751,7 +755,7 @@ describe("PantryScreen", () => {
 
     const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.pointerUp(cursore);
+    fireEvent.keyUp(cursore);
     await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
 
     // la richiesta non risponde mai: la domanda deve restare a video (non sparire
@@ -786,13 +790,13 @@ describe("PantryScreen", () => {
 
     const mela = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
     fireEvent.change(mela, { target: { value: "0" } });
-    fireEvent.pointerUp(mela);
+    fireEvent.keyUp(mela);
     await screen.findByText("Lo rimetto in lista?");
 
     // riga A: una PATCH che non risponde mai
     const altra = screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" });
     fireEvent.change(altra, { target: { value: "50" } });
-    fireEvent.pointerUp(altra);
+    fireEvent.keyUp(altra);
     await waitFor(() =>
       expect(screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" })).toBeDisabled()
     );

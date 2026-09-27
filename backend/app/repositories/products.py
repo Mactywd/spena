@@ -68,3 +68,34 @@ async def create_product(
     session.add(product)
     await session.flush()
     return product
+
+
+async def give_barcode_if_missing(
+    session: AsyncSession, product_id: uuid.UUID, barcode: str
+) -> None:
+    """Dà al prodotto il codice appena letto, se il prodotto non ne ha e il codice
+    non è già di un altro (S8): chi sceglie a catalogo un prodotto senza codice
+    dopo averne scansionato uno ignoto, la prossima volta deve ritrovarlo.
+
+    Non riscrive mai e non sposta mai, e non solleva: è un di più della
+    sistemazione, non una sua condizione. Un prodotto che ha già un codice
+    diverso è un legame da correggere (S9), non da sovrascrivere di nascosto; un
+    codice che è già di un altro prodotto resta dov'è, perché rubarlo romperebbe
+    la scansione di quell'altro. In entrambi i casi il legame semplicemente non
+    si fa, e la voce entra in dispensa lo stesso.
+
+    Controllo-poi-scrittura e non un savepoint sulla violazione di unicità: l'app
+    ha un solo utente, e la query qui sotto, con l'autoflush, vede anche i codici
+    dati poco prima nella stessa sistemazione — due voci con lo stesso codice non
+    arrivano mai al vincolo.
+    """
+    # un codice più lungo della colonna non può appartenere a nessun prodotto:
+    # rifiutarlo con un 422 farebbe fallire l'intera sistemazione per un di più
+    if not barcode or len(barcode) > Product.__table__.c.barcode.type.length:
+        return
+    product = await session.get(Product, product_id)
+    if product is None or product.barcode is not None:
+        return
+    if await find_by_barcode(session, barcode) is not None:
+        return
+    product.barcode = barcode

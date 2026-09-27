@@ -35,6 +35,11 @@ class StockEntryIn(BaseModel):
     # facoltativa per voce, non per l'intera sistemazione: la maggior parte
     # delle voci (frutta sfusa, ecc.) non porta una scadenza
     expires_on: date | None = None
+    # il codice a barre appena letto per questa voce, se la scelta è poi passata
+    # dal catalogo (S8). Senza max_length di proposito: un codice che non entra in
+    # colonna non si lega e basta (give_barcode_if_missing), mentre un 422 qui
+    # respingerebbe l'intera sistemazione per un di più
+    barcode: str | None = None
 
 
 class StockRequest(BaseModel):

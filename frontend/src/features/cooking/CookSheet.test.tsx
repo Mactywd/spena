@@ -267,9 +267,10 @@ describe("CookSheet", () => {
   });
 
   it("le tre scelte sono un gruppo con nome, con bersagli da pollice", async () => {
-    // Stesso standard di StatusToggle, che è lo stesso controllo uno schermo più
-    // in là: da telefono tre pulsanti da 26px sono tre bersagli mancabili, e per
-    // chi legge con lo screen reader tre "Finito" senza confezione non dicono nulla.
+    // Lo stesso standard da pollice della dispensa, dove il FillSlider che decide
+    // lo stato è alto 44px (`h-11`): da telefono tre pulsanti da 26px sono tre
+    // bersagli mancabili, e per chi legge con lo screen reader tre "Finito" senza
+    // confezione non dicono nulla.
     renderSheet();
     const row = screen.getByText("Total 0%").closest("li")!;
     const group = within(row).getByRole("group");

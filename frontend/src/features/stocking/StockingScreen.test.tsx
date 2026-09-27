@@ -106,7 +106,8 @@ describe("StockingScreen", () => {
 
     const post = spy.mock.calls.find(([url]) => String(url).endsWith("/shopping-list/stock"));
     expect(JSON.parse(post?.[1].body).entries).toEqual([
-      { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null },
+      { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null,
+        barcode: null },
     ]);
   });
 
@@ -185,7 +186,8 @@ describe("StockingScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
 
     expect(postBody(spy, "/stock").entries).toEqual([
-      { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1", expires_on: null },
+      { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1", expires_on: null,
+        barcode: null },
     ]);
   });
 
@@ -281,7 +283,8 @@ describe("StockingScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
     await vi.waitFor(() =>
       expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
-        { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null },
+        { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null,
+          barcode: null },
       ])
     );
   });
@@ -473,7 +476,8 @@ describe("StockingScreen", () => {
     // tutto il percorso, ed è esattamente ciò che prima spariva in silenzio
     await vi.waitFor(() =>
       expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
-        { shopping_item_id: "s3", ingredient_id: "i9", product_id: null, expires_on: null },
+        { shopping_item_id: "s3", ingredient_id: "i9", product_id: null, expires_on: null,
+          barcode: null },
       ])
     );
   });
@@ -639,6 +643,117 @@ describe("StockingScreen", () => {
         expect.objectContaining({ shopping_item_id: "s1", expires_on: "2026-10-02" }),
         expect.objectContaining({ shopping_item_id: "s2", expires_on: null }),
       ]);
+    });
+  });
+
+  // S8: il codice appena letto deve seguire ogni uscita che crea o sceglie un
+  // prodotto, così la prossima scansione lo trova. La via diretta (codice ignoto →
+  // modulo) lo faceva già; il pannello del catalogo no. Ogni test parte allo stesso
+  // modo: un codice che nessuno conosce, il modulo che si apre, e l'utente che lo
+  // chiude per passare da un'altra strada.
+  describe("il codice letto segue il prodotto (S8)", () => {
+    const CODE = "8001234567890";
+    const FAGE_SENZA_CODICE = { ...FAGE, barcode: null };
+
+    function stubUnknownCode(search: unknown[] = []) {
+      return stubRoutedFetch((path, init) => {
+        if (path.includes("/products/barcode/")) {
+          return [{ found: false, origin: "unknown", product: null, suggestion: null }];
+        }
+        if (path.includes("/products/search")) return [search];
+        if (path.endsWith("/products") && init?.method === "POST") {
+          return [{ ...FAGE_SENZA_CODICE, id: "p9", name: "Greco bianco", barcode: CODE }, 201];
+        }
+        if (path.includes("/shopping-list/stock")) return [{ created: 1 }, 201];
+        return [CHECKED];
+      });
+    }
+
+    async function readUnknownCodeThenCloseTheForm() {
+      await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+      await userEvent.type(screen.getByLabelText("Codice a barre"), `${CODE}{Enter}`);
+      await screen.findByRole("heading", { name: /Nuovo prodotto/ });
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    }
+
+    it("la creazione a mano dal catalogo porta il codice appena letto", async () => {
+      const spy = stubUnknownCode();
+
+      renderScreen();
+      await readUnknownCodeThenCloseTheForm();
+      await userEvent.click(
+        screen.getByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
+      );
+      await screen.findByText(/Nessun prodotto con queste parole/);
+      await userEvent.click(screen.getByRole("button", { name: "Crea il prodotto a mano" }));
+      await userEvent.type(await screen.findByLabelText("Nome"), "Greco bianco");
+      await userEvent.click(screen.getByRole("button", { name: "Salva prodotto" }));
+
+      await vi.waitFor(() => expect(postBody(spy, "/products").barcode).toBe(CODE));
+    });
+
+    it("un prodotto scelto a catalogo porta il codice appena letto nella sistemazione", async () => {
+      const spy = stubUnknownCode([FAGE_SENZA_CODICE]);
+
+      renderScreen();
+      await readUnknownCodeThenCloseTheForm();
+      await userEvent.click(
+        screen.getByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
+      );
+      await userEvent.click(await screen.findByRole("option", { name: /Total 0%/ }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+
+      // il client lo manda e basta: se darlo al prodotto è il backend a deciderlo
+      // (il prodotto non deve averne un altro, il codice non dev'essere di un altro)
+      await vi.waitFor(() =>
+        expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
+          { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1", expires_on: null,
+            barcode: CODE },
+        ])
+      );
+    });
+
+    it("confermare sfuso dopo un codice ignoto non porta il codice: non c'è un prodotto", async () => {
+      const spy = stubUnknownCode();
+
+      renderScreen();
+      await readUnknownCodeThenCloseTheForm();
+      await userEvent.click(screen.getByRole("button", { name: /Sfuso.*yogurt greco/i }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+
+      await vi.waitFor(() =>
+        expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
+          { shopping_item_id: "s1", ingredient_id: "i1", product_id: null, expires_on: null,
+            barcode: null },
+        ])
+      );
+    });
+
+    it("un codice che è di un prodotto di un altro ingrediente non segue la voce", async () => {
+      // quel codice è già preso: portarlo alla creazione a mano darebbe solo un 409
+      const spy = stubRoutedFetch((path) => {
+        if (path.includes("/products/barcode/")) {
+          return [{ found: true, origin: "catalog", suggestion: null,
+                    product: OTHER_INGREDIENT_PRODUCT }];
+        }
+        if (path.includes("/products/search")) return [[FAGE_SENZA_CODICE]];
+        if (path.includes("/shopping-list/stock")) return [{ created: 1 }, 201];
+        return [CHECKED];
+      });
+
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+      await userEvent.type(screen.getByLabelText("Codice a barre"), `${CODE}{Enter}`);
+      await screen.findByText(/di un altro ingrediente/);
+      await userEvent.click(
+        screen.getByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
+      );
+      await userEvent.click(await screen.findByRole("option", { name: /Total 0%/ }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+
+      await vi.waitFor(() =>
+        expect(postBody(spy, "/shopping-list/stock").entries[0].barcode).toBeNull()
+      );
     });
   });
 });

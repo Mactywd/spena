@@ -43,6 +43,11 @@ export function stockItems(
     // l'altra no, ed è il caso normale — vedi la nota per esteso in
     // StockingScreen sopra `openExpiryFor`.
     expires_on: string | null;
+    // il codice letto per questa voce, quando il prodotto è stato poi scelto a
+    // catalogo (S8). Se darlo al prodotto lo decide il backend
+    // (give_barcode_if_missing in app/repositories/products.py): mai a un
+    // prodotto che ne ha già uno, mai togliendolo a un altro.
+    barcode: string | null;
   }[]
 ) {
   return apiFetch<{ created: number }>("/shopping-list/stock", {

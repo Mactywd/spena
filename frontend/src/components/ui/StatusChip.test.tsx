@@ -6,8 +6,9 @@ import type { PantryStatus } from "../../domain/types";
 
 // La mappa dei colori può essere giusta mentre il controllo che la gente tocca non
 // la usa: è il difetto che su questo ramo è sopravvissuto tre volte (v. CLAUDE.md,
-// prima lezione). Prima questo legame lo provava solo StatusToggle.test.tsx, che
-// Task 9 ha cancellato con il resto del componente. `StatusChip` è ora l'unico
+// prima lezione). Prima questo legame lo provava solo il test del vecchio selettore
+// a tre pulsanti della dispensa, che Task 9 ha cancellato con il resto del
+// componente quando al suo posto è arrivato il FillSlider. `StatusChip` è ora l'unico
 // posto in dispensa dove lo stato si vede, e va provato passando dal componente
 // vero, non interrogando la mappa da sola.
 describe("StatusChip", () => {

@@ -13,10 +13,15 @@ import type { Ingredient, Product, ShoppingItem } from "../../domain/types";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { BackLink } from "../../components/BackLink";
 import { FOOD_CATEGORIES, NON_FOOD_CATEGORIES } from "../../domain/categories";
+import { EXPIRY_INPUT_MAX } from "../pantry/expiryLabels";
 
 type Resolution =
   | { kind: "loose" }
-  | { kind: "product"; product: Product };
+  // `barcode`: il codice letto per la voce prima di scegliere il prodotto a
+  // catalogo (S8), che la sistemazione porta al backend perché lo dia al
+  // prodotto se non ne ha. Solo quella scelta lo porta: il prodotto trovato dal
+  // codice ce l'ha già, e quello creato a mano lo riceve alla creazione
+  | { kind: "product"; product: Product; barcode?: string };
 
 /**
  * Una voce spuntata ma senza ingrediente abbinato ("un ingrediente che risolve
@@ -248,6 +253,21 @@ export function StockingScreen() {
   const [mismatch, setMismatch] = useState<{ item: ShoppingItem; product: Product } | null>(
     null
   );
+  // Il codice letto per una voce e rimasto senza prodotto — ignoto al catalogo, o
+  // lookup fallito — indicizzato come `resolved` (S8). Chi poi chiude il modulo
+  // e passa dal catalogo, lì crea il prodotto a mano o ne sceglie uno esistente:
+  // senza questo il codice si perdeva, e la scansione successiva non trovava
+  // niente. Lo sfuso non lo legge: non c'è un prodotto a cui darlo.
+  const [unlinkedCode, setUnlinkedCode] = useState<Record<string, string>>({});
+
+  function rememberUnlinkedCode(item: ShoppingItem, code: string | null) {
+    setUnlinkedCode((prev) => {
+      const next = { ...prev };
+      if (code) next[item.id] = code;
+      else delete next[item.id];
+      return next;
+    });
+  }
 
   function effectiveIngredientId(item: ShoppingItem): string | null {
     return item.ingredient_id ?? matchedIngredient[item.id]?.id ?? null;
@@ -295,6 +315,9 @@ export function StockingScreen() {
               // buttando via tutte le risoluzioni. `PantryRow.commitExpiry` fa la
               // stessa cosa nello stesso modo: le due forme devono restare uguali.
               expires_on: expiry[itemId] || null,
+              // sempre presente come la scadenza; `null` per lo sfuso e per ogni
+              // prodotto che non è stato scelto a catalogo dopo un codice letto
+              barcode: (resolution.kind === "product" && resolution.barcode) || null,
             };
           })
           .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
@@ -318,6 +341,10 @@ export function StockingScreen() {
     onSuccess: (result, { item, code }) => {
       const product = result.product;
       setMismatch(null);
+      // un codice che ha già il suo prodotto non segue la voce altrove, neanche
+      // quando quel prodotto è di un altro ingrediente: darlo a un prodotto nuovo
+      // sarebbe un 409, e a uno scelto a catalogo un furto che il backend rifiuta
+      rememberUnlinkedCode(item, product ? null : code);
       if (product && product.ingredient_id !== effectiveIngredientId(item)) {
         // `GET /products/barcode/{code}` cerca per codice e basta, quindi la
         // referenza che torna può essere di un altro ingrediente: «Passata Mutti»
@@ -339,6 +366,10 @@ export function StockingScreen() {
       }
       setScanningFor(null);
     },
+    // il codice è stato letto anche se il lookup no: la via diretta lo porta già
+    // al modulo («Crea il prodotto a mano» qui sotto), il catalogo deve fare lo
+    // stesso. Se poi risultasse di un altro prodotto, il backend non lo sposta
+    onError: (_error, { item, code }) => rememberUnlinkedCode(item, code),
   });
   const { mutate: lookupCode } = lookup;
   const failedLookup = lookup.isError ? lookup.variables : null;
@@ -504,6 +535,7 @@ export function StockingScreen() {
                   <input
                     id={`expiry-${item.id}`}
                     type="date"
+                    max={EXPIRY_INPUT_MAX}
                     value={expiry[item.id] ?? ""}
                     onChange={(e) =>
                       setExpiry((prev) => ({ ...prev, [item.id]: e.target.value }))
@@ -588,11 +620,21 @@ export function StockingScreen() {
           key={searchingFor.id}
           itemLabel={searchingFor.raw_text}
           ingredientId={effectiveIngredientId(searchingFor) as string}
+          // il codice letto un attimo prima segue entrambe le uscite che danno un
+          // prodotto (S8): senza, la prossima scansione dello stesso codice non
+          // trovava niente e si ricominciava da capo
           onPicked={(product) => {
-            setResolved((prev) => ({ ...prev, [searchingFor.id]: { kind: "product", product } }));
+            setResolved((prev) => ({
+              ...prev,
+              [searchingFor.id]: {
+                kind: "product",
+                product,
+                barcode: unlinkedCode[searchingFor.id],
+              },
+            }));
             setSearchingFor(null);
           }}
-          onCreateByHand={() => createByHand(searchingFor, "")}
+          onCreateByHand={() => createByHand(searchingFor, unlinkedCode[searchingFor.id] ?? "")}
           onCancel={() => setSearchingFor(null)}
         />
       )}

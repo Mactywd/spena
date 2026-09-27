@@ -135,10 +135,13 @@ export function PantryScreen() {
   // niente lapide sopravvive allo schermo: senza questo, uno unmount a metà dei
   // sei secondi (i test lo fanno a ogni riga) lascerebbe un timer acceso che
   // invalida una query di un componente non più a video
+  // (la mappa si prende una volta, all'inizio: è sempre la stessa, ma la regola
+  // degli hook non può saperlo e avvisa per un `.current` letto nella pulizia)
   useEffect(() => {
+    const timers = undoTimers.current;
     return () => {
-      undoTimers.current.forEach(clearTimeout);
-      undoTimers.current.clear();
+      timers.forEach(clearTimeout);
+      timers.clear();
     };
   }, []);
 

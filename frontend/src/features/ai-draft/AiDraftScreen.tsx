@@ -429,7 +429,8 @@ export function AiDraftScreen() {
                     {line.manual ? (
                       // il ruolo di una riga scelta a mano lo decide chi scrive:
                       // il backend non ha niente da dire su una riga che non ha
-                      // proposto lui. Bersagli da pollice, come StatusToggle.
+                      // proposto lui. Bersagli da pollice, come i pulsanti di stato
+                      // del foglio di cottura.
                       <div className="flex gap-1" role="group" aria-label={`Ruolo di ${line.label}`}>
                         {(["primary", "secondary"] as IngredientRole[]).map((role) => (
                           <button

@@ -30,3 +30,14 @@ export const EXPIRY_TONE: Record<ExpiryState, string> = {
   soon: "bg-expiry-tint text-expiry",
   expired: "bg-expiry text-white",
 };
+
+/** Il `max` di ogni campo data della scadenza.
+ *
+ * Senza, Chromium lascia battere un anno di sei cifre («202026-09-28»), e il campo
+ * lo consegna com'è. È lo stesso limite di `datetime.date.max` in Python — il
+ * backend legge `expires_on` come `date`, e un anno oltre il 9999 non lo sa nemmeno
+ * rappresentare — quindi il campo non può più produrre una data che il server
+ * rifiuterebbe. Non è un limite di plausibilità (fra quanti anni scade un barattolo
+ * non è una decisione da prendere qui) e non ha un gemello `min`: una data già
+ * passata è legittima, la si scrive il giorno dopo col barattolo in mano (D5). */
+export const EXPIRY_INPUT_MAX = "9999-12-31";
