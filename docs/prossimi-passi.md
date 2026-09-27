@@ -834,8 +834,11 @@ deve usare gli stessi pezzi.
 
 ## S9. Correggere quel che è stato registrato male **[D, con TBD sulla forma]**
 Mattia ha legato per sbaglio il codice a barre di un parmigiano a «burro», e non c'è
-modo di sistemarlo dall'app. **Il problema è generale: un errore di registrazione
-resta per sempre.** Verificato sul codice: le rotte di `ingredients.py` e
+modo di sistemarlo dall'app. *(Quel parmigiano è stato sistemato a mano in produzione
+il 2026-09-27: prodotto `ace228d2…` e il suo unico elemento di dispensa spostati da
+«burro» a «parmigiano», in una transazione con la guardia sull'ingrediente di
+partenza. S9 resta aperta per il caso generale.)* **Il problema è generale: un errore
+di registrazione resta per sempre.** Verificato sul codice: le rotte di `ingredients.py` e
 `products.py` creano e basta, nessuna `PATCH` e nessuna `DELETE`. Oggi dall'app non
 si può:
 - **su un prodotto**: cambiare l'ingrediente sotto cui sta, il nome, la marca, o
