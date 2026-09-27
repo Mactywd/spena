@@ -73,8 +73,10 @@ export function MergePanel({
       // c'è già più), ma la strada è la stessa: si rilegge con `refetch` acceso, e se
       // il perdente non c'è più è la sua stessa scheda a scoprirlo e a passare alla
       // schermata «non c'è più» (§6.3) — invece di un «Riprova» che ripeterebbe lo
-      // stesso 404 in eterno.
-      void refreshAfterCorrection(queryClient);
+      // stesso 404 in eterno. L'anteprima resta fuori (`excludeQueryKey`): non è lei
+      // ad essere fallita, e rilanciarla vorrebbe dire un'altra fusione intera (~130s)
+      // in silenzio dietro un errore che non la riguarda (fix round 2).
+      void refreshAfterCorrection(queryClient, true, ["registry", "merge-preview"]);
     },
   });
 

@@ -60,11 +60,26 @@ const TOUCHED = [
  *
  * Con `refetch = false` si segna vecchio senza rileggere: serve a chi sta per lasciare
  * la schermata (una fusione, un'eliminazione), perché rileggere subito vorrebbe dire
- * chiedere al server una scheda che non esiste più. La schermata dopo rilegge da sé. */
-export function refreshAfterCorrection(client: QueryClient, refetch = true) {
+ * chiedere al server una scheda che non esiste più. La schermata dopo rilegge da sé.
+ *
+ * `excludeQueryKey`, se dato, lascia fuori le query la cui chiave comincia così: serve a
+ * chi rilegge dopo un guasto della fusione vera senza rilanciare anche l'anteprima della
+ * fusione, che è già un'intera fusione (fino a 130s) e non è lei ad essere fallita
+ * (Task 17, fix round 2). */
+export function refreshAfterCorrection(
+  client: QueryClient,
+  refetch = true,
+  excludeQueryKey?: readonly unknown[]
+) {
+  const isExcluded = (key: readonly unknown[]) =>
+    excludeQueryKey !== undefined && excludeQueryKey.every((part, i) => key[i] === part);
   return Promise.all(
     TOUCHED.map((key) =>
-      client.invalidateQueries({ queryKey: [key], refetchType: refetch ? "active" : "none" })
+      client.invalidateQueries({
+        queryKey: [key],
+        refetchType: refetch ? "active" : "none",
+        predicate: (query) => !isExcluded(query.queryKey),
+      })
     )
   );
 }

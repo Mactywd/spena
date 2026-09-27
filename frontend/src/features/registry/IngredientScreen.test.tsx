@@ -344,7 +344,12 @@ describe("IngredientScreen", () => {
         await screen.findByText(/Questo ingrediente non c'è più/, undefined, { timeout: 8000 })
       ).toBeInTheDocument();
       expect(screen.queryByText(/Niente è cambiato/)).toBeNull();
-      expect(callsTo(spy, "POST", "/ingredients/i-pomodori/merge").length).toBeGreaterThanOrEqual(1);
+      // il guasto è sulla fusione vera, non sull'anteprima: rileggere dopo il guasto
+      // non deve rilanciarla in silenzio, un'altra fusione intera da ~130s (fix round 2)
+      const anteprime = callsTo(spy, "POST", "/ingredients/i-pomodori/merge").filter(
+        ([, init]) => JSON.parse(String((init as RequestInit).body)).dry_run === true
+      );
+      expect(anteprime).toHaveLength(1);
     },
     10000
   );
