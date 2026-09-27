@@ -239,12 +239,19 @@ describe("IngredientScreen", () => {
   });
 
   it("l'anteprima dice cosa si sposta, e «Unisci» porta al vincitore con l'esito in vista", async () => {
+    // dopo la fusione vera il perdente non c'è più: lo stub lo riflette invece di
+    // dichiararlo soltanto (Minor d)
+    let fuso = false;
     const spy = stubRoutedFetch((path, init) => {
       if (path.endsWith("/ingredients/i-pomodori/merge")) {
         const { dry_run } = JSON.parse(String(init?.body));
+        if (!dry_run) fuso = true;
         return [{ ...ANTEPRIMA, dry_run }, 200];
       }
       if (path.endsWith("/ingredients/i-pomodoro")) return [POMODORO_SCHEDA, 200];
+      if (path.endsWith("/ingredients/i-pomodori")) {
+        return fuso ? [{ detail: "non c'è più" }, 404] : (base(path) ?? [{}, 404]);
+      }
       return base(path) ?? [{}, 404];
     });
     renderAt("/anagrafica/ingrediente/i-pomodori");
@@ -258,6 +265,7 @@ describe("IngredientScreen", () => {
         "Si spostano 3 ricette, 1 elemento di dispensa, 2 alias. «pomodori» diventa un alias di «pomodoro». Non si annulla."
       )
     ).toBeInTheDocument();
+    const getPrimaDellaFusione = callsTo(spy, "GET", "/ingredients/i-pomodori").length;
     await userEvent.click(screen.getByRole("button", { name: "Unisci" }));
 
     expect(await screen.findByRole("heading", { name: "Pomodoro" })).toBeInTheDocument();
@@ -269,6 +277,116 @@ describe("IngredientScreen", () => {
       { into: "i-pomodoro", dry_run: true },
       { into: "i-pomodoro", dry_run: false },
     ]);
+    // il successo rilegge senza `refetch` (Task 17): nessuna GET del perdente dopo
+    // essere arrivati sulla scheda del vincitore
+    expect(callsTo(spy, "GET", "/ingredients/i-pomodori")).toHaveLength(getPrimaDellaFusione);
+  });
+
+  it("l'anteprima non si ritenta da sola: «Riprova» compare al primo guasto, e la rilancia", async () => {
+    // ogni tentativo è una fusione intera (fino a ~130s, 300s a nginx): il predicato
+    // di retry vero ne farebbe fino a tre in coda prima di mostrare «Riprova» — qui
+    // se ne conta uno solo (Important 1)
+    let tentativi = 0;
+    const spy = stubRoutedFetch((path) => {
+      if (path.endsWith("/ingredients/i-pomodori/merge")) {
+        tentativi += 1;
+        return tentativi === 1 ? [{ detail: "errore del server" }, 500] : [ANTEPRIMA, 200];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "pomod");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    expect(await screen.findByText("Non sono riuscito a calcolare l'anteprima.")).toBeInTheDocument();
+    expect(callsTo(spy, "POST", "/ingredients/i-pomodori/merge")).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
+
+    expect(await screen.findByText(/Si spostano/)).toBeInTheDocument();
+    expect(callsTo(spy, "POST", "/ingredients/i-pomodori/merge")).toHaveLength(2);
+  });
+
+  it(
+    "un guasto sulla fusione vera non finge di sapere: rilegge, e se il perdente non c'è " +
+      "più passa alla sua schermata",
+    async () => {
+      // il 500 sulla fusione vera è un guasto di rete/nginx (spec: un 504 misurato),
+      // non un rifiuto: il server può averla comunque portata a termine (Important 2)
+      let tentata = false;
+      const spy = stubRoutedFetch((path, init) => {
+        if (path.endsWith("/ingredients/i-pomodori/merge")) {
+          const { dry_run } = JSON.parse(String(init?.body));
+          if (dry_run) return [{ ...ANTEPRIMA, dry_run }, 200];
+          tentata = true;
+          return [{ detail: "errore del server" }, 500];
+        }
+        if (path.endsWith("/ingredients/i-pomodori")) {
+          // rileggendo dopo il guasto si scopre che la fusione era andata a segno
+          return tentata ? [{ detail: "non c'è più" }, 404] : (base(path) ?? [{}, 404]);
+        }
+        return base(path) ?? [{}, 404];
+      });
+      renderAt("/anagrafica/ingrediente/i-pomodori");
+
+      await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+      await userEvent.type(screen.getByLabelText("Unisci a"), "pomod");
+      await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+      await screen.findByText(/Si spostano/);
+
+      await userEvent.click(screen.getByRole("button", { name: "Unisci" }));
+
+      // la scheda del perdente, rilettura dopo rilettura (il predicato di retry vero,
+      // qui, è quello dell'ingrediente — Parte X), scopre di essere sparita
+      expect(
+        await screen.findByText(/Questo ingrediente non c'è più/, undefined, { timeout: 8000 })
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Niente è cambiato/)).toBeNull();
+      expect(callsTo(spy, "POST", "/ingredients/i-pomodori/merge").length).toBeGreaterThanOrEqual(1);
+    },
+    10000
+  );
+
+  it("«Unisci», «Cambia» e «Lascia com'è» restano disabilitati mentre la fusione vera è in corso", async () => {
+    let risolviFusione: ((response: Response) => void) | null = null;
+    const fusionePendente = new Promise<Response>((resolve) => {
+      risolviFusione = resolve;
+    });
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      if (path.endsWith("/ingredients/i-pomodori/merge")) {
+        const { dry_run } = JSON.parse(String(init?.body));
+        if (dry_run) {
+          return Promise.resolve(new Response(JSON.stringify({ ...ANTEPRIMA, dry_run }), { status: 200 }));
+        }
+        return fusionePendente;
+      }
+      if (path.endsWith("/ingredients/i-pomodoro")) {
+        return Promise.resolve(new Response(JSON.stringify(POMODORO_SCHEDA), { status: 200 }));
+      }
+      const [body, status] = base(path) ?? [{}, 404];
+      return Promise.resolve(new Response(JSON.stringify(body), { status }));
+    });
+    vi.stubGlobal("fetch", spy);
+
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "pomod");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    await screen.findByText(/Si spostano/);
+
+    await userEvent.click(screen.getByRole("button", { name: "Unisci" }));
+
+    expect(await screen.findByRole("button", { name: "Unisco…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cambia" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Lascia com'è" })).toBeDisabled();
+
+    risolviFusione!(new Response(JSON.stringify({ ...ANTEPRIMA, dry_run: false }), { status: 200 }));
+
+    expect(await screen.findByRole("heading", { name: "Pomodoro" })).toBeInTheDocument();
   });
 
   it("tra un alimento e una voce non alimentare offre il cambio di reparto", async () => {

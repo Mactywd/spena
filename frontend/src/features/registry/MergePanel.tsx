@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { ApiError } from "../../api/client";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
 import { Card } from "../../components/ui/Card";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Ingredient, IngredientDetail } from "../../domain/types";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { mergeIngredient, refreshAfterCorrection, registryRefusal } from "./api";
 import { ingredientPath, type Origin } from "./origin";
 import { mergePreviewText, mergeSlowWarning } from "./wording";
@@ -16,10 +16,16 @@ import { mergePreviewText, mergeSlowWarning } from "./wording";
  * L'anteprima è una query e non una mutazione: è il dato di una coppia (perdente,
  * vincitore), e il server la calcola eseguendo la fusione vera dentro un SAVEPOINT che
  * annulla (§5.1). `staleTime: Infinity` e niente `refetchOnWindowFocus` (deciso al
- * Task 11, F13): sopra i 1.000 ricette una fusione può prendere minuti, e non si
- * ririfà da capo per un cambio di finestra o perché un'altra correzione ha invalidato
- * `["registry"]` — riparte solo quando cambia il vincitore scelto, che è nella query
- * key. Un rifiuto non si ritenta: è una risposta, non un guasto. */
+ * Task 11, F13): senza uno stale time infinito il montaggio o un cambio di finestra la
+ * rilancerebbero da soli, e ogni lancio è una fusione intera. Un'invalidazione esplicita
+ * la rilancia comunque — `staleTime` non blocca quella — ed è voluto: se uno spostamento
+ * d'alias cambia i conti mentre il pannello è aperto, l'anteprima deve dirlo, ed è
+ * proprio `["registry"]` che `refreshAfterCorrection` invalida. Riparte anche quando
+ * cambia il vincitore scelto, che è nella query key. Un rifiuto non si ritenta: è una
+ * risposta, non un guasto — e nemmeno un guasto si ritenta da solo (`retry: 0` sotto):
+ * ogni tentativo è una fusione intera dentro un SAVEPOINT, fino a 130s e 300s a nginx,
+ * e il predicato di retry vero ne metterebbe in coda fino a tre prima di mostrare
+ * «Riprova» — quasi un quarto d'ora. Qui il recupero è il bottone, non il predicato. */
 export function MergePanel({
   ingredient,
   initialWinner,
@@ -48,7 +54,7 @@ export function MergePanel({
     enabled: winner !== null,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
-    retry: (count, error) => registryRefusal(error) === null && defaultQueryRetryPredicate(count, error),
+    retry: 0,
   });
 
   const merge = useMutation({
@@ -60,10 +66,23 @@ export function MergePanel({
       void refreshAfterCorrection(queryClient, false);
       navigate(ingredientPath(counts.winner_id, origin), { state: { merged: counts } });
     },
+    onError: () => {
+      // Una richiesta caduta a metà (rete, un 504) non dice se la fusione — che il
+      // server esegue per intero prima di rispondere — sia arrivata in fondo: solo
+      // rileggere il perdente lo sa. Un 404 qui è già la risposta (il perdente non
+      // c'è già più), ma la strada è la stessa: si rilegge con `refetch` acceso, e se
+      // il perdente non c'è più è la sua stessa scheda a scoprirlo e a passare alla
+      // schermata «non c'è più» (§6.3) — invece di un «Riprova» che ripeterebbe lo
+      // stesso 404 in eterno.
+      void refreshAfterCorrection(queryClient);
+    },
   });
 
   const counts = preview.data;
   const refusal = registryRefusal(preview.error) ?? registryRefusal(merge.error);
+  // un 404 sulla POST della fusione vera vuol dire che il perdente non c'è già più:
+  // è già successo, non un guasto da ritentare (Important 2)
+  const mergeAlreadyDone = merge.error instanceof ApiError && merge.error.status === 404;
   // il perdente è questo ingrediente, non il vincitore: è lui che sparisce dentro la
   // fusione, e il suo numero di ricette è quello che decide quanto ci vuole (Task 11)
   const slowWarning = winner !== null ? mergeSlowWarning(ingredient.usage.recipes) : null;
@@ -87,7 +106,13 @@ export function MergePanel({
           <button
             type="button"
             disabled={busy}
-            onClick={() => setWinner(null)}
+            onClick={() => {
+              // altrimenti l'alert della fusione fallita resta in vista col vincitore
+              // sbagliato sotto, e il suo «Riprova» punterebbe a un'anteprima che non
+              // c'è più (Minor a)
+              merge.reset();
+              setWinner(null);
+            }}
             className={buttonClasses("ghost")}
           >
             Cambia
@@ -134,21 +159,27 @@ export function MergePanel({
       )}
       {refusal === null && merge.isError && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-danger">Non sono riuscito a unirli. Niente è cambiato.</span>
-          <button
-            type="button"
-            // il bottone «Unisci» che ha appena fallito esiste solo quando `counts`
-            // c'è: la stessa anteprima, ancora in cache (`staleTime: Infinity`),
-            // dice ancora chi è il vincitore
-            onClick={() => merge.mutate(counts!.winner_id)}
-            className={buttonClasses("secondary")}
-          >
-            Riprova
-          </button>
+          <span className="text-danger">
+            {mergeAlreadyDone
+              ? `«${ingredient.display_name}» risulta già unito: aggiorno la scheda.`
+              : "Non so se l'unione sia riuscita: sto controllando."}
+          </span>
+          {/* niente «Riprova» per un 404: il perdente non c'è già più, e ritentare
+              vorrebbe dire lo stesso 404 all'infinito (Important 2). Compare solo se
+              `counts` c'è ancora, la stessa anteprima in cache che dice il vincitore */}
+          {!mergeAlreadyDone && counts && (
+            <button
+              type="button"
+              onClick={() => merge.mutate(counts.winner_id)}
+              className={buttonClasses("secondary")}
+            >
+              Riprova
+            </button>
+          )}
         </div>
       )}
 
-      <button type="button" onClick={onClose} className={buttonClasses("ghost")}>
+      <button type="button" disabled={merge.isPending} onClick={onClose} className={buttonClasses("ghost")}>
         Lascia com'è
       </button>
     </Card>
