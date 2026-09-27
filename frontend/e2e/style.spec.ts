@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { expect, test, type Locator } from "@playwright/test";
 
 /**
@@ -276,6 +278,138 @@ test("il gradino scelto della scala si distingue, e si legge", async ({ page }) 
   const b = luminanza(await coloreDella("backgroundColor"));
   const rapporto = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
   expect(rapporto).toBeGreaterThanOrEqual(4.5);
+});
+
+/** Un token del blocco `@theme` di `src/index.css`, come `rgb(r, g, b)`.
+ *
+ * Letto dal file e non ricopiato qui: se il colore cambia in `index.css`, il controllo
+ * del contrasto qui sotto misura il colore nuovo e lo confronta con il nuovo valore del
+ * token — non con un esadecimale rimasto indietro in un test. */
+function tokenDelTema(nome: string): string {
+  const css = readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8");
+  const tema = css.match(/@theme\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+  const esadecimale = tema.match(new RegExp(`--color-${nome}:\\s*#([0-9a-fA-F]{6})\\s*;`))?.[1];
+  expect(esadecimale, `--color-${nome} non è nel blocco @theme di index.css`).toBeDefined();
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(esadecimale!.slice(i, i + 2), 16));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** Il contrasto di un testo com'è a video, misurato dal browser.
+ *
+ * Colore del testo e fondo si leggono da `getComputedStyle`; il fondo è quello del primo
+ * antenato che ne dipinge uno — un `<p>` sulla pagina è trasparente, e dietro di lui c'è
+ * il `body` — e il rapporto WCAG si calcola dentro la pagina. Torna anche la dimensione
+ * del carattere e l'opacità composta degli antenati: un'opacità sotto 1 schiarirebbe il
+ * testo a video senza che il colore calcolato lo dica, e il rapporto mentirebbe.
+ *
+ * `el` è `any`: questo file lo compila tsconfig.node.json, senza la libreria DOM, quindi
+ * `getComputedStyle` come globale non compilerebbe. Passando dalla finestra
+ * dell'elemento sì — e la funzione si serializza e gira nel browser comunque. */
+async function contrastoAVideo(testo: Locator) {
+  return testo.evaluate((el) => {
+    const view = el.ownerDocument.defaultView;
+    const canali = (colore: string) => (colore.match(/[\d.]+/g) ?? []).map(Number);
+    const luminanza = (colore: string) => {
+      const [r, g, b] = canali(colore).map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+
+    let fondo: string | null = null;
+    let opacita = 1;
+    for (let nodo = el; nodo; nodo = nodo.parentElement) {
+      const stile = view.getComputedStyle(nodo);
+      opacita *= Number(stile.opacity);
+      const alfa = canali(stile.backgroundColor)[3] ?? 1;
+      if (fondo === null && alfa > 0) fondo = stile.backgroundColor;
+    }
+
+    const stile = view.getComputedStyle(el);
+    const a = luminanza(stile.color);
+    const b = luminanza(fondo ?? "rgb(255, 255, 255)");
+    return {
+      colore: stile.color as string,
+      fondo: fondo as string | null,
+      dimensione: stile.fontSize as string,
+      opacita,
+      rapporto: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+    };
+  });
+}
+
+async function controllaContrasto(testo: Locator, token: string) {
+  await expect(testo).toBeVisible();
+  const misura = await contrastoAVideo(testo);
+  test.info().annotations.push({
+    type: "contrasto",
+    description: `--color-${token} su ${misura.fondo}: ${misura.rapporto.toFixed(2)}:1`,
+  });
+  // è davvero il token, sul fondo della pagina, in `text-xs`, senza veli: altrimenti il
+  // numero qui sotto sarebbe vero di un altro testo, non di quello che si voleva provare
+  expect(misura.colore).toBe(tokenDelTema(token));
+  expect(misura.fondo).toBe(tokenDelTema("page"));
+  expect(misura.dimensione).toBe("12px");
+  expect(misura.opacita).toBe(1);
+  // AA per il testo piccolo: 12px non è «testo grande», quindi la soglia è 4.5 e non 3
+  expect(misura.rapporto, `--color-${token} su --color-page`).toBeGreaterThanOrEqual(4.5);
+}
+
+// Parte IX, a. `index.css` *afferma* che `ink-faint` è il più chiaro che regge 4.5:1 sul
+// fondo della pagina, e `low` ci sta sopra di un soffio: calcolati a mano, 4.58:1 e
+// 4.60:1, cioè un 2% di margine. Qui lo misura il browser, sui testi veri che li usano
+// in `text-xs` direttamente sul grigio della pagina — il caso peggiore, perché su una
+// scheda bianca lo stesso colore rende di più.
+test("il testo più chiaro dell'app regge 4.5:1 sul fondo della pagina, misurato a video", async ({
+  page,
+}) => {
+  // `ink-faint`: la didascalia sotto la scala «quanto posso comprare» del ricettario, che
+  // c'è sempre, anche a ricettario vuoto
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  await controllaContrasto(page.getByText("Tutto il ricettario.", { exact: true }), "ink-faint");
+
+  // `low` in `text-xs` sul fondo della pagina sta in un posto solo: la bozza AI, sotto
+  // un aggancio da confermare. La bozza la scrive il modello, che qui non si chiama:
+  // la risposta di `POST /recipes/ai-draft` la dà `page.route`, e lo schermo, il
+  // componente e il CSS sono quelli veri. L'ingrediente agganciato è uno vero del seme.
+  const pomodoro = (
+    (await (await page.request.get("/api/v1/ingredients/search?q=pomodoro")).json()) as {
+      id: string;
+      name: string;
+    }[]
+  ).find((voce) => voce.name === "pomodoro");
+  expect(pomodoro, "«pomodoro» non è nel seme").toBeDefined();
+  let bozzeServite = 0;
+  await page.route("**/api/v1/recipes/ai-draft", (route) => {
+    bozzeServite += 1;
+    return route.fulfill({
+      json: {
+        title: "Sugo di prova",
+        description: null,
+        instructions: "Scalda e servi.",
+        servings: 2,
+        cost: null,
+        ingredients: [
+          {
+            raw_name: "Pomodori pelati",
+            role: "primary",
+            quantity_text: "400 g",
+            ingredient_id: pomodoro!.id,
+            matched_name: "pomodoro",
+            confident: false,
+            proposed_category: null,
+          },
+        ],
+      },
+    });
+  });
+  await page.goto("/ricette/nuova-ai");
+  await page.getByLabel("Cosa vuoi cucinare").fill("un sugo");
+  await page.getByRole("button", { name: "Proponi", exact: true }).click();
+  await controllaContrasto(page.getByText(/^Parte escluso, perché l'aggancio/), "low");
+  // la risposta l'ha data lo stub, non il modello: nessuna chiamata a OpenRouter
+  expect(bozzeServite).toBe(1);
 });
 
 test("il campo data si vede, e la pastiglia della scadenza porta il suo colore", async ({
