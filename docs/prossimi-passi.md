@@ -1,6 +1,8 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-27, quattro volte. La quarta: **il giro di T3 è fatto** — un
+Aggiornato il 2026-09-27, cinque volte. La quinta: **S9 è fatta** — l'hamburger apre
+«Anagrafica» (T1 chiusa) e l'annullamento della coda non chiede più conferma. La
+quarta: **il giro di T3 è fatto** — un
 sottoagente ha girato il sito su una copia dei dati di produzione e ha annotato 99
 osservazioni. I difetti, ricontrollati sul codice, sono diventati voci loro
 (S16–S21 in Parte II, R10 e R11 in Parte III, T4, più tre dettagli in S10 e uno in Parte X); il resto è sotto T3, materiale della
@@ -837,7 +839,7 @@ prodotto: il catalogo e la creazione a mano dal catalogo; lo sfuso no. Scrivere 
 il test di ciascuna uscita. Vale anche per l'ingresso diretto in dispensa (S3), che
 deve usare gli stessi pezzi.
 
-## S9. Correggere quel che è stato registrato male **[FATTO IN PARTE 2026-09-27 — la Consegna 1 (backend); la Consegna 2 (schermate) resta aperta]**
+## S9. Correggere quel che è stato registrato male **[FATTO 2026-09-27 — spec: docs/superpowers/specs/2026-09-27-anagrafica-design.md]**
 Spec: `docs/superpowers/specs/2026-09-27-anagrafica-design.md`.
 
 **Consegna 1 (backend) fatta il 2026-09-27:** il servizio `app/services/registry.py`,
@@ -861,9 +863,9 @@ rimessa in coda che finisce `SKIPPED` tiene gli id delle cotture nel `payload`; 
 cotture restano con `recipe_id` `NULL`. Raro, gli id sono recuperabili dal `payload`;
 la spec §5.2 non lo prevedeva.
 
-**Per il Task 17 (Consegna 2):** lo schermo della fusione deve avvisare «può volerci
-qualche minuto» quando l'ingrediente perdente è in più di 1.000 ricette (deciso con
-Mattia al Task 11).
+**Task 17 costruito:** lo schermo della fusione avvisa «può volerci qualche minuto»
+quando l'ingrediente perdente è in più di 1.000 ricette. L'anteprima della fusione non
+riprova da sola, perché ogni tentativo è una fusione intera.
 
 Mattia ha legato per sbaglio il codice a barre di un parmigiano a «burro», e non c'è
 modo di sistemarlo dall'app. *(Quel parmigiano è stato sistemato a mano in produzione
@@ -889,13 +891,10 @@ spostati fuori dal comando, e non una seconda copia. Sui prodotti non c'è ancor
 niente: servono la modifica e la rimozione del codice. Una rimozione non deve rompere
 gli elementi di dispensa che puntano al prodotto (`pantry_items.product_id`).
 
-**TBD**: dove vive la correzione. Proposta: dalla riga della dispensa (tocco sul nome
-→ scheda dell'elemento con prodotto e ingrediente modificabili) e da una pagina
-«Anagrafica» nell'hamburger (T1) per ingredienti e prodotti che non sono in dispensa.
-
-**Il caso concreto resta sbagliato in produzione** finché la voce non c'è. Se Mattia
-vuole, si corregge prima a mano sul database, dicendo quale prodotto spostare. Nessuno
-l'ha ancora fatto.
+**Deciso e costruito** (spec del 2026-09-27): dalla riga della dispensa — il nome è un
+link alla scheda del prodotto, o dell'ingrediente se lo sfuso — e da «Anagrafica»
+nell'hamburger per quel che in dispensa non c'è. Un servizio solo,
+`app/services/registry.py`, per l'app e per `fix_registry`.
 
 ## S10. «Sistema la spesa»: lo scanner e il modulo si aprono in fondo, fuori vista **[D]**
 Con molte voci, ognuna con le sue tre opzioni, premere «scansiona» su una voce in alto
@@ -2254,6 +2253,12 @@ layout a 375px.
   nessuno di questi test, che vedrebbero solo il fallimento secco che hanno chiesto
   loro stessi. Preesistente, non causato da questo lavoro; trovato passando mentre
   si verificava lo stesso principio altrove.
+- **«Deciso nella coda» porta a una coda che può non mostrare quella decisione.** La
+  scheda dell'ingrediente (S9) rimanda alla coda per gli alias che sono la metà di una
+  decisione, ma «Decisioni recenti» mostra solo le 50 più recenti per autore: una
+  decisione vecchia non si trova. Serve un filtro per termine nella coda
+  (`/ricette/importa?termine=<id>`), o l'annulla direttamente dalla scheda. Dal piano
+  di S9, verificato sul codice.
 
 ---
 

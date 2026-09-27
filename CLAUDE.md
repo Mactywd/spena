@@ -191,7 +191,13 @@ production, which is the first defect listed above.
   is finer than the ingredient registry: `Rigatoni` becomes an alias of `pasta`,
   decided once in `import_terms` and written into `ingredient_aliases`. There is
   no second mapping table, and a wrong decision is corrected from the ingredient
-  registry. **The LLM decides these terms and the queue is the review**: every
+  registry — since S9 a place in the app, «Anagrafica» from the hamburger
+  (`frontend/src/features/registry/`), over the single service
+  `backend/app/services/registry.py` that `app.cli.fix_registry` also calls. The
+  exception is an alias that is half of a queue decision (`source = "import"` with
+  its term still in `import_terms`): that one is corrected from the queue, where R11
+  shows manual decisions too, so the queue and the registry never disagree.
+  **The LLM decides these terms and the queue is the review**: every
   decision carries `decided_by = "ai"` and has an undo that puts the term, the
   alias, the created ingredient and the materialized recipes back.
   Undo never refuses over recipes already cooked: the ids of their cooking events wait

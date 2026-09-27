@@ -289,3 +289,16 @@ dump cancellato. Il repo è pubblico: niente di quella prova entra in git.
   ingredient registry» ora ha un posto nell'app; e l'annullamento non rifiuta più le
   ricette cucinate, perché le cotture si ri-legano.
 - La docstring di `services/recipe_import/undo.py` che spiega `CookedRecipesAffected`.
+
+**Scostamenti decisi durante la costruzione** (Task 23, annunciati a Mattia):
+
+- `DELETE /products/{id}` risponde 200 con `loose_pantry_items`, non 204.
+- Un codice a barre con la cifra di controllo sbagliata è un 409 `bad_checksum`,
+  a meno che non si dica `accept_bad_checksum: true` («Usalo lo stesso»).
+- La guardia `import_alias` è ristretta agli alias con `source = "import"` il cui
+  termine è ancora in `import_terms`, tramite `queue_decision_for`.
+- La prova e2e del §9.7 crea il prodotto e la riga di dispensa attraverso l'API.
+- La rotta di fusione ha `proxy_read_timeout 300s` in nginx, dopo la prova sulla
+  copia della produzione (6.236 ricette, circa 130 s).
+- `delete_ingredient_if_unused` non cancella più gli alias in blocco: scade la
+  collezione e si affida alla cascata.
