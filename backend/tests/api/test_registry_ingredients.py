@@ -17,7 +17,13 @@ from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCate
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
 from app.db.models.recipe import RecipeSource
-from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
+from app.db.models.recipe_import import (
+    GIALLOZAFFERANO,
+    ImportState,
+    ImportTerm,
+    RecipeImport,
+    TermDecision,
+)
 from app.db.models.shopping import ShoppingListItem, ShoppingReason, ShoppingStatus
 from app.domain.rules import PantryStatus
 from app.repositories.ingredients import add_alias, remember_alias
@@ -143,7 +149,37 @@ async def test_il_non_alimentare_con_ricette_e_un_409_che_le_elenca(logged_clien
     assert corpo["code"] == "non_food_in_recipes"
     assert corpo["recipe_count"] == 1
     assert corpo["recipes"] == [{"id": str(anagrafica["risotto"]), "title": "Risotto al burro"}]
+    assert corpo["pending_import_count"] == 0
     assert (await logged_client.get(f"{BASE}/{anagrafica['burro']}")).json()["category"] == "latticini"
+
+
+async def test_il_non_alimentare_con_pagine_in_attesa_e_un_409_che_le_conta(
+    logged_client, db_session, anagrafica
+):
+    """«Pomodori pelati» è deciso su `pomodori` e sta su una pagina che aspetta un altro
+    termine: nessuna ricetta la usa ancora, ma una arriverà. Il 409 lo dice con
+    `pending_import_count`, accanto a `recipe_count` che resta 0."""
+    db_session.add_all([
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key="k-basilico", display_name="Basilico",
+            occurrences=1, decision=TermDecision.PENDING,
+        ),
+        RecipeImport(
+            source=GIALLOZAFFERANO, url="https://esempio.invalid/sugo", state=ImportState.PENDING,
+            payload={"title": "Sugo", "ingredients": [{"key": "k-pelati"}, {"key": "k-basilico"}]},
+        ),
+    ])
+    await db_session.commit()
+
+    risposta = await logged_client.patch(
+        f"{BASE}/{anagrafica['pomodori']}", json={"category": "casa"}
+    )
+
+    assert risposta.status_code == 409
+    corpo = risposta.json()
+    assert corpo["code"] == "non_food_in_recipes"
+    assert (corpo["recipe_count"], corpo["recipes"], corpo["pending_import_count"]) == (0, [], 1)
+    assert "1 ricetta dell'import ancora in attesa" in corpo["detail"]
 
 
 async def test_cambiare_reparto_riflette_categoria_e_kind(logged_client, anagrafica):

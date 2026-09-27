@@ -258,6 +258,7 @@ describe("IngredientScreen", () => {
             "«Pomodori» è in 42 ricette: non può diventare non alimentare finché una ricetta lo usa.",
           recipe_count: 42,
           recipes: [{ id: "r1", title: "Sugo semplice" }],
+          pending_import_count: 0,
         }, 409];
       }
       return base(path) ?? [{}, 404];
@@ -273,6 +274,36 @@ describe("IngredientScreen", () => {
     expect(screen.getByText("e altre 41.")).toBeInTheDocument();
     // il reparto scelto resta scelto: si corregge, non si riscrive da capo
     expect(screen.getByLabelText("Reparto")).toHaveValue("casa");
+  });
+
+  it("il rifiuto per le ricette dell'import in attesa porta alla coda, dove la decisione si annulla", async () => {
+    stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        return [{
+          code: "non_food_in_recipes",
+          detail:
+            "«Pomodori» è in 3 ricette dell'import ancora in attesa: non può diventare non " +
+            "alimentare finché una ricetta lo usa.",
+          recipe_count: 0,
+          recipes: [],
+          pending_import_count: 3,
+        }, 409];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia reparto" }));
+    await userEvent.selectOptions(screen.getByLabelText("Reparto"), "casa");
+    await userEvent.click(screen.getByRole("button", { name: "Salva il reparto" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(/3 ricette dell'import ancora in attesa/)).toBeInTheDocument();
+    // nessuna ricetta da elencare, quindi nessun elenco vuoto
+    expect(within(alert).queryByRole("list")).not.toBeInTheDocument();
+    expect(within(alert).getByText(/segnati «Deciso nella coda»/)).toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole("link", { name: "Vai a «Ingredienti da abbinare»" }));
+    expect(await screen.findByText("dove: /ricette/importa")).toBeInTheDocument();
   });
 
   it("l'anteprima dice cosa si sposta, e «Unisci» porta al vincitore con l'esito in vista", async () => {

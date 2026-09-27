@@ -27,7 +27,13 @@ from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCate
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
 from app.db.models.recipe import Recipe, RecipeIngredient
-from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm
+from app.db.models.recipe_import import (
+    GIALLOZAFFERANO,
+    ImportState,
+    ImportTerm,
+    RecipeImport,
+    TermDecision,
+)
 from app.db.models.shopping import ShoppingListItem
 from app.domain.barcodes import has_valid_check_digit
 from app.domain.rules import IngredientKind, IngredientRole, kind_for_category
@@ -91,6 +97,8 @@ class RecipeRef:
 class RecipesInUse:
     count: int
     recipes: tuple[RecipeRef, ...]
+    # le pagine dell'import ancora in attesa che, materializzate, lo userebbero
+    pending_imports: int = 0
 
 
 @dataclass(frozen=True)
@@ -139,6 +147,43 @@ async def recipes_using(session: AsyncSession, ingredient_id: uuid.UUID) -> Reci
     return RecipesInUse(
         count=count, recipes=tuple(RecipeRef(id=row.id, title=row.title) for row in rows)
     )
+
+
+async def pending_imports_using(session: AsyncSession, ingredient_id: uuid.UUID) -> int:
+    """Quante pagine dell'import in attesa hanno una riga il cui termine è deciso su
+    questo ingrediente: sono ricette che arriveranno, e che lo useranno.
+
+    Una query sola, dentro il database: le pagine in attesa si leggono con l'indice
+    sullo stato, e per ognuna si chiede se il suo elenco di righe contiene la chiave
+    di uno dei termini decisi sull'ingrediente — lo stesso contenimento JSONB che
+    `undo_decision` usa sulle pagine importate. Una pagina conta una volta, anche se
+    due suoi termini finiscono sullo stesso ingrediente (il collasso li fa una riga).
+    """
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(RecipeImport)
+            .where(
+                RecipeImport.state == ImportState.PENDING,
+                select(ImportTerm.id)
+                .where(
+                    ImportTerm.ingredient_id == ingredient_id,
+                    ImportTerm.decision == TermDecision.MAPPED,
+                    ImportTerm.source == RecipeImport.source,
+                    RecipeImport.payload["ingredients"].op("@>")(
+                        func.jsonb_build_array(
+                            func.jsonb_build_object("key", ImportTerm.term_key)
+                        )
+                    ),
+                )
+                .exists(),
+            )
+        )
+    ).scalar_one()
+
+
+def _recipes_phrase(count: int) -> str:
+    return "1 ricetta" if count == 1 else f"{count} ricette"
 
 
 async def rename_ingredient(
@@ -216,20 +261,38 @@ async def recategorize_ingredient(
 
     Un ingrediente che una ricetta usa non diventa non alimentare: le ricette puntano
     solo al cibo (decisione fondante 2), e il rifiuto porta le ricette perché lo
-    schermo le elenchi, ciascuna col suo link.
+    schermo le elenchi, ciascuna col suo link. Contano anche le ricette che devono
+    ancora arrivare: le pagine dell'import in attesa con un termine deciso qui.
     """
     ingredient = await _ingredient(session, ingredient_id)
     if category not in {c.value for c in IngredientCategory}:
         raise RegistryRefusal(RefusalCode.UNKNOWN_CATEGORY, f"reparto sconosciuto: «{category}»")
     if kind_for_category(category) == IngredientKind.NON_FOOD:
         in_use = await recipes_using(session, ingredient.id)
-        if in_use.count:
-            recipes = "1 ricetta" if in_use.count == 1 else f"{in_use.count} ricette"
+        waiting = await pending_imports_using(session, ingredient.id)
+        if in_use.count or waiting:
+            where = [_recipes_phrase(in_use.count)] if in_use.count else []
+            if waiting:
+                where.append(f"{_recipes_phrase(waiting)} dell'import ancora in attesa")
+            message = (
+                f"«{ingredient.display_name}» è in {' e in '.join(where)}: non può "
+                "diventare non alimentare finché una ricetta lo usa."
+            )
+            if waiting:
+                # Le pagine in attesa non hanno ancora una ricetta da aprire: il passo
+                # è nella coda, dove la decisione che le lega a questo ingrediente si
+                # annulla. Altrimenti finirebbero scartate («riga non alimentare») il
+                # giorno in cui si materializzano.
+                message += (
+                    " Se un termine dell'import è stato collegato qui per sbaglio, "
+                    "annullane la decisione in «Ingredienti da abbinare»."
+                )
             raise RegistryRefusal(
                 RefusalCode.NON_FOOD_IN_RECIPES,
-                f"«{ingredient.display_name}» è in {recipes}: non può diventare non "
-                "alimentare finché una ricetta lo usa.",
-                in_use,
+                message,
+                RecipesInUse(
+                    count=in_use.count, recipes=in_use.recipes, pending_imports=waiting
+                ),
             )
     ingredient.category = str(category)
     await session.flush()

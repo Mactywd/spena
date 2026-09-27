@@ -27,6 +27,7 @@ def refusal_response(exc: RegistryRefusal) -> JSONResponse:
         content["existing"] = ProductBriefOut.model_validate(obstacle).model_dump(mode="json")
     elif isinstance(obstacle, RecipesInUse):
         content["recipe_count"] = obstacle.count
+        content["pending_import_count"] = obstacle.pending_imports
         content["recipes"] = [
             {"id": str(recipe.id), "title": recipe.title} for recipe in obstacle.recipes
         ]

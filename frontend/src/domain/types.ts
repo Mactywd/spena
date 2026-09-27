@@ -284,6 +284,8 @@ export type RegistryRefusal =
       detail: string;
       recipe_count: number;
       recipes: { id: string; title: string }[];
+      /** Le pagine dell'import in attesa che, materializzate, lo userebbero. */
+      pending_import_count: number;
     }
   | { code: "import_alias"; detail: string; term: { id: string; display_name: string } }
   | { code: "barcode_taken"; detail: string; existing: ProductBrief }
