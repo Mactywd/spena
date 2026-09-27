@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { PantryScreen } from "./PantryScreen";
+import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 
 const ITEMS = [
   { id: "p1", ingredient_id: "i1", product_id: "pr1", ingredient_name: "yogurt greco",
@@ -36,6 +37,21 @@ function stubRoutedFetch(route: (path: string, init?: RequestInit) => [unknown, 
 
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <PantryScreen />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+/** Come `renderScreen`, ma col predicato di retry vero (prima lezione di CLAUDE.md:
+ * un client che ritenta all'infinito non è quello che gira in produzione). Solo per i
+ * due test del link del nome (Task 21, sotto): il resto di questo file resta com'era,
+ * `retry: false`, per non riscrivere prove che non c'entrano con S9. */
+function renderScreenConRetryVero() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -964,7 +980,7 @@ describe("PantryScreen", () => {
     // S9 §6.5: nessuna terza schermata. La scheda dell'elemento è quella del prodotto,
     // e `?da=dispensa` dice al tasto indietro dove tornare
     stubRoutedFetch(() => [ITEMS, 200]);
-    renderScreen();
+    renderScreenConRetryVero();
 
     expect(await screen.findByRole("link", { name: /Total 0%/ })).toHaveAttribute(
       "href", "/anagrafica/prodotto/pr1?da=dispensa"
@@ -977,7 +993,7 @@ describe("PantryScreen", () => {
   it("il tocco è sul nome e non sulla riga: il cursore non sta dentro il link", async () => {
     // il cursore resta un bersaglio solo suo, e S13 resta chiusa
     stubRoutedFetch(() => [ITEMS, 200]);
-    renderScreen();
+    renderScreenConRetryVero();
 
     const nome = await screen.findByRole("link", { name: "mela" });
     const cursore = screen.getByRole("slider", { name: "Quanto ne resta di mela" });
