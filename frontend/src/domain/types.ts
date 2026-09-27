@@ -290,6 +290,9 @@ export type RegistryRefusal =
       recipes: { id: string; title: string }[];
       /** Le pagine dell'import in attesa che, materializzate, lo userebbero. */
       pending_import_count: number;
+      /** I termini che le legano qui, al più dieci per nome; il conto dice il resto. */
+      pending_terms: { id: string; display_name: string }[];
+      pending_term_count: number;
     }
   | {
       code: "import_alias" | "decision_refused";

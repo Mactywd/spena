@@ -261,6 +261,8 @@ describe("IngredientScreen", () => {
           recipe_count: 42,
           recipes: [{ id: "r1", title: "Sugo semplice" }],
           pending_import_count: 0,
+          pending_terms: [],
+          pending_term_count: 0,
         }, 409];
       }
       return base(path) ?? [{}, 404];
@@ -289,6 +291,11 @@ describe("IngredientScreen", () => {
           recipe_count: 0,
           recipes: [],
           pending_import_count: 3,
+          pending_terms: [
+            { id: "t-pelati", display_name: "Pomodori pelati" },
+            { id: "t-passata", display_name: "Passata" },
+          ],
+          pending_term_count: 12,
         }, 409];
       }
       return base(path) ?? [{}, 404];
@@ -301,11 +308,16 @@ describe("IngredientScreen", () => {
 
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByText(/3 ricette dell'import ancora in attesa/)).toBeInTheDocument();
-    // nessuna ricetta da elencare, quindi nessun elenco vuoto
-    expect(within(alert).queryByRole("list")).not.toBeInTheDocument();
-    expect(within(alert).getByText(/segnati «Deciso nella coda»/)).toBeInTheDocument();
-    await userEvent.click(within(alert).getByRole("link", { name: "Vai a «Ingredienti da abbinare»" }));
-    expect(await screen.findByText("dove: /ricette/importa")).toBeInTheDocument();
+    // nessuna ricetta da elencare, quindi nessun elenco vuoto: il solo elenco è dei termini
+    expect(within(alert).getAllByRole("list")).toHaveLength(1);
+    // un link per termine, dritto al termine in coda: anche quelli decisi da sé, che
+    // non hanno alias sulla scheda e non stanno fra le decisioni recenti
+    expect(within(alert).getByRole("link", { name: "Pomodori pelati" })).toHaveAttribute(
+      "href", "/ricette/importa?termine=t-pelati"
+    );
+    expect(within(alert).getByText("e altri 10.")).toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole("link", { name: "Passata" }));
+    expect(await screen.findByText("dove: /ricette/importa?termine=t-passata")).toBeInTheDocument();
   });
 
   it("l'anteprima dice cosa si sposta, e «Unisci» porta al vincitore con l'esito in vista", async () => {

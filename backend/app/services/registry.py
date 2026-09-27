@@ -20,7 +20,7 @@ import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import delete, func, inspect, select, update
+from sqlalchemy import delete, func, inspect, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
@@ -59,6 +59,9 @@ MANUAL_ALIAS_SOURCE = "manual"
 # Quante ricette porta con sé il rifiuto «non alimentare con ricette»: abbastanza per
 # riconoscerle, non tutte — «sale» è in migliaia di ricette, e il conto le dice.
 RECIPES_SHOWN = 20
+# Quanti termini porta il rifiuto per le ricette dell'import in attesa, ciascuno col
+# suo link alla coda; il conto dice il resto.
+PENDING_TERMS_SHOWN = 10
 
 
 class RefusalCode(StrEnum):
@@ -94,11 +97,28 @@ class RecipeRef:
 
 
 @dataclass(frozen=True)
+class TermRef:
+    id: uuid.UUID
+    display_name: str
+
+
+@dataclass(frozen=True)
+class PendingImports:
+    pages: int
+    terms: tuple[TermRef, ...]
+    term_count: int
+
+
+@dataclass(frozen=True)
 class RecipesInUse:
     count: int
     recipes: tuple[RecipeRef, ...]
     # le pagine dell'import ancora in attesa che, materializzate, lo userebbero
     pending_imports: int = 0
+    # i termini MAPPED che le legano qui, i primi `PENDING_TERMS_SHOWN` per nome, e
+    # quanti sono: la strada per correggerle passa da loro, nella coda
+    pending_terms: tuple["TermRef", ...] = ()
+    pending_term_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -151,37 +171,58 @@ async def recipes_using(session: AsyncSession, ingredient_id: uuid.UUID) -> Reci
     )
 
 
-async def pending_imports_using(session: AsyncSession, ingredient_id: uuid.UUID) -> int:
-    """Quante pagine dell'import in attesa hanno una riga il cui termine è deciso su
-    questo ingrediente: sono ricette che arriveranno, e che lo useranno.
+# Una lettura sola delle pagine in attesa: le righe di ogni pagina si espandono una
+# volta (`jsonb_array_elements`) e si uniscono per chiave ai termini decisi
+# sull'ingrediente, raccolti prima in una CTE MATERIALIZED. Senza, Postgres rifaceva la
+# scansione dei termini per ogni pagina: 0,23 s con 5 termini e 2 s con 50 su 8.000
+# pagine sintetiche, contro 0,08 s costanti così. GROUPING SETS dà nello stesso giro le
+# pagine per termine e il totale, che non è la loro somma: una pagina con due termini
+# sullo stesso ingrediente conta una volta. Il CASE regge un `payload` senza elenco.
+_PENDING_IMPORTS_SQL = text("""
+    WITH keys AS MATERIALIZED (
+        SELECT id, source, term_key, display_name
+        FROM import_terms
+        WHERE ingredient_id = :ingredient_id AND decision = :mapped
+    )
+    SELECT keys.id, keys.display_name, count(DISTINCT pages.id) AS pages
+    FROM recipe_imports AS pages
+    CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(pages.payload -> 'ingredients') = 'array'
+             THEN pages.payload -> 'ingredients' ELSE '[]'::jsonb END
+    ) AS line
+    JOIN keys ON keys.source = pages.source AND keys.term_key = line.value ->> 'key'
+    WHERE pages.state = :pending
+    GROUP BY GROUPING SETS ((keys.id, keys.display_name), ())
+""")
 
-    Una query sola, dentro il database: le pagine in attesa si leggono con l'indice
-    sullo stato, e per ognuna si chiede se il suo elenco di righe contiene la chiave
-    di uno dei termini decisi sull'ingrediente — lo stesso contenimento JSONB che
-    `undo_decision` usa sulle pagine importate. Una pagina conta una volta, anche se
-    due suoi termini finiscono sullo stesso ingrediente (il collasso li fa una riga).
+
+async def pending_imports_using(
+    session: AsyncSession, ingredient_id: uuid.UUID
+) -> PendingImports:
+    """Le pagine dell'import in attesa con una riga il cui termine è deciso su questo
+    ingrediente — ricette che arriveranno, e che lo useranno — e quei termini.
+
+    I termini servono al rifiuto: un termine deciso da sé (`auto`) non scrive alias e
+    non sta fra le decisioni recenti, e senza il suo id la coda non lo mostrerebbe mai.
     """
-    return (
+    rows = (
         await session.execute(
-            select(func.count())
-            .select_from(RecipeImport)
-            .where(
-                RecipeImport.state == ImportState.PENDING,
-                select(ImportTerm.id)
-                .where(
-                    ImportTerm.ingredient_id == ingredient_id,
-                    ImportTerm.decision == TermDecision.MAPPED,
-                    ImportTerm.source == RecipeImport.source,
-                    RecipeImport.payload["ingredients"].op("@>")(
-                        func.jsonb_build_array(
-                            func.jsonb_build_object("key", ImportTerm.term_key)
-                        )
-                    ),
-                )
-                .exists(),
-            )
+            _PENDING_IMPORTS_SQL,
+            {
+                "ingredient_id": ingredient_id,
+                "mapped": TermDecision.MAPPED.value,
+                "pending": ImportState.PENDING.value,
+            },
         )
-    ).scalar_one()
+    ).all()
+    total = next((row.pages for row in rows if row.id is None), 0)
+    terms = sorted(
+        (TermRef(id=row.id, display_name=row.display_name.strip()) for row in rows if row.id),
+        key=lambda term: (term.display_name.lower(), term.id),
+    )
+    return PendingImports(
+        pages=total, terms=tuple(terms[:PENDING_TERMS_SHOWN]), term_count=len(terms)
+    )
 
 
 def _recipes_phrase(count: int) -> str:
@@ -271,7 +312,8 @@ async def recategorize_ingredient(
         raise RegistryRefusal(RefusalCode.UNKNOWN_CATEGORY, f"reparto sconosciuto: «{category}»")
     if kind_for_category(category) == IngredientKind.NON_FOOD:
         in_use = await recipes_using(session, ingredient.id)
-        waiting = await pending_imports_using(session, ingredient.id)
+        pending = await pending_imports_using(session, ingredient.id)
+        waiting = pending.pages
         if in_use.count or waiting:
             where = [_recipes_phrase(in_use.count)] if in_use.count else []
             if waiting:
@@ -293,7 +335,11 @@ async def recategorize_ingredient(
                 RefusalCode.NON_FOOD_IN_RECIPES,
                 message,
                 RecipesInUse(
-                    count=in_use.count, recipes=in_use.recipes, pending_imports=waiting
+                    count=in_use.count,
+                    recipes=in_use.recipes,
+                    pending_imports=waiting,
+                    pending_terms=pending.terms,
+                    pending_term_count=pending.term_count,
                 ),
             )
     ingredient.category = str(category)
