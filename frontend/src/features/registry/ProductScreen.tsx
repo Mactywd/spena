@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
@@ -11,9 +11,11 @@ import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Ingredient } from "../../domain/types";
 import { InlineField } from "./InlineField";
 import {
+  deleteProduct,
   fetchProductDetail,
   patchProduct,
   refreshAfterCorrection,
+  registryRefusal,
   type ProductPatchBody,
 } from "./api";
 import { backFrom, ingredientPath, originFrom } from "./origin";
@@ -59,6 +61,66 @@ function ProductCard({ id }: { id: string }) {
       await refreshAfterCorrection(queryClient);
     },
   });
+  const navigate = useNavigate();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // le due uscite dei rifiuti del codice, e «Togli il codice»: una mutazione sua, così
+  // un suo guasto si dice senza confondersi con quello del campo
+  const barcodeAction = useMutation({
+    mutationFn: (body: ProductPatchBody) => patchProduct(id, body),
+    onSuccess: () => refreshAfterCorrection(queryClient),
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteProduct(id),
+    onSuccess: () => {
+      // si va via: segnare vecchio senza rileggere, perché questa scheda non c'è più
+      void refreshAfterCorrection(queryClient, false);
+      navigate(back.to);
+    },
+  });
+
+  /** Il rifiuto del codice con la sua uscita (spec §7): un codice già usato si sposta
+   * qui, un codice che non torna si usa lo stesso. */
+  function barcodeRefusal(failure: unknown, draft: string) {
+    const refusal = registryRefusal(failure);
+    if (refusal?.code === "barcode_taken") {
+      return (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-danger">Il codice è di «{refusal.existing.name}». Spostalo qui?</span>
+          <button
+            type="button"
+            disabled={barcodeAction.isPending}
+            onClick={() => barcodeAction.mutate({ barcode: draft, take_barcode: true })}
+            className={buttonClasses("warn")}
+          >
+            Sposta il codice qui
+          </button>
+        </div>
+      );
+    }
+    if (refusal?.code === "bad_checksum") {
+      return (
+        // ambra e non rosso: non è un rifiuto, è un avviso (S20)
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-low">{refusal.detail}</span>
+          <button
+            type="button"
+            disabled={barcodeAction.isPending}
+            onClick={() => barcodeAction.mutate({ barcode: draft, accept_bad_checksum: true })}
+            className={buttonClasses("secondary")}
+          >
+            Usalo lo stesso
+          </button>
+        </div>
+      );
+    }
+    return (
+      <Alert>
+        {refusal
+          ? refusal.detail
+          : "Non sono riuscito a salvare il codice. Quel che hai scritto è ancora qui: riprova."}
+      </Alert>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -115,6 +177,36 @@ function ProductCard({ id }: { id: string }) {
         />
       </Card>
 
+      <SectionHeading>Codice a barre</SectionHeading>
+      <Card className="flex flex-col gap-2">
+        <InlineField
+          label="Codice"
+          value={product.barcode ?? ""}
+          placeholder="Nessun codice"
+          inputMode="numeric"
+          onSave={(next) => patch.mutateAsync({ barcode: next === "" ? null : next })}
+          describeError={barcodeRefusal}
+        />
+        {product.valid_checksum === false && (
+          <p className="text-xs text-ink-faint">
+            La cifra di controllo di questo codice non torna: può essere un codice del negozio.
+          </p>
+        )}
+        {product.barcode && (
+          <button
+            type="button"
+            disabled={barcodeAction.isPending}
+            onClick={() => barcodeAction.mutate({ barcode: null })}
+            className={`${buttonClasses("ghost")} self-start`}
+          >
+            Togli il codice
+          </button>
+        )}
+        {barcodeAction.isError && (
+          <Alert>Non sono riuscito a cambiare il codice. È ancora quello di prima: riprova.</Alert>
+        )}
+      </Card>
+
       <SectionHeading>Ingrediente</SectionHeading>
       <Card className="flex flex-col gap-2">
         <Link
@@ -150,6 +242,46 @@ function ProductCard({ id }: { id: string }) {
         )}
         <p className="text-xs text-ink-faint">{pantryText(product.pantry_items.length)}</p>
       </Card>
+
+      <div className="pt-6">
+        {!confirmingDelete ? (
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            className={buttonClasses("danger")}
+          >
+            Elimina il prodotto
+          </button>
+        ) : (
+          <div
+            role="alertdialog"
+            aria-label="Conferma l'eliminazione"
+            className="flex flex-col gap-2 rounded-card bg-card p-3"
+          >
+            <p className="text-sm">
+              Gli elementi in dispensa restano, come «{product.ingredient.display_name}» sfuso.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={remove.isPending}
+                onClick={() => remove.mutate()}
+                className={buttonClasses("danger")}
+              >
+                Elimina
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className={buttonClasses("ghost")}
+              >
+                Lascia
+              </button>
+            </div>
+            {remove.isError && <Alert>Non sono riuscito a eliminarlo. È ancora qui: riprova.</Alert>}
+          </div>
+        )}
+      </div>
     </Screen>
   );
 }

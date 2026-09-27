@@ -157,4 +157,103 @@ describe("ProductScreen", () => {
     expect(screen.getByRole("link", { name: "Dispensa" })).toHaveAttribute("href", "/dispensa");
     expect(screen.getByText("1 elemento in dispensa.")).toBeInTheDocument();
   });
+
+  it("un codice già di un altro prodotto offre di spostarlo qui", async () => {
+    let tentativi = 0;
+    const spy = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        tentativi += 1;
+        if (tentativi === 1) {
+          return [{
+            code: "barcode_taken",
+            detail: "Il codice è di «Grana Padano 200 g».",
+            existing: { id: "p-grana", name: "Grana Padano 200 g", brand: null, barcode: "8001234567897" },
+          }, 409];
+        }
+        return [{ ...REGGIANO, barcode: "8001234567897" }, 200];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/prodotto/p-reggiano");
+
+    const codice = await screen.findByLabelText("Codice");
+    await userEvent.clear(codice);
+    await userEvent.type(codice, "8001234567897");
+    await userEvent.click(screen.getByRole("button", { name: "Salva codice" }));
+
+    expect(await screen.findByText("Il codice è di «Grana Padano 200 g». Spostalo qui?")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sposta il codice qui" }));
+
+    await waitFor(() =>
+      expect(bodiesOf(spy, "PATCH")).toEqual([
+        { barcode: "8001234567897" },
+        { barcode: "8001234567897", take_barcode: true },
+      ])
+    );
+  });
+
+  it("un codice che non torna avvisa, e «Usalo lo stesso» lo manda", async () => {
+    let tentativi = 0;
+    const spy = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        tentativi += 1;
+        if (tentativi === 1) {
+          return [{
+            code: "bad_checksum",
+            detail:
+              "Il codice non torna con la sua cifra di controllo: controlla le cifre. Se è un codice del negozio, usalo lo stesso.",
+          }, 409];
+        }
+        return [{ ...REGGIANO, barcode: "8001234567890", valid_checksum: false }, 200];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/prodotto/p-reggiano");
+
+    const codice = await screen.findByLabelText("Codice");
+    await userEvent.clear(codice);
+    await userEvent.type(codice, "8001234567890");
+    await userEvent.click(screen.getByRole("button", { name: "Salva codice" }));
+
+    expect(await screen.findByText(/controlla le cifre/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Usalo lo stesso" }));
+
+    await waitFor(() =>
+      expect(bodiesOf(spy, "PATCH")).toEqual([
+        { barcode: "8001234567890" },
+        { barcode: "8001234567890", accept_bad_checksum: true },
+      ])
+    );
+  });
+
+  it("«Togli il codice» manda il codice vuoto", async () => {
+    const spy = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") return [{ ...REGGIANO, barcode: null, valid_checksum: null }, 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/prodotto/p-reggiano");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Togli il codice" }));
+
+    await waitFor(() => expect(bodiesOf(spy, "PATCH")).toEqual([{ barcode: null }]));
+  });
+
+  it("eliminare chiede conferma, dice cosa resta, e torna da dove si è venuti", async () => {
+    const spy = stubRoutedFetch((path, init) => {
+      if (init?.method === "DELETE") return [{ loose_pantry_items: 1 }, 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/prodotto/p-reggiano?da=dispensa");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Elimina il prodotto" }));
+    expect(
+      screen.getByText("Gli elementi in dispensa restano, come «Burro» sfuso.")
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Elimina" }));
+
+    expect(await screen.findByText("dove: /dispensa")).toBeInTheDocument();
+    expect(
+      spy.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")
+    ).toHaveLength(1);
+  });
 });
