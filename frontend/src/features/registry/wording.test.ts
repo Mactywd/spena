@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mergeDoneText, mergePreviewText, mergeSlowWarning, usageText } from "./wording";
-import type { MergeCounts } from "../../domain/types";
+import { mergeDoneText, mergePreviewText, mergeSlowWarning, movedText, pantryText, usageText } from "./wording";
+import type { MergeCounts, ProductDetail } from "../../domain/types";
 
 describe("usageText", () => {
   it("dice dove è usato un ingrediente, come l'esempio della spec", () => {
@@ -61,5 +61,23 @@ describe("mergeSlowWarning", () => {
 
   it("non avvisa esattamente alla soglia", () => {
     expect(mergeSlowWarning(1000)).toBeNull();
+  });
+});
+
+describe("movedText", () => {
+  const SPOSTATO: ProductDetail = {
+    id: "p1", name: "Parmigiano Reggiano 24 mesi", brand: null, barcode: null,
+    valid_checksum: null, ingredient: { id: "i1", name: "parmigiano", display_name: "Parmigiano" },
+    pantry_items: [{ id: "v1", status: "available", expires_on: null }],
+  };
+
+  it("dice sotto cosa è andato, e con quanti elementi di dispensa (spec §6.4)", () => {
+    expect(movedText(SPOSTATO)).toBe("Spostato sotto «Parmigiano», con 1 elemento di dispensa.");
+    expect(movedText({ ...SPOSTATO, pantry_items: [] })).toBe("Spostato sotto «Parmigiano».");
+  });
+
+  it("conta gli elementi in dispensa", () => {
+    expect(pantryText(0)).toBe("Nessun elemento in dispensa.");
+    expect(pantryText(2)).toBe("2 elementi in dispensa.");
   });
 });

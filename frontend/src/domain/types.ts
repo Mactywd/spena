@@ -297,3 +297,16 @@ export type RegistryRefusal =
         | "bad_checksum";
       detail: string;
     };
+
+/** La scheda del prodotto (spec S9 §6.4): è anche la scheda dell'elemento di dispensa. */
+export interface ProductDetail {
+  id: string;
+  name: string;
+  brand: string | null;
+  barcode: string | null;
+  /** Se la cifra di controllo torna, detto dal server; `null` senza codice. */
+  valid_checksum: boolean | null;
+  ingredient: { id: string; name: string; display_name: string };
+  /** Solo gli attivi: quelli che chi guarda la dispensa vede. */
+  pantry_items: { id: string; status: PantryStatus; expires_on: string | null }[];
+}

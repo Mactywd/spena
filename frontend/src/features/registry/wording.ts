@@ -1,4 +1,4 @@
-import type { IngredientUsage, MergeCounts } from "../../domain/types";
+import type { IngredientUsage, MergeCounts, ProductDetail } from "../../domain/types";
 
 /** Dove è usato un ingrediente, in una riga: «in 42 ricette · 1 in dispensa · in lista».
  * Il peso di una correzione, detto prima di farla (spec §6.3). */
@@ -82,4 +82,21 @@ export function mergeSlowWarning(loserRecipeCount: number): string | null {
   return loserRecipeCount > MERGE_SLOW_RECIPE_THRESHOLD
     ? "Può volerci qualche minuto: questo ingrediente è in più di 1.000 ricette."
     : null;
+}
+
+function pantryItems(n: number): string {
+  return n === 1 ? "1 elemento" : `${n} elementi`;
+}
+
+/** Dopo lo spostamento (spec §6.4): «Spostato sotto «parmigiano», con 1 elemento di
+ * dispensa». Il conto è quello degli attivi che il server rimanda, cioè quelli che la
+ * dispensa mostra. */
+export function movedText(product: ProductDetail): string {
+  const n = product.pantry_items.length;
+  const where = `Spostato sotto «${product.ingredient.display_name}»`;
+  return n === 0 ? `${where}.` : `${where}, con ${pantryItems(n)} di dispensa.`;
+}
+
+export function pantryText(n: number): string {
+  return n === 0 ? "Nessun elemento in dispensa." : `${pantryItems(n)} in dispensa.`;
 }

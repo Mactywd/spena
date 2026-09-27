@@ -4,6 +4,7 @@ import type {
   AliasMoved,
   IngredientDetail,
   MergeCounts,
+  ProductDetail,
   RegistryRefusal,
 } from "../../domain/types";
 
@@ -66,6 +67,31 @@ const TOUCHED = [
  * chi rilegge dopo un guasto della fusione vera senza rilanciare anche l'anteprima della
  * fusione, che è già un'intera fusione (fino a 130s) e non è lei ad essere fallita
  * (Task 17, fix round 2). */
+/** Il corpo della PATCH del prodotto. `brand: null` toglie la marca, `barcode: null`
+ * toglie il codice: il server legge i campi presenti, non quelli valorizzati. */
+export type ProductPatchBody = {
+  name?: string;
+  brand?: string | null;
+  ingredient_id?: string;
+  barcode?: string | null;
+  /** prende il codice al prodotto che l'ha già: l'uscita di `barcode_taken` */
+  take_barcode?: boolean;
+  /** usa il codice anche se la cifra di controllo non torna: l'uscita di `bad_checksum` */
+  accept_bad_checksum?: boolean;
+};
+
+export function fetchProductDetail(id: string) {
+  return apiFetch<ProductDetail>(`/products/${id}`);
+}
+
+export function patchProduct(id: string, body: ProductPatchBody) {
+  return apiFetch<ProductDetail>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function deleteProduct(id: string) {
+  return apiFetch<{ loose_pantry_items: number }>(`/products/${id}`, { method: "DELETE" });
+}
+
 export function refreshAfterCorrection(
   client: QueryClient,
   refetch = true,
