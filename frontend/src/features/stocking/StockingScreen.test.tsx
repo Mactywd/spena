@@ -160,6 +160,8 @@ describe("StockingScreen", () => {
     renderScreen();
     await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
     await userEvent.type(screen.getByLabelText("Codice a barre"), "88990{Enter}");
+    // prima la domanda (S20): il sì porta al modulo come prima
+    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
 
     await screen.findByRole("heading", { name: /Nuovo prodotto/ });
     expect(screen.getByLabelText("Nome")).toHaveValue("Passata Rustica");
@@ -382,6 +384,9 @@ describe("StockingScreen", () => {
 
     expect(await screen.findByRole("heading", { name: /Nuovo prodotto per «yogurt greco»/ }))
       .toBeDefined();
+    // «non trovato» sarebbe falso: non l'ha cercato nessuno (S20)
+    expect(screen.getByText("Non ho potuto cercare il codice: scrivi tu nome e marca."))
+      .toBeDefined();
     expect(spy).toHaveBeenCalled();
   });
 
@@ -439,6 +444,7 @@ describe("StockingScreen", () => {
     renderScreen();
     await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
     await userEvent.type(screen.getByLabelText("Codice a barre"), "111{Enter}");
+    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
     expect(await screen.findByLabelText("Nome")).toHaveValue("Passata Rustica");
 
     await userEvent.click(screen.getByRole("button", { name: /Codice.*mele/i }));
@@ -754,6 +760,278 @@ describe("StockingScreen", () => {
       await vi.waitFor(() =>
         expect(postBody(spy, "/shopping-list/stock").entries[0].barcode).toBeNull()
       );
+    });
+  });
+
+  describe("un prodotto di Open Food Facts non entra senza una domanda (S20)", () => {
+    // il caso del giro di T3: gli spaghetti letti sulla voce «pomodoro», e un tocco
+    // su «Salva» li faceva diventare per sempre un prodotto di pomodoro
+    const SPAGHETTI = {
+      found: true, origin: "openfoodfacts", product: null, valid_checksum: true,
+      suggestion: { name: "Spaghetti n.5", brand: "Barilla", barcode: "8076800195057",
+                    nutrients: { kcal: 359 }, image_url: null },
+    };
+
+    function stubSpaghetti() {
+      return stubRoutedFetch((path, init) => {
+        if (path.includes("/products/barcode/")) return [SPAGHETTI];
+        if (path.includes("/products/search")) return [[]];
+        if (path.endsWith("/products") && init?.method === "POST") return [FAGE, 201];
+        return [CHECKED];
+      });
+    }
+
+    async function readSpaghettiOnYogurt() {
+      await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+      await userEvent.type(screen.getByLabelText("Codice a barre"), "8076800195057{Enter}");
+    }
+
+    it("chiede se è l'ingrediente della voce, con il nome di Open Food Facts accanto", async () => {
+      stubSpaghetti();
+      renderScreen();
+      await readSpaghettiOnYogurt();
+
+      expect(await screen.findByRole("heading", { name: "È un «yogurt greco»?" })).toBeDefined();
+      expect(
+        screen.getByText("Su Open Food Facts è «Spaghetti n.5», di Barilla.")
+      ).toBeDefined();
+      // niente modulo e niente «Salva» finché non si risponde
+      expect(screen.queryByRole("heading", { name: /Nuovo prodotto/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Salva prodotto" })).toBeNull();
+    });
+
+    it("«No, è un'altra cosa» riporta ai pulsanti della voce, senza salvare niente", async () => {
+      const spy = stubSpaghetti();
+      renderScreen();
+      await readSpaghettiOnYogurt();
+
+      await userEvent.click(await screen.findByRole("button", { name: "No, è un'altra cosa" }));
+
+      expect(screen.queryByRole("heading", { name: "È un «yogurt greco»?" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: /Nuovo prodotto/ })).toBeNull();
+      expect(screen.getByRole("button", { name: /Codice.*yogurt greco/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/ })).toBeDefined();
+      expect(
+        spy.mock.calls.some(([url, init]) =>
+          String(url).endsWith("/products") && (init as RequestInit)?.method === "POST")
+      ).toBe(false);
+
+      // e il codice degli spaghetti non segue la voce: creato a mano dal catalogo,
+      // il prodotto dello yogurt non deve portarselo dietro
+      await userEvent.click(screen.getByRole("button", { name: /Cerca a catalogo.*yogurt greco/i }));
+      await screen.findByText(/Nessun prodotto con queste parole/);
+      await userEvent.click(screen.getByRole("button", { name: "Crea il prodotto a mano" }));
+      expect(
+        await screen.findByText("Nessun codice a barre verrà legato a questo prodotto.")
+      ).toBeDefined();
+    });
+
+    it("un sì apre il modulo precompilato, che dice da dove vengono i dati", async () => {
+      stubSpaghetti();
+      renderScreen();
+      await readSpaghettiOnYogurt();
+
+      await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
+
+      expect(await screen.findByLabelText("Nome")).toHaveValue("Spaghetti n.5");
+      expect(
+        screen.getByText("Trovato su Open Food Facts: controlla i dati prima di salvare.")
+      ).toBeDefined();
+      expect(screen.getByText("Il codice 8076800195057 verrà legato a questo prodotto."))
+        .toBeDefined();
+    });
+
+    it("anche senza nome su Open Food Facts la domanda si fa, e il nome parte vuoto", async () => {
+      stubRoutedFetch((path) =>
+        path.includes("/products/barcode/")
+          ? [{ ...SPAGHETTI, suggestion: { ...SPAGHETTI.suggestion, name: null, brand: null } }]
+          : [CHECKED]
+      );
+      renderScreen();
+      await readSpaghettiOnYogurt();
+
+      expect(await screen.findByText("Su Open Food Facts è senza nome.")).toBeDefined();
+      await userEvent.click(screen.getByRole("button", { name: "Sì" }));
+      expect(await screen.findByLabelText("Nome")).toHaveValue("");
+      expect(screen.getByRole("button", { name: "Salva prodotto" })).toBeDisabled();
+    });
+
+    it("un codice che Open Food Facts non conosce apre il modulo e lo dice", async () => {
+      stubRoutedFetch((path) =>
+        path.includes("/products/barcode/")
+          ? [{ found: false, origin: "unknown", product: null, suggestion: null,
+               valid_checksum: true }]
+          : [CHECKED]
+      );
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+      await userEvent.type(screen.getByLabelText("Codice a barre"), "8001120000002{Enter}");
+
+      // nessuna domanda: non c'è niente di Open Food Facts da confrontare
+      expect(await screen.findByRole("heading", { name: /Nuovo prodotto/ })).toBeDefined();
+      expect(screen.getByText("Non trovato su Open Food Facts: scrivi tu nome e marca."))
+        .toBeDefined();
+      expect(screen.getByText("Il codice 8001120000002 verrà legato a questo prodotto."))
+        .toBeDefined();
+    });
+
+    describe("la cifra di controllo", () => {
+      const BAD = { found: false, origin: "unknown", product: null, suggestion: null,
+                    valid_checksum: false };
+      const GOOD = { ...BAD, valid_checksum: true };
+
+      it("un codice che non torna lo dice, lascia correggerlo, e lascia andare avanti", async () => {
+        stubRoutedFetch((path) => {
+          if (path.endsWith("/products/barcode/1234")) return [BAD];
+          if (path.includes("/products/barcode/")) return [GOOD];
+          return [CHECKED];
+        });
+        renderScreen();
+        await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+        const field = screen.getByLabelText("Codice a barre");
+        await userEvent.type(field, "1234{Enter}");
+
+        expect(await screen.findByText("Questo codice non torna: ricontrollalo.")).toBeDefined();
+        expect(screen.queryByRole("heading", { name: /Nuovo prodotto/ })).toBeNull();
+        // il codice resta lì, correggibile
+        expect(field).toHaveValue("1234");
+
+        // corretto, riparte da capo
+        await userEvent.clear(field);
+        await userEvent.type(field, "8001120000002{Enter}");
+        expect(await screen.findByRole("heading", { name: /Nuovo prodotto/ })).toBeDefined();
+        expect(screen.queryByText("Questo codice non torna: ricontrollalo.")).toBeNull();
+      });
+
+      it("chi ha la confezione in mano può usarlo lo stesso: i codici di negozio esistono", async () => {
+        stubRoutedFetch((path) =>
+          path.includes("/products/barcode/") ? [BAD] : [CHECKED]
+        );
+        renderScreen();
+        await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+        await userEvent.type(screen.getByLabelText("Codice a barre"), "1234{Enter}");
+
+        await userEvent.click(
+          await screen.findByRole("button", { name: "Usa questo codice lo stesso" })
+        );
+
+        expect(await screen.findByRole("heading", { name: /Nuovo prodotto/ })).toBeDefined();
+        expect(screen.getByText("Il codice 1234 verrà legato a questo prodotto.")).toBeDefined();
+      });
+
+      it("un codice già nel nostro catalogo si aggancia anche se non torna", async () => {
+        // se è in catalogo qualcuno l'ha già confermato con la confezione in mano
+        stubRoutedFetch((path) =>
+          path.includes("/products/barcode/")
+            ? [{ found: true, origin: "catalog", suggestion: null, product: FAGE,
+                 valid_checksum: false }]
+            : [CHECKED]
+        );
+        renderScreen();
+        await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
+        await userEvent.type(screen.getByLabelText("Codice a barre"), "52010{Enter}");
+
+        expect(await screen.findByText("Total 0%")).toBeDefined();
+        expect(screen.queryByText("Questo codice non torna: ricontrollalo.")).toBeNull();
+      });
+    });
+  });
+
+  describe("l'abbinamento resta sulla voce (S19)", () => {
+    function patchCalls(spy: ReturnType<typeof stubRoutedFetch>) {
+      return spy.mock.calls
+        .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
+        .map(([url, init]) => [String(url), JSON.parse(String((init as RequestInit).body))]);
+    }
+
+    function listReads(spy: ReturnType<typeof stubRoutedFetch>) {
+      return spy.mock.calls.filter(
+        ([url, init]) => String(url).includes("/shopping-list?") && !(init as RequestInit)?.method
+      ).length;
+    }
+
+    it("l'ingrediente scelto si scrive subito sulla voce, e la lista si rilegge", async () => {
+      const spy = stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[STRANGE]];
+        if (init?.method === "PATCH") return [{ ...UNMATCHED[0], ingredient_id: "i9" }];
+        return [UNMATCHED];
+      });
+
+      renderScreen();
+      await userEvent.type(await screen.findByLabelText(/Abbina un ingrediente/i), "strana");
+      const readsBefore = listReads(spy);
+      await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
+
+      await vi.waitFor(() =>
+        expect(patchCalls(spy)).toEqual([
+          ["/api/v1/shopping-list/s3", { ingredient_id: "i9" }],
+        ])
+      );
+      // la lista in cache non dice ancora il reparto giusto: si rilegge
+      await vi.waitFor(() => expect(listReads(spy)).toBeGreaterThan(readsBefore));
+      // senza aspettare la spesa di oggi
+      expect(
+        spy.mock.calls.some(([url]) => String(url).endsWith("/shopping-list/stock"))
+      ).toBe(false);
+    });
+
+    it("se la voce non si aggiorna lo dice accanto, e la voce si sistema lo stesso", async () => {
+      stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[STRANGE]];
+        if (init?.method === "PATCH") return [{ detail: "giù" }, 500];
+        return [UNMATCHED];
+      });
+
+      renderScreen();
+      await userEvent.type(await screen.findByLabelText(/Abbina un ingrediente/i), "strana");
+      await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
+
+      expect(
+        await screen.findByText(
+          "Non sono riuscito a ricordare l'abbinamento in lista: la voce si sistema lo " +
+            "stesso, ma se oggi non la metti in dispensa andrà rifatto."
+        )
+      ).toBeDefined();
+      expect(screen.getByRole("button", { name: /Sfuso.*cosa strana/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /Riprova.*cosa strana/i })).toBeDefined();
+    });
+
+    it("creare un ingrediente che c'è già aggancia quello, invece di dare errore", async () => {
+      const spy = stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[]];
+        if (path.endsWith("/ingredients") && init?.method === "POST") {
+          return [{ detail: "ingrediente già presente", existing: STRANGE }, 409];
+        }
+        if (init?.method === "PATCH") return [{ ...UNMATCHED[0], ingredient_id: "i9" }];
+        return [UNMATCHED];
+      });
+
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Crea l'ingrediente/i }));
+
+      expect(await screen.findByRole("button", { name: /Sfuso.*cosa strana/i })).toBeDefined();
+      expect(screen.queryByText(/Non sono riuscito a creare l'ingrediente/)).toBeNull();
+      await vi.waitFor(() =>
+        expect(patchCalls(spy)).toEqual([
+          ["/api/v1/shopping-list/s3", { ingredient_id: "i9" }],
+        ])
+      );
+    });
+
+    it("gli altri fallimenti della creazione tengono il loro messaggio", async () => {
+      stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[]];
+        if (path.endsWith("/ingredients") && init?.method === "POST") {
+          return [{ detail: "giù" }, 500];
+        }
+        return [UNMATCHED];
+      });
+
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Crea l'ingrediente/i }));
+
+      expect(await screen.findByText(/Non sono riuscito a creare l'ingrediente/)).toBeDefined();
+      expect(screen.queryByRole("button", { name: /Sfuso.*cosa strana/i })).toBeNull();
     });
   });
 });

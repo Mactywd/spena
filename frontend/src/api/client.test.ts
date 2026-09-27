@@ -33,6 +33,20 @@ describe("apiFetch", () => {
     });
   });
 
+  it("l'errore porta il corpo intero, per chi ci trova più di una frase", async () => {
+    // il 409 della creazione di un ingrediente porta l'omonimo che c'è già (S19)
+    const existing = { id: "i9", name: "pomodoro" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "ingrediente già presente", existing }),
+                   { status: 409 })
+    ));
+    await expect(apiFetch("/ingredients")).rejects.toMatchObject({
+      status: 409,
+      message: "ingrediente già presente",
+      body: { detail: "ingrediente già presente", existing },
+    });
+  });
+
   it("degrada a un messaggio generico quando il corpo d'errore non è JSON", async () => {
     // una pagina d'errore di nginx, non un {detail}: il client non deve esplodere
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(

@@ -2,10 +2,15 @@ const BASE = "/api/v1";
 
 export class ApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /** Il corpo d'errore così come è arrivato, `null` se non era JSON. Serve a chi
+   * sa che una risposta porta più di `detail`: il 409 di `POST /ingredients` porta
+   * l'ingrediente omonimo in `existing` (S19). */
+  readonly body: unknown;
+  constructor(message: string, status: number, body: unknown = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -51,7 +56,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(detailToMessage(body?.detail, response.status), response.status);
+    throw new ApiError(detailToMessage(body?.detail, response.status), response.status, body);
   }
   return (await response.json()) as T;
 }

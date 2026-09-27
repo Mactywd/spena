@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { createIngredient, fetchShoppingList, searchIngredients } from "../shopping-list/api";
+import {
+  createIngredient,
+  fetchShoppingList,
+  patchShoppingItem,
+  searchIngredients,
+} from "../shopping-list/api";
 import { BarcodeScanner } from "./BarcodeScanner";
 import { CatalogSearchPanel } from "./CatalogSearchPanel";
 import { CustomProductForm } from "./CustomProductForm";
@@ -11,6 +16,7 @@ import { OTHER_INGREDIENT } from "./wording";
 import { ApiError } from "../../api/client";
 import type { Ingredient, Product, ShoppingItem } from "../../domain/types";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import { Alert } from "../../components/ui/Alert";
 import { BackLink } from "../../components/BackLink";
 import { FOOD_CATEGORIES, NON_FOOD_CATEGORIES } from "../../domain/categories";
 import { EXPIRY_INPUT_MAX } from "../pantry/expiryLabels";
@@ -22,6 +28,59 @@ type Resolution =
   // prodotto se non ne ha. Solo quella scelta lo porta: il prodotto trovato dal
   // codice ce l'ha già, e quello creato a mano lo riceve alla creazione
   | { kind: "product"; product: Product; barcode?: string };
+
+/** L'ingrediente omonimo che il 409 di `POST /ingredients` porta in `existing`, se
+ * l'errore è quello. Ogni altro fallimento torna `null` e tiene il suo messaggio. */
+function existingIngredient(error: unknown): Ingredient | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const body = error.body;
+  if (body === null || typeof body !== "object" || !("existing" in body)) return null;
+  return (body as { existing: Ingredient }).existing ?? null;
+}
+
+/** Il nome di Open Food Facts accanto alla domanda, in una frase sola. */
+function describeSuggestion(suggestion: ProductSuggestion): string {
+  const what = suggestion.name ? `«${suggestion.name}»` : "senza nome";
+  const by = suggestion.brand ? `, di ${suggestion.brand}` : "";
+  return `Su Open Food Facts è ${what}${by}.`;
+}
+
+/**
+ * La domanda prima del modulo, quando un codice nuovo al catalogo è noto a Open
+ * Food Facts (S20). Il modulo precompilato si apriva direttamente per
+ * l'ingrediente della voce, con «Salva» pieno: gli spaghetti letti sulla voce
+ * «pomodoro» diventavano per sempre un prodotto di pomodoro, e le ricette al
+ * pomodoro cucinabili con la pasta. La domanda si fa sempre, senza confrontare i
+ * nomi: «Spaghetti n.5» e «pomodoro» non si somigliano, ma nemmeno «Passata
+ * Rustica» e «passata di pomodoro» in modo affidabile, e un confronto che a volte
+ * tace è peggio di una domanda che costa un tocco.
+ */
+function OffSuggestionQuestion({
+  ingredientName,
+  suggestion,
+  onYes,
+  onNo,
+}: {
+  ingredientName: string;
+  suggestion: ProductSuggestion;
+  onYes: () => void;
+  onNo: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-card bg-card p-4">
+      <h3 className="text-lg font-semibold">È un «{ingredientName}»?</h3>
+      <p className="text-ink">{describeSuggestion(suggestion)}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={onYes} className={buttonClasses("primary")}>
+          Sì
+        </button>
+        <button type="button" onClick={onNo} className={buttonClasses("secondary")}>
+          No, è un'altra cosa
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Una voce spuntata ma senza ingrediente abbinato ("un ingrediente che risolve
@@ -55,11 +114,23 @@ function MatchIngredientField({
   const [category, setCategory] = useState<string>("altro");
 
   const create = useMutation({
-    mutationFn: (text: string) =>
-      // name e display_name sono lo stesso testo: il backend normalizza il primo
-      // (strip + lower), e inventare noi una forma canonica sarebbe logica di
-      // dominio sul client
-      createIngredient({ name: text, display_name: text, category }),
+    mutationFn: async (text: string) => {
+      try {
+        // name e display_name sono lo stesso testo: il backend normalizza il primo
+        // (strip + lower), e inventare noi una forma canonica sarebbe logica di
+        // dominio sul client
+        return await createIngredient({ name: text, display_name: text, category });
+      } catch (error) {
+        // Il nome c'è già (S19): il 409 porta l'ingrediente che ce l'ha, e quello
+        // si aggancia. Prima finiva in «forse esiste già con un altro nome» —
+        // esisteva con lo stesso, ed era il primo suggerimento qui sopra. Per lo
+        // stesso motivo niente confronto di nomi qui: chi è «lo stesso nome» lo
+        // decide il backend, che lo ha appena rifiutato.
+        const existing = existingIngredient(error);
+        if (existing) return existing;
+        throw error;
+      }
+    },
     onSuccess: onMatched,
   });
 
@@ -245,9 +316,25 @@ export function StockingScreen() {
   // sulla stessa voce direbbero due cose diverse su cosa sta per entrare in dispensa
   const [searchingFor, setSearchingFor] = useState<ShoppingItem | null>(null);
   const [manualCode, setManualCode] = useState("");
-  const [creatingFor, setCreatingFor] = useState<
-    { item: ShoppingItem; barcode: string; suggestion: ProductSuggestion | null } | null
+  const [creatingFor, setCreatingFor] = useState<{
+    item: ShoppingItem;
+    barcode: string;
+    suggestion: ProductSuggestion | null;
+    lookedUp?: "not_found" | "failed";
+  } | null>(null);
+  // il codice nuovo al catalogo che Open Food Facts conosce: prima del modulo, la
+  // domanda (vedi OffSuggestionQuestion)
+  const [confirmingFor, setConfirmingFor] = useState<
+    { item: ShoppingItem; barcode: string; suggestion: ProductSuggestion } | null
   >(null);
+  // un codice nuovo al catalogo la cui cifra di controllo non torna: si ferma nel
+  // pannello del codice, correggibile, finché chi l'ha letto non lo usa lo stesso
+  const [badCode, setBadCode] = useState<
+    { item: ShoppingItem; code: string; suggestion: ProductSuggestion | null } | null
+  >(null);
+  // S19: l'abbinamento fatto qui e non scritto sulla voce, con l'ingrediente per
+  // riprovare. La voce resta sistemabile lo stesso, dal match locale
+  const [matchNotSaved, setMatchNotSaved] = useState<Record<string, Ingredient>>({});
   // un codice letto che porta al prodotto di un altro ingrediente: non è una
   // risoluzione, è la ragione per cui non c'è (vedi lookup.onSuccess)
   const [mismatch, setMismatch] = useState<{ item: ShoppingItem; product: Product } | null>(
@@ -290,6 +377,56 @@ export function StockingScreen() {
   // accorga.
   function effectiveKind(item: ShoppingItem): "food" | "non_food" | null {
     return item.ingredient_kind ?? matchedIngredient[item.id]?.kind ?? null;
+  }
+
+  // lo stesso nome canonico nei due casi: `ingredient_name` del backend è
+  // `ingredient.name`, non `display_name`
+  function effectiveIngredientName(item: ShoppingItem): string {
+    return item.ingredient_name ?? matchedIngredient[item.id]?.name ?? item.raw_text;
+  }
+
+  // S19: l'abbinamento viveva solo in `matchedIngredient` fino a «Metti in
+  // dispensa». Una voce che oggi non entra in dispensa lo perdeva, e in lista
+  // restava sotto «Senza reparto». Adesso si scrive subito sulla voce; il match
+  // locale resta, così un salvataggio fallito non toglie niente a chi sta
+  // sistemando la spesa.
+  const persistMatch = useMutation({
+    mutationFn: ({ item, ingredient }: { item: ShoppingItem; ingredient: Ingredient }) =>
+      patchShoppingItem(item.id, { ingredient_id: ingredient.id }),
+    onSuccess: (_saved, { item }) => {
+      setMatchNotSaved((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      // la lista, qui e nella schermata «Lista», deve rimettere la voce nel suo
+      // reparto: la cache dice ancora «Senza reparto»
+      queryClient.invalidateQueries({ queryKey: ["shopping-list"] });
+    },
+    onError: (_error, { item, ingredient }) =>
+      setMatchNotSaved((prev) => ({ ...prev, [item.id]: ingredient })),
+  });
+
+  function matchIngredient(item: ShoppingItem, ingredient: Ingredient) {
+    setMatchedIngredient((prev) => ({ ...prev, [item.id]: ingredient }));
+    persistMatch.mutate({ item, ingredient });
+  }
+
+  /** Un codice nuovo al catalogo, che si è deciso di usare: se Open Food Facts lo
+   * conosce prima si chiede se è l'ingrediente della voce, se no il modulo. */
+  function proceedWithNewCode(
+    item: ShoppingItem,
+    code: string,
+    suggestion: ProductSuggestion | null
+  ) {
+    rememberUnlinkedCode(item, code);
+    setBadCode(null);
+    setScanningFor(null);
+    if (suggestion) {
+      setConfirmingFor({ item, barcode: code, suggestion });
+    } else {
+      setCreatingFor({ item, barcode: code, suggestion: null, lookedUp: "not_found" });
+    }
   }
 
   const stock = useMutation({
@@ -338,13 +475,17 @@ export function StockingScreen() {
   // scrittura invece di morire qui.
   const lookup = useMutation({
     mutationFn: ({ code }: { item: ShoppingItem; code: string }) => lookupBarcode(code),
+    // l'avviso parlava del codice di prima: con uno nuovo in volo non vale più
+    onMutate: () => setBadCode(null),
     onSuccess: (result, { item, code }) => {
       const product = result.product;
       setMismatch(null);
       // un codice che ha già il suo prodotto non segue la voce altrove, neanche
       // quando quel prodotto è di un altro ingrediente: darlo a un prodotto nuovo
-      // sarebbe un 409, e a uno scelto a catalogo un furto che il backend rifiuta
-      rememberUnlinkedCode(item, product ? null : code);
+      // sarebbe un 409, e a uno scelto a catalogo un furto che il backend rifiuta.
+      // Uno nuovo al catalogo lo ricorda proceedWithNewCode, quando si decide di
+      // usarlo
+      rememberUnlinkedCode(item, null);
       if (product && product.ingredient_id !== effectiveIngredientId(item)) {
         // `GET /products/barcode/{code}` cerca per codice e basta, quindi la
         // referenza che torna può essere di un altro ingrediente: «Passata Mutti»
@@ -356,15 +497,26 @@ export function StockingScreen() {
         setMismatch({ item, product });
         return;
       }
+      // un prodotto del catalogo si aggancia anche se la cifra di controllo non
+      // torna: qualcuno l'ha già confermato con la confezione in mano
       if (product) {
         setResolved((prev) => ({ ...prev, [item.id]: { kind: "product", product } }));
-      } else {
-        // conosciuto da Open Food Facts ma non ancora in catalogo: il modulo si
-        // apre precompilato con quel che si sa già, non da zero. Ignoto anche
-        // lì, o servizio giù: stesso modulo, stavolta vuoto — mai un muro.
-        setCreatingFor({ item, barcode: code, suggestion: result.suggestion });
+        setScanningFor(null);
+        return;
       }
-      setScanningFor(null);
+      if (result.valid_checksum === false) {
+        // S20: `1234` apriva la creazione di un prodotto sotto un codice che
+        // nessuna confezione porta. Il codice resta nel campo, correggibile — un
+        // codice letto dalla fotocamera ci arriva adesso — e «Usa questo codice lo
+        // stesso» lascia andare avanti: i codici interni di negozio esistono.
+        setBadCode({ item, code, suggestion: result.suggestion });
+        setManualCode(code);
+        return;
+      }
+      // Conosciuto da Open Food Facts ma non ancora in catalogo: prima la domanda,
+      // poi il modulo precompilato. Ignoto anche lì, o servizio giù: il modulo,
+      // stavolta vuoto — mai un muro.
+      proceedWithNewCode(item, code, result.suggestion);
     },
     // il codice è stato letto anche se il lookup no: la via diretta lo porta già
     // al modulo («Crea il prodotto a mano» qui sotto), il catalogo deve fare lo
@@ -388,6 +540,7 @@ export function StockingScreen() {
 
   function openCatalog(item: ShoppingItem) {
     setScanningFor(null);
+    setConfirmingFor(null);
     setSearchingFor(item);
   }
 
@@ -418,11 +571,14 @@ export function StockingScreen() {
     // campo di AddItemField in Task 18.
     setManualCode("");
     lookup.reset();
+    setBadCode(null);
+    setConfirmingFor(null);
     setScanningFor(item);
   }
 
-  function createByHand(item: ShoppingItem, barcode: string) {
-    setCreatingFor({ item, barcode, suggestion: null });
+  function createByHand(item: ShoppingItem, barcode: string, lookedUp?: "failed") {
+    setCreatingFor({ item, barcode, suggestion: null, lookedUp });
+    setConfirmingFor(null);
     setScanningFor(null);
     setSearchingFor(null);
   }
@@ -484,10 +640,29 @@ export function StockingScreen() {
               {!resolution && !ingredientId && (
                 <MatchIngredientField
                   rawText={item.raw_text}
-                  onMatched={(ingredient) =>
-                    setMatchedIngredient((prev) => ({ ...prev, [item.id]: ingredient }))
-                  }
+                  onMatched={(ingredient) => matchIngredient(item, ingredient)}
                 />
+              )}
+
+              {/* accanto alla voce, e non un muro: la voce resta sistemabile dal
+                  match locale, e l'abbinamento si può riprovare a scrivere */}
+              {matchNotSaved[item.id] && (
+                <div className="flex flex-col items-start gap-2">
+                  <Alert>
+                    Non sono riuscito a ricordare l'abbinamento in lista: la voce si sistema lo
+                    stesso, ma se oggi non la metti in dispensa andrà rifatto.
+                  </Alert>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      persistMatch.mutate({ item, ingredient: matchNotSaved[item.id] })
+                    }
+                    disabled={persistMatch.isPending}
+                    className={buttonClasses("secondary")}
+                  >
+                    Riprova<span className="sr-only"> ad abbinare {item.raw_text}</span>
+                  </button>
+                </div>
               )}
 
               {!resolution && ingredientId && (
@@ -594,6 +769,22 @@ export function StockingScreen() {
               catalogo, oppure conferma «{mismatch.item.raw_text}» come sfuso.
             </p>
           )}
+          {/* la cifra di controllo non torna: il codice sta nel campo qui sopra,
+              da correggere e rileggere con Invio, oppure da usare così com'è */}
+          {badCode && badCode.item.id === scanningFor.id && (
+            <div className="flex flex-col items-start gap-2">
+              <Alert>Questo codice non torna: ricontrollalo.</Alert>
+              <button
+                type="button"
+                onClick={() =>
+                  proceedWithNewCode(badCode.item, badCode.code, badCode.suggestion)
+                }
+                className={buttonClasses("secondary")}
+              >
+                Usa questo codice lo stesso
+              </button>
+            </div>
+          )}
           {/* anche il fallimento di rete degrada al manuale: un errore muto qui
               era il muro più silenzioso dello schermo */}
           {failedLookup && (
@@ -603,7 +794,7 @@ export function StockingScreen() {
               </p>
               <button
                 type="button"
-                onClick={() => createByHand(failedLookup.item, failedLookup.code)}
+                onClick={() => createByHand(failedLookup.item, failedLookup.code, "failed")}
                 className={buttonClasses("secondary")}
               >
                 Crea il prodotto a mano
@@ -639,6 +830,26 @@ export function StockingScreen() {
         />
       )}
 
+      {confirmingFor && effectiveIngredientId(confirmingFor.item) && (
+        <div className="mt-4">
+          <OffSuggestionQuestion
+            ingredientName={effectiveIngredientName(confirmingFor.item)}
+            suggestion={confirmingFor.suggestion}
+            onYes={() => {
+              setCreatingFor({ ...confirmingFor, lookedUp: undefined });
+              setConfirmingFor(null);
+            }}
+            onNo={() => {
+              // Indietro a prima del codice: i pulsanti della voce sono ancora là,
+              // perché non c'è nessuna risoluzione. Il codice non segue la voce —
+              // è di un'altra cosa, e dal catalogo finirebbe al prodotto sbagliato
+              rememberUnlinkedCode(confirmingFor.item, null);
+              setConfirmingFor(null);
+            }}
+          />
+        </div>
+      )}
+
       {creatingFor && effectiveIngredientId(creatingFor.item) && (
         <div className="mt-4">
           <CustomProductForm
@@ -651,6 +862,7 @@ export function StockingScreen() {
             itemLabel={creatingFor.item.raw_text}
             barcode={creatingFor.barcode}
             suggestion={creatingFor.suggestion}
+            lookedUp={creatingFor.lookedUp}
             isNonFood={effectiveKind(creatingFor.item) === "non_food"}
             onCreated={(product) => {
               setResolved((prev) => ({

@@ -109,6 +109,27 @@ async def test_duplicate_ingredient_name_returns_409(logged_client):
     assert (await logged_client.post("/api/v1/ingredients", json=body)).status_code == 409
 
 
+async def test_a_duplicate_name_answers_with_the_ingredient_that_already_has_it(logged_client):
+    """«Sistema la spesa» riprovava a creare «pomodoro», riceveva un 409 e diceva
+    «forse esiste già con un altro nome» — esisteva con lo stesso (S19). Il 409
+    porta l'ingrediente che ha quel nome, così chi crea può agganciarlo invece di
+    cercarlo; `detail` resta la stringa di sempre."""
+    first = await logged_client.post(
+        "/api/v1/ingredients",
+        json={"name": "basilico", "display_name": "Basilico", "category": "spezie"},
+    )
+    again = await logged_client.post(
+        "/api/v1/ingredients",
+        # la stessa normalizzazione della creazione: maiuscole e spazi non fanno un
+        # nome diverso
+        json={"name": "  Basilico ", "display_name": "Basilico", "category": "verdura"},
+    )
+
+    assert again.status_code == 409
+    assert again.json()["detail"] == "ingrediente già presente"
+    assert again.json()["existing"] == first.json()
+
+
 async def test_alias_on_a_missing_ingredient_is_404_not_409(logged_client):
     """Un ingrediente inesistente non è un alias duplicato: dirlo bene importa."""
     import uuid

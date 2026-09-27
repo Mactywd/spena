@@ -31,12 +31,17 @@ export interface BarcodeLookup {
   origin: "catalog" | "openfoodfacts" | "unknown";
   product: Product | null;
   suggestion: {
-    name: string;
+    // `null` quando Open Food Facts conosce il codice ma non il nome: il modulo
+    // parte vuoto e lo chiede, invece di proporre un segnaposto (S20)
+    name: string | null;
     brand: string | null;
     barcode: string;
     nutrients: Record<string, number>;
     image_url: string | null;
   } | null;
+  // se la cifra di controllo GTIN torna, detto dal backend (app/domain/barcodes.py):
+  // un avviso, mai un rifiuto — i codici interni di negozio esistono
+  valid_checksum: boolean;
 }
 
 export interface PantryItem {

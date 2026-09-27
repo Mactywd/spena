@@ -53,7 +53,10 @@ class OffUnavailable(Exception):
 @dataclass(frozen=True)
 class OffProduct:
     barcode: str
-    name: str
+    # `None` quando Open Food Facts conosce il codice ma non il nome: un segnaposto
+    # come «Prodotto 2000000000017» veniva proposto nel modulo come fosse un valore
+    # vero, e salvato così (S20). Il nome lo scrive chi ha la confezione in mano.
+    name: str | None
     brand: str | None
     nutrients: dict[str, float]
     image_url: str | None
@@ -100,7 +103,7 @@ class OpenFoodFactsClient:
 
         return OffProduct(
             barcode=barcode,
-            name=(product.get("product_name") or "").strip() or f"Prodotto {barcode}",
+            name=(product.get("product_name") or "").strip() or None,
             brand=brand,
             nutrients=nutrients,
             image_url=product.get("image_front_url") or None,

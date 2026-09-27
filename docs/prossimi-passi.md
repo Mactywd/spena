@@ -1035,7 +1035,7 @@ La prima è più robusta se sta nel backend, perché vale anche per il Capacitor
 stesso passaggio si può evitare il doppione di un ingrediente già in lista, rispondendo
 come fa già la dispensa con «Era già in lista.».
 
-## S19. «Sistema la spesa» perde l'abbinamento fatto, e il doppione dà l'errore sbagliato **[D, difetto, dal giro di T3]**
+## S19. «Sistema la spesa» perde l'abbinamento fatto, e il doppione dà l'errore sbagliato **[FATTO 2026-09-27]**
 Una voce a testo libero viene abbinata a un ingrediente, o gliene viene creato uno. Se
 quella voce non entra nella spesa di oggi, al ritorno chiede di nuovo l'abbinamento, e
 in lista resta sotto «Senza reparto». Riprovare a creare lo stesso ingrediente risponde
@@ -1055,7 +1055,18 @@ fallimento.
 - Dare al 409 un messaggio suo, «C'è già: sceglilo qui sopra», oppure agganciare
   direttamente l'ingrediente omonimo.
 
-## S20. Un prodotto di Open Food Facts di tutt'altro tipo entra sotto l'ingrediente della voce **[D, difetto, dal giro di T3]**
+**Fatto:** l'ingrediente scelto o creato si scrive sulla voce nel momento stesso, con
+`patchShoppingItem(id, {ingredient_id})`, e la lista in cache si rilegge, così la voce
+torna nel suo reparto anche se oggi non entra in dispensa. Il match locale resta: se
+la scrittura fallisce, accanto alla voce compare «Non sono riuscito a ricordare
+l'abbinamento in lista…» con «Riprova», e la voce si sistema lo stesso. Il doppione
+non ha un messaggio suo, si aggancia: il 409 di `POST /ingredients` porta
+l'ingrediente omonimo in `existing` (cercato con la stessa normalizzazione della
+creazione, `canonical_name` in `repositories/ingredients.py`), `detail` resta la
+stringa di sempre, e lo schermo lo aggancia come fosse stato scelto. `ApiError`
+porta ora il corpo intero in `body`. Ogni altro fallimento tiene il messaggio di prima.
+
+## S20. Un prodotto di Open Food Facts di tutt'altro tipo entra sotto l'ingrediente della voce **[FATTO 2026-09-27]**
 Sulla voce «pomodoro» si legge il codice degli Spaghetti Barilla. Il modulo si apre
 come «Nuovo prodotto per «pomodoro»», precompilato con nome, marca e valori, e «Salva»
 è verde pieno. Con un tocco, gli spaghetti diventano per sempre un prodotto di
@@ -1080,6 +1091,32 @@ Due cose piccole dallo stesso modulo:
 
 Un codice come `1234` passa senza controllo: la cifra di controllo EAN/UPC si può
 verificare prima di chiedere.
+
+**Fatto:** un codice nuovo al catalogo che Open Food Facts conosce apre prima la
+domanda, in grande: «È un «pomodoro»?», con accanto «Su Open Food Facts è «Spaghetti
+n.5», di Barilla.». «Sì» porta al modulo di sempre; «No, è un'altra cosa» torna ai
+pulsanti della voce senza salvare niente, e il codice non segue la voce verso il
+catalogo. Nessun confronto testuale, né qui né nel backend: la domanda si fa sempre,
+perché un confronto che a volte tace è peggio di un tocco in più. La guardia «è di un
+altro ingrediente» per i codici già nostri è rimasta com'era.
+- Il nome segnaposto non c'è più: `OffProduct.name` e `ProductSuggestion.name` sono
+  `None` quando Open Food Facts non lo conosce, il campo parte vuoto, e «Salva
+  prodotto» resta spento con sotto «Scrivi il nome del prodotto per salvarlo.».
+- Il modulo dice cosa è successo — «Trovato su Open Food Facts…», «Non trovato su
+  Open Food Facts…» o, se il lookup è fallito, «Non ho potuto cercare il codice…» —
+  e quale codice lega: «Il codice … verrà legato a questo prodotto.», oppure
+  «Nessun codice a barre verrà legato…».
+- La cifra di controllo sta in `backend/app/domain/barcodes.py`
+  (`has_valid_check_digit`, GTIN-8/12/13/14, test a tabella) e arriva come
+  `valid_checksum` nella risposta di `GET /products/barcode/{code}`, che non respinge
+  niente. Un codice nuovo che non torna si ferma nel pannello del codice con «Questo
+  codice non torna: ricontrollalo.», il codice resta nel campo da correggere, e «Usa
+  questo codice lo stesso» va avanti: i codici interni di negozio esistono. Un codice
+  che non torna ma è già nel nostro catalogo si aggancia senza avviso. Il
+  `2000000000017` citato qui sopra, per inciso, non torna.
+
+L'aspetto — la domanda davvero «in grande» su un telefono, l'avviso nel pannello — non
+l'ha visto nessun test: va guardato in un browser vero.
 
 ## S21. L'ordine delle righe della dispensa cambia fra un caricamento e l'altro **[D, difetto, dal giro di T3]**
 Dentro un reparto, le voci entrate con la stessa spesa si scambiano di posto da un

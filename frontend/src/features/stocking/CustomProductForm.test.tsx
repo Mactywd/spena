@@ -146,6 +146,73 @@ describe("CustomProductForm", () => {
     expect(screen.getByRole("heading", { name: /Nuovo prodotto per «mele»/ })).toBeDefined();
   });
 
+  describe("il modulo dice cosa è successo, e non inventa il nome (S20)", () => {
+    it("un suggerimento senza nome lascia il campo vuoto, e senza nome non si salva", async () => {
+      // «Prodotto 2000000000017» sembrava un nome vero e si salvava così
+      const spy = stubFetch();
+      renderForm({ suggestion: { ...SUGGESTION, name: null }, barcode: "88990" });
+
+      expect(screen.getByLabelText("Nome")).toHaveValue("");
+      const save = screen.getByRole("button", { name: "Salva prodotto" });
+      expect(save).toBeDisabled();
+      // un pulsante spento e muto non si spiega da sé
+      expect(screen.getByText("Scrivi il nome del prodotto per salvarlo.")).toBeDefined();
+
+      // solo spazi non è un nome
+      await userEvent.type(screen.getByLabelText("Nome"), "   ");
+      expect(save).toBeDisabled();
+
+      await userEvent.type(screen.getByLabelText("Nome"), "Passata");
+      expect(save).toBeEnabled();
+      expect(screen.queryByText("Scrivi il nome del prodotto per salvarlo.")).toBeNull();
+      await userEvent.click(save);
+      await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+      expect(bodyOf(spy).name).toBe("Passata");
+    });
+
+    it("dice che il codice è stato trovato su Open Food Facts, e quale codice lega", () => {
+      stubFetch();
+      renderForm({ suggestion: SUGGESTION, barcode: "88990" });
+
+      expect(
+        screen.getByText("Trovato su Open Food Facts: controlla i dati prima di salvare.")
+      ).toBeDefined();
+      expect(screen.getByText(/verrà legato a questo prodotto/).textContent).toBe(
+        "Il codice 88990 verrà legato a questo prodotto."
+      );
+    });
+
+    it("dice che Open Food Facts non lo conosce", () => {
+      stubFetch();
+      renderForm({ barcode: "88990", lookedUp: "not_found" });
+
+      expect(
+        screen.getByText("Non trovato su Open Food Facts: scrivi tu nome e marca.")
+      ).toBeDefined();
+      expect(screen.getByText(/verrà legato/).textContent).toBe(
+        "Il codice 88990 verrà legato a questo prodotto."
+      );
+    });
+
+    it("dice che il codice non è stato cercato, quando il lookup è fallito", () => {
+      stubFetch();
+      renderForm({ barcode: "88990", lookedUp: "failed" });
+
+      expect(
+        screen.getByText("Non ho potuto cercare il codice: scrivi tu nome e marca.")
+      ).toBeDefined();
+    });
+
+    it("senza codice dice che non ne lega nessuno", () => {
+      stubFetch();
+      renderForm({ barcode: "" });
+
+      expect(screen.getByText("Nessun codice a barre verrà legato a questo prodotto."))
+        .toBeDefined();
+      expect(screen.queryByText(/Open Food Facts/)).toBeNull();
+    });
+  });
+
   it("per un non alimentare non chiede i nutrienti, e non ne manda", async () => {
     // quattro campi senza senso su un detersivo, e un `nutrients: {}` che
     // sarebbe un'affermazione su valori che non esistono

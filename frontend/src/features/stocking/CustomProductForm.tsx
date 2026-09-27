@@ -46,12 +46,28 @@ function seedNutrients(suggestion?: ProductSuggestion | null): Record<string, st
   return seeded;
 }
 
+/** Da dove viene il modulo, in una frase: chi lo legge deve sapere se i dati che
+ * vede li ha trovati qualcuno o li deve scrivere lui (S20). Senza suggerimento e
+ * senza `lookedUp` — la creazione a mano dal catalogo — non c'è niente da dire. */
+function provenance(
+  suggestion: ProductSuggestion | null | undefined,
+  lookedUp: "not_found" | "failed" | undefined
+): string | null {
+  if (suggestion) return "Trovato su Open Food Facts: controlla i dati prima di salvare.";
+  if (lookedUp === "not_found") return "Non trovato su Open Food Facts: scrivi tu nome e marca.";
+  // il lookup è fallito prima di arrivare a Open Food Facts: «non trovato» sarebbe
+  // falso, non l'ha cercato nessuno
+  if (lookedUp === "failed") return "Non ho potuto cercare il codice: scrivi tu nome e marca.";
+  return null;
+}
+
 /** La valvola di sfogo: Open Food Facts copre male discount e marchi regionali. */
 export function CustomProductForm({
   ingredientId,
   itemLabel,
   barcode,
   suggestion,
+  lookedUp,
   /** Un detersivo non ha calorie: i quattro campi non si mostrano e `nutrients`
    * resta assente. Assente, non a zero — zero sarebbe un'affermazione. */
   isNonFood = false,
@@ -62,11 +78,16 @@ export function CustomProductForm({
   itemLabel: string;
   barcode?: string;
   suggestion?: ProductSuggestion | null;
+  /** Com'è andata la ricerca del codice, quando non ha dato un suggerimento. */
+  lookedUp?: "not_found" | "failed";
   isNonFood?: boolean;
   onCreated: (product: Product) => void;
   onCancel: () => void;
 }) {
+  // mai un segnaposto: un nome che Open Food Facts non conosce resta da scrivere
   const [name, setName] = useState(suggestion?.name ?? "");
+  const nameMissing = name.trim() === "";
+  const origin = provenance(suggestion, lookedUp);
   const [brand, setBrand] = useState(suggestion?.brand ?? "");
   const [nutrients, setNutrients] = useState(() => seedNutrients(suggestion));
 
@@ -81,7 +102,7 @@ export function CustomProductForm({
       );
       return createProduct({
         ingredient_id: ingredientId,
-        name,
+        name: name.trim(),
         brand: brand || undefined,
         barcode: barcode || undefined,
         nutrients: isNonFood || Object.keys(parsed).length === 0 ? undefined : parsed,
@@ -98,6 +119,8 @@ export function CustomProductForm({
     event.preventDefault();
     // il modulo resta compilato: un 409 (codice già in catalogo) o un servizio
     // giù non devono far perdere quel che l'utente ha scritto
+    // Invio nel campo invia il modulo anche col pulsante spento: la guardia sta qui
+    if (nameMissing) return;
     create.mutate();
   }
 
@@ -108,6 +131,16 @@ export function CustomProductForm({
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 rounded-card bg-card p-4">
       <h3 className="font-semibold">Nuovo prodotto per «{itemLabel}»</h3>
+      {/* cosa è successo al codice, e quale codice resta legato: prima il modulo
+          non lo diceva, e si salvava senza sapere né l'uno né l'altro (S20) */}
+      <div className="flex flex-col gap-1 text-sm text-ink-soft">
+        {origin && <p>{origin}</p>}
+        <p>
+          {barcode
+            ? `Il codice ${barcode} verrà legato a questo prodotto.`
+            : "Nessun codice a barre verrà legato a questo prodotto."}
+        </p>
+      </div>
       <label className="text-sm">
         Nome
         <input value={name} onChange={(e) => setName(e.target.value)} required
@@ -148,10 +181,16 @@ export function CustomProductForm({
           Non sono riuscito a salvare il prodotto. I dati sono ancora qui: riprova.
         </p>
       )}
-      <button type="submit" disabled={create.isPending}
-              className={buttonClasses("primary", "block")}>
-        Salva prodotto
-      </button>
+      <div>
+        <button type="submit" disabled={create.isPending || nameMissing}
+                className={buttonClasses("primary", "block")}>
+          Salva prodotto
+        </button>
+        {/* un pulsante spento e muto non si spiega da sé */}
+        {nameMissing && (
+          <p className="pt-2 text-xs text-ink-soft">Scrivi il nome del prodotto per salvarlo.</p>
+        )}
+      </div>
       {/* un 409 persistente non deve incollare il riquadro allo schermo: si esce
           sempre, e la voce resta sistemabile come sfusa */}
       <button type="button" onClick={onCancel} className={`${buttonClasses("ghost")} self-start`}>

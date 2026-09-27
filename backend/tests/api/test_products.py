@@ -69,7 +69,8 @@ async def test_barcode_unknown_everywhere_is_not_an_error(logged_client, monkeyp
     response = await logged_client.get("/api/v1/products/barcode/0000000000000")
     assert response.status_code == 200
     assert response.json() == {"found": False, "origin": "unknown",
-                               "product": None, "suggestion": None}
+                               "product": None, "suggestion": None,
+                               "valid_checksum": True}
     get_settings.cache_clear()
 
 
@@ -84,6 +85,52 @@ async def test_openfoodfacts_down_degrades_instead_of_failing(logged_client, mon
     assert response.status_code == 200
     assert response.json()["found"] is False
     assert response.json()["origin"] == "unknown"
+    get_settings.cache_clear()
+
+
+@respx.mock
+async def test_a_code_that_fails_its_check_digit_is_said_not_refused(logged_client, monkeypatch):
+    """`1234` passava senza controllo (S20). Il verdetto viaggia nella risposta e il
+    lookup si fa lo stesso: un codice interno di negozio può non tornare, e chi ha la
+    confezione in mano deve poter andare avanti."""
+    monkeypatch.setenv("OFF_BASE_URL", BASE)
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    respx.get(f"{BASE}/api/v2/product/2000000000017.json").mock(
+        return_value=httpx.Response(200, json=json.loads((FIXTURES / "not_found.json").read_text()))
+    )
+    response = await logged_client.get("/api/v1/products/barcode/2000000000017")
+    assert response.status_code == 200
+    assert response.json()["valid_checksum"] is False
+    assert response.json()["origin"] == "unknown"
+    get_settings.cache_clear()
+
+
+async def test_the_catalog_answer_carries_the_verdict_too(logged_client, db_session, yogurt):
+    db_session.add(Product(ingredient_id=yogurt.id, name="Fage Total 0%", brand="Fage",
+                           barcode="5201054000137", source="openfoodfacts"))
+    await db_session.flush()
+
+    body = (await logged_client.get("/api/v1/products/barcode/5201054000137")).json()
+    assert body["origin"] == "catalog"
+    assert body["valid_checksum"] is True
+
+
+@respx.mock
+async def test_a_suggestion_without_a_name_arrives_without_a_name(logged_client, monkeypatch):
+    monkeypatch.setenv("OFF_BASE_URL", BASE)
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    payload = json.loads((FIXTURES / "sparse.json").read_text())
+    del payload["product"]["product_name"]
+    respx.get(f"{BASE}/api/v2/product/8001120000002.json").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    body = (await logged_client.get("/api/v1/products/barcode/8001120000002")).json()
+    assert body["origin"] == "openfoodfacts"
+    assert body["suggestion"]["name"] is None
     get_settings.cache_clear()
 
 

@@ -84,14 +84,27 @@ async def search_ingredients(
     return list(result.scalars().unique())
 
 
+def canonical_name(name: str) -> str:
+    """La forma sotto cui `ingredients.name` è unico. Una sola copia: se la creazione e
+    la ricerca del doppione normalizzassero in due modi, il 409 punterebbe al nulla."""
+    return name.strip().lower()
+
+
 async def create_ingredient(
     session: AsyncSession, name: str, display_name: str, category: str
 ) -> Ingredient:
-    ingredient = Ingredient(name=name.strip().lower(), display_name=display_name.strip(),
+    ingredient = Ingredient(name=canonical_name(name), display_name=display_name.strip(),
                             category=category)
     session.add(ingredient)
     await session.flush()
     return ingredient
+
+
+async def find_by_name(session: AsyncSession, name: str) -> Ingredient | None:
+    """L'ingrediente che ha già questo nome, normalizzato come alla creazione."""
+    return (
+        await session.execute(select(Ingredient).where(Ingredient.name == canonical_name(name)))
+    ).scalar_one_or_none()
 
 
 async def add_alias(

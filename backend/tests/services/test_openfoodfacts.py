@@ -100,3 +100,19 @@ async def test_malformed_json_body_raises_off_unavailable():
     )
     with pytest.raises(OffUnavailable):
         await OpenFoodFactsClient(base_url=BASE).fetch("1")
+
+
+@respx.mock
+async def test_a_product_without_a_name_has_no_name_not_a_placeholder():
+    """«Prodotto 2000000000017» proposto come nome sembrava un valore vero (S20): chi
+    legge il modulo lo salvava così. Senza nome su Open Food Facts, il nome è assente
+    e il modulo lo chiede."""
+    payload = _fixture("sparse")
+    payload["product"]["product_name"] = "  "
+    respx.get(f"{BASE}/api/v2/product/8001120000002.json").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    product = await OpenFoodFactsClient(base_url=BASE).fetch("8001120000002")
+
+    assert product is not None
+    assert product.name is None

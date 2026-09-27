@@ -42,9 +42,12 @@ class ProductSuggestion(BaseModel):
 
     Non lo salviamo da soli: serve che l'utente dica a quale ingrediente
     canonico appartiene.
+
+    `name` è assente quando Open Food Facts non lo conosce: il modulo parte vuoto e
+    lo chiede, invece di proporre un segnaposto che sembri un nome.
     """
 
-    name: str
+    name: str | None
     brand: str | None
     barcode: str
     nutrients: dict[str, float]
@@ -56,3 +59,7 @@ class BarcodeLookupOut(BaseModel):
     origin: str  # "catalog" | "openfoodfacts" | "unknown"
     product: ProductOut | None = None
     suggestion: ProductSuggestion | None = None
+    # il verdetto di `has_valid_check_digit`, detto e mai applicato: il lookup si fa
+    # comunque, e decidere se proseguire con un codice che non torna spetta a chi ha
+    # la confezione in mano (codici interni di negozio, etichette rovinate)
+    valid_checksum: bool

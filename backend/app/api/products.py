@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
+from app.domain.barcodes import has_valid_check_digit
 from app.repositories.products import create_product, find_by_barcode, search_products
 from app.schemas.product import (
     BarcodeLookupOut,
@@ -32,11 +33,17 @@ async def lookup_barcode(
     stato letto. Qui è giusto così — il codice a barre identifica il prodotto, non
     l'uso che se ne fa — e sta al chiamante confrontare `ingredient_id` prima di
     agganciarla: `add_pantry_item` respinge la coppia incoerente con 409.
+
+    `valid_checksum` dice se la cifra di controllo torna, e non ferma niente: un
+    codice battuto male si cerca lo stesso, perché anche un codice interno di
+    negozio che non torna può essere già nel nostro catalogo.
     """
+    valid_checksum = has_valid_check_digit(barcode)
     existing = await find_by_barcode(session, barcode)
     if existing is not None:
         return BarcodeLookupOut(
-            found=True, origin="catalog", product=ProductOut.model_validate(existing)
+            found=True, origin="catalog", product=ProductOut.model_validate(existing),
+            valid_checksum=valid_checksum,
         )
 
     try:
@@ -45,7 +52,7 @@ async def lookup_barcode(
         remote = None
 
     if remote is None:
-        return BarcodeLookupOut(found=False, origin="unknown")
+        return BarcodeLookupOut(found=False, origin="unknown", valid_checksum=valid_checksum)
 
     return BarcodeLookupOut(
         found=True,
@@ -54,6 +61,7 @@ async def lookup_barcode(
             name=remote.name, brand=remote.brand, barcode=remote.barcode,
             nutrients=remote.nutrients, image_url=remote.image_url,
         ),
+        valid_checksum=valid_checksum,
     )
 
 
