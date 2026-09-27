@@ -79,7 +79,13 @@ async def list_pantry(session: AsyncSession) -> list[PantryItem]:
         select(PantryItem)
         .options(joinedload(PantryItem.ingredient), joinedload(PantryItem.product))
         .where(PantryItem.archived_at.is_(None))
-        .order_by(PantryItem.added_at.desc())
+        # l'id dopo la data non è un ordine che qualcuno legge: è ciò che impedisce il
+        # pareggio. Una spesa si salva con un commit solo, `now()` in Postgres è
+        # l'inizio della transazione, e tutte le sue voci hanno lo stesso `added_at`;
+        # senza un secondo criterio l'ordine fra loro è quello che capita, e fra un
+        # caricamento e l'altro la riga che si stava per toccare cambia posto (S21).
+        # Il foglio di cottura legge la stessa GET /pantry, quindi vale anche lì.
+        .order_by(PantryItem.added_at.desc(), PantryItem.id)
     )
     return list((await session.execute(statement)).unique().scalars())
 

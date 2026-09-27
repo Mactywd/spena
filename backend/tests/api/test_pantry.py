@@ -468,3 +468,37 @@ async def test_patch_vuota_resta_un_400(logged_client, db_session, dispensa):
     await db_session.commit()
 
     assert (await logged_client.patch(f"/api/v1/pantry/{item.id}", json={})).status_code == 400
+
+
+async def test_le_voci_della_stessa_spesa_restano_nello_stesso_ordine(
+    logged_client, db_session, dispensa
+):
+    """S21. Una spesa si salva con un commit solo, e in Postgres `now()` è l'ora
+    d'inizio della transazione: tutte le sue voci hanno lo stesso `added_at`. Ordinare
+    solo per quello lascia l'ordine a Postgres, e fra un caricamento e l'altro la riga
+    che si stava per toccare cambia posto. Dopo la data serve un criterio che non
+    pareggi mai, e l'id è quello.
+
+    Gli id si scelgono qui e si inseriscono al contrario del loro ordine: senza il
+    secondo criterio l'ordine fisico di inserimento è la cosa più probabile che
+    Postgres restituisca, e questo test lo vede. Una voce più vecchia sta in fondo,
+    perché la data resta il primo criterio."""
+    import uuid
+    from datetime import UTC, datetime, timedelta
+
+    stessa_spesa = sorted(uuid.uuid4() for _ in range(8))
+    db_session.add_all([
+        PantryItem(id=item_id, ingredient_id=dispensa["pomodoro"].id,
+                   status=PantryStatus.AVAILABLE)
+        for item_id in reversed(stessa_spesa)
+    ])
+    vecchia = PantryItem(ingredient_id=dispensa["aglio"].id, status=PantryStatus.AVAILABLE,
+                         added_at=datetime.now(UTC) - timedelta(days=1))
+    db_session.add(vecchia)
+    await db_session.flush()
+    await db_session.commit()
+
+    atteso = [str(item_id) for item_id in stessa_spesa] + [str(vecchia.id)]
+    for _ in range(3):
+        risposta = await logged_client.get("/api/v1/pantry")
+        assert [v["id"] for v in risposta.json()] == atteso

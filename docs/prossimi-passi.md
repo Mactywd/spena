@@ -1118,7 +1118,7 @@ altro ingrediente» per i codici già nostri è rimasta com'era.
 L'aspetto — la domanda davvero «in grande» su un telefono, l'avviso nel pannello — non
 l'ha visto nessun test: va guardato in un browser vero.
 
-## S21. L'ordine delle righe della dispensa cambia fra un caricamento e l'altro **[D, difetto, dal giro di T3]**
+## S21. L'ordine delle righe della dispensa cambia fra un caricamento e l'altro **[FATTO 2026-09-27]**
 Dentro un reparto, le voci entrate con la stessa spesa si scambiano di posto da un
 caricamento all'altro, e la riga che si stava per toccare non è più lì.
 
@@ -1131,6 +1131,16 @@ l'ordine del server.
 **Cosa fare.** Aggiungere un secondo criterio stabile, per esempio
 `.order_by(added_at.desc(), PantryItem.id)`, oppure il nome. Da decidere con S12: se a
 video convenga l'alfabetico dentro il reparto.
+
+**Fatto:** `list_pantry` ordina per `added_at desc, id`. L'id non è un ordine che
+qualcuno legge: serve solo a non pareggiare mai, così le voci della stessa spesa
+restano ferme fra un caricamento e l'altro. È l'unica query che elenca la dispensa per
+mostrarla — il foglio della cottura legge la stessa `GET /pantry`, quindi vale anche
+lì. Il test (`test_le_voci_della_stessa_spesa_restano_nello_stesso_ordine`) inserisce
+otto voci nello stesso commit con gli id in ordine inverso e rilegge tre volte: prima
+della correzione Postgres restituiva l'ordine d'inserimento. L'alfabetico dentro il
+reparto resta una domanda di S12, non di qui: se S12 lo sceglie, cambia il primo
+criterio e l'id resta in coda come spareggio.
 
 ---
 
