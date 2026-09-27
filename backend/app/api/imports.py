@@ -39,7 +39,6 @@ from app.schemas.recipe_import import (
     TermDecisionIn,
     TermOut,
     UndoOut,
-    UndoRequest,
 )
 from app.services.ingredient_match import match_name
 from app.services.llm import LlmUnavailable
@@ -51,7 +50,7 @@ from app.services.recipe_import.manual import (
     decide_by_hand,
 )
 from app.services.recipe_import.materialize import materialize_ready
-from app.services.recipe_import.undo import CookedRecipesAffected, undo_decision
+from app.services.recipe_import.undo import undo_decision
 
 router = APIRouter(
     prefix="/api/v1/imports", tags=["imports"], dependencies=[Depends(require_session)]
@@ -246,12 +245,14 @@ async def decide(
 @router.post("/terms/{term_id}/undo", response_model=UndoOut)
 async def undo(
     term_id: uuid.UUID,
-    payload: UndoRequest,
     session: AsyncSession = Depends(get_session),
 ) -> UndoOut:
     """Rimette un termine deciso in coda, e con lui il mondo che quella decisione ha mosso.
 
     Non è un editor: dopo questo, il termine si decide a mano con la scheda di sempre.
+    Non chiede conferma per le ricette già cucinate: le loro cotture aspettano nel
+    `payload` della pagina e tornano sulla ricetta rifatta (S9 §5.2). Un corpo con
+    `force`, mandato da una PWA con la cache di prima, si ignora.
     """
     term = await get_term(session, term_id)
     if term is None:
@@ -262,19 +263,7 @@ async def undo(
             f"«{term.display_name}» è già in coda: non c'è nessuna decisione da disfare.",
         )
 
-    try:
-        undone = await undo_decision(session, term, force=payload.force)
-    except CookedRecipesAffected as exc:
-        # `undo_decision` controlla la ricetta cucinata e lancia prima di qualunque
-        # mutazione, così non c'è niente da annullare. Inoltre, `get_session()` avvolge
-        # la sessione con `async with`, che la chiude e scarta ogni mutazione: questo ramo
-        # non arriva mai a `commit()`.
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"{exc.count} di queste ricette le hai già cucinate: rifacendole lo storico "
-            "resta ma perde il collegamento. Conferma per procedere.",
-        ) from exc
-
+    undone = await undo_decision(session, term)
     numbers = await counts(session, GIALLOZAFFERANO)
     await session.commit()
     return UndoOut(

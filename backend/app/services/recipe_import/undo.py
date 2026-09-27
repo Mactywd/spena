@@ -10,10 +10,16 @@ database esattamente per questo (spec madre §6.1), quindi rimettere la pagina a
 `pending` e lasciare che `materialize_ready` la ricostruisca è più corretto di
 qualunque chirurgia su `recipe_ingredients` — e non può sbagliare a metà.
 
-Nelle ricette cancellate c'è una cosa sola da preservare: il costo, l'unico campo che
-l'applicazione lascia modificare a mano (R9). Passa nel `payload` prima della
-cancellazione. Il giorno in cui una ricetta importata potrà essere modificata in
-altro, questo file va ripensato.
+Nelle ricette cancellate ci sono due cose da preservare, e passano entrambe nel
+`payload` prima della cancellazione. Il costo, l'unico campo che l'applicazione lascia
+modificare a mano (R9). E le cotture: `cooking_events.recipe_id` è ON DELETE SET NULL,
+quindi cancellare la ricetta scollegherebbe lo storico per sempre. Fino a S9 questo
+file rifiutava con `CookedRecipesAffected` e chiedeva conferma; ora scrive gli id delle
+cotture alla chiave `cooking_event_ids` (`COOKING_EVENTS_KEY`), e `materialize_ready`
+li rimette sulla ricetta rifatta. Una pagina che resta in coda tiene gli id finché non
+torna ricetta: la cottura è senza ricetta per quel tempo, e la ritrova dopo. Il giorno
+in cui una ricetta importata potrà essere modificata in altro (R10), questo file va
+ripensato.
 """
 
 import uuid
@@ -26,6 +32,7 @@ from app.db.models.recipe import CookingEvent, Recipe
 from app.db.models.recipe_import import ImportState, ImportTerm, RecipeImport, TermDecision
 from app.domain.rules import cost_in_scale
 from app.repositories.ingredients import delete_ingredient_if_unused, forget_alias
+from app.services.recipe_import.materialize import COOKING_EVENTS_KEY
 
 
 @dataclass(frozen=True)
@@ -33,18 +40,6 @@ class Undone:
     recipes_requeued: int
     ingredient_deleted: bool
     alias_forgotten: bool
-
-
-class CookedRecipesAffected(Exception):
-    """Fra le ricette da rifare ce n'è almeno una già cucinata.
-
-    Non è un guasto: è una conseguenza che va detta prima, perché `cooking_events`
-    perderebbe il collegamento alla ricetta per sempre. Con `force=True` si procede.
-    """
-
-    def __init__(self, count: int) -> None:
-        super().__init__(f"{count} ricette da rifare sono già state cucinate")
-        self.count = count
 
 
 async def _imported_pages_with(
@@ -76,43 +71,42 @@ async def _imported_pages_with(
     return list(rows.scalars())
 
 
-async def undo_decision(
-    session: AsyncSession, term: ImportTerm, *, force: bool = False
-) -> Undone:
+async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     """Rimette il mondo come era prima che quella decisione fosse presa.
 
-    Cinque effetti, in quest'ordine: il controllo sullo storico (che può rifiutare
-    prima di toccare qualunque cosa), le pagine e le ricette, l'alias, l'ingrediente,
-    il termine. Il controllo viene per primo di proposito: un'eccezione a metà lavoro
-    lascerebbe un annullamento incompleto, che è peggio del rifiuto.
+    Quattro effetti, in quest'ordine: le pagine e le ricette, l'alias, l'ingrediente, il
+    termine. Nessuno rifiuta: le ricette già cucinate si rifanno come le altre, perché
+    le loro cotture aspettano nel `payload` (vedi la docstring del modulo).
     """
     pages = await _imported_pages_with(session, term)
-    recipe_ids = [page.recipe_id for page in pages if page.recipe_id is not None]
-
-    if recipe_ids and not force:
-        cooked = (
-            await session.execute(
-                select(func.count())
-                .select_from(CookingEvent)
-                .where(CookingEvent.recipe_id.in_(recipe_ids))
-            )
-        ).scalar_one()
-        if cooked:
-            raise CookedRecipesAffected(cooked)
 
     # le ricette si rifanno da payload: cancellarle è il modo corretto, non una
-    # scorciatoia. `cooking_events.recipe_id` è ON DELETE SET NULL, quindi lo storico
-    # sopravvive col suo snapshot.
+    # scorciatoia
     requeued = 0
     for page in pages:
         recipe = await session.get(Recipe, page.recipe_id)
         if recipe is not None:
+            payload = dict(page.payload)
             # Il costo si sceglie anche a mano dal dettaglio (R9): è l'unica modifica
             # che una ricetta importata può ricevere, e rifacendola da `payload` si
             # perderebbe. Scritto nel `payload`, `materialize_ready` lo rilegge da lì.
+            if recipe.cost != cost_in_scale(payload.get("cost")):
+                payload["cost"] = recipe.cost
+            cooked = [
+                str(event_id)
+                for event_id in (
+                    await session.execute(
+                        select(CookingEvent.id).where(CookingEvent.recipe_id == recipe.id)
+                    )
+                ).scalars()
+            ]
+            if cooked:
+                payload[COOKING_EVENTS_KEY] = sorted(
+                    {*payload.get(COOKING_EVENTS_KEY, []), *cooked}
+                )
             # Riassegnato e non mutato: SQLAlchemy non vede le mutazioni in un JSONB.
-            if recipe.cost != cost_in_scale(page.payload.get("cost")):
-                page.payload = {**page.payload, "cost": recipe.cost}
+            if payload != page.payload:
+                page.payload = payload
             await session.delete(recipe)
         page.state = ImportState.PENDING
         page.recipe_id = None

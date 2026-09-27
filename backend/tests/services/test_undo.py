@@ -10,7 +10,6 @@ Le ricette si rifanno da `payload`, che è ancora nel database esattamente per q
 
 from datetime import UTC, datetime
 
-import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
@@ -25,7 +24,9 @@ from app.db.models.recipe_import import (
 )
 from app.repositories.ingredients import create_ingredient, remember_alias
 from app.repositories.recipes import create_recipe
-from app.services.recipe_import.undo import CookedRecipesAffected, undo_decision
+from app.services.recipe_import.undo import undo_decision
+from app.services.recipe_import.manual import ManualDecision, decide_by_hand
+from app.services.recipe_import.materialize import materialize_ready
 
 
 @pytest_asyncio.fixture
@@ -116,41 +117,61 @@ async def test_un_ingrediente_che_un_altro_termine_usa_resta(db_session, deciso)
     assert await db_session.get(Ingredient, speck.id) is not None
 
 
-async def test_una_ricetta_gia_cucinata_blocca_finche_non_si_insiste(db_session, deciso):
-    """L'unico punto di tutta la feature in cui si chiede qualcosa.
+async def test_una_ricetta_gia_cucinata_non_blocca_e_la_cottura_aspetta_nella_pagina(
+    db_session, deciso, dal_database
+):
+    """Fino a S9 qui c'era un rifiuto, e un `force` per superarlo: cancellando la
+    ricetta `cooking_events.recipe_id` diventava NULL per sempre. Ora gli id delle
+    cotture passano nel `payload` della pagina prima della cancellazione.
 
-    `cooking_events.recipe_id` è ON DELETE SET NULL: lo storico sopravvive col suo
-    snapshot, ma perde il collegamento alla ricetta, per sempre. Quello storico esiste
-    solo perché la fase 3 e la fase 4 ci costruiscono sopra. Rifiutare in silenzio
-    sarebbe un vicolo cieco, procedere in silenzio una perdita invisibile.
+    La pagina si rilegge da una sessione nuova: un `payload` mutato invece che
+    riassegnato sembrerebbe giusto nella memoria di `db_session` e non arriverebbe mai
+    al database (spec §10). Scritto così, questo test lo vede.
     """
-    term, _, recipe, _ = deciso
-    db_session.add(CookingEvent(recipe_id=recipe.id, servings=2, snapshot={}))
-    await db_session.flush()
-
-    with pytest.raises(CookedRecipesAffected) as errore:
-        await undo_decision(db_session, term)
-    assert errore.value.count == 1
-
-    # niente è stato toccato: un'eccezione a metà lavoro sarebbe peggio del rifiuto
-    assert term.decision == TermDecision.MAPPED
-    assert await db_session.get(Recipe, recipe.id) is not None
-
-
-async def test_con_force_si_procede_e_lo_storico_resta_orfano(db_session, deciso):
-    term, _, recipe, _ = deciso
+    term, _, recipe, page = deciso
     evento = CookingEvent(recipe_id=recipe.id, servings=2, snapshot={"titolo": "Pasta allo speck"})
     db_session.add(evento)
     await db_session.flush()
+    evento_id, page_id = evento.id, page.id
 
-    esito = await undo_decision(db_session, term, force=True)
+    esito = await undo_decision(db_session, term)
 
     assert esito.recipes_requeued == 1
-    assert await db_session.get(Recipe, recipe.id) is None
-    await db_session.refresh(evento)
-    assert evento.recipe_id is None
-    # lo snapshot è ciò che sopravvive, ed è il motivo per cui questo è accettabile
-    assert evento.snapshot == {"titolo": "Pasta allo speck"}
+    pagina = await dal_database(RecipeImport, page_id)
+    assert pagina.payload["cooking_event_ids"] == [str(evento_id)]
+    assert pagina.payload["title"] == "Pasta allo speck"
+    cottura = await dal_database(CookingEvent, evento_id)
+    # senza ricetta per ora, e con il suo snapshot: la ritrova quando la pagina torna
+    assert cottura.recipe_id is None
+    assert cottura.snapshot == {"titolo": "Pasta allo speck"}
+
+
+async def test_la_cottura_ritrova_la_ricetta_quando_la_pagina_torna(db_session, deciso, dal_database):
+    """La pagina lasciata in coda tiene gli id finché il termine non ha di nuovo una
+    decisione; allora torna ricetta, e la cottura con lei (spec §5.2 e §9.3)."""
+    term, _, recipe, page = deciso
+    evento = CookingEvent(recipe_id=recipe.id, servings=2, snapshot={})
+    db_session.add(evento)
+    await db_session.flush()
+    evento_id, page_id = evento.id, page.id
+
+    await undo_decision(db_session, term)
+    # il termine è in coda: la pagina aspetta, e la cottura con lei
+    assert (await materialize_ready(db_session, GIALLOZAFFERANO)).created == 0
+
+    pancetta = await create_ingredient(
+        db_session, name="pancetta", display_name="Pancetta", category=IngredientCategory.CARNE
+    )
+    await decide_by_hand(db_session, term, ManualDecision(action="map", ingredient_id=pancetta.id))
+    esito = await materialize_ready(db_session, GIALLOZAFFERANO)
+
+    assert esito.created == 1
+    assert esito.relinked == 1
+    pagina = await dal_database(RecipeImport, page_id)
+    cottura = await dal_database(CookingEvent, evento_id)
+    assert pagina.recipe_id is not None
+    assert cottura.recipe_id == pagina.recipe_id
+    assert "cooking_event_ids" not in pagina.payload
 
 
 async def test_annullare_un_termine_ignorato_funziona(db_session):

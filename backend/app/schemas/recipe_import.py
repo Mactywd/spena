@@ -88,16 +88,6 @@ class DecisionOut(BaseModel):
     remaining_terms: int
 
 
-class UndoRequest(BaseModel):
-    """`force` è la conferma sullo storico di cottura, non un interruttore generale.
-
-    Serve solo a superare il 409 che avvisa che una delle ricette da rifare è già
-    stata cucinata, e che lo storico perderebbe il collegamento.
-    """
-
-    force: bool = False
-
-
 class UndoOut(BaseModel):
     recipes_requeued: int
     ingredient_deleted: bool

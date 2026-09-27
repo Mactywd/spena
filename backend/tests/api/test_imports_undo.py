@@ -1,4 +1,4 @@
-"""La rotta dell'annullamento, e il 409 che chiede conferma sullo storico.
+"""La rotta dell'annullamento, che dalla S9 non chiede più conferma.
 
 Le rotte di `/imports` sono dietro `require_session` (vedi
 `test_senza_sessione_non_si_guarda_niente` in `test_imports.py`): qui si usa
@@ -63,31 +63,31 @@ async def test_annulla_e_dice_quante_ricette_sono_tornate_in_coda(logged_client,
     assert term.decision == TermDecision.PENDING
 
 
-async def test_una_ricetta_cucinata_risponde_409_col_numero(logged_client, db_session):
+async def test_una_ricetta_cucinata_non_blocca_piu_l_annullamento(logged_client, db_session):
+    """Fino a S9 qui c'era un 409 che chiedeva conferma. Le cotture ora si ri-legano
+    (spec §5.2): l'annullamento non scollega più niente, e non c'è niente da
+    confermare."""
     term, recipe = await prepara(db_session)
     db_session.add(CookingEvent(recipe_id=recipe.id, servings=2, snapshot={}))
     await db_session.flush()
 
     response = await logged_client.post(f"/api/v1/imports/terms/{term.id}/undo", json={})
-    assert response.status_code == 409
-    # il numero deve stare nel messaggio: è ciò che la schermata mostra
-    assert "1" in response.json()["detail"]
 
+    assert response.status_code == 200
+    assert response.json()["recipes_requeued"] == 1
     await db_session.refresh(term)
-    assert term.decision == TermDecision.MAPPED
+    assert term.decision == TermDecision.PENDING
 
 
-async def test_con_force_procede(logged_client, db_session):
-    term, recipe = await prepara(db_session)
-    db_session.add(CookingEvent(recipe_id=recipe.id, servings=2, snapshot={}))
-    await db_session.flush()
+async def test_un_corpo_con_force_di_una_pwa_vecchia_non_rompe_niente(logged_client, db_session):
+    """Una PWA con la cache di prima manda ancora `{"force": ...}`: la rotta lo ignora."""
+    term, _ = await prepara(db_session)
 
     response = await logged_client.post(
         f"/api/v1/imports/terms/{term.id}/undo", json={"force": True}
     )
+
     assert response.status_code == 200
-    await db_session.refresh(term)
-    assert term.decision == TermDecision.PENDING
 
 
 async def test_un_termine_inesistente_risponde_404(logged_client):

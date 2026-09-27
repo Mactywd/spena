@@ -66,7 +66,7 @@ from app.services.recipe_import.materialize import (
     merge_quantities,
     stronger,
 )
-from app.services.recipe_import.undo import CookedRecipesAffected, undo_decision
+from app.services.recipe_import.undo import undo_decision
 
 Log = Callable[[str], None]
 
@@ -156,13 +156,7 @@ async def _apply_decision(
 
 
 async def _undo(session: AsyncSession, term: ImportTerm) -> int:
-    try:
-        return (await undo_decision(session, term)).recipes_requeued
-    except CookedRecipesAffected as exc:
-        raise PlanError(
-            f"«{term.display_name}»: {exc.count} ricette da rifare sono già state "
-            "cucinate. Il piano non forza lo storico: decidi a mano."
-        ) from exc
+    return (await undo_decision(session, term)).recipes_requeued
 
 
 async def decide(session: AsyncSession, step: dict, outcome: Outcome) -> str:

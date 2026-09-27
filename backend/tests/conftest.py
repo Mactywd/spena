@@ -86,3 +86,28 @@ async def logged_client(client, monkeypatch):
     await client.post("/api/v1/auth/login", json={"password": "test"})
     yield client
     get_settings.cache_clear()
+
+
+@pytest_asyncio.fixture
+async def dal_database(db_session):
+    """Rilegge una riga da una sessione nuova, sulla stessa connessione del test.
+
+    Vede il database e non la memoria di `db_session`: un JSONB mutato invece che
+    riassegnato sembra giusto nell'identity map e non arriva mai al database, e solo
+    una lettura da fuori se ne accorge (spec S9 §10). La sessione nuova, bindata alla
+    stessa `Connection`, apre un proprio SAVEPOINT annidato dentro quello di
+    `db_session` (`join_transaction_mode="conditional_savepoint"`, il default): vede
+    quindi tutto ciò che `db_session` ha già scritto (stessa connessione, stessa
+    transazione di Postgres), e chiuderla fa `ROLLBACK TO SAVEPOINT` del proprio, non
+    di quello del test — che non annulla niente perché questa sessione non scrive.
+    """
+
+    async def leggi(model, key):
+        await db_session.flush()
+        fresca = AsyncSession(bind=db_session.bind, expire_on_commit=False)
+        try:
+            return await fresca.get(model, key)
+        finally:
+            await fresca.close()
+
+    return leggi

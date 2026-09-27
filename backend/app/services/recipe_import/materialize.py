@@ -11,12 +11,12 @@ sblocca.
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient
-from app.db.models.recipe import RecipeSource
-from app.db.models.recipe_import import GIALLOZAFFERANO, ImportState, TermDecision
+from app.db.models.recipe import CookingEvent, RecipeSource
+from app.db.models.recipe_import import GIALLOZAFFERANO, ImportState, RecipeImport, TermDecision
 from app.domain.rules import IngredientRole, cost_in_scale, default_role
 from app.repositories.imports import pending_pages, terms_by_key
 from app.repositories.recipes import NonFoodInRecipe, create_recipe
@@ -33,11 +33,17 @@ EMPTY_REASON = (
     "e una ricetta senza ingredienti risulterebbe sempre cucinabile"
 )
 
+# La chiave del `payload` dove `undo_decision` lascia gli id delle cotture della ricetta
+# che ha cancellato. La ricetta rifatta da questa pagina le riprende (S9 §5.2).
+COOKING_EVENTS_KEY = "cooking_event_ids"
+
 
 @dataclass(frozen=True)
 class Materialized:
     created: int
     skipped: int
+    # le cotture che hanno ritrovato la loro ricetta in questo giro
+    relinked: int
 
 
 def merge_quantities(first: str | None, second: str | None) -> str | None:
@@ -60,6 +66,31 @@ def stronger(first: IngredientRole, second: IngredientRole) -> IngredientRole:
     return IngredientRole.SECONDARY
 
 
+async def _relink_cooking_events(
+    session: AsyncSession, page: RecipeImport, recipe_id: uuid.UUID
+) -> int:
+    """Rimette sulla ricetta rifatta le cotture che aspettavano nel `payload`.
+
+    `recipe_id IS NULL` nella condizione: una cottura che nel frattempo qualcuno ha
+    legato ad altro non si ruba. La chiave si toglie riassegnando il dizionario —
+    SQLAlchemy non vede le mutazioni dentro un JSONB, e una `pop` sparirebbe al flush
+    senza un errore.
+    """
+    waiting = page.payload.get(COOKING_EVENTS_KEY)
+    if not waiting:
+        return 0
+    result = await session.execute(
+        update(CookingEvent)
+        .where(
+            CookingEvent.id.in_([uuid.UUID(str(value)) for value in waiting]),
+            CookingEvent.recipe_id.is_(None),
+        )
+        .values(recipe_id=recipe_id)
+    )
+    page.payload = {key: value for key, value in page.payload.items() if key != COOKING_EVENTS_KEY}
+    return result.rowcount or 0
+
+
 async def materialize_ready(
     session: AsyncSession, source: str = GIALLOZAFFERANO
 ) -> Materialized:
@@ -72,6 +103,7 @@ async def materialize_ready(
 
     created = 0
     skipped = 0
+    relinked = 0
     for page in await pending_pages(session, source):
         lines = page.payload.get("ingredients") or []
         decisions = [terms.get(line.get("key")) for line in lines]
@@ -154,6 +186,7 @@ async def materialize_ready(
         page.state = ImportState.IMPORTED
         page.recipe_id = recipe.id
         created += 1
+        relinked += await _relink_cooking_events(session, page, recipe.id)
 
     await session.flush()
-    return Materialized(created=created, skipped=skipped)
+    return Materialized(created=created, skipped=skipped, relinked=relinked)

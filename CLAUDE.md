@@ -193,7 +193,10 @@ production, which is the first defect listed above.
   no second mapping table, and a wrong decision is corrected from the ingredient
   registry. **The LLM decides these terms and the queue is the review**: every
   decision carries `decided_by = "ai"` and has an undo that puts the term, the
-  alias, the created ingredient and the materialized recipes back. A response
+  alias, the created ingredient and the materialized recipes back.
+  Undo never refuses over recipes already cooked: the ids of their cooking events wait
+  in the page's `payload` under `cooking_event_ids`, and `materialize_ready` puts them
+  back on the rebuilt recipe (S9 §5.2). A response
   that cannot be verified against the real registry is never applied — the term
   stays in the queue. Specs are
   `docs/superpowers/specs/2026-09-12-import-ricette-design.md` and
