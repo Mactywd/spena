@@ -134,29 +134,43 @@ export function ShoppingListScreen() {
             <ul className="divide-y divide-line">
               {group.map((item) => (
                 <li key={item.id} className="flex flex-col">
-                  <div className="flex items-center gap-3 pl-3">
-                    <input
-                      type="checkbox"
-                      aria-label={item.ingredient_name ?? item.raw_text}
-                      checked={item.status === "checked"}
-                      disabled={busyId === item.id}
-                      onChange={() => toggle.mutate(item)}
-                      className="size-5 shrink-0"
-                    />
-                    <span
-                      className={`flex-1 py-3 ${
-                        item.status === "checked" ? "text-ink-faint line-through" : ""
-                      }`}
-                    >
-                      {item.raw_text}
-                    </span>
-                    {/* visibile, non un tooltip: da telefono non esiste il passaggio del
-                        mouse, e il motivo per cui una voce è rientrata va letto */}
-                    {REASON_HINT[item.reason] && (
-                      <span className="shrink-0 text-xs text-low">
-                        {REASON_HINT[item.reason]}
+                  <div className="flex items-center">
+                    {/* S17: in corsia spuntare è il gesto che si fa di più, e il
+                        pollice tocca la parola, non il quadratino da 20px accanto.
+                        La label prende casella, nome e nota, ed è alta almeno 44px.
+                        L'`aria-label` sulla casella resta e vince sul testo della
+                        label: il nome accessibile è l'ingrediente abbinato, non
+                        «Total 0% rientrata perché…». La X sta fuori, bersaglio suo:
+                        dentro, un tocco per togliere una voce la spunterebbe anche */}
+                    <label className="flex min-h-11 min-w-0 flex-1 items-center gap-3 py-3 pl-3">
+                      <input
+                        type="checkbox"
+                        aria-label={item.ingredient_name ?? item.raw_text}
+                        checked={item.status === "checked"}
+                        disabled={busyId === item.id}
+                        onChange={() => toggle.mutate(item)}
+                        className="size-5 shrink-0"
+                      />
+                      {/* S16: `min-w-0` lascia stringere la colonna sotto la sua
+                          parola più lunga, e `break-words` spezza un nome che non ci
+                          sta. Senza, a 375px la riga spingeva la pagina di lato */}
+                      <span className="flex min-w-0 flex-1 flex-col break-words">
+                        <span
+                          className={
+                            item.status === "checked" ? "text-ink-faint line-through" : ""
+                          }
+                        >
+                          {item.raw_text}
+                        </span>
+                        {/* visibile, non un tooltip: da telefono non esiste il
+                            passaggio del mouse, e il motivo per cui una voce è
+                            rientrata va letto. Sotto il nome e non accanto: accanto
+                            non ci stava (S16) */}
+                        {REASON_HINT[item.reason] && (
+                          <span className="text-xs text-low">{REASON_HINT[item.reason]}</span>
+                        )}
                       </span>
-                    )}
+                    </label>
                     {/* il nome sta nell'etichetta accessibile e non sullo schermo: su
                         375px una riga per voce è quel che rende la lista leggibile
                         camminando, e un bersaglio da pollice ci sta comunque */}

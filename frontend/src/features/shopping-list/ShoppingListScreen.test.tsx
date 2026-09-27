@@ -66,6 +66,52 @@ describe("ShoppingListScreen", () => {
     expect(JSON.parse(patch?.[1].body)).toEqual({ status: "checked" });
   });
 
+  // S17: in corsia spuntare è il gesto che si fa di più, e col pollice si tocca la
+  // parola, non un quadratino da 20px accanto a lei
+  it("toccando il nome la voce si spunta, non solo sulla casella", async () => {
+    const spy = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(ITEMS), { status: 200 }))
+      .mockResolvedValue(new Response(JSON.stringify({ ...ITEMS[0], status: "checked" }),
+        { status: 200 }));
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    await userEvent.click(await screen.findByText("pomodoro"));
+
+    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(patch?.[0]).toContain("/shopping-list/s1");
+    expect(JSON.parse(patch?.[1].body)).toEqual({ status: "checked" });
+  });
+
+  it("anche la nota del rientro fa parte del bersaglio che spunta", async () => {
+    const spy = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(ITEMS), { status: 200 }))
+      .mockResolvedValue(new Response(JSON.stringify({ ...ITEMS[1], status: "checked" }),
+        { status: 200 }));
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    await userEvent.click(await screen.findByText("rientrata perché finita cucinando"));
+
+    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(patch?.[0]).toContain("/shopping-list/s2");
+    expect(JSON.parse(patch?.[1].body)).toEqual({ status: "checked" });
+  });
+
+  it("la X resta fuori dal bersaglio della spunta: togliere non spunta", async () => {
+    const spy = vi.fn()
+      .mockResolvedValue(new Response(JSON.stringify(ITEMS), { status: 200 }));
+    vi.stubGlobal("fetch", spy);
+
+    renderScreen();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Togli pomodoro dalla lista" })
+    );
+
+    const patches = spy.mock.calls.filter(([, init]) => init?.method === "PATCH");
+    expect(patches.map(([, init]) => JSON.parse(init.body))).toEqual([{ status: "archived" }]);
+  });
+
   it("offre di sistemare la spesa quando c'è almeno una voce spuntata", async () => {
     renderScreen();
     // la scheda è sempre presente: si aspetta che il conteggio arrivi, non il link

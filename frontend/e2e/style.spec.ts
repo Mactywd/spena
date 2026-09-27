@@ -358,3 +358,88 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   await riga.getByRole("button", { name: "Togli carota dalla dispensa" }).click();
   await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
 });
+
+test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il nome", async ({
+  page,
+}) => {
+  // S16: a 375px una voce con la nota del rientro allargava la pagina a 394px, e
+  // la X di quella voce restava mezza fuori dallo schermo. `scrollWidth` lo calcola
+  // il browser dal CSS che Tailwind ha costruito: jsdom non lo vede, quindi questo
+  // è l'unico posto da cui si misura. Il controllo gira su ogni schermata
+  // principale, non solo sulla lista: una riga che non si stringe è un difetto che
+  // si può riscrivere ovunque.
+  //
+  // La nota esiste solo su una voce rientrata dalla cottura, quindi il test la
+  // produce col gesto vero, come `cooking.spec.ts`: il mascarpone entra in
+  // dispensa con l'ingresso diretto, il tiramisù lo finisce, e torna in lista.
+  // Ingrediente e ricetta non li nomina nessun altro file, e in fondo si tolgono
+  // voce di lista e voce di dispensa: questo file non lascia niente dietro di sé.
+  await page.getByRole("link", { name: "Dispensa" }).click();
+  await page.getByLabel("Aggiungi in dispensa").fill("mascarp");
+  await page.getByRole("option", { name: /^Mascarpone\b/ }).click();
+  await expect(page.locator("li", { hasText: "mascarpone" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  await page.getByRole("link", { name: /Tiramisù/ }).first().click();
+  const ricetta = new URL(page.url()).pathname;
+  await page.getByRole("button", { name: "Cucina", exact: true }).click();
+  await page
+    .getByRole("group", { name: /mascarpone/i })
+    .getByRole("button", { name: "Finito", exact: true })
+    .click();
+  await expect(page.getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
+  await page.getByRole("button", { name: "Ho cucinato", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Segnato. Una cosa è tornata in lista della spesa."
+  );
+
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  // stringhe e non funzioni, per il motivo detto sul test dell'intestazione
+  const nonScorreDiLato = async (schermata: string) => {
+    await page.waitForLoadState("networkidle");
+    const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+    const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+    expect(scrollWidth, `${schermata} scorre di lato`).toBeLessThanOrEqual(clientWidth);
+  };
+
+  await page.goto("/lista");
+  const voce = page.getByRole("checkbox", { name: "mascarpone" });
+  await expect(voce).toBeVisible();
+  // la nota di QUESTA voce: `cooking.spec.ts` lascia in lista il suo pomodoro,
+  // rientrato con la stessa nota
+  const etichetta = page.locator("label").filter({ has: voce });
+  await expect(etichetta.getByText("rientrata perché finita cucinando")).toBeVisible();
+  // una prova a occhio per chi rivede: la cartella è quella dei risultati di
+  // Playwright, che git ignora
+  await page.screenshot({ path: test.info().outputPath("lista-375.png"), fullPage: true });
+  await nonScorreDiLato("/lista");
+
+  // S17: il bersaglio della spunta è la label intorno a casella, nome e nota, e il
+  // pollice la prende solo se è alta almeno 44px. La X resta fuori: dentro, un
+  // tocco per togliere una voce la spunterebbe anche
+  await expect(etichetta).toContainText("mascarpone");
+  await expect(etichetta.getByRole("button")).toHaveCount(0);
+  const box = await etichetta.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+
+  await page.goto("/sistema");
+  await nonScorreDiLato("/sistema");
+  await page.goto("/dispensa");
+  await expect(page.getByRole("heading", { name: "Dispensa" })).toBeVisible();
+  await nonScorreDiLato("/dispensa");
+  await page.goto("/ricette");
+  await expect(page.getByRole("link", { name: /Tiramisù/ }).first()).toBeVisible();
+  await nonScorreDiLato("/ricette");
+  await page.goto(ricetta);
+  await expect(page.getByRole("button", { name: "Cucina", exact: true })).toBeVisible();
+  await nonScorreDiLato("il dettaglio di una ricetta");
+
+  // la pulizia: la voce rientrata esce dalla lista, e quella finita dalla dispensa
+  await page.goto("/lista");
+  await page.getByRole("button", { name: "Togli mascarpone dalla lista" }).click();
+  await expect(page.getByRole("checkbox", { name: "mascarpone" })).toHaveCount(0);
+  await page.goto("/dispensa");
+  await page.getByRole("button", { name: "Togli mascarpone dalla dispensa" }).click();
+  await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+});

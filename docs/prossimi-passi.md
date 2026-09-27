@@ -970,7 +970,18 @@ Anche qui lo stato ricordato è una comodità per dispositivo. Due cose da non
 sbagliare: una ricerca (S11) apre i reparti con un risultato, e un reparto chiuso deve
 dire quante voci contiene, altrimenti chiuso sembra vuoto.
 
-## S16. La lista scorre di lato quando una voce porta la nota del rientro **[D, difetto, dal giro di T3]**
+## S16. La lista scorre di lato quando una voce porta la nota del rientro **[FATTO 2026-09-27]**
+
+> **Fatto:** la prima strada. In `ShoppingListScreen.tsx` la nota sta su una seconda
+> riga sotto il nome, piccola e nel tono `text-low` di prima, e il nome e la nota
+> stanno in una colonna `min-w-0` con `break-words`: la colonna si stringe, e un nome
+> che non ci sta va a capo invece di spingere la X fuori dallo schermo. In
+> `e2e/style.spec.ts` il controllo nuovo produce una voce rientrata col gesto vero
+> (mascarpone in dispensa, tiramisù cucinato, «Finito»), poi a 375 px apre lista,
+> sistemazione, dispensa, ricettario e un dettaglio, e su ognuna chiede
+> `scrollWidth <= clientWidth`. Sul codice di prima falliva sulla lista con 401 px
+> contro 375; in fondo toglie voce di lista e voce di dispensa, come gli altri test
+> del file.
 Una voce tornata dalla cottura porta la nota «rientrata perché finita cucinando». A
 375 px, quella voce allarga la pagina a 394 px: tutta la lista si sposta di lato, e la
 X di quella voce resta mezza fuori dallo schermo.
@@ -984,7 +995,16 @@ una scheda da 343 px, e `Card` non taglia quel che esce.
 `shrink-0` e dare `min-w-0` alle due parti. In `e2e/style.spec.ts` va aggiunto un
 controllo `scrollWidth <= clientWidth` su ogni schermata: jsdom non lo vede.
 
-## S17. In lista si spunta solo sulla casella da 20×20 **[D, difetto, dal giro di T3]**
+## S17. In lista si spunta solo sulla casella da 20×20 **[FATTO 2026-09-27]**
+
+> **Fatto:** casella, nome e nota stanno in un `<label>` alto almeno 44 px (`min-h-11`)
+> che prende tutta la riga fino alla X; la X resta fuori, bersaglio suo, perché dentro
+> un tocco per togliere una voce la spunterebbe anche. L'`aria-label` della casella
+> resta dov'era e vince sul testo della label, quindi il nome accessibile è ancora
+> l'ingrediente abbinato (`checkbox "pomodoro"`), non nome più nota. In Vitest tre
+> prove nuove: toccare il nome spunta, toccare la nota spunta, toccare la X archivia
+> senza spuntare. In `e2e/style.spec.ts` il test di S16 misura anche la label: alta
+> almeno 44 px, contiene il nome, e nessun pulsante dentro.
 In corsia, spuntare è il gesto che si fa di più, e oggi lo prende solo la casella.
 Toccare il nome non fa niente. Il nome è uno `<span>` nudo, e la casella ha solo un
 `aria-label`, senza un `<label>` intorno (`ShoppingListScreen.tsx`).
@@ -1955,8 +1975,8 @@ sbagliati:
 - S20 lega prodotti a ingredienti sbagliati;
 - S18 (fatto il 2026-09-27) e S19 lasciano voci senza ingrediente.
 
-Proposta: **prima S20, S19, S18**, perché sporcano l'anagrafica; **poi S16, S17, S21 e
-T4-«Ho cucinato»**. R11 costa poco, perché il backend è già pronto, e può andare con
+Proposta: **prima S20, S19, S18**, perché sporcano l'anagrafica; **poi S16, S17 (fatti il
+2026-09-27), S21 e T4-«Ho cucinato»**. R11 costa poco, perché il backend è già pronto, e può andare con
 loro. R10 invece vuole prima una decisione, e va con S9, perché è lo stesso principio.
 Solo dopo, la spec di T3 con l'elenco del giro in mano.
 
