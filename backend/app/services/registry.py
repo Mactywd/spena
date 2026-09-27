@@ -461,8 +461,8 @@ async def _repoint_shopping(
     Se il vincitore ha già una voce attiva, quelle attive del perdente si tolgono come
     le toglie la X della lista — archiviate — e passano al vincitore con la storia.
     Resta la voce del vincitore col suo testo: il testo del perdente non vi si unisce,
-    perché una voce di lista è una riga scritta da qualcuno, non un campo da fondere.
-    Torna (spostate e ancora com'erano, tolte).
+    perché una voce di lista è una riga scritta da qualcuno, non un campo da fondere;
+    lo stato sì, il più avanti dei due. Torna (spostate e ancora com'erano, tolte).
     """
     winner_listed = (
         await session.execute(
@@ -478,6 +478,41 @@ async def _repoint_shopping(
     ).scalar_one()
     dropped = 0
     if winner_listed:
+        # La voce che resta prende lo stato più avanti: se quella del perdente era già
+        # nel carrello e quella del vincitore ancora da comprare, resta nel carrello —
+        # altrimenti si ricomprerebbe quel che è già in mano.
+        loser_checked_at = (
+            await session.execute(
+                select(func.max(ShoppingListItem.checked_at)).where(
+                    ShoppingListItem.ingredient_id == loser_id,
+                    ShoppingListItem.status == ShoppingStatus.CHECKED,
+                )
+            )
+        ).scalar_one_or_none()
+        loser_checked = (
+            await session.execute(
+                select(
+                    select(ShoppingListItem.id)
+                    .where(
+                        ShoppingListItem.ingredient_id == loser_id,
+                        ShoppingListItem.status == ShoppingStatus.CHECKED,
+                    )
+                    .exists()
+                )
+            )
+        ).scalar_one()
+        if loser_checked:
+            await session.execute(
+                update(ShoppingListItem)
+                .where(
+                    ShoppingListItem.ingredient_id == winner_id,
+                    ShoppingListItem.status == ShoppingStatus.PENDING,
+                )
+                .values(
+                    status=ShoppingStatus.CHECKED,
+                    checked_at=func.coalesce(loser_checked_at, func.now()),
+                )
+            )
         result = await session.execute(
             update(ShoppingListItem)
             .where(
