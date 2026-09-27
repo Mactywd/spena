@@ -1,7 +1,11 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-27: **l'anagrafica è stata rivista voce per voce e corretta in
-produzione** — i 35 termini rimasti in coda sono decisi (coda vuota, **8.451 ricette**),
+Aggiornato il 2026-09-27, due volte. La seconda: **dieci voci dall'uso vero**, portate
+da Mattia. Sono S8–S15 in Parte II (codici a barre, correzione degli errori di
+registrazione, «Sistema la spesa», ricerca, riconoscibilità, cursore, cibo/casa e
+reparti in dispensa), S3 ripresa, e T3, la revisione di UI e UX che parte da un giro
+del sito fatto da un sottoagente. L'ordine proposto è in Parte VIII. La prima:
+**l'anagrafica è stata rivista voce per voce e corretta in produzione** — i 35 termini rimasti in coda sono decisi (coda vuota, **8.451 ricette**),
 e un piano di 229 passi ha tolto alias sbagliati, doppioni che davano falsi «manca» e
 reparti sbagliati; gli ingredienti sono passati da 952 a 884. I dettagli sono in R4,
 sotto «La revisione dell'anagrafica». Prima: il 2026-09-24, otto volte. L'ottava: **R4 eseguita** — in produzione ci
@@ -509,6 +513,21 @@ accetta già `expires_on`, quindi all'ingresso diretto resta solo da mostrarlo.
 questa voce la tira dentro. Va deciso se la parità si fa subito senza scontrino e si
 completa dopo, o se aspetta.
 
+**Chiesto di nuovo da Mattia il 2026-09-27, e con un accento preciso: deve essere
+*veloce*.** Oggi per mettere in dispensa qualcosa con il suo codice a barre bisogna
+scriverlo in lista, spuntarlo e passare da «Sistema la spesa». In dispensa c'è solo
+«Aggiungi in dispensa» (`PantryScreen.tsx`, un `IngredientPicker`): sceglie fra gli
+ingredienti già in anagrafica, entra come disponibile e senza marca, non scansiona,
+non crea un ingrediente nuovo, e quando fallisce dice «scrivilo in lista e sistemalo
+da lì». Servono dalla dispensa, senza passare per la lista: **scansione** e
+**inserimento a mano**, con la creazione di ingrediente e prodotto quando mancano. La
+richiesta fa pendere la domanda qui sopra verso la parità subito, senza scontrino;
+resta da confermare nella spec. Chi la scrive non deve copiare i pezzi di
+`StockingScreen.tsx` (scanner, catalogo, `CustomProductForm`) in un secondo schermo:
+vanno estratti e usati da entrambi, altrimenti le guardie di uno (il controllo
+ingrediente/prodotto prima del 409, il codice che non sopravvive a una voce
+diversa) mancheranno nell'altro. È la prima lezione di `CLAUDE.md`.
+
 ## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE 2026-09-24 — solo il livello prodotto]**
 Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero
 nella forma ma povero nel contenuto. Spec:
@@ -747,6 +766,130 @@ nello stesso commit**, come D5 imponeva. **In produzione dal 2026-09-22**, migra
 `0009` applicata; **verifica a mano fatta il 2026-09-23, passata** (vedi «Stato di
 oggi»): il selettore data di Android chiude il campo come serviva, che era l'unico
 punto rimasto all'uso vero.
+
+## Dall'uso vero, 2026-09-27
+
+Le voci da S8 a S15 le ha portate Mattia dopo qualche giorno di spesa e dispensa
+vere. Lo stato di oggi è stato controllato sul codice il giorno stesso. Nessuna ha
+ancora una spec. L'ordine proposto è in Parte VIII.
+
+## S8. Il codice a barre scansionato deve restare legato a quel che si crea a mano **[D — da verificare, poi chiudere i buchi]**
+Quando si scansiona un codice che né il catalogo né Open Food Facts conoscono e poi
+si inserisce il prodotto a mano, quel codice deve restare associato al prodotto
+creato. La prossima volta la scansione lo deve trovare.
+
+**Com'è oggi.** La via diretta lo fa già: con un codice sconosciuto, o una lettura
+fallita, `StockingScreen.tsx` apre `CustomProductForm` con il codice
+(`creatingFor.barcode`), e il modulo lo manda a `POST /products`. Il caso del burro
+(S9) dimostra che almeno una volta è stato salvato. **Ma non tutte le uscite lo
+portano con sé**:
+- dal pannello del catalogo, «Crea il prodotto a mano» chiama `createByHand(item, "")`,
+  cioè senza codice, anche se un attimo prima era stato letto;
+- confermare la voce come sfusa dopo un codice sconosciuto perde il codice. Lì è
+  giusto, perché non c'è un prodotto a cui legarlo;
+- scegliere dal catalogo un prodotto esistente **senza** codice non gli aggiunge quello
+  appena letto. Oggi non c'è modo di dare un codice a un prodotto che non ce l'ha.
+
+**Cosa fare.** Prima capire con Mattia quale strada ha preso quando il codice non è
+rimasto. Poi fare in modo che il codice letto segua ogni uscita che crea o sceglie un
+prodotto: il catalogo e la creazione a mano dal catalogo; lo sfuso no. Scrivere prima
+il test di ciascuna uscita. Vale anche per l'ingresso diretto in dispensa (S3), che
+deve usare gli stessi pezzi.
+
+## S9. Correggere quel che è stato registrato male **[D, con TBD sulla forma]**
+Mattia ha legato per sbaglio il codice a barre di un parmigiano a «burro», e non c'è
+modo di sistemarlo dall'app. **Il problema è generale: un errore di registrazione
+resta per sempre.** Verificato sul codice: le rotte di `ingredients.py` e
+`products.py` creano e basta, nessuna `PATCH` e nessuna `DELETE`. Oggi dall'app non
+si può:
+- **su un prodotto**: cambiare l'ingrediente sotto cui sta, il nome, la marca, o
+  togliere o spostare il codice a barre;
+- **su un ingrediente**: cambiare il reparto, e quindi `kind` (un ingrediente creato
+  nel reparto sbagliato ci resta), cambiare il nome, o unirlo a un doppione.
+
+Mai un vicolo cieco (quinta lezione di `CLAUDE.md`) vale anche per gli errori di chi
+usa l'app, non solo per quelli della rete.
+
+**Da dove partire.** La logica esiste già per la riga di comando:
+`app.cli.fix_registry` sa fare `merge`, `recategorize` e `rename` sugli ingredienti,
+con le guardie giuste. Per esempio, il reparto non alimentare è rifiutato se
+l'ingrediente ha righe di ricetta. Lo schermo deve chiamare gli stessi servizi,
+spostati fuori dal comando, e non una seconda copia. Sui prodotti non c'è ancora
+niente: servono la modifica e la rimozione del codice. Una rimozione non deve rompere
+gli elementi di dispensa che puntano al prodotto (`pantry_items.product_id`).
+
+**TBD**: dove vive la correzione. Proposta: dalla riga della dispensa (tocco sul nome
+→ scheda dell'elemento con prodotto e ingrediente modificabili) e da una pagina
+«Anagrafica» nell'hamburger (T1) per ingredienti e prodotti che non sono in dispensa.
+
+**Il caso concreto resta sbagliato in produzione** finché la voce non c'è. Se Mattia
+vuole, si corregge prima a mano sul database, dicendo quale prodotto spostare. Nessuno
+l'ha ancora fatto.
+
+## S10. «Sistema la spesa»: lo scanner e il modulo si aprono in fondo, fuori vista **[D]**
+Con molte voci, ognuna con le sue tre opzioni, premere «scansiona» su una voce in alto
+apre lo scanner **in fondo alla pagina**, dove non si vede. Lo stesso succede al
+pannello del catalogo e a `CustomProductForm`: in `StockingScreen.tsx` sono tutti
+disegnati dopo la lista. **Richiesta di Mattia**: quando si scansiona, si cerca a
+catalogo o si crea un prodotto per una voce, le altre voci si nascondono per quel
+momento, e ricompaiono quando si conferma o si annulla. Le risoluzioni già fatte
+restano dove sono: sono indicizzate per voce e non dipendono da cosa è a video. Va
+verificato a 375 px in un browser vero, perché jsdom non vede dove finisce un
+pannello.
+
+## S11. Cercare in dispensa **[D]**
+Per sapere se c'è il sale oggi bisogna scorrere tutta la dispensa. Serve un campo che
+filtri le righe mentre si scrive. **TBD**: se è lo stesso campo di «Aggiungi in
+dispensa» (scrivo «sale»: se c'è mi mostra la riga, se non c'è mi offre di
+aggiungerlo) o un campo a parte. Il primo è più veloce, ma un campo che fa due cose
+deve dire chiaramente quale sta facendo. Con i reparti chiusi (S15) una ricerca apre
+quelli che contengono un risultato.
+
+## S12. Le righe della dispensa sono tutte uguali **[TBD — brainstorming]**
+Serve un modo di riconoscere una riga senza leggerla. Le strade proposte da Mattia
+sono una foto per tipo, un'icona o un'emoji per reparto o per ingrediente, un fondo,
+un SVG. Cosa c'è già e cosa costa:
+- **per reparto** (una ventina, lista chiusa): icona o emoji decise una volta, a mano.
+  È la via più economica;
+- **per ingrediente** (884): un'emoji decisa dall'AI una volta sola, sotto il tetto di
+  1 $/giorno, con la stessa verifica e lo stesso undo delle altre decisioni dell'AI.
+  Molti ingredienti non hanno un'emoji giusta, quindi serve un ripiego (quella del
+  reparto);
+- **per prodotto**: `products.image_url` c'è già per quelli da Open Food Facts. Gli
+  altri non l'hanno, e sarebbe solo una parte delle righe.
+
+Vincoli: un fondo colorato passa dal blocco `@theme`, con il contrasto sopra 4.5:1, e
+non deve confondersi con i colori che vogliono già dire qualcosa (le zone del cursore,
+il viola della scadenza). Da decidere insieme alla revisione di T3.
+
+## S13. Il cursore della dispensa si sposta mentre si scorre **[D — difetto]**
+Scorrendo la dispensa col dito, se il tocco parte sopra un cursore il valore cambia, e
+con lui lo stato: una voce può diventare «quasi finita» o «finita» senza che nessuno
+l'abbia voluto. È un dato sbagliato scritto in silenzio. `FillSlider.tsx` è un
+`<input type="range">` nativo: il valore segue ogni `onChange` durante il
+trascinamento e si salva al `pointerup`. **Richiesta di Mattia**: il cursore cambia
+solo con un tocco, dove il dito si appoggia e si solleva nello stesso punto, e non con
+un trascinamento. Lo scorrimento verticale deve passare alla pagina (`touch-action`).
+La tastiera deve continuare a funzionare. Si prova **solo sul telefono vero**, come il
+selettore data di S7: nessun test in jsdom e nessun `fill()` di Playwright riproduce un
+dito che scorre.
+
+## S14. Cibo e casa separati in dispensa **[D]**
+Oggi cibo e non alimentari stanno nella stessa dispensa. Serve un modo per vedere solo
+il cibo o solo le cose di casa, per esempio un selettore «Tutto / Cibo / Casa» in cima.
+`ingredients.kind` esiste già (D4), quindi il modello non cambia. Va però esposto:
+`PantryItemOut` porta `ingredient_category` ma non il `kind`. Il frontend non deve
+ricavarlo dal reparto, perché sarebbe una seconda copia di `kind_for_category`: il
+server aggiunge `ingredient_kind`, oppure filtra lui. Il selettore
+ricordato fra una visita e l'altra è una comodità per dispositivo, quindi
+`localStorage` basta.
+
+## S15. Reparti della dispensa collassabili **[D]**
+`PantryScreen.tsx` raggruppa per reparto (`groupByCategory`) con un titolo per gruppo.
+I titoli diventano apribili e chiudibili, così la dispensa si naviga per reparto.
+Anche qui lo stato ricordato è una comodità per dispositivo. Due cose da non
+sbagliare: una ricerca (S11) apre i reparti con un risultato, e un reparto chiuso deve
+dire quante voci contiene, altrimenti chiuso sembra vuoto.
 
 ---
 
@@ -1208,6 +1351,59 @@ davvero.
 
 ↳ H1 ora è sbloccata: da oggi lo storico si può dividere.
 
+## T3. Revisione di UI e UX, a partire da un giro del sito fatto da un sottoagente **[D, chiesto da Mattia il 2026-09-27]**
+Oltre alle voci puntuali di S8–S15 serve una revisione dell'interfaccia. L'esempio di
+Mattia: **pulsanti con icone al posto di testo cliccabile**, a cominciare dalla
+scansione del codice a barre. Prima di progettarla, però, serve sapere tutto quel che
+c'è da rivedere, non solo quel che è saltato all'occhio finora.
+
+**Il primo passo è un sottoagente, su Opus.** Naviga il sito con una checklist di
+pagine da guardare e menù da aprire, e si annota man mano tutto quel che è ambiguo,
+brutto o migliorabile. Il risultato torna in questo file come voci nuove, e solo dopo
+si scrive la spec della revisione. La checklist di partenza, da allargare se il giro
+trova altro:
+- **Accesso**: la schermata di login e il suo errore;
+- **Lista**: il campo di aggiunta con i suggerimenti, una voce a testo libero, la
+  spunta, lo svuotamento;
+- **Sistema la spesa**: ciascuna delle tre opzioni per voce, lo scanner (anche
+  dove la fotocamera non c'è), il codice scritto a mano, il catalogo, il modulo del
+  prodotto nuovo precompilato e vuoto, il prodotto di un altro ingrediente, la creazione
+  dell'ingrediente con il reparto, l'errore della sistemazione;
+- **Dispensa**: «Aggiungi in dispensa», il cursore e le sue tre zone, la X e la
+  lapide con l'annulla, «Lo rimetto in lista?», il «+ scadenza» e le due pastiglie,
+  i gruppi per reparto, la dispensa vuota;
+- **Ricette**: la ricerca, la scala «Tutte / Ora / +1 / +2 / +3», il filtro per
+  ingredienti con le pastiglie, le schede con i mancanti, «Mostra altre», la
+  voce d'ingresso «Ingredienti da abbinare»;
+- **Dettaglio ricetta**: la foto, lo stepper delle porzioni con la riga di
+  copertura, il costo in `€`, il foglio della cottura con «Rimetti in lista»;
+- **Scrivi una ricetta e bozza AI**: il modulo, le righe escluse (vedi la voce
+  «non in anagrafica» in Parte X), il salvataggio;
+- **Ingredienti da abbinare**: la coda (vuota oggi: serve un seme con termini in
+  coda), «Deciso dall'AI», l'annullamento con il suo riquadro;
+- **In tutto il sito**: header, tabbar, tasto indietro, schede d'ingresso, stati
+  vuoti, di caricamento e d'errore, bersagli sotto i 44 px, testi che vanno a capo
+  male.
+
+Ogni osservazione va annotata con la schermata, cosa si vede (con uno screenshot), e
+perché è un problema: ambiguo, brutto, scomodo, incoerente con un'altra schermata. Va
+aggiunta anche una proposta, e un peso da «da fare» a «gusto». Il giro si fa **a
+375 px**, la larghezza per cui l'app è pensata, e poi una volta in larghezza desktop.
+
+**Dove gira.** Una sessione di Claude non scrive la password vera, quindi due strade:
+lo stack locale `spena-e2e` con la password finta di `.env.e2e` e il seme
+`--con-ricette`, che è la strada preferita perché lì il giro può anche scrivere; oppure
+la produzione, dopo che Mattia ha fatto l'accesso nel browser dell'app, **solo
+guardando**, senza sistemare spese né cucinare. Attenzione alla nota di R4: lo stack
+e2e vuole un `.env` nella radice, che Claude non crea. La coda «Ingredienti da
+abbinare» e le ricette vere si vedono bene solo con i dati di produzione.
+
+**Da decidere nella spec, non adesso**: T1 ha disegnato a mano il marchio in SVG
+proprio per non portare una libreria di icone per un segno solo. Con un'icona per
+ogni azione e forse una per reparto (S12), una libreria piccola e ad albero (per
+esempio `lucide-react`) può diventare la scelta giusta. Un'icona senza testo deve
+comunque avere il suo `aria-label`, e restare riconoscibile in corsia.
+
 ---
 
 # Parte VIII — Ordine consigliato
@@ -1244,6 +1440,20 @@ colonna annullabile, un selettore e cinque `€`, più la lettura del costo dall
 così R4 lo porta già.
 
 **Ultimo, quel che ha bisogno di tutto il resto**: Pasti (P1, P2, P3), M1, H1, H2.
+
+**Dal 2026-09-27, per l'uso di tutti i giorni: le voci di Mattia (S8–S15, T3, e S3
+di nuovo).** Proposta d'ordine, da confermare:
+1. **prima quel che scrive dati sbagliati o li lascia sbagliati**: S13 (il cursore
+   che cambia lo stato scorrendo), S9 (niente si corregge) e S8 (il codice che non
+   resta). Sono difetti, non miglioramenti;
+2. **poi il giro del sottoagente di T3**, prima di toccare la forma delle schermate:
+   S10, S11, S12, S14, S15 e l'ingresso diretto di S3 cambiano tutti le stesse due
+   schermate, Dispensa e Sistema la spesa, e il giro porterà altre voci sulle stesse.
+   Rifarle una volta sola, con la spec della revisione in mano, costa meno che
+   rifarle sei volte;
+3. **poi la revisione**, con S3 dentro. Chi scrive la spec controlli se estrarre
+   scanner, catalogo e modulo da `StockingScreen.tsx` sia lo stesso lavoro di S3
+   e S10.
 
 ---
 
