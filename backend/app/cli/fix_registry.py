@@ -35,38 +35,37 @@ Il piano è una lista di passi JSON, applicati in ordine:
 rimettendo in attesa le pagine delle sue ricette, poi lo decide. `merge` sposta tutto
 quel che puntava a `from` — termini, dispensa, lista, prodotti, righe di ricetta,
 alias — su `into`, e poi cancella `from`; il suo nome resta come alias di `into`,
-così chi lo scrive nella lista trova ancora qualcosa. Le pagine rimesse in attesa
-tornano ricette una volta sola, alla fine.
+così chi lo scrive nella lista trova ancora qualcosa. Le pagine rimesse in attesa da
+un `merge` tornano ricette dentro il passo stesso, con le loro cotture; quelle di
+`remap` e `decide` una volta sola, alla fine.
+
+Da S9 le correzioni dell'anagrafica — `merge`, `recategorize`, `rename`, `move_alias` —
+stanno in `app/services/registry.py`, lo stesso servizio che chiamano le schede
+dell'anagrafica nell'app. Questo comando traduce il passo in argomenti, chiama il
+servizio e trasforma il suo rifiuto (`RegistryRefusal`) in `PlanError`. `decide` e
+`remap` restano qui: sono decisioni della coda, non anagrafica.
 """
 
 import argparse
 import asyncio
 import json
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal
-from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
-from app.db.models.pantry import PantryItem
-from app.db.models.product import Product
-from app.db.models.recipe import RecipeIngredient
+from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
-from app.db.models.shopping import ShoppingListItem
-from app.domain.rules import IngredientKind, IngredientRole, kind_for_category
+from app.domain.rules import IngredientRole
 from app.repositories.imports import counts
-from app.repositories.ingredients import delete_ingredient_if_unused, remember_alias
+from app.services import registry
 from app.services.recipe_import.manual import DecisionRefused, ManualDecision, decide_by_hand
-from app.services.recipe_import.materialize import (
-    materialize_ready,
-    merge_quantities,
-    stronger,
-)
+from app.services.recipe_import.materialize import materialize_ready
 from app.services.recipe_import.undo import undo_decision
+from app.services.registry import RegistryRefusal
 
 Log = Callable[[str], None]
 
@@ -185,137 +184,44 @@ async def remap(session: AsyncSession, step: dict, outcome: Outcome) -> str:
 async def merge(session: AsyncSession, step: dict, outcome: Outcome) -> str:
     loser = await _ingredient(session, step["from"])
     winner = await _ingredient(session, step["into"])
-    if loser.id == winner.id:
-        raise PlanError(f"«{loser.name}» non si unisce a sé stesso")
-    if loser.kind != winner.kind:
-        raise PlanError(
-            f"«{loser.name}» ({loser.kind}) e «{winner.name}» ({winner.kind}): un alimento "
-            "e una voce non alimentare non si uniscono"
-        )
-    loser_id: uuid.UUID = loser.id
-    # I nomi si fotografano prima: l'annullamento dell'ultimo termine può cancellare
-    # l'ingrediente, e i suoi alias con lui.
-    names = [loser.name, loser.display_name, *(alias.alias for alias in loser.aliases)]
-
-    terms = list(
-        (
-            await session.execute(select(ImportTerm).where(ImportTerm.ingredient_id == loser_id))
-        ).scalars()
-    )
-    requeued = 0
-    for term in terms:
-        role = term.role_override
-        requeued += await _undo(session, term)
-        await _apply_decision(
-            session, term,
-            ManualDecision(action="map", ingredient_id=winner.id, role_override=role),
-        )
-    outcome.requeued += requeued
-
-    moved = 0
-    for model in (PantryItem, ShoppingListItem, Product):
-        result = await session.execute(
-            update(model).where(model.ingredient_id == loser_id).values(ingredient_id=winner.id)
-        )
-        moved += result.rowcount or 0
-
-    # Le righe rimaste sono di ricette che non vengono dall'import (scritte a mano o
-    # con l'AI): quelle non si rifanno da un payload, si spostano. Se la ricetta ha
-    # già una riga del vincitore, le due diventano una come nella materializzazione.
-    lines = list(
-        (
-            await session.execute(
-                select(RecipeIngredient).where(RecipeIngredient.ingredient_id == loser_id)
-            )
-        ).scalars()
-    )
-    for line in lines:
-        twin = (
-            await session.execute(
-                select(RecipeIngredient).where(
-                    RecipeIngredient.recipe_id == line.recipe_id,
-                    RecipeIngredient.ingredient_id == winner.id,
-                )
-            )
-        ).scalars().first()
-        if twin is None:
-            line.ingredient_id = winner.id
-            continue
-        twin.role = stronger(IngredientRole(twin.role), IngredientRole(line.role))
-        twin.quantity_text = merge_quantities(twin.quantity_text, line.quantity_text)
-        # «500 g + 50 g» non è una dose che il riporziona sappia leggere: la riga
-        # smette di scalare, che è onesto, invece di scalare solo metà.
-        twin.quantity_value = None
-        twin.quantity_unit_id = None
-        await session.delete(line)
-    await session.flush()
-
-    await session.execute(delete(IngredientAlias).where(IngredientAlias.ingredient_id == loser_id))
-    await session.flush()
-    survivor = await session.get(Ingredient, loser_id)
-    if survivor is not None:
-        # la collezione in memoria ricorda ancora gli alias appena cancellati
-        await session.refresh(survivor)
-        if not await delete_ingredient_if_unused(session, loser_id):
-            raise PlanError(f"«{step['from']}» è ancora usato dopo l'unione")
-    for name in names:
-        if name.strip().lower() != winner.name:
-            await remember_alias(session, winner.id, name)
-    await session.flush()
+    try:
+        merged = await registry.merge_ingredients(session, loser.id, winner.id)
+    except RegistryRefusal as exc:
+        raise PlanError(exc.message) from exc
+    # `merge_ingredients` rimaterializza le pagine che l'unione ha reso pronte dentro
+    # se stessa (annulla e ridecide ogni termine del perdente, poi ricostruisce): non
+    # resta niente in attesa da contare qui, quindi `outcome.requeued` non si tocca —
+    # a differenza di `remap`, dove la rimaterializzazione finale di `apply_plan` è
+    # quella che rifà le ricette rimesse in attesa.
+    outcome.rebuilt += merged.recipes_rebuilt
     return (
-        f"{step['from']} → {winner.name}: {len(terms)} termini, {len(lines)} righe "
-        f"fuori dall'import, {moved} fra dispensa, lista e prodotti "
-        f"({requeued} ricette da rifare)"
+        f"{step['from']} → {merged.winner_name}: {merged.recipes_rebuilt} ricette rifatte, "
+        f"{merged.recipe_lines_moved} righe fuori dall'import, "
+        f"{merged.pantry_items + merged.shopping_items + merged.products} fra dispensa, "
+        f"lista e prodotti, {merged.cooking_events_relinked} cotture ri-legate"
     )
 
 
 async def recategorize(session: AsyncSession, step: dict, outcome: Outcome) -> str:
     ingredient = await _ingredient(session, step["ingredient"])
-    category = step["category"]
-    if category not in {c.value for c in IngredientCategory}:
-        raise PlanError(f"reparto sconosciuto: «{category}»")
-    if kind_for_category(category) == IngredientKind.NON_FOOD:
-        used = (
-            await session.execute(
-                select(RecipeIngredient.id)
-                .where(RecipeIngredient.ingredient_id == ingredient.id)
-                .limit(1)
-            )
-        ).first()
-        if used is not None:
-            raise PlanError(
-                f"«{ingredient.name}» è in qualche ricetta: non può diventare non alimentare"
-            )
     before = ingredient.category
-    ingredient.category = category
-    await session.flush()
-    return f"{ingredient.name}: {before} → {category}"
+    try:
+        await registry.recategorize_ingredient(session, ingredient.id, step["category"])
+    except RegistryRefusal as exc:
+        raise PlanError(exc.message) from exc
+    return f"{ingredient.name}: {before} → {ingredient.category}"
 
 
 async def rename(session: AsyncSession, step: dict, outcome: Outcome) -> str:
     ingredient = await _ingredient(session, step["ingredient"])
     old_name, old_display = ingredient.name, ingredient.display_name
-    if "name" in step:
-        new_name = step["name"].strip().lower()
-        if new_name != ingredient.name:
-            taken = (
-                await session.execute(select(Ingredient.id).where(Ingredient.name == new_name))
-            ).first()
-            if taken is not None:
-                raise PlanError(f"«{new_name}» è già in anagrafica: usa «merge»")
-            # l'alias uguale al nome nuovo diventerebbe un doppione del nome
-            await session.execute(
-                delete(IngredientAlias).where(
-                    IngredientAlias.ingredient_id == ingredient.id,
-                    IngredientAlias.alias == new_name,
-                )
-            )
-            ingredient.name = new_name
-    if "display_name" in step:
-        ingredient.display_name = step["display_name"].strip()
-    await session.flush()
-    if old_name != ingredient.name:
-        await remember_alias(session, ingredient.id, old_name)
+    try:
+        await registry.rename_ingredient(
+            session, ingredient.id,
+            name=step.get("name"), display_name=step.get("display_name"),
+        )
+    except RegistryRefusal as exc:
+        raise PlanError(exc.message) from exc
     return f"{old_name} ({old_display}) → {ingredient.name} ({ingredient.display_name})"
 
 
@@ -331,10 +237,10 @@ async def move_alias(session: AsyncSession, step: dict, outcome: Outcome) -> str
     if not rows:
         raise PlanError(f"nessun alias «{alias}» da spostare")
     for row in rows:
-        await session.delete(row)
-    await session.flush()
-    if alias != target.name:
-        await remember_alias(session, target.id, alias)
+        try:
+            await registry.move_alias(session, row.id, target.id)
+        except RegistryRefusal as exc:
+            raise PlanError(exc.message) from exc
     return f"alias «{alias}» → {target.name}"
 
 
@@ -367,7 +273,7 @@ async def apply_plan(
         log(f"{index:>3}. {step['op']:<12} {message}")
 
     materialized = await materialize_ready(session, GIALLOZAFFERANO)
-    outcome.rebuilt = materialized.created
+    outcome.rebuilt += materialized.created
     outcome.skipped = materialized.skipped
     outcome.pending_terms = (await counts(session, GIALLOZAFFERANO)).pending_terms
     log(
