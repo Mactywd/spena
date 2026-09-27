@@ -11,6 +11,7 @@ import type { Ingredient, MergeCounts } from "../../domain/types";
 import { AliasRow } from "./AliasRow";
 import { CategoryForm } from "./CategoryForm";
 import { MergePanel } from "./MergePanel";
+import { RenameForm } from "./RenameForm";
 import { fetchIngredientDetail } from "./api";
 import { backFrom, originFrom, productPath } from "./origin";
 import { mergeDoneText, usageText } from "./wording";
@@ -25,7 +26,10 @@ export function IngredientScreen() {
   return <IngredientCard key={id} id={id} />;
 }
 
-type Panel = { kind: "category" } | { kind: "merge"; winner: Ingredient | null };
+type Panel =
+  | { kind: "rename" }
+  | { kind: "category" }
+  | { kind: "merge"; winner: Ingredient | null };
 
 /** Prima dice cos'è e dove è usato — il peso di una correzione si vede prima di farla —
  * poi gli alias e i prodotti. Le correzioni stanno sopra, e vengono dal servizio unico
@@ -101,6 +105,13 @@ function IngredientCard({ id }: { id: string }) {
       <div className="flex flex-wrap gap-2 pb-1">
         <button
           type="button"
+          onClick={() => setPanel({ kind: "rename" })}
+          className={buttonClasses("secondary")}
+        >
+          Rinomina
+        </button>
+        <button
+          type="button"
           onClick={() => setPanel({ kind: "category" })}
           className={buttonClasses("secondary")}
         >
@@ -114,6 +125,13 @@ function IngredientCard({ id }: { id: string }) {
           Unisci a un altro…
         </button>
       </div>
+      {panel?.kind === "rename" && (
+        <RenameForm
+          ingredient={ingredient}
+          onDone={() => setPanel(null)}
+          onMergeWith={(existing) => setPanel({ kind: "merge", winner: existing })}
+        />
+      )}
       {panel?.kind === "category" && (
         <CategoryForm ingredient={ingredient} onDone={() => setPanel(null)} />
       )}

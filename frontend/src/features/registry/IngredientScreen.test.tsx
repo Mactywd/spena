@@ -450,4 +450,57 @@ describe("IngredientScreen", () => {
     await screen.findByText(/Si spostano/);
     expect(screen.queryByText(/Può volerci qualche minuto/)).toBeNull();
   });
+
+  it("«Rinomina» manda il nome nuovo e si richiude", async () => {
+    const spy = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        return [{ ...POMODORI, name: "pomodori rossi", display_name: "Pomodori rossi" }, 200];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Rinomina" }));
+    const campo = screen.getByLabelText("Nuovo nome");
+    await userEvent.clear(campo);
+    await userEvent.type(campo, "Pomodori rossi");
+    await userEvent.click(screen.getByRole("button", { name: "Salva il nome" }));
+
+    await waitFor(() => expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(1));
+    const [, init] = callsTo(spy, "PATCH", "/ingredients/i-pomodori")[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "Pomodori rossi" });
+    await waitFor(() => expect(screen.queryByLabelText("Nuovo nome")).toBeNull());
+  });
+
+  it("un nome già preso offre «Uniscili», e porta alla fusione con quel vincitore già scelto", async () => {
+    const spy = stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        return [{
+          code: "name_taken",
+          detail: "«pomodoro» è già in anagrafica: uniscili invece di rinominare.",
+          existing: POMODORO,
+        }, 409];
+      }
+      if (path.endsWith("/ingredients/i-pomodori/merge")) return [ANTEPRIMA, 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Rinomina" }));
+    const campo = screen.getByLabelText("Nuovo nome");
+    await userEvent.clear(campo);
+    await userEvent.type(campo, "Pomodoro");
+    await userEvent.click(screen.getByRole("button", { name: "Salva il nome" }));
+
+    expect(await screen.findByText("C'è già «Pomodoro». Uniscili?")).toBeInTheDocument();
+    // il nome scritto resta nel campo: si corregge, non si riscrive (spec §7)
+    expect(screen.getByLabelText("Nuovo nome")).toHaveValue("Pomodoro");
+    await userEvent.click(screen.getByRole("button", { name: "Uniscili" }));
+
+    expect(await screen.findByText(/«pomodori» diventa un alias di «pomodoro»/)).toBeInTheDocument();
+    const [, init] = callsTo(spy, "POST", "/ingredients/i-pomodori/merge")[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      into: "i-pomodoro", dry_run: true,
+    });
+  });
 });
