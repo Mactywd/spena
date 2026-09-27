@@ -858,6 +858,11 @@ stanno in più di 1.000. La produzione non ha gli embedding (sentence-transforme
 installato, di proposito), quindi i tempi valgono anche lì. Le schermate sono la
 Consegna 2.
 
+**Consegna 2 (le schermate) è costruita e verificata** (vitest, lint, typecheck,
+build) **ma non ancora distribuita in produzione**: aggiornare questa riga — o
+toglierla — quando il deploy lo sarà (`docker compose -f docker-compose.prod.yml up
+-d --build --wait`, e solo dopo il via di Mattia).
+
 **Nota aperta (dalla revisione del Task 3):** dopo un annullamento, una pagina
 rimessa in coda che finisce `SKIPPED` tiene gli id delle cotture nel `payload`; quelle
 cotture restano con `recipe_id` `NULL`. Raro, gli id sono recuperabili dal `payload`;
@@ -867,21 +872,23 @@ la spec §5.2 non lo prevedeva.
 quando l'ingrediente perdente è in più di 1.000 ricette. L'anteprima della fusione non
 riprova da sola, perché ogni tentativo è una fusione intera.
 
-Mattia ha legato per sbaglio il codice a barre di un parmigiano a «burro», e non c'è
-modo di sistemarlo dall'app. *(Quel parmigiano è stato sistemato a mano in produzione
-il 2026-09-27: prodotto `ace228d2…` e il suo unico elemento di dispensa spostati da
-«burro» a «parmigiano», in una transazione con la guardia sull'ingrediente di
-partenza. S9 resta aperta per il caso generale.)* **Il problema è generale: un errore
-di registrazione resta per sempre.** Verificato sul codice: le rotte di `ingredients.py` e
-`products.py` creano e basta, nessuna `PATCH` e nessuna `DELETE`. Oggi dall'app non
-si può:
+Mattia aveva legato per sbaglio il codice a barre di un parmigiano a «burro», e prima
+di questa consegna non c'era modo di sistemarlo dall'app. *(Quel parmigiano è stato
+sistemato a mano in produzione il 2026-09-27: prodotto `ace228d2…` e il suo unico
+elemento di dispensa spostati da «burro» a «parmigiano», in una transazione con la
+guardia sull'ingrediente di partenza — prima ancora che le schermate esistessero.)*
+**Il problema era generale: un errore di registrazione restava per sempre.**
+Verificato sul codice: prima di S9 le rotte di `ingredients.py` e `products.py`
+creavano e basta, nessuna `PATCH` e nessuna `DELETE`. Con le schermate della Consegna
+2 (vedi sopra sul deploy), dall'app ora si può:
 - **su un prodotto**: cambiare l'ingrediente sotto cui sta, il nome, la marca, o
   togliere o spostare il codice a barre;
 - **su un ingrediente**: cambiare il reparto, e quindi `kind` (un ingrediente creato
-  nel reparto sbagliato ci resta), cambiare il nome, o unirlo a un doppione.
+  nel reparto sbagliato non ci resta più), cambiare il nome, o unirlo a un doppione.
 
-Mai un vicolo cieco (quinta lezione di `CLAUDE.md`) vale anche per gli errori di chi
-usa l'app, non solo per quelli della rete.
+Mai un vicolo cieco (quinta lezione di `CLAUDE.md`) valeva anche per gli errori di chi
+usa l'app, non solo per quelli della rete — ed è per questo che serviva questa
+consegna.
 
 **Da dove partire.** La logica esiste già per la riga di comando:
 `app.cli.fix_registry` sa fare `merge`, `recategorize` e `rename` sugli ingredienti,
@@ -895,6 +902,21 @@ gli elementi di dispensa che puntano al prodotto (`pantry_items.product_id`).
 link alla scheda del prodotto, o dell'ingrediente se lo sfuso — e da «Anagrafica»
 nell'hamburger per quel che in dispensa non c'è. Un servizio solo,
 `app/services/registry.py`, per l'app e per `fix_registry`.
+
+**Note aperte dalla revisione finale (2026-09-27), da riprendere:**
+- la guardia sul non alimentare in `recategorize_ingredient` conta solo le righe di
+  ricetta già materializzate: un ingrediente i cui termini d'import mappati stanno
+  ancora su pagine in attesa può diventare non alimentare, e quelle pagine finiscono
+  poi `SKIPPED` con «riga non alimentare» quando la loro ricetta si materializza —
+  la guardia non le vede finché non lo sono.
+- una fusione può lasciare due voci di lista in attesa per il vincitore (`_repoint`
+  di `shopping_list_items` in `merge_ingredients`, ereditato dalla CLI: nessun
+  controllo su un duplicato già in lista per lo stesso ingrediente).
+- il rifiuto `decision_refused` porta alla coda ma senza un link diretto al termine:
+  il backend manda `term` nel corpo del 409, il tipo TS `RegistryRefusal` no
+  (`frontend/src/domain/types.ts`).
+- l'hamburger (`AppHeader.tsx`) non blocca lo scorrimento del corpo della pagina
+  mentre il pannello è aperto.
 
 ## S10. «Sistema la spesa»: lo scanner e il modulo si aprono in fondo, fuori vista **[D]**
 Con molte voci, ognuna con le sue tre opzioni, premere «scansiona» su una voce in alto

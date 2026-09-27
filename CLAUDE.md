@@ -197,9 +197,11 @@ production, which is the first defect listed above.
   exception is an alias that is half of a queue decision (`source = "import"` with
   its term still in `import_terms`): that one is corrected from the queue, where R11
   shows manual decisions too, so the queue and the registry never disagree.
-  **The LLM decides these terms and the queue is the review**: every
-  decision carries `decided_by = "ai"` and has an undo that puts the term, the
-  alias, the created ingredient and the materialized recipes back.
+  **The LLM decides these terms and the queue is the review**: every decision
+  carries a `decided_by` — `"ai"` from the LLM, `"human"` for R11's manual
+  decisions and for a term a merge re-decides on the winner — and has an undo
+  that puts the term, the alias, the created ingredient and the materialized
+  recipes back.
   Undo never refuses over recipes already cooked: the ids of their cooking events wait
   in the page's `payload` under `cooking_event_ids`, and `materialize_ready` puts them
   back on the rebuilt recipe (S9 §5.2). A response
