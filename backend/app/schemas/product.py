@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -63,3 +64,64 @@ class BarcodeLookupOut(BaseModel):
     # comunque, e decidere se proseguire con un codice che non torna spetta a chi ha
     # la confezione in mano (codici interni di negozio, etichette rovinate)
     valid_checksum: bool
+
+
+class IngredientRefOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    display_name: str
+
+
+class ProductPantryItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    status: str
+    expires_on: date | None
+
+
+class ProductDetailOut(BaseModel):
+    """La scheda del prodotto (spec §6.4): la scheda dell'elemento di dispensa è questa,
+    e l'ingrediente sta qui come link."""
+
+    id: uuid.UUID
+    name: str
+    brand: str | None
+    barcode: str | None
+    # il verdetto di `has_valid_check_digit`, detto e mai applicato; `None` senza codice
+    valid_checksum: bool | None
+    ingredient: IngredientRefOut
+    # solo gli attivi: sono quelli che chi guarda la dispensa vede
+    pantry_items: list[ProductPantryItemOut]
+
+
+class ProductPatch(BaseModel):
+    """Ogni campo si legge da `model_fields_set`: `brand: null` e `barcode: null` sono
+    richieste («toglila», «toglilo»), non assenze.
+
+    `name` e `ingredient_id` non possono mai essere nulli in colonna (F17), quindi
+    portano l'annotazione non annullabile con default `None` — la stessa tecnica di
+    `IngredientPatch`: un campo assente resta `None` («non l'ho detto»), mentre un
+    `null` scritto a mano è validato contro il tipo vero e respinto con un 422.
+    `brand` e `barcode` si possono legittimamente svuotare, quindi restano `| None`.
+
+    `take_barcode` prende il codice a chi l'ha già; `accept_bad_checksum` lo usa anche se
+    la cifra di controllo non torna. Sono le due uscite dei due rifiuti del codice
+    (spec §7).
+    """
+
+    name: str = Field(default=None, min_length=1, max_length=200)  # type: ignore[assignment]
+    brand: str | None = Field(default=None, max_length=120)
+    ingredient_id: uuid.UUID = Field(default=None)  # type: ignore[assignment]
+    barcode: str | None = Field(default=None, max_length=20)
+    take_barcode: bool = False
+    accept_bad_checksum: bool = False
+
+
+class ProductDeletedOut(BaseModel):
+    """Quanti elementi di dispensa attivi sono rimasti, sfusi: è quel che la conferma
+    aveva promesso."""
+
+    loose_pantry_items: int

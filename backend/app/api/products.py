@@ -1,18 +1,33 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.refusals import refusal_response
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
+from app.db.models.ingredient import Ingredient
+from app.db.models.pantry import PantryItem
+from app.db.models.product import Product
 from app.domain.barcodes import has_valid_check_digit
 from app.repositories.products import create_product, find_by_barcode, search_products
 from app.schemas.product import (
     BarcodeLookupOut,
+    IngredientRefOut,
     ProductCreate,
+    ProductDeletedOut,
+    ProductDetailOut,
     ProductOut,
+    ProductPantryItemOut,
+    ProductPatch,
     ProductSuggestion,
 )
+from app.services import registry
 from app.services.openfoodfacts import OffUnavailable, OpenFoodFactsClient
+from app.services.registry import RegistryRefusal
 
 router = APIRouter(
     prefix="/api/v1/products", tags=["products"], dependencies=[Depends(require_session)]
@@ -96,3 +111,91 @@ async def create(
             raise
         raise HTTPException(status.HTTP_409_CONFLICT, "codice a barre già in catalogo") from exc
     return ProductOut.model_validate(product)
+
+
+_CONFLICT = {status.HTTP_409_CONFLICT: {
+    "description": "rifiuto dell'anagrafica: `code`, `detail` e l'ostacolo accanto",
+}}
+
+
+async def _detail(session: AsyncSession, product_id: uuid.UUID) -> ProductDetailOut:
+    product = await session.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "prodotto inesistente")
+    ingredient = await session.get(Ingredient, product.ingredient_id)
+    items = list(
+        (
+            await session.execute(
+                select(PantryItem)
+                .where(PantryItem.product_id == product_id, PantryItem.archived_at.is_(None))
+                .order_by(PantryItem.added_at, PantryItem.id)
+            )
+        ).scalars()
+    )
+    return ProductDetailOut(
+        id=product.id,
+        name=product.name,
+        brand=product.brand,
+        barcode=product.barcode,
+        valid_checksum=has_valid_check_digit(product.barcode) if product.barcode else None,
+        ingredient=IngredientRefOut.model_validate(ingredient),
+        pantry_items=[ProductPantryItemOut.model_validate(item) for item in items],
+    )
+
+
+@router.get("/{product_id}", response_model=ProductDetailOut)
+async def read_one(
+    product_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> ProductDetailOut:
+    return await _detail(session, product_id)
+
+
+@router.patch("/{product_id}", response_model=ProductDetailOut, responses=_CONFLICT)
+async def update(
+    product_id: uuid.UUID, payload: ProductPatch,
+    session: AsyncSession = Depends(get_session),
+) -> ProductDetailOut | JSONResponse:
+    fields = payload.model_fields_set - {"take_barcode", "accept_bad_checksum"}
+    if not fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "niente da cambiare")
+    try:
+        if "name" in fields or "brand" in fields:
+            await registry.update_product(
+                session, product_id,
+                name=payload.name if "name" in fields else None,
+                # `null` è «togli la marca», che per il servizio è la stringa vuota
+                brand=(payload.brand or "") if "brand" in fields else None,
+            )
+        if "ingredient_id" in fields:
+            await registry.move_product(session, product_id, payload.ingredient_id)
+        if "barcode" in fields:
+            await registry.set_barcode(
+                session, product_id, payload.barcode,
+                take=payload.take_barcode, accept_bad_checksum=payload.accept_bad_checksum,
+            )
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "prodotto o ingrediente inesistente"
+        ) from exc
+    except RegistryRefusal as exc:
+        response = refusal_response(exc)
+        await session.rollback()
+        return response
+    await session.commit()
+    return await _detail(session, product_id)
+
+
+@router.delete("/{product_id}", response_model=ProductDeletedOut)
+async def remove(
+    product_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> ProductDeletedOut:
+    """200 e non 204: la risposta dice quanti elementi di dispensa sono rimasti sfusi, e
+    un 204 non ha corpo."""
+    try:
+        loose = await registry.delete_product(session, product_id)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "prodotto inesistente") from exc
+    await session.commit()
+    return ProductDeletedOut(loose_pantry_items=loose)
