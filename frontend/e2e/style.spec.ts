@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator } from "@playwright/test";
+import type { RecipeDraft } from "../src/domain/types.ts";
 
 /**
  * Lo stile è l'unica parte dell'app che i test in jsdom non possono vedere: Tailwind
@@ -357,8 +358,9 @@ async function controllaContrasto(testo: Locator, token: string) {
 }
 
 // Parte IX, a. `index.css` *afferma* che `ink-faint` è il più chiaro che regge 4.5:1 sul
-// fondo della pagina, e `low` ci sta sopra di un soffio: calcolati a mano, 4.58:1 e
-// 4.60:1, cioè un 2% di margine. Qui lo misura il browser, sui testi veri che li usano
+// fondo della pagina, e `low` ci sta sopra di un soffio: misurati qui il 2026-09-28,
+// 4.67:1 e 4.59:1, cioè un 4% e un 2% di margine (la stima a mano di `ink-faint` diceva
+// 4.58:1, ed era sbagliata). Qui lo misura il browser, sui testi veri che li usano
 // in `text-xs` direttamente sul grigio della pagina — il caso peggiore, perché su una
 // scheda bianca lo stesso colore rende di più.
 test("il testo più chiaro dell'app regge 4.5:1 sul fondo della pagina, misurato a video", async ({
@@ -384,6 +386,8 @@ test("il testo più chiaro dell'app regge 4.5:1 sul fondo della pagina, misurato
   await page.route("**/api/v1/recipes/ai-draft", (route) => {
     bozzeServite += 1;
     return route.fulfill({
+      // `satisfies`: se la forma della bozza cambia nel frontend, lo stub non compila più
+      // invece di restare indietro in silenzio
       json: {
         title: "Sugo di prova",
         description: null,
@@ -401,7 +405,7 @@ test("il testo più chiaro dell'app regge 4.5:1 sul fondo della pagina, misurato
             proposed_category: null,
           },
         ],
-      },
+      } satisfies RecipeDraft,
     });
   });
   await page.goto("/ricette/nuova-ai");
