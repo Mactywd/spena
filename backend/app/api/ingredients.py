@@ -12,6 +12,7 @@ from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.product import Product
+from app.db.models.recipe_import import ImportTerm
 from app.domain.rules import IngredientKind
 from app.repositories.ingredients import (
     add_alias,
@@ -110,7 +111,7 @@ _CONFLICT = {status.HTTP_409_CONFLICT: {
 }}
 
 
-def _alias_out(alias: IngredientAlias, terms_by_alias: dict) -> AliasOut:
+def _alias_out(alias: IngredientAlias, terms_by_alias: dict[str, ImportTerm]) -> AliasOut:
     """Un solo posto che traduce un alias in `AliasOut`, usato dalla scheda (GET) e
     dallo spostamento (PATCH alias): la domanda «è la metà di una decisione della
     coda?» la risponde solo `registry.queue_decision_for` (F5), mai una riscrittura

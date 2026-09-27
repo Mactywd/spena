@@ -1,7 +1,7 @@
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientAlias
@@ -228,9 +228,12 @@ async def delete_ingredient_if_unused(
     ingredient = await session.get(Ingredient, ingredient_id)
     if ingredient is None:
         return False
-    await session.execute(
-        delete(IngredientAlias).where(IngredientAlias.ingredient_id == ingredient_id)
-    )
+    # `Ingredient.aliases` porta già `cascade="all, delete-orphan"`: `session.delete`
+    # cancella i suoi alias da sola. Un `DELETE` bulk qui davanti cancellava le stesse
+    # righe una seconda volta quando la sessione aveva già in memoria la collezione
+    # (per esempio dopo `forget_alias` in `undo_decision`), 0 righe trovate la seconda
+    # volta — un `SAWarning`, non un errore, ma un doppio giro sulla stessa riga che
+    # il cascade fa già da solo.
     await session.delete(ingredient)
     await session.flush()
     return True

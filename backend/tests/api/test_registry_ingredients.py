@@ -134,6 +134,20 @@ async def test_il_non_alimentare_con_ricette_e_un_409_che_le_elenca(logged_clien
     assert (await logged_client.get(f"{BASE}/{anagrafica['burro']}")).json()["category"] == "latticini"
 
 
+async def test_cambiare_reparto_riflette_categoria_e_kind(logged_client, anagrafica):
+    """Un cambio di reparto che passa (`pomodoro` non è in nessuna ricetta) si vede
+    nella risposta su entrambi i campi: `category` è quel che si è scritto, `kind` è
+    quel che `kind_for_category` ne deriva — qui un reparto alimentare che diventa
+    non alimentare, cambio visibile su entrambi insieme."""
+    risposta = await logged_client.patch(
+        f"{BASE}/{anagrafica['pomodoro']}", json={"category": "casa"}
+    )
+
+    assert risposta.status_code == 200
+    corpo = risposta.json()
+    assert (corpo["category"], corpo["kind"]) == ("casa", "non_food")
+
+
 async def test_un_corpo_vuoto_e_un_400(logged_client, anagrafica):
     risposta = await logged_client.patch(f"{BASE}/{anagrafica['pomodori']}", json={})
     assert risposta.status_code == 400
@@ -189,26 +203,38 @@ async def test_un_alimento_e_una_voce_non_alimentare_sono_un_409_kind_mismatch(l
 
 
 async def test_una_fusione_rifiutata_non_cambia_il_database(logged_client, anagrafica, dal_database):
-    """Contratto Task 5: un rifiuto lascia la sessione a metà scritta (qui, niente:
-    `kind_mismatch` è il primo controllo, prima di ogni scrittura), e la rotta deve
-    fare `rollback` e mai `commit`. Solo una sessione nuova, sulla stessa connessione,
-    vede se qualcosa è arrivato davvero al database invece di restare nella sola
-    identity map di `db_session` (spec S9 §10)."""
+    """Contratto Task 5: un rifiuto lascia la sessione a metà scritta, e la rotta deve
+    fare `rollback` e mai `commit`. `decision_refused` è il rifiuto che scrive prima
+    di rifiutare (a differenza di `kind_mismatch`, che è il primo controllo e non
+    scrive niente): `pomodori` porta il termine dell'import «k-pelati», MAPPED su di
+    lei. Ricategorizzarla su un reparto non alimentare passa (nessuna ricetta la usa,
+    solo `recipes_using` blocca quel PATCH) e la rende non alimentare quanto
+    `detersivo`, così la fusione supera `kind_mismatch` ed entra nel giro dei termini
+    — dove `undo_decision` annulla la decisione e dimentica l'alias «pomodori pelati»
+    *prima* che `decide_by_hand` rifiuti di rimapparla su un vincitore non alimentare.
+    Solo una sessione nuova, sulla stessa connessione, vede se quella scrittura a metà
+    è arrivata davvero al database invece di restare nella sola identity map di
+    `db_session` (spec S9 §10)."""
+    ricategorizzato = await logged_client.patch(
+        f"{BASE}/{anagrafica['pomodori']}", json={"category": "casa"}
+    )
+    assert ricategorizzato.status_code == 200
+
     risposta = await logged_client.post(
         f"{BASE}/{anagrafica['pomodori']}/merge",
         json={"into": str(anagrafica["detersivo"])},
     )
-
     assert risposta.status_code == 409
-    assert risposta.json()["code"] == "kind_mismatch"
+    assert risposta.json()["code"] == "decision_refused"
 
     pomodori = await dal_database(Ingredient, anagrafica["pomodori"])
     assert pomodori is not None
-    assert (pomodori.name, pomodori.category) == ("pomodori", "verdura")
-    assert {a.alias for a in pomodori.aliases} == {"pomodorini", "pomodori pelati"}
-    detersivo = await dal_database(Ingredient, anagrafica["detersivo"])
-    assert detersivo is not None
-    assert detersivo.name == "detersivo"
+    termine = await dal_database(ImportTerm, anagrafica["term"])
+    assert termine is not None
+    assert (termine.decision, termine.ingredient_id) == (
+        TermDecision.MAPPED, anagrafica["pomodori"],
+    )
+    assert "pomodori pelati" in {a.alias for a in pomodori.aliases}
 
 
 async def test_un_alias_scritto_a_mano_si_sposta(logged_client, anagrafica):
