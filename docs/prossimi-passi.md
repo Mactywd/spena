@@ -837,7 +837,34 @@ prodotto: il catalogo e la creazione a mano dal catalogo; lo sfuso no. Scrivere 
 il test di ciascuna uscita. Vale anche per l'ingresso diretto in dispensa (S3), che
 deve usare gli stessi pezzi.
 
-## S9. Correggere quel che è stato registrato male **[D — spec scritta il 2026-09-27: `docs/superpowers/specs/2026-09-27-anagrafica-design.md`]**
+## S9. Correggere quel che è stato registrato male **[FATTO IN PARTE 2026-09-27 — la Consegna 1 (backend); la Consegna 2 (schermate) resta aperta]**
+Spec: `docs/superpowers/specs/2026-09-27-anagrafica-design.md`.
+
+**Consegna 1 (backend) fatta il 2026-09-27:** il servizio `app/services/registry.py`,
+le rotte della scheda di ingrediente e prodotto, la fusione con l'anteprima nel
+SAVEPOINT, le cotture che si ri-legano (gli id restano nel `payload` della pagina
+finché la ricetta non è ricostruita: la coda non chiede più conferma). `fix_registry`
+è un guscio sul servizio, con i suoi test invariati. La prova su una copia della
+produzione (8.451 ricette): la fusione più grande possibile ha ricostruito 6.236
+ricette, anteprima in 129,5 s dal servizio, fusione in 124,9 s; database identico
+dopo l'anteprima (impronta riga per riga di ogni tabella), stessi numeri fra anteprima
+e fusione, nessuna cottura persa. Attraverso la rotta i 60 s di default di nginx
+davano un 504: la sola rotta di fusione ha ora `proxy_read_timeout 300s`
+(`frontend/nginx.conf`, commit `42ef961`, deciso con Mattia). Per contesto sui tempi:
+metà degli ingredienti sta in al più 7 ricette e il 90% in al più 189 (circa 4 s), 17
+stanno in più di 1.000. La produzione non ha gli embedding (sentence-transformers non
+installato, di proposito), quindi i tempi valgono anche lì. Le schermate sono la
+Consegna 2.
+
+**Nota aperta (dalla revisione del Task 3):** dopo un annullamento, una pagina
+rimessa in coda che finisce `SKIPPED` tiene gli id delle cotture nel `payload`; quelle
+cotture restano con `recipe_id` `NULL`. Raro, gli id sono recuperabili dal `payload`;
+la spec §5.2 non lo prevedeva.
+
+**Per il Task 17 (Consegna 2):** lo schermo della fusione deve avvisare «può volerci
+qualche minuto» quando l'ingrediente perdente è in più di 1.000 ricette (deciso con
+Mattia al Task 11).
+
 Mattia ha legato per sbaglio il codice a barre di un parmigiano a «burro», e non c'è
 modo di sistemarlo dall'app. *(Quel parmigiano è stato sistemato a mano in produzione
 il 2026-09-27: prodotto `ace228d2…` e il suo unico elemento di dispensa spostati da
