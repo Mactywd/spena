@@ -10,9 +10,10 @@ database esattamente per questo (spec madre §6.1), quindi rimettere la pagina a
 `pending` e lasciare che `materialize_ready` la ricostruisca è più corretto di
 qualunque chirurgia su `recipe_ingredients` — e non può sbagliare a metà.
 
-Non c'è niente da preservare nelle ricette cancellate: l'applicazione non ha rotte per
-modificare o cancellare una ricetta. Il giorno in cui esisterà una modifica a mano,
-questo file va ripensato.
+Nelle ricette cancellate c'è una cosa sola da preservare: il costo, l'unico campo che
+l'applicazione lascia modificare a mano (R9). Passa nel `payload` prima della
+cancellazione. Il giorno in cui una ricetta importata potrà essere modificata in
+altro, questo file va ripensato.
 """
 
 import uuid
@@ -23,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.recipe import CookingEvent, Recipe
 from app.db.models.recipe_import import ImportState, ImportTerm, RecipeImport, TermDecision
+from app.domain.rules import cost_in_scale
 from app.repositories.ingredients import delete_ingredient_if_unused, forget_alias
 
 
@@ -105,6 +107,12 @@ async def undo_decision(
     for page in pages:
         recipe = await session.get(Recipe, page.recipe_id)
         if recipe is not None:
+            # Il costo si sceglie anche a mano dal dettaglio (R9): è l'unica modifica
+            # che una ricetta importata può ricevere, e rifacendola da `payload` si
+            # perderebbe. Scritto nel `payload`, `materialize_ready` lo rilegge da lì.
+            # Riassegnato e non mutato: SQLAlchemy non vede le mutazioni in un JSONB.
+            if recipe.cost != cost_in_scale(page.payload.get("cost")):
+                page.payload = {**page.payload, "cost": recipe.cost}
             await session.delete(recipe)
         page.state = ImportState.PENDING
         page.recipe_id = None

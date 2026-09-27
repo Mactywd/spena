@@ -12,7 +12,6 @@ dopo, dall'elenco «Deciso dall'AI», con un annullamento per ognuna.
 """
 
 import uuid
-from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -23,7 +22,7 @@ from app.core.db import get_session
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
-from app.domain.rules import NON_FOOD_CATEGORIES, IngredientKind
+from app.domain.rules import IngredientKind
 from app.repositories.imports import (
     counts,
     decided_terms,
@@ -31,7 +30,6 @@ from app.repositories.imports import (
     pending_terms,
     waiting_titles,
 )
-from app.repositories.ingredients import create_ingredient, remember_alias
 from app.schemas.recipe_import import (
     DecideOut,
     DecideRequest,
@@ -46,6 +44,12 @@ from app.schemas.recipe_import import (
 from app.services.ingredient_match import match_name
 from app.services.llm import LlmUnavailable
 from app.services.recipe_import.decide import decide_terms
+from app.services.recipe_import.manual import (
+    DecisionRefused,
+    ManualDecision,
+    Refusal,
+    decide_by_hand,
+)
 from app.services.recipe_import.materialize import materialize_ready
 from app.services.recipe_import.undo import CookedRecipesAffected, undo_decision
 
@@ -56,6 +60,12 @@ router = APIRouter(
 # Quanti termini in un giro della rotta. Una chiamata a termine: il tetto è
 # sull'attesa di chi ha premuto il bottone, non sulla correttezza.
 MAX_TERMS_PER_CALL = 40
+
+_REFUSAL_STATUS = {
+    Refusal.INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    Refusal.NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    Refusal.CONFLICT: status.HTTP_409_CONFLICT,
+}
 
 
 @router.get("/status", response_model=ImportStatusOut)
@@ -210,69 +220,21 @@ async def decide(
     if term is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "termine inesistente")
 
-    if payload.action == "ignore":
-        term.decision = TermDecision.IGNORED
-        term.ingredient_id = None
-    else:
-        if payload.action == "map":
-            if payload.ingredient_id is None:
-                raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    "per collegare serve l'ingrediente",
-                )
-            ingredient = await session.get(Ingredient, payload.ingredient_id)
-            if ingredient is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente")
-            # Presto, e non alla materializzazione: questa rotta chiama
-            # materialize_ready nella stessa richiesta, e quel ciclo non protegge
-            # le singole ricette — una riga non alimentare farebbe fallire tutto
-            # il lotto pronto, non solo la ricetta colpevole, con la decisione già
-            # scritta. Un rifiuto a fine lotto è il vicolo cieco peggiore.
-            if ingredient.kind == IngredientKind.NON_FOOD:
-                raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    f"«{ingredient.display_name}» non è un alimento: un termine di "
-                    "ricetta non può collegarsi a una voce non alimentare. "
-                    "Scegline un'altra, oppure ignora il termine.",
-                )
-        else:
-            if not payload.name or payload.category is None:
-                raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    "per creare un ingrediente servono nome e categoria",
-                )
-            if payload.category in NON_FOOD_CATEGORIES:
-                raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    f"«{payload.category}» non è un reparto alimentare: un termine "
-                    "di ricetta non può creare una voce non alimentare. "
-                    "Scegli un altro reparto, oppure ignora il termine.",
-                )
-            existing = (
-                await session.execute(
-                    select(Ingredient).where(Ingredient.name == payload.name.strip().lower())
-                )
-            ).scalars().first()
-            if existing is not None:
-                raise HTTPException(
-                    status.HTTP_409_CONFLICT,
-                    f"«{existing.name}» è già in anagrafica: collega il termine invece "
-                    "di creare un doppione.",
-                )
-            ingredient = await create_ingredient(
-                session, name=payload.name,
-                display_name=payload.display_name or payload.name,
+    try:
+        await decide_by_hand(
+            session,
+            term,
+            ManualDecision(
+                action=payload.action,
+                ingredient_id=payload.ingredient_id,
+                name=payload.name,
+                display_name=payload.display_name,
                 category=payload.category,
-            )
-
-        term.decision = TermDecision.MAPPED
-        term.ingredient_id = ingredient.id
-        await remember_alias(session, ingredient.id, term.display_name)
-
-    term.role_override = payload.role_override
-    term.decided_by = "human"
-    term.decided_at = datetime.now(UTC)
-    await session.flush()
+                role_override=payload.role_override,
+            ),
+        )
+    except DecisionRefused as exc:
+        raise HTTPException(_REFUSAL_STATUS[exc.refusal], exc.message) from exc
 
     materialized = await materialize_ready(session, GIALLOZAFFERANO)
     numbers = await counts(session, GIALLOZAFFERANO)

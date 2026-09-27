@@ -151,6 +151,22 @@ Ogni decisione vale per sempre — diventa un alias dell'ingrediente, e la conos
 l'autocomplete della lista — quindi ogni giro costa meno del precedente: un termine già
 deciso non torna mai al modello.
 
+Per correggere l'anagrafica a lotti — un termine collegato all'ingrediente sbagliato,
+due ingredienti che sono la stessa cosa, un reparto sbagliato — c'è un piano scritto in
+`data/fixes/`, applicato da un comando che senza `--conferma` fa una prova completa e
+non salva niente:
+
+```bash
+docker compose exec backend python -m app.cli.fix_registry /data/fixes/2026-09-27-anagrafica.json
+docker compose exec backend python -m app.cli.fix_registry /data/fixes/2026-09-27-anagrafica.json --conferma
+```
+
+I passi (`decide`, `remap`, `merge`, `recategorize`, `rename`, `move_alias`) sono
+descritti in testa a `backend/app/cli/fix_registry.py`. Usano lo stesso annullamento e
+la stessa decisione a mano della schermata, quindi le ricette toccate si rifanno dalla
+pagina scaricata; il costo scelto a mano sopravvive. Il piano applicato resta nel
+repository come storia di cosa si è deciso: non si rilancia, se ne scrive uno nuovo.
+
 Per sapere quale provider di OpenRouter serve il modello e a quanto:
 
 ```bash
