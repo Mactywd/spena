@@ -1864,7 +1864,7 @@ Queste restano per il telefono.
 - **Non si cerca** nell'elenco delle decisioni.
 - **«Annulla» parte senza lapide.**
 
-## T4. Le azioni grosse non danno una conferma che si veda **[D, dal giro di T3]**
+## T4. Le azioni grosse non danno una conferma che si veda **[FATTO IN PARTE 2026-09-27 — «Ho cucinato» e il foglio]**
 Le azioni che cambiano più cose dicono poco, o lo dicono dove non si guarda:
 - **«Ho cucinato».** L'esito («Segnato. Una cosa è tornata in lista della spesa.»)
   compare in cima al dettaglio, mentre si è scorsi in fondo, dove stava il foglio. Chi
@@ -1883,6 +1883,18 @@ Le azioni che cambiano più cose dicono poco, o lo dicono dove non si guarda:
 dispensa · 3 restano in lista»). Dopo un'aggiunta, scorrere alla riga nuova e
 evidenziarla per un attimo. Il foglio si apre scorrendo al suo inizio. Il primo dei
 cinque punti è un difetto; gli altri sono da fare.
+
+**Fatto:** i primi due punti, quelli del dettaglio ricetta. Aprire «Cucina» porta in
+vista l'inizio del foglio; dopo «Ho cucinato» l'esito viene in vista e prende il fuoco
+(`role="status"` con `tabIndex={-1}`), così anche lo screen reader lo legge. Entrambi
+passano da `revealAtTop` (`frontend/src/lib/revealAtTop.ts`): `scrollIntoView({block:
+"start"})`, animato tranne per chi ha chiesto al sistema meno movimento. Dove fermarsi
+sotto l'intestazione fissa lo dice uno `scroll-mt-*` sull'elemento, non un numero in
+JavaScript. I test in jsdom controllano a chi si chiede di venire in vista e dove
+finisce il fuoco; che arrivi davvero sotto l'header si guarda in un browser vero.
+**Restano aperti** «Metti in dispensa», «Aggiungi in dispensa» e «Salva nel
+ricettario», con l'avviso uguale in tutta l'app che li servirebbe: aspettano la spec
+del ridisegno di T3, perché dove sta quell'avviso è una domanda sua.
 
 ---
 

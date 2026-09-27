@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { fetchRecipe, updateRecipeCost } from "../recipes/api";
@@ -12,6 +12,7 @@ import { buttonClasses } from "../../components/ui/buttonClasses";
 import { BackLink } from "../../components/BackLink";
 import { RecipeImage } from "../recipes/RecipeImage";
 import { CostPicker } from "../../components/ui/CostPicker";
+import { revealAtTop } from "../../lib/revealAtTop";
 import type { CookResult, RecipeIngredientLine } from "../../domain/types";
 
 function statusNote(line: RecipeIngredientLine): string {
@@ -85,6 +86,28 @@ export function RecipeDetailScreen() {
     refetch: refetchPantry,
   } = useQuery({ queryKey: ["pantry"], queryFn: fetchPantry });
 
+  // «Cucina» sta in fondo, sotto il procedimento, e il foglio prende il posto di
+  // ingredienti e procedimento: la pagina si accorcia ma resta scorsa in fondo, e le
+  // prime righe del foglio — con «Tocca solo ciò che è cambiato» — restano fuori
+  // vista. Si porta in vista il suo inizio appena c'è.
+  const sheetOpen = cooking && pantry !== undefined;
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (sheetOpen && sheetRef.current) revealAtTop(sheetRef.current);
+  }, [sheetOpen]);
+
+  // L'esito compare in cima al dettaglio, mentre chi ha appena toccato «Ho
+  // cucinato» è ancora là in fondo dov'era il pulsante: chi non lo vede cucina due
+  // volte. Si porta in vista e prende il fuoco, così lo screen reader lo legge anche
+  // se la regione `status` è nata insieme al suo testo. Il fuoco senza scorrimento,
+  // perché quello istantaneo del fuoco interromperebbe quello animato.
+  const outcomeRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!lastCook || !outcomeRef.current) return;
+    outcomeRef.current.focus({ preventScroll: true });
+    revealAtTop(outcomeRef.current);
+  }, [lastCook]);
+
   if (isRecipeLoading) return <p className="p-4 text-ink-soft">Carico…</p>;
 
   // un caricamento fallito non è una ricetta vuota: dirlo sarebbe una bugia su
@@ -151,8 +174,11 @@ export function RecipeDetailScreen() {
         <Alert>Non sono riuscito a salvare il costo: è rimasto quello di prima. Riprova.</Alert>
       )}
 
-      {cooking && pantry ? (
-        <div className="pt-4">
+      {/* `scroll-mt-12` è l'altezza dell'intestazione fissa (h-12 in AppHeader):
+          senza, l'inizio del foglio finirebbe sotto l'header. Lo spazio fra i due
+          lo dà già il `pt-4` di questo contenitore. */}
+      {sheetOpen ? (
+        <div ref={sheetRef} className="scroll-mt-12 pt-4">
           <CookSheet
             recipe={recipe}
             pantryItems={pantry}
@@ -165,9 +191,14 @@ export function RecipeDetailScreen() {
       ) : (
         <>
           {lastCook && (
+            // `tabIndex={-1}`: raggiungibile dal fuoco dato dal codice, non dal
+            // tasto Tab. `scroll-mt-16`: l'header (h-12) più un respiro, perché
+            // lo scorrimento allinea il bordo del riquadro e il suo `mt-3` non conta
             <p
+              ref={outcomeRef}
               role="status"
-              className="mt-3 rounded-card bg-brand-tint px-3 py-2.5 text-sm text-brand"
+              tabIndex={-1}
+              className="mt-3 scroll-mt-16 rounded-card bg-brand-tint px-3 py-2.5 text-sm text-brand"
             >
               {cookNote(lastCook)}
             </p>

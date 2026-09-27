@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -436,5 +436,99 @@ describe("il costo nel dettaglio (R9)", () => {
     expect(screen.getByRole("button", { name: "Costo 5 su 5" })).toHaveAttribute(
       "aria-pressed", "false"
     );
+  });
+});
+
+/** Ricetta, dispensa e una cottura che riesce: il giro intero di «Cucina». */
+function stubCookServer() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: unknown) => {
+      if (String(url).includes("/cook")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ event_id: "e1", updated: 1, restocked: 1 }), {
+            status: 201,
+          })
+        );
+      }
+      if (String(url).includes("/pantry")) {
+        return Promise.resolve(new Response(JSON.stringify(PANTRY), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(DETAIL), { status: 200 }));
+    })
+  );
+}
+
+// jsdom non ha layout: non scorre niente e non sa dove stia un elemento. Quel che si
+// può controllare qui è *a chi* si chiede di venire in vista e come; che ci arrivi
+// davvero sotto l'intestazione fissa lo dice solo un browser vero.
+describe("il foglio e l'esito si fanno vedere (T4)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("aprire il foglio porta in vista il suo inizio, non il fondo della pagina", async () => {
+    stubCookServer();
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
+
+    const hint = await screen.findByText(/Tocca solo ciò che è cambiato/);
+    await vi.waitFor(() => expect(scroll).toHaveBeenCalled());
+    const target = scroll.mock.contexts.at(-1) as HTMLElement;
+    // l'elemento che scorre contiene la prima riga del foglio: è l'inizio del foglio
+    // che deve arrivare in cima, non un pezzo qualunque
+    expect(target).toContainElement(hint);
+    expect(scroll).toHaveBeenLastCalledWith({ block: "start", behavior: "smooth" });
+  });
+
+  it("chi ha chiesto meno movimento non riceve lo scorrimento animato", async () => {
+    stubCookServer();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({ matches: query === "(prefers-reduced-motion: reduce)" }))
+    );
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
+
+    await vi.waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(scroll).toHaveBeenLastCalledWith({ block: "start", behavior: "auto" });
+  });
+
+  it("dopo «Ho cucinato» l'esito viene in vista e prende il fuoco", async () => {
+    // l'esito compare in cima al dettaglio mentre si è scorsi in fondo, dove stava
+    // il foglio: senza portarlo in vista, chi non lo vede cucina una seconda volta.
+    // Il fuoco è la metà per chi legge con lo screen reader.
+    stubCookServer();
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
+    const row = (await screen.findByText("Pelati")).closest("li")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    scroll.mockClear();
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+
+    const outcome = await screen.findByRole("status");
+    expect(outcome).toHaveTextContent("Segnato. Una cosa è tornata in lista della spesa.");
+    await vi.waitFor(() => expect(outcome).toHaveFocus());
+    expect(outcome).toHaveAttribute("tabindex", "-1");
+    expect(scroll.mock.contexts.at(-1)).toBe(outcome);
+    expect(scroll).toHaveBeenLastCalledWith({ block: "start", behavior: "smooth" });
+  });
+
+  it("annullare il foglio non inventa un esito da mettere in vista", async () => {
+    stubCookServer();
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+
+    expect(await screen.findByRole("button", { name: "Cucina" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
