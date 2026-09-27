@@ -1,6 +1,10 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-24, otto volte. L'ottava: **R4 eseguita** — in produzione ci
+Aggiornato il 2026-09-27: **l'anagrafica è stata rivista voce per voce e corretta in
+produzione** — i 35 termini rimasti in coda sono decisi (coda vuota, **8.451 ricette**),
+e un piano di 229 passi ha tolto alias sbagliati, doppioni che davano falsi «manca» e
+reparti sbagliati; gli ingredienti sono passati da 952 a 884. I dettagli sono in R4,
+sotto «La revisione dell'anagrafica». Prima: il 2026-09-24, otto volte. L'ottava: **R4 eseguita** — in produzione ci
 sono **8.136 ricette**, 56 termini aspettano una decisione a mano e trattengono 315
 pagine, l'AI è costata **0,66 $** e il database pesa **72 MB**; i numeri sono in R4.
 La settima: **R4 costruita, non eseguita** — in
@@ -849,6 +853,44 @@ svuota la sitemap direttamente sul server.
 >   i quali il runbook chiedeva un `EXPLAIN ANALYZE`.
 > - **La verifica a schermo sul telefono** (§7.5 del runbook) **resta da fare** a
 >   Mattia: vuole il login, e una sessione di Claude non scrive password.
+
+> **La revisione dell'anagrafica, 2026-09-27.** Dei 56 termini in coda Mattia ne ha
+> decisi 21 a mano; gli altri 35 li ha decisi una sessione di Claude, e la stessa
+> sessione ha riletto tutte le 952 voci. Circa il 3 % delle 1.563 decisioni dell'AI era
+> sbagliato in modo che si vede: «lampascioni» sotto «lampone disidratato», «oro
+> alimentare» sotto bottarga, «primosale» sotto sale, «ostia» sotto ostrica, «berberè»
+> sotto birra, «codette colorate» sotto pasta. Più grave per l'uso erano i **doppioni**, perché danno
+> falsi «manca»: la piadina in dispensa e la piadella nelle ricette (con «Piadine»
+> collegato alla tortilla), grana padano (603 righe) accanto al parmigiano, 30 formati
+> di pasta creati a parte invece che come alias di «pasta», vini e confetture per nome.
+> Tre decisioni prese a mano erano sviste (fagioli rossi → fagiolo nero, pepe verde →
+> pepe nero, risoni → riso), altre due scelte da rivedere (stracciatella → stracchino,
+> carne di suino → macinato di manzo).
+>
+> - **Come**: `app.cli.fix_registry` con il piano `data/fixes/2026-09-27-anagrafica.json`,
+>   provato prima su una copia locale del database di produzione e poi in produzione
+>   senza `--conferma`. Backup `~/spena-prima-di-anagrafica-2026-09-27.sql.gz` (16 MB,
+>   13 tabelle su 13) — **si può cancellare dopo qualche giorno**; il resoconto passo
+>   per passo è in `~/fix-registry-2026-09-27.log` sul server.
+> - **Numeri**: 229 passi, 2.351 ricette rimesse in attesa e 2.408 rifatte dalla pagina
+>   scaricata, 0 scartate; 0 termini in coda; ricette da 8.394 a **8.451**, ingredienti
+>   da 952 a **884**, nessun alias su due ingredienti. Nessuna ricetta persa, nessun
+>   costo cambiato (confrontati uno per uno), dosi strutturate al 61 % come prima.
+> - **Decisioni di Mattia** (2026-09-27): grana e parmigiano **uniti** («Parmigiano o
+>   grana», 1.527 righe); il pomodoro **diviso in quattro** — fresco (253 righe),
+>   passata-polpa-pelati (584, è la «polpa di pomodoro» che era in dispensa), concentrato
+>   (205), pomodori secchi (130); vini col nome del vitigno in vino rosso/bianco,
+>   confetture per gusto in marmellata, mandorle pelate e granella in mandorle, yogurt
+>   bianco in yogurt, fagioli bianchi in cannellini.
+> - **Lasciati com'erano, di proposito**: accorpamenti larghi ma non sbagliati per la
+>   cucinabilità — guanciale sotto pancetta, maggiorana sotto origano, filetto sotto
+>   controfiletto, alette sotto coscia di pollo, «formaggio» generico sotto formaggio
+>   fuso, «manzo» generico sotto macinato di manzo, latte vegetale sotto latte. E la
+>   `soppressa` in dispensa accanto alla `soppressata` di una ricetta: sono due salumi
+>   diversi. Chi li vuole cambiare scrive un piano nuovo in `data/fixes/`.
+> - **Una correzione al codice, trovata strada facendo**: annullare una decisione
+>   rifaceva le ricette dal `payload` e perdeva il costo scelto a mano dal dettaglio
+>   (R9). Ora l'annullamento lo scrive nel `payload` prima di cancellare la ricetta.
 
 > **Costruita il 2026-09-24.** Il codice è entrato in `master` e su `origin` quel
 > giorno. Deploy, cancellazione delle ricette di semina e lancio
