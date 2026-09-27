@@ -78,6 +78,8 @@ type CodaOptions = {
   path?: string;
   /** la risposta di `GET /imports/terms/{id}`, il termine messo a fuoco */
   focused?: [unknown, number];
+  /** il client della schermata; senza, quello col predicato di retry vero */
+  client?: QueryClient;
 };
 
 /** Monta la schermata su un unico finto `fetch` che copre tutte le rotte che usa
@@ -121,7 +123,7 @@ function renderQueue(options: CodaOptions = {}) {
     if (path.includes("/imports/status")) return [status, 200];
     return [{}, 404];
   });
-  renderScreen(undefined, options.path);
+  renderScreen(options.client, options.path);
   return spy;
 }
 
@@ -745,6 +747,30 @@ describe("un termine messo a fuoco con ?termine=", () => {
     expect(await screen.findByText(/Non trovo quel termine/)).toBeInTheDocument();
     expect(screen.getByText("Rigatoni")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Il termine che cercavi" })).not.toBeInTheDocument();
+  });
+
+  it("un guasto nel leggere il termine non si spaccia per «non c'è», e offre «Riprova»", async () => {
+    // il predicato vero, senza l'attesa fra un tentativo e l'altro: il test guarda cosa
+    // si dice dopo i tentativi, non quanto durano
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: defaultQueryRetryPredicate, retryDelay: 0 } },
+    });
+    const spy = renderQueue({
+      path: "/ricette/importa?termine=t9", focused: [{ detail: "guasto" }, 500], client,
+    });
+
+    expect(await screen.findByText(/Non sono riuscito a leggere quel termine/)).toBeInTheDocument();
+    expect(screen.queryByText(/Non trovo quel termine/)).not.toBeInTheDocument();
+    expect(screen.getByText("Rigatoni")).toBeInTheDocument();
+    const prima = spy.mock.calls.filter(([url]) => String(url).endsWith("/imports/terms/t9")).length;
+
+    await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
+
+    await waitFor(() =>
+      expect(
+        spy.mock.calls.filter(([url]) => String(url).endsWith("/imports/terms/t9")).length
+      ).toBeGreaterThan(prima)
+    );
   });
 
   it("senza ?termine= non chiede nessun termine per id", async () => {
