@@ -1,6 +1,11 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-27, tre volte. La terza: **S13 e S8 fatti** — il cursore della
+Aggiornato il 2026-09-27, quattro volte. La quarta: **il giro di T3 è fatto** — un
+sottoagente ha girato il sito su una copia dei dati di produzione e ha annotato 99
+osservazioni. I difetti, ricontrollati sul codice, sono diventati voci loro
+(S16–S21 in Parte II, R10 e R11 in Parte III, T4, più tre dettagli in S10 e uno in Parte X); il resto è sotto T3, materiale della
+spec. In più, **il parmigiano sotto «burro» è stato sistemato a mano in produzione**
+(nota in S9). La terza: **S13 e S8 fatti** — il cursore della
 dispensa cambia solo con un tocco e non più scorrendo, e il codice a barre letto segue
 anche le uscite dal catalogo — più quattro piccole cose di Parte X (il lint è verde, i
 campi data hanno un `max`, `StatusToggle` non è più nominato, e il «+ scadenza» che
@@ -876,6 +881,16 @@ restano dove sono: sono indicizzate per voce e non dipendono da cosa è a video.
 verificato a 375 px in un browser vero, perché jsdom non vede dove finisce un
 pannello.
 
+**Il giro di T3 aggiunge tre dettagli**, verificati sul codice:
+- **il pannello del codice non dice per quale voce è aperto.** Il nome sta solo nel
+  testo per lo screen reader del pulsante che lo apre, mentre il catalogo e il modulo
+  lo scrivono nel titolo. Arrivati in fondo, non si sa più cosa si stava scansionando;
+- **il codice scritto a mano si cerca solo con Invio.** Manca un pulsante «Cerca», e il
+  campo non ha `inputMode="numeric"`, quindi escono tredici cifre sulla tastiera delle
+  lettere;
+- **senza fotocamera il pannello promette «Puoi inserire il prodotto a mano»** e non
+  offre quella strada: c'è solo il campo del codice, con «Annulla» in mezzo.
+
 ## S11. Cercare in dispensa **[D]**
 Per sapere se c'è il sale oggi bisogna scorrere tutta la dispensa. Serve un campo che
 filtri le righe mentre si scrive. **TBD**: se è lo stesso campo di «Aggiungi in
@@ -954,6 +969,107 @@ I titoli diventano apribili e chiudibili, così la dispensa si naviga per repart
 Anche qui lo stato ricordato è una comodità per dispositivo. Due cose da non
 sbagliare: una ricerca (S11) apre i reparti con un risultato, e un reparto chiuso deve
 dire quante voci contiene, altrimenti chiuso sembra vuoto.
+
+## S16. La lista scorre di lato quando una voce porta la nota del rientro **[D, difetto, dal giro di T3]**
+Una voce tornata dalla cottura porta la nota «rientrata perché finita cucinando». A
+375 px, quella voce allarga la pagina a 394 px: tutta la lista si sposta di lato, e la
+X di quella voce resta mezza fuori dallo schermo.
+
+**La causa.** In `ShoppingListScreen.tsx` la riga è una sola linea `flex`. La nota è
+`shrink-0` e non va a capo. Il nome è `flex-1` ma senza `min-w-0`, quindi non si
+stringe sotto la sua parola più lunga. Casella, nome, nota e X fanno circa 385 px in
+una scheda da 343 px, e `Card` non taglia quel che esce.
+
+**Cosa fare.** Mettere la nota su una seconda riga sotto il nome, oppure togliere
+`shrink-0` e dare `min-w-0` alle due parti. In `e2e/style.spec.ts` va aggiunto un
+controllo `scrollWidth <= clientWidth` su ogni schermata: jsdom non lo vede.
+
+## S17. In lista si spunta solo sulla casella da 20×20 **[D, difetto, dal giro di T3]**
+In corsia, spuntare è il gesto che si fa di più, e oggi lo prende solo la casella.
+Toccare il nome non fa niente. Il nome è uno `<span>` nudo, e la casella ha solo un
+`aria-label`, senza un `<label>` intorno (`ShoppingListScreen.tsx`).
+
+**Cosa fare.** Mettere casella e nome dentro un `<label>` alto almeno 44 px. La X resta
+un bersaglio a parte.
+
+## S18. «latte» + Invio crea una voce libera accanto al «latte» vero **[D, difetto, dal giro di T3]**
+Si scrive «latte» nel campo della lista, e il primo suggerimento è proprio «Latte». Se
+si preme Invio o «Aggiungi», la voce entra come testo libero sotto «Senza reparto», e
+in lista compaiono due latte. Poi la sistemazione chiede di abbinarla.
+
+**La causa.** `AddItemField.tsx` chiama sempre `add(trimmed, undefined)`: solo il tocco
+su un suggerimento lega un ingrediente. Nemmeno il backend prova: `add_item` salva
+l'`ingredient_id` così come arriva, e `match_name` lo usano ricette e import ma non la
+lista.
+
+**Cosa fare.** Due strade:
+- quando il testo coincide con il nome o con un alias, senza badare alle maiuscole,
+  agganciare quell'ingrediente;
+- se no, evidenziare il primo suggerimento e far scegliere quello a Invio.
+
+La prima è più robusta se sta nel backend, perché vale anche per il Capacitor. Nello
+stesso passaggio si può evitare il doppione di un ingrediente già in lista, rispondendo
+come fa già la dispensa con «Era già in lista.».
+
+## S19. «Sistema la spesa» perde l'abbinamento fatto, e il doppione dà l'errore sbagliato **[D, difetto, dal giro di T3]**
+Una voce a testo libero viene abbinata a un ingrediente, o gliene viene creato uno. Se
+quella voce non entra nella spesa di oggi, al ritorno chiede di nuovo l'abbinamento, e
+in lista resta sotto «Senza reparto». Riprovare a creare lo stesso ingrediente risponde
+«Forse esiste già con un altro nome», ma esiste con lo stesso nome ed è il primo
+suggerimento.
+
+**La causa.** L'abbinamento vive solo nello stato React di `StockingScreen.tsx`
+(`matchedIngredient`), fino a «Metti in dispensa». Il backend scrive `ingredient_id`
+sulla voce solo per le voci sistemate (`repositories/shopping.py`). Un 409 della
+creazione, «ingrediente già presente», finisce nello stesso messaggio di ogni altro
+fallimento.
+
+**Cosa fare.**
+- Appena si sceglie o si crea l'ingrediente, scriverlo sulla voce con
+  `patchShoppingItem(id, {ingredient_id})`: la rotta c'è già, e `patch_item` lo
+  accetta.
+- Dare al 409 un messaggio suo, «C'è già: sceglilo qui sopra», oppure agganciare
+  direttamente l'ingrediente omonimo.
+
+## S20. Un prodotto di Open Food Facts di tutt'altro tipo entra sotto l'ingrediente della voce **[D, difetto, dal giro di T3]**
+Sulla voce «pomodoro» si legge il codice degli Spaghetti Barilla. Il modulo si apre
+come «Nuovo prodotto per «pomodoro»», precompilato con nome, marca e valori, e «Salva»
+è verde pieno. Con un tocco, gli spaghetti diventano per sempre un prodotto di
+pomodoro, e le ricette al pomodoro diventano cucinabili con la pasta. È la stessa classe
+d'errore del parmigiano sotto «burro» (S9).
+
+**La causa.** La guardia «è di un altro ingrediente» (`StockingScreen.tsx`) guarda solo
+i prodotti già nel nostro catalogo. Quando il codice è nuovo, i dati di Open Food Facts
+riempiono il modulo per l'ingrediente della voce, e niente confronta le due cose.
+
+**Cosa fare.** Mostrare in grande la domanda: «È un «pomodoro»?», con il nome di Open
+Food Facts accanto. «Salva» diventa secondario, e compare «No, è un'altra cosa», che
+riporta ai tre pulsanti. Il confronto testuale fra nome e ingrediente, se si vuole, sta
+nel backend, perché è logica di dominio.
+
+Due cose piccole dallo stesso modulo:
+- **il nome segnaposto.** Un codice che Open Food Facts conosce senza nome propone
+  «Prodotto 2000000000017» come se fosse un valore vero. Meglio un campo vuoto e
+  obbligatorio.
+- **il modulo non dice cosa è successo.** Non si legge se il codice è stato trovato o
+  no, né quale codice verrà legato.
+
+Un codice come `1234` passa senza controllo: la cifra di controllo EAN/UPC si può
+verificare prima di chiedere.
+
+## S21. L'ordine delle righe della dispensa cambia fra un caricamento e l'altro **[D, difetto, dal giro di T3]**
+Dentro un reparto, le voci entrate con la stessa spesa si scambiano di posto da un
+caricamento all'altro, e la riga che si stava per toccare non è più lì.
+
+**La causa.** `added_at` è `server_default=func.now()`, e in Postgres `now()` è l'ora
+d'inizio della transazione. Una spesa si salva con un commit solo, quindi tutte le sue
+voci hanno lo stesso `added_at`. La query ordina per `added_at desc` senza un secondo
+criterio (`repositories/pantry.py`). Il frontend ordina i reparti ma dentro tiene
+l'ordine del server.
+
+**Cosa fare.** Aggiungere un secondo criterio stabile, per esempio
+`.order_by(added_at.desc(), PantryItem.id)`, oppure il nome. Da decidere con S12: se a
+video convenga l'alfabetico dentro il reparto.
 
 ---
 
@@ -1241,6 +1357,33 @@ costo, 0 sparite dalla fonte). La verifica a mano sul telefono — che il grigio
 gradini spenti si veda alla luce del giorno e non si confonda col nero — è dichiarata
 fatta; `e2e/style.spec.ts` misura i due colori, non come li legge un occhio in corsia.
 
+## R10. Una ricetta salvata non si corregge né si cancella **[D, difetto, dal giro di T3]**
+Una ricetta scritta a mano o dalla bozza AI resta per sempre com'è: un refuso nel
+titolo, un ingrediente dimenticato, una ricetta di prova. È lo stesso principio di S9,
+applicato alle ricette. Non esiste una `DELETE`, e la `PATCH /recipes/{id}` cambia solo
+`cost`.
+
+**Cosa fare.** Serve una decisione prima del codice:
+- una ricetta già cucinata ha `cooking_events` che la nominano;
+- una ricetta importata si rilegge dalla fonte, e una modifica a mano verrebbe
+  sovrascritta.
+
+La proposta: «Modifica» riapre lo stesso modulo di «Scrivi una ricetta», precompilato,
+solo per le ricette scritte qui. «Elimina» archivia, con la lapide, invece di
+cancellare.
+
+## R11. Le decisioni prese a mano nella coda non si annullano dall'app **[D, dal giro di T3]**
+In «Ingredienti da abbinare», una decisione dell'AI ha il suo «Annulla» sotto «Deciso
+dall'AI». Una decisione presa a mano sparisce dalla schermata, eppure si sbaglia
+altrettanto.
+
+**Il backend c'è già.** `GET /imports/terms` accetta `decided_by=human`, e l'annulla
+funziona per qualunque termine deciso. È `ImportQueueScreen.tsx` che chiede solo
+`fetchImportTerms("ai")`.
+
+**Cosa fare.** Chiedere anche `human` e mostrarle con lo stesso `DecidedTermRow`, sotto
+«Decisioni recenti» con un'etichetta «AI» / «tu», oppure in una seconda sezione.
+
 ---
 
 # Parte IV — Pasti (sezione primaria nuova) ↳ D1, D2, D3
@@ -1415,7 +1558,7 @@ davvero.
 
 ↳ H1 ora è sbloccata: da oggi lo storico si può dividere.
 
-## T3. Revisione di UI e UX, a partire da un giro del sito fatto da un sottoagente **[D, chiesto da Mattia il 2026-09-27]**
+## T3. Revisione di UI e UX, a partire da un giro del sito fatto da un sottoagente **[D, chiesto da Mattia il 2026-09-27 — il giro è fatto, la spec no]**
 Oltre alle voci puntuali di S8–S15 serve una revisione dell'interfaccia. L'esempio di
 Mattia: **pulsanti con icone al posto di testo cliccabile**, a cominciare dalla
 scansione del codice a barre. Prima di progettarla, però, serve sapere tutto quel che
@@ -1467,6 +1610,208 @@ proprio per non portare una libreria di icone per un segno solo. Con un'icona pe
 ogni azione e forse una per reparto (S12), una libreria piccola e ad albero (per
 esempio `lucide-react`) può diventare la scelta giusta. Un'icona senza testo deve
 comunque avere il suo `aria-label`, e restare riconoscibile in corsia.
+
+### Esito del giro **[FATTO 2026-09-27]**
+Il giro è stato fatto sullo stack `spena-e2e` caricato con una copia dei dati di
+produzione, poi distrutto. La password era quella finta, e il giro ha potuto anche
+scrivere. È passato a 375 px con il tocco emulato, poi a 1280 px e con
+`prefers-color-scheme: dark`. **99 osservazioni**: 11 difetti, 17 da fare, 32 che
+confondono, 7 brutte, 32 di gusto.
+
+- **I difetti** sono stati ricontrollati sul codice e hanno ora una voce loro. Sono
+  S16–S21 in Parte II, R10 e R11 in Parte III, T4 qui sotto, e uno in Parte X. S10 ha
+  ricevuto tre dettagli nuovi.
+- **Il resto** è elencato qui sotto, una riga per osservazione, ed è il materiale della
+  spec di T3.
+- **Il rapporto completo**, con gli screenshot, non è in git: mostra la dispensa vera e
+  il repo è pubblico.
+
+Il giro non ha potuto vedere:
+- la tastiera del telefono che copre i campi;
+- un codice a barre riconosciuto dalla fotocamera vera;
+- il selettore data nativo;
+- la ricerca semantica e la stesura AI vera, perché nello stack mancano gli embedding e
+  la chiave;
+- iOS e uno screen reader vero.
+
+Queste restano per il telefono.
+
+**Da non riprogettare via**, perché funziona:
+- gli errori stanno accanto alla riga che li ha causati e dicono che il dato è ancora
+  lì;
+- un caricamento fallito non si traveste da lista vuota;
+- la scheda «Sistema la spesa» è uguale in Lista e in Dispensa;
+- la lapide con «Annulla»;
+- «Era già in lista.» invece di un doppione;
+- la stesura AI che degrada al modulo a mano;
+- il «Salva» disabilitato con il motivo scritto sotto;
+- gli stati vuoti del ricettario, che spiegano il perché;
+- i nomi accessibili dei pulsanti ripetuti, che portano il nome della voce;
+- i campi a 16 px, così iOS non ingrandisce la pagina;
+- il catalogo che si apre già cercando il nome della voce.
+
+**In tutto il sito**
+- **Non c'è un tema scuro.** Con il telefono in tema scuro l'app resta chiara. Il
+  commento di `index.css` dice già che è l'unico file da toccare, ma i contrasti vanno
+  rifatti coppia per coppia. È il candidato più netto fra i «da fare».
+- **Il marchio cambia.** È un cesto al login, nella favicon e nelle icone della PWA, e
+  una pentola nell'intestazione (T1). Va scelto un segno solo.
+- **Le icone al posto del testo**, la richiesta di Mattia. Oggi sono icone solo la X, i
+  chevron e la barra delle schede. I candidati sono i tre pulsanti per voce della
+  sistemazione, che oggi fanno due righe per voce, poi «+ scadenza», «Cambia» e «Apri
+  l'originale». La proposta è icona più un'etichetta corta, non l'icona sola.
+- **Lo stesso selettore d'ingrediente ha tre aspetti**, uno per lista, dispensa e
+  ricette, e sistemazione. In sistemazione il nome accessibile fonde nome e reparto
+  («Caffèbevande»), e l'albero `listbox > listitem > option` non è ARIA valido. Serve un
+  solo componente.
+- **I suggerimenti sono rumorosi.** Sono sempre dieci righe, anche quando dopo la terza
+  non somigliano più («zucch» → Zucchero prima di Zucchina). Un tocco sbagliato lega la
+  voce all'ingrediente sbagliato, e poi c'è S9. Va sistemato lato server, con una soglia
+  o un salto di punteggio.
+- **Le conferme mancano o stanno fuori vista.** Sono T4.
+- **«Finito» ha tre colori**: rosso sul cursore, grigio sulla pastiglia, nero nel
+  foglio della cottura. Il rosso è anche il colore della X e degli errori. Serve un
+  colore per stato, deciso una volta in `STATUS_TONE`.
+- **Lo stesso giudizio ha due controlli**: il cursore a tre zone in dispensa, i tre
+  pulsanti nel foglio della cottura. Va deciso nella spec se unificarli.
+- **Gli errori di caricamento hanno cinque forme**, e due di queste non hanno il
+  pulsante «Riprova» («Riprova più tardi» chiede di ricaricare a mano). Serve un
+  componente d'errore unico.
+- **Ci sono parole tecniche a video**: «backend», `OPENROUTER_API_KEY`, «dataset» su
+  ogni scheda ricetta, «Cerca in anagrafica».
+- **Maiuscole a caso** negli ingredienti, e le etichette di stato scritte in modi
+  diversi fra dispensa e dettaglio ricetta.
+- **Accordi sbagliati**: «kiwi Tolta dalla dispensa», «collegato a astice».
+- **Titoli e intestazioni di sezione hanno stili diversi**: «Sistema la spesa» è più
+  piccolo, e «INGREDIENTI» nella bozza non è un `SectionHeading`.
+- **Un indirizzo inesistente dà una pagina vuota.** Manca una rotta `*`.
+- **La barra delle schede non segna niente su `/sistema`.** Dovrebbe segnare «Lista».
+- **Su desktop non si rompe niente**: è una colonna da 448 px in mezzo al vuoto. Non è
+  urgente.
+
+**Accesso**
+- l'errore «Password errata» resta sotto il campo svuotato;
+- il campo non prende il fuoco all'apertura;
+- manca «Mostra password».
+
+**Lista**
+- **Il campo di aggiunta scorrendo copre l'intestazione.** Sono tutti e due `sticky
+  top-0`, con lo stesso `z-index`, e la scheda «Sistema la spesa» esce tagliata sotto.
+- **La X della lista non ha la lapide con «Annulla»**, che la dispensa invece ha.
+- **Le voci spuntate restano in mezzo alle altre.** Potrebbero andare in fondo al
+  reparto.
+- **C'è una scheda per reparto anche con una voce sola.**
+
+**Sistema la spesa** (oltre a S10, S19 e S20)
+- **Una voce risolta si riconosce solo dal colore verde.** Non dice «sfuso» né quale
+  prodotto, e «Cambia» pesa quanto le azioni principali.
+- **Il blocco «non abbinata» è sempre aperto** e occupa una schermata e mezza per voce.
+- **Il nome dell'ingrediente creato è tutto il testo della voce** («zucchine tonde di
+  Nizza della signora Pina»). Niente invita a scrivere il nome generico.
+- **«È di un altro ingrediente» non dice quale**, ed è in rosso anche se non è un
+  guasto.
+- **Il catalogo dà due messaggi che si contraddicono**: «altri 2 prodotti, di un altro
+  ingrediente» e «nessun prodotto». L'esempio «yogurt greco» compare anche cercando
+  uova.
+- **«+ scadenza» apre un campo data** senza un'etichetta visibile e senza modo di
+  richiuderlo.
+- **«Metti in dispensa» non dice quante voci entrano, né che le altre restano in
+  lista.**
+- **L'ordine delle voci non è quello per reparto della lista.**
+- **Con niente da sistemare**, il pulsante disabilitato non serve, e «lista» potrebbe
+  essere un collegamento.
+
+**Dispensa** (oltre a S11, S12, S14, S15)
+- **Le righe sono alte circa 150 px**, e ci stanno 5 righe per schermo. Metà della riga
+  è il vuoto fra il nome e il cursore.
+- **Il cursore non dice come si usa.** Il pallino è grigio e non prende il colore della
+  zona, non ci sono etichette sotto la traccia, e niente dice che si tocca e non si
+  trascina (S13).
+- **La riga mostra il prodotto e non l'ingrediente**, quindi un aggancio sbagliato come
+  il parmigiano sotto «burro» è invisibile proprio qui. È anche la porta naturale di S9.
+- **Due confezioni dello stesso prodotto non si distinguono**, né in dispensa né nel
+  foglio della cottura, dove manca la scadenza.
+- **Un «Finito» ignorato resta fra le altre righe**, e «Lo rimetto in lista?» non torna
+  più.
+- **«Sì» e «No» sono larghi 35 e 43 px** e non sembrano pulsanti.
+- **La lapide dura 6 secondi** e non lo dice.
+- **Le scadenze non hanno un riepilogo**: si trovano per caso a metà pagina. Una scheda
+  d'ingresso «2 in scadenza» resterebbe un segnale, come vuole D5.
+- **Le date sono scritte assolute e con l'anno.** Sotto i 7 giorni si leggerebbero
+  meglio relative.
+- **«Aggiungi in dispensa»** non dice cosa fare se l'ingrediente non c'è (S3).
+- **La domanda del rientro compare anche per ciò che è già in lista.**
+- **Prima della prima riga ci sono due schede.** Si risolve con S11.
+- **Una X rossa per ogni riga** (S1).
+
+**Ricette**
+- **I filtri occupano tutta la prima schermata**: la prima ricetta è sotto la piega.
+  Categoria e ingredienti potrebbero stare dietro «Filtri».
+- **La scala «Tutte / Ora / +1 / +2 / +3» non ha un'etichetta visibile.**
+- **I mancanti sulla scheda si leggono come un sottotitolo.** Andrebbe scritto «Manca:
+  …».
+- **Le schede sono alte 386 px**, e mentre la foto carica mostrano un rettangolo
+  bianco.
+- **La ricetta a mano si scrive da «Scrivi con l'AI».** Andrebbe «+ Nuova ricetta».
+- **La scheda «Ingredienti da abbinare»** sta in cima anche quando la coda è vuota.
+- **Il filtro per ingredienti** non conta i risultati e non ha «azzera».
+- **Tecniche e preparazioni di base** («Come legare l'arrosto», «Uova sode») sono
+  mescolate alle ricette.
+- **Alcune spaziature sono strette** fra la nota e le pastiglie.
+
+**Dettaglio ricetta** (oltre a R10 e T4)
+- **«N dosi su M non si riscalano»** non dice quali (Parte X).
+- **Il procedimento è un blocco unico** con i numeri spuri dell'import.
+- **«Cucina» sta in fondo e sembra dire «inizia a cucinare».**
+- **I mancanti non si mettono in lista dal dettaglio**: la freccia ricetta → lista
+  esiste solo dopo aver cucinato.
+- **I cinque € sono pulsanti che non sembrano pulsanti**: un tocco scorrendo cambia il
+  costo.
+- **«Apri l'originale» è alto 19 px.**
+- **Senza porzioni lo stepper sparisce** senza dirlo.
+
+**Scrivi una ricetta**
+- **Il ruolo delle righe proposte dall'AI non si cambia**, mentre quello delle righe a
+  mano sì. Eppure è il ruolo che decide se la ricetta è cucinabile.
+- **Mancano categoria e descrizione**, quindi una ricetta scritta non esce mai
+  filtrando per categoria.
+- **Le righe a mano si tolgono solo togliendo la spunta**, e il nome è scritto due
+  volte.
+- **La riga non alimentare** ripete il nome ed è scritta nello stile delle righe da
+  confermare (Parte X).
+- **«Proponi» e «Salva» sono due pulsanti primari.**
+- **Le caselle sono da 20×20.**
+- **Lo stesso guasto dell'AI** è ambra qui e rosso nella coda.
+
+**Ingredienti da abbinare** (oltre a R11)
+- **Il messaggio dell'AI non configurata** è rosso, cita il nome della variabile e
+  resta anche con la coda vuota.
+- **«1 ricetta in attesa»** compare con due ricette elencate sotto.
+- **Il suggerimento testuale è enorme anche quando è assurdo** («Aragosta» → «lonza di
+  maiale»).
+- **Un ingrediente creato è detto «collegato a»**.
+- **Non si cerca** nell'elenco delle decisioni.
+- **«Annulla» parte senza lapide.**
+
+## T4. Le azioni grosse non danno una conferma che si veda **[D, dal giro di T3]**
+Le azioni che cambiano più cose dicono poco, o lo dicono dove non si guarda:
+- **«Ho cucinato».** L'esito («Segnato. Una cosa è tornata in lista della spesa.»)
+  compare in cima al dettaglio, mentre si è scorsi in fondo, dove stava il foglio. Chi
+  non lo vede può ripetere la cottura. Non c'è un solo `scrollIntoView` in tutto
+  `src`.
+- **Il foglio della cottura** si apre al posto di ingredienti e procedimento, ma la
+  pagina resta in fondo. Le prime righe e «Tocca solo ciò che è cambiato» sono fuori
+  vista.
+- **«Metti in dispensa»** porta in Dispensa senza dire cosa è entrato né che le voci
+  non risolte restano in lista.
+- **«Aggiungi in dispensa»** svuota il campo e basta, e la riga nuova è venti schermate
+  più in basso.
+- **«Salva nel ricettario»** porta al dettaglio senza un messaggio.
+
+**Cosa fare.** Un avviso breve in un punto fisso, uguale in tutta l'app («4 voci in
+dispensa · 3 restano in lista»). Dopo un'aggiunta, scorrere alla riga nuova e
+evidenziarla per un attimo. Il foglio si apre scorrendo al suo inizio. Il primo dei
+cinque punti è un difetto; gli altri sono da fare.
 
 ---
 
@@ -1520,6 +1865,18 @@ di nuovo).** Proposta d'ordine, da confermare:
    scanner, catalogo e modulo da `StockingScreen.tsx` sia lo stesso lavoro di S3
    e S10.
 
+**Il giro di T3 è fatto (2026-09-27), e ha portato sette difetti che non aspettano la
+revisione**: S16–S21, più la prima metà di T4, l'esito di «Ho cucinato» fuori vista.
+Sono piccoli, stanno su righe che la revisione non ridisegna, e alcuni scrivono dati
+sbagliati:
+- S20 lega prodotti a ingredienti sbagliati;
+- S18 e S19 lasciano voci senza ingrediente.
+
+Proposta: **prima S20, S19, S18**, perché sporcano l'anagrafica; **poi S16, S17, S21 e
+T4-«Ho cucinato»**. R11 costa poco, perché il backend è già pronto, e può andare con
+loro. R10 invece vuole prima una decisione, e va con S9, perché è lo stesso principio.
+Solo dopo, la spec di T3 con l'elenco del giro in mano.
+
 ---
 
 # Parte IX — Lavoro già impegnato: i controlli end-to-end
@@ -1563,6 +1920,12 @@ layout a 375px.
 
 # Parte X — Piccole cose aperte
 
+- **Un 404 viene ritentato e poi offre «Riprova».** `lib/queryRetry.ts` ritenta ogni
+  errore tranne il 401, 404 compreso. Così una ricetta che non c'è più risponde dopo
+  qualche secondo con «Non sono riuscito a caricare questa ricetta. Riprova.», e
+  riprovare non può riuscire. Va escluso il 404 dal ritentare, con un messaggio suo
+  («Questa ricetta non c'è più») e il ritorno al ricettario. Dal giro di T3, verificato
+  sul codice.
 - **«Ingrediente» invece di «voce» in due schermate.** `AddItemField.tsx` (lista)
   e `StockingScreen.tsx` (sistemazione della spesa) dicono entrambi
   «ingrediente» all'utente — «l'ingrediente si abbina dopo», «Abbina un
