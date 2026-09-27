@@ -13,10 +13,13 @@ import { expect, test } from "@playwright/test";
  * `decide_terms` — la funzione del bottone «Riprova con l'AI» — con il modello finto
  * della suite al posto di OpenRouter: alias, `decided_by = "ai"` e ingrediente creato
  * sono quelli che scrive la produzione. Per questo il file ha bisogno di
- * `docker compose exec` sullo stack e2e, oltre che del browser: il comando si cambia con
- * `E2E_COMPOSE`, se lo stack ha un altro nome.
+ * `docker compose exec` sullo stack e2e, oltre che del browser: se il progetto Compose
+ * non si chiama `spena-e2e`, il nome si passa in `E2E_PROJECT`. L'aiutante che gira è
+ * quello montato nel container, cioè quello della copia da cui lo stack è partito.
  *
- * Il termine lungo nasce collegato a «pasta» e porta un nome da 90 caratteri: è il caso
+ * Il termine lungo nasce collegato a un ingrediente che l'aiutante crea e poi toglie (non
+ * a uno del seme: la pulizia non deve contare su un ingrediente che sopravvive per caso)
+ * e porta un nome da 88 caratteri: è il caso
  * di un nome in `truncate` dentro una riga `justify-between`, a 375px. Quello corto
  * nasce come ingrediente nuovo, e si annulla qui: l'esito deve dire che l'ingrediente
  * creato è stato eliminato. In fondo la pulizia rimette tutto com'era, anche a prova
@@ -33,24 +36,30 @@ import { expect, test } from "@playwright/test";
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const COMPOSE = (
-  process.env.E2E_COMPOSE ??
-  "docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml"
-).split(" ");
+// Gli argomenti come elenco, non come una frase da spezzare sugli spazi: un percorso o un
+// nome di progetto con uno spazio dentro non cambia il comando
+const COMPOSE = [
+  "compose",
+  "-p",
+  process.env.E2E_PROJECT ?? "spena-e2e",
+  "-f",
+  "docker-compose.yml",
+  "-f",
+  "docker-compose.e2e.yml",
+];
 
 /** Lancia l'aiutante di semina nel container del backend e torna la sua ultima riga. */
 function aiutante(...args: string[]): string {
-  const [comando, ...resto] = COMPOSE;
   const uscita = execFileSync(
-    comando,
-    [...resto, "exec", "-T", "backend", "python", "tests/e2e_import_review.py", ...args],
+    "docker",
+    [...COMPOSE, "exec", "-T", "backend", "python", "tests/e2e_import_review.py", ...args],
     { cwd: ROOT, encoding: "utf8" }
   );
   return uscita.trim().split("\n").pop() ?? "";
 }
 
 type Seminati = {
-  long: { id: string; name: string };
+  long: { id: string; name: string; target: string };
   created: { id: string; name: string };
 };
 
@@ -59,7 +68,13 @@ test.use({ viewport: { width: 375, height: 812 } });
 test("le decisioni dell'AI si rivedono a 375px, e annullarne una dice cosa ha disfatto", async ({
   page,
 }) => {
+  // due `docker compose exec` che avviano Python e aprono una sessione sul database, oltre
+  // al browser: i 30 secondi di default non bastano su una macchina carica
+  test.setTimeout(120_000);
   try {
+    // prima di seminare, gli avanzi di un giro interrotto se ne vanno: `clean` è
+    // idempotente, e su uno stack pulito non fa niente
+    aiutante("clean");
     const { long, created } = JSON.parse(aiutante("seed", String(Date.now()))) as Seminati;
 
     await page.goto("/");
@@ -84,7 +99,7 @@ test("le decisioni dell'AI si rivedono a 375px, e annullarne una dice cosa ha di
     // chi ha deciso: la parola corta a video, la frase intera per chi ascolta
     await expect(rigaLunga.getByTestId("decided-by")).toHaveText("AI");
     await expect(rigaLunga.getByText("deciso dall'AI", { exact: true })).toBeAttached();
-    await expect(rigaLunga.getByText("collegato a pasta", { exact: true })).toBeVisible();
+    await expect(rigaLunga.getByText(`collegato a ${long.target}`, { exact: true })).toBeVisible();
 
     // A 375px la pagina non scorre di lato: `scrollWidth` lo calcola il browser dal CSS
     // che Tailwind ha costruito, jsdom non lo vede.
