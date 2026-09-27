@@ -837,7 +837,7 @@ prodotto: il catalogo e la creazione a mano dal catalogo; lo sfuso no. Scrivere 
 il test di ciascuna uscita. Vale anche per l'ingresso diretto in dispensa (S3), che
 deve usare gli stessi pezzi.
 
-## S9. Correggere quel che è stato registrato male **[D, con TBD sulla forma]**
+## S9. Correggere quel che è stato registrato male **[D — spec scritta il 2026-09-27: `docs/superpowers/specs/2026-09-27-anagrafica-design.md`]**
 Mattia ha legato per sbaglio il codice a barre di un parmigiano a «burro», e non c'è
 modo di sistemarlo dall'app. *(Quel parmigiano è stato sistemato a mano in produzione
 il 2026-09-27: prodotto `ace228d2…` e il suo unico elemento di dispensa spostati da
@@ -1448,7 +1448,7 @@ costo, 0 sparite dalla fonte). La verifica a mano sul telefono — che il grigio
 gradini spenti si veda alla luce del giorno e non si confonda col nero — è dichiarata
 fatta; `e2e/style.spec.ts` misura i due colori, non come li legge un occhio in corsia.
 
-## R10. Una ricetta salvata non si corregge né si cancella **[D, difetto, dal giro di T3]**
+## R10. Una ricetta salvata non si corregge né si cancella **[D — spec scritta il 2026-09-27: `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`]**
 Una ricetta scritta a mano o dalla bozza AI resta per sempre com'è: un refuso nel
 titolo, un ingrediente dimenticato, una ricetta di prova. È lo stesso principio di S9,
 applicato alle ricette. Non esiste una `DELETE`, e la `PATCH /recipes/{id}` cambia solo
