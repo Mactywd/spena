@@ -858,10 +858,9 @@ stanno in più di 1.000. La produzione non ha gli embedding (sentence-transforme
 installato, di proposito), quindi i tempi valgono anche lì. Le schermate sono la
 Consegna 2.
 
-**Consegna 2 (le schermate) è costruita e verificata** (vitest, lint, typecheck,
-build) **ma non ancora distribuita in produzione**: aggiornare questa riga — o
-toglierla — quando il deploy lo sarà (`docker compose -f docker-compose.prod.yml up
--d --build --wait`, e solo dopo il via di Mattia).
+**Consegna 2 (le schermate) è in produzione dal 2026-09-28**, dopo il via di Mattia:
+backend 850, vitest 416, e2e 16/16, lint, typecheck e build puliti, e un giro a mano a
+375 px sullo stack e2e.
 
 **Nota aperta (dalla revisione del Task 3):** dopo un annullamento, una pagina
 rimessa in coda che finisce `SKIPPED` tiene gli id delle cotture nel `payload`; quelle
@@ -890,13 +889,14 @@ Mai un vicolo cieco (quinta lezione di `CLAUDE.md`) valeva anche per gli errori 
 usa l'app, non solo per quelli della rete — ed è per questo che serviva questa
 consegna.
 
-**Da dove partire.** La logica esiste già per la riga di comando:
-`app.cli.fix_registry` sa fare `merge`, `recategorize` e `rename` sugli ingredienti,
-con le guardie giuste. Per esempio, il reparto non alimentare è rifiutato se
-l'ingrediente ha righe di ricetta. Lo schermo deve chiamare gli stessi servizi,
-spostati fuori dal comando, e non una seconda copia. Sui prodotti non c'è ancora
-niente: servono la modifica e la rimozione del codice. Una rimozione non deve rompere
-gli elementi di dispensa che puntano al prodotto (`pantry_items.product_id`).
+**Da dove si è partiti.** La logica esisteva già per la riga di comando:
+`app.cli.fix_registry` sapeva fare `merge`, `recategorize` e `rename` sugli
+ingredienti, con le guardie giuste (per esempio, il reparto non alimentare è rifiutato
+se l'ingrediente ha righe di ricetta). Quei servizi sono stati spostati fuori dal
+comando, e lo schermo chiama gli stessi, non una seconda copia. Sui prodotti non
+c'era niente: modifica e rimozione del codice sono nuove, e la rimozione di un
+prodotto lascia sfusi gli elementi di dispensa che puntavano a lui
+(`pantry_items.product_id`), invece di romperli.
 
 **Deciso e costruito** (spec del 2026-09-27): dalla riga della dispensa — il nome è un
 link alla scheda del prodotto, o dell'ingrediente se lo sfuso — e da «Anagrafica»
@@ -2024,8 +2024,8 @@ così R4 lo porta già.
 di nuovo).** Proposta d'ordine, da confermare:
 1. **prima quel che scrive dati sbagliati o li lascia sbagliati**: S13 (il cursore
    che cambia lo stato scorrendo), S9 (niente si corregge) e S8 (il codice che non
-   resta). Sono difetti, non miglioramenti. **S13 e S8 fatti il 2026-09-27**; resta
-   S9, che vuole prima un brainstorming sulla forma;
+   resta). Sono difetti, non miglioramenti. **S13 e S8 fatti il 2026-09-27, S9 il
+   2026-09-28**;
 2. **poi il giro del sottoagente di T3**, prima di toccare la forma delle schermate:
    S10, S11, S12, S14, S15 e l'ingresso diretto di S3 cambiano tutti le stesse due
    schermate, Dispensa e Sistema la spesa, e il giro porterà altre voci sulle stesse.
