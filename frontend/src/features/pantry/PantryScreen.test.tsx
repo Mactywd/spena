@@ -959,4 +959,29 @@ describe("PantryScreen", () => {
     const altra = screen.getByText("Pesca").closest("li")!;
     expect(within(altra).queryByRole("alert")).toBeNull();
   });
+
+  it("il nome porta alla scheda: del prodotto se c'è, dell'ingrediente se è sfuso", async () => {
+    // S9 §6.5: nessuna terza schermata. La scheda dell'elemento è quella del prodotto,
+    // e `?da=dispensa` dice al tasto indietro dove tornare
+    stubRoutedFetch(() => [ITEMS, 200]);
+    renderScreen();
+
+    expect(await screen.findByRole("link", { name: /Total 0%/ })).toHaveAttribute(
+      "href", "/anagrafica/prodotto/pr1?da=dispensa"
+    );
+    expect(screen.getByRole("link", { name: "mela" })).toHaveAttribute(
+      "href", "/anagrafica/ingrediente/i2?da=dispensa"
+    );
+  });
+
+  it("il tocco è sul nome e non sulla riga: il cursore non sta dentro il link", async () => {
+    // il cursore resta un bersaglio solo suo, e S13 resta chiusa
+    stubRoutedFetch(() => [ITEMS, 200]);
+    renderScreen();
+
+    const nome = await screen.findByRole("link", { name: "mela" });
+    const cursore = screen.getByRole("slider", { name: "Quanto ne resta di mela" });
+    expect(nome.contains(cursore)).toBe(false);
+    expect(nome.querySelector("button")).toBeNull();
+  });
 });

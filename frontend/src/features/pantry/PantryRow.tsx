@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { FillSlider } from "./FillSlider";
 import { fillForStatus } from "./fillZones";
 import { EXPIRY_INPUT_MAX } from "./expiryLabels";
 import { Alert } from "../../components/ui/Alert";
 import { ExpiryChip } from "../../components/ui/ExpiryChip";
 import { StatusChip } from "../../components/ui/StatusChip";
+import { ingredientPath, productPath } from "../registry/origin";
 import type { PantryItem, RestockResult } from "../../domain/types";
 
 /** Il nome con cui l'utente chiama questa voce: la marca se c'è, l'ingrediente
@@ -12,6 +14,15 @@ import type { PantryItem, RestockResult } from "../../domain/types";
  * dispensa» ripetuto identico su trenta righe non dice quale riga si sta togliendo. */
 function itemLabel(item: PantryItem): string {
   return item.product_name ?? item.ingredient_name;
+}
+
+/** Dove porta il nome: alla scheda del prodotto se la voce ne ha uno, a quella
+ * dell'ingrediente se è sfusa (spec S9 §6.5). Nessuna terza schermata: la scheda
+ * dell'elemento è la scheda del prodotto, e l'ingrediente sta lì come link. */
+function registryPath(item: PantryItem): string {
+  return item.product_id
+    ? productPath(item.product_id, "dispensa")
+    : ingredientPath(item.ingredient_id, "dispensa");
 }
 
 /** Una riga della dispensa.
@@ -158,16 +169,32 @@ export function PantryRow({
     <li className="flex flex-col gap-2.5 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          {/* la marca che hai comprato è più utile del nome generico */}
-          <span className="font-medium">{itemLabel(item)}</span>
-          {/* lo spazio è scritto a mano perché `ml-2` è un margine, non del testo:
-              senza, il nome accessibile della riga si legge «Total 0%Fage» */}
-          {item.product_brand && (
-            <>
-              {" "}
-              <span className="text-sm text-ink-faint">{item.product_brand}</span>
-            </>
-          )}
+          {/* Il nome porta alla scheda: è lì che si corregge una voce registrata male
+              (S9). Il tocco è sul nome e non sulla riga, così il cursore sotto resta un
+              bersaglio solo suo e S13 resta chiusa.
+
+              Il bersaglio è alto 44px: `min-h-11`, cioè 10px di padding per parte
+              attorno a una riga di 24px. Il margine negativo uguale lo ritoglie dal
+              flusso, e la riga resta alta com'era. I 10px che sporgono sotto sono
+              esattamente il `gap-2.5` che separa questa riga dal cursore: il bordo
+              basso del link tocca quello alto del cursore senza coprirlo — la stessa
+              misura del «+ scadenza» qui sotto. `block` e non `flex`: in un flex lo
+              spazio fra nome e marca sparirebbe, e con lui la separazione a video. */}
+          <Link
+            to={registryPath(item)}
+            className="-my-2.5 block min-h-11 py-2.5 underline decoration-line underline-offset-4"
+          >
+            {/* la marca che hai comprato è più utile del nome generico */}
+            <span className="font-medium">{itemLabel(item)}</span>
+            {/* lo spazio è scritto a mano perché `ml-2` è un margine, non del testo:
+                senza, il nome accessibile della riga si legge «Total 0%Fage» */}
+            {item.product_brand && (
+              <>
+                {" "}
+                <span className="text-sm text-ink-faint">{item.product_brand}</span>
+              </>
+            )}
+          </Link>
         </div>
         {/* una X, non più un link testuale. Il nome accessibile resta una frase
             intera e nomina la voce: è anche il nome con cui si comanda a voce
