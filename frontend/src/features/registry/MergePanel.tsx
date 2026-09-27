@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
@@ -133,7 +133,11 @@ export function MergePanel({
           <p className="text-sm">{mergePreviewText(counts)}</p>
           <button
             type="button"
-            disabled={merge.isPending}
+            // anche mentre l'anteprima si ricalcola (`preview.isFetching`), non solo
+            // mentre la fusione vera è in corso: un'invalidazione può rilanciarla a
+            // pannello aperto (F13, sopra), e i numeri vecchi non vanno confermabili
+            // finché quelli nuovi non sono arrivati (rilievo della revisione finale)
+            disabled={busy}
             onClick={() => merge.mutate(counts.winner_id)}
             className={buttonClasses("warn", "block")}
           >
@@ -145,9 +149,20 @@ export function MergePanel({
       {refusal?.code === "kind_mismatch" && (
         <div role="alert" className="flex flex-col gap-2 text-sm">
           <p className="text-danger">{refusal.detail}</p>
-          <button type="button" onClick={onChangeCategory} className={buttonClasses("secondary")}>
-            Cambia reparto
-          </button>
+          {/* «Cambia reparto» sposta il PERDENTE (questa scheda). L'altra strada —
+              cambiare il vincitore, che magari è nel reparto sbagliato lui — non
+              aveva un modo di arrivarci da qui prima di questo link (rilievo della
+              revisione finale S9). */}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={onChangeCategory} className={buttonClasses("secondary")}>
+              Cambia reparto
+            </button>
+            {refusal.existing && (
+              <Link to={ingredientPath(refusal.existing.id, origin)} className={buttonClasses("ghost")}>
+                Vai a «{refusal.existing.display_name}»
+              </Link>
+            )}
+          </div>
         </div>
       )}
       {refusal !== null && refusal.code !== "kind_mismatch" && <Alert>{refusal.detail}</Alert>}

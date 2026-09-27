@@ -59,7 +59,7 @@ function Where() {
 
 function renderAt(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } });
-  return render(
+  const utils = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
@@ -69,6 +69,7 @@ function renderAt(path: string) {
       </MemoryRouter>
     </QueryClientProvider>
   );
+  return { client, ...utils };
 }
 
 /** Le risposte di sempre: la scheda di «pomodori», e la ricerca che trova «pomodoro». */
@@ -394,6 +395,50 @@ describe("IngredientScreen", () => {
     expect(await screen.findByRole("heading", { name: "Pomodoro" })).toBeInTheDocument();
   });
 
+  it("«Unisci» resta disabilitato mentre l'anteprima si ricalcola dopo un'invalidazione", async () => {
+    // `staleTime: Infinity` non blocca un'invalidazione esplicita (F13, docstring di
+    // MergePanel): uno spostamento d'alias altrove la rilancia mentre il pannello è
+    // aperto, e i vecchi numeri non devono restare confermabili nel frattempo
+    let rilanci = 0;
+    let risolviSeconda: ((response: Response) => void) | null = null;
+    const secondaPendente = new Promise<Response>((resolve) => {
+      risolviSeconda = resolve;
+    });
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      if (path.endsWith("/ingredients/i-pomodori/merge")) {
+        rilanci += 1;
+        if (rilanci === 1) {
+          return Promise.resolve(new Response(JSON.stringify({ ...ANTEPRIMA, dry_run: true }), { status: 200 }));
+        }
+        return secondaPendente;
+      }
+      const [body, status] = base(path) ?? [{}, 404];
+      return Promise.resolve(new Response(JSON.stringify(body), { status }));
+    });
+    vi.stubGlobal("fetch", spy);
+
+    const { client } = renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "pomod");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    await screen.findByText(/Si spostano/);
+    expect(screen.getByRole("button", { name: "Unisci" })).not.toBeDisabled();
+
+    // una correzione altrove (uno spostamento d'alias, per dire) invalida ["registry"]
+    void client.invalidateQueries({ queryKey: ["registry"] });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Unisci" })).toBeDisabled());
+    // i vecchi numeri restano a video (nessun lampo di "Calcolo cosa si sposta…"),
+    // ma non si devono poter confermare finché l'anteprima nuova non è arrivata
+    expect(screen.getByText(/Si spostano/)).toBeInTheDocument();
+
+    risolviSeconda!(new Response(JSON.stringify({ ...ANTEPRIMA, dry_run: true }), { status: 200 }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Unisci" })).not.toBeDisabled());
+  });
+
   it("tra un alimento e una voce non alimentare offre il cambio di reparto", async () => {
     stubRoutedFetch((path) => {
       if (path.endsWith("/ingredients/i-pomodori/merge")) {
@@ -417,6 +462,56 @@ describe("IngredientScreen", () => {
     expect(avviso).toHaveTextContent("poi uniscili");
     await userEvent.click(within(avviso).getByRole("button", { name: "Cambia reparto" }));
     expect(screen.getByLabelText("Reparto")).toBeInTheDocument();
+  });
+
+  it("il rifiuto kind_mismatch offre anche il link alla scheda del vincitore", async () => {
+    // «Cambia reparto» sposta il PERDENTE (questa scheda); l'altra strada — cambiare
+    // il reparto del VINCITORE — non aveva modo di arrivarci da qui
+    stubRoutedFetch((path) => {
+      if (path.endsWith("/ingredients/i-pomodori/merge")) {
+        return [{
+          code: "kind_mismatch",
+          detail: "«Pomodori» e «Detersivo» stanno in due metà diverse dell'anagrafica.",
+          existing: DETERSIVO,
+        }, 409];
+      }
+      if (path.includes("/ingredients/search")) return [[DETERSIVO], 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "deter");
+    await userEvent.click(await screen.findByRole("option", { name: /Detersivo/ }));
+
+    const avviso = await screen.findByRole("alert");
+    expect(within(avviso).getByRole("link", { name: /Detersivo/ })).toHaveAttribute(
+      "href", "/anagrafica/ingrediente/i-detersivo"
+    );
+  });
+
+  it("il link al vincitore del kind_mismatch porta con sé l'origine «dispensa»", async () => {
+    stubRoutedFetch((path) => {
+      if (path.endsWith("/ingredients/i-pomodori/merge")) {
+        return [{
+          code: "kind_mismatch",
+          detail: "«Pomodori» e «Detersivo» stanno in due metà diverse dell'anagrafica.",
+          existing: DETERSIVO,
+        }, 409];
+      }
+      if (path.includes("/ingredients/search")) return [[DETERSIVO], 200];
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori?da=dispensa");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unisci a un altro…" }));
+    await userEvent.type(screen.getByLabelText("Unisci a"), "deter");
+    await userEvent.click(await screen.findByRole("option", { name: /Detersivo/ }));
+
+    const avviso = await screen.findByRole("alert");
+    expect(within(avviso).getByRole("link", { name: /Detersivo/ })).toHaveAttribute(
+      "href", "/anagrafica/ingrediente/i-detersivo?da=dispensa"
+    );
   });
 
   it("avvisa dei tempi lunghi sopra 1.000 ricette, prima ancora che l'anteprima risponda", async () => {
