@@ -139,19 +139,30 @@ test("il parmigiano sotto «burro» si sposta dalla dispensa, e a 375px niente s
     expect((await page.request.delete(`/api/v1/products/${prodottoId}`)).ok()).toBe(true);
   } finally {
     // la rete di sicurezza: gira sempre, che il `try` sia arrivato in fondo o si sia
-    // interrotto a metà con un'asserzione fallita. Deve tollerare un test già finito
-    // di pulirsi da solo — altrimenti un errore qui nasconderebbe quello vero.
+    // interrotto a metà con un'asserzione fallita. Best-effort e senza asserzioni:
+    // un `finally` che solleva sostituisce l'errore vero del `try` con il proprio, e
+    // qui l'errore vero è quello che conta. Ogni richiesta nel proprio try/catch, con
+    // un avviso in console e basta — non un'asserzione — se fallisce.
     //
     // Archiviare è idempotente (spec: l'annulla della X rossa riporta indietro
     // `archived_at`, e archiviare due volte lo stesso `id` non fallisce mai — vedi
     // `archive_item` nel backend): richiamarla su una voce già tolta la lascia
-    // semplicemente archiviata, senza sollevare niente.
+    // semplicemente archiviata. Resta comunque nel proprio try/catch: un guasto di
+    // rete o del server non deve nascondere l'asserzione fallita nel `try`.
     if (voceId) {
-      await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+      try {
+        await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+      } catch (guasto) {
+        console.warn(`pulizia: non sono riuscito ad archiviare la voce ${voceId}`, guasto);
+      }
     }
     // il prodotto può essere già sparito (il `try` l'ha eliminato per primo): un 404
-    // qui è l'esito atteso quanto un 200, non un guasto della pulizia
-    const eliminato = await page.request.delete(`/api/v1/products/${prodottoId}`);
-    expect(eliminato.ok() || eliminato.status() === 404).toBe(true);
+    // qui è l'esito atteso quanto un 200, non un guasto della pulizia — ma non è
+    // un'asserzione: anche un esito imprevisto resta un avviso, non un secondo errore
+    try {
+      await page.request.delete(`/api/v1/products/${prodottoId}`);
+    } catch (guasto) {
+      console.warn(`pulizia: non sono riuscito a eliminare il prodotto ${prodottoId}`, guasto);
+    }
   }
 });
