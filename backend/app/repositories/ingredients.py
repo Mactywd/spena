@@ -1,10 +1,11 @@
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientAlias
-from app.db.models.shopping import ShoppingListItem
+from app.db.models.shopping import ShoppingListItem, ShoppingStatus
 from app.domain.rules import IngredientKind
 
 SIMILARITY_FLOOR = 0.15  # sotto questa soglia i suggerimenti diventano rumore
@@ -233,3 +234,42 @@ async def delete_ingredient_if_unused(
     await session.delete(ingredient)
     await session.flush()
     return True
+
+
+@dataclass(frozen=True)
+class IngredientUsage:
+    recipes: int
+    pantry: int
+    shopping: int
+
+
+async def ingredient_usage(session: AsyncSession, ingredient_id: uuid.UUID) -> IngredientUsage:
+    """Dove è usato un ingrediente: righe di ricetta, elementi attivi in dispensa, voci
+    ancora da comprare o nel carrello. Il peso di una correzione, detto prima di farla
+    (spec §6.3)."""
+    from app.db.models.pantry import PantryItem
+    from app.db.models.recipe import RecipeIngredient
+
+    async def count(statement) -> int:
+        return (await session.execute(statement)).scalar_one()
+
+    return IngredientUsage(
+        recipes=await count(
+            select(func.count())
+            .select_from(RecipeIngredient)
+            .where(RecipeIngredient.ingredient_id == ingredient_id)
+        ),
+        pantry=await count(
+            select(func.count())
+            .select_from(PantryItem)
+            .where(PantryItem.ingredient_id == ingredient_id, PantryItem.archived_at.is_(None))
+        ),
+        shopping=await count(
+            select(func.count())
+            .select_from(ShoppingListItem)
+            .where(
+                ShoppingListItem.ingredient_id == ingredient_id,
+                ShoppingListItem.status.in_([ShoppingStatus.PENDING, ShoppingStatus.CHECKED]),
+            )
+        ),
+    )
