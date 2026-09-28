@@ -245,10 +245,12 @@ test("il gradino scelto della scala si distingue, e si legge", async ({ page }) 
   await pastigliaDi(uno).click();
   await expect(uno).toBeChecked();
 
-  // --color-brand: #14804f. Se il gradino scelto non cambiasse fondo, la scala
-  // direbbe cinque volte la stessa cosa e nessun test in jsdom se ne accorgerebbe:
-  // questa asserzione e quella sotto, insieme, dicono che i due gradini differiscono
-  await expect(pastigliaDi(uno)).toHaveCSS("background-color", "rgb(20, 128, 79)");
+  // Se il gradino scelto non cambiasse fondo, la scala direbbe cinque volte la
+  // stessa cosa e nessun test in jsdom se ne accorgerebbe: questa asserzione e
+  // quella sotto, insieme, dicono che i due gradini differiscono. Letto dal token e
+  // non ricopiato qui, per lo stesso motivo di `tokenDelTema` più sotto: se il verde
+  // cambia in index.css, questo controllo segue senza restare indietro.
+  await expect(pastigliaDi(uno)).toHaveCSS("background-color", tokenDelTema("brand"));
   await expect(pastigliaDi(tutte)).toHaveCSS("background-color", "rgb(255, 255, 255)");
 
   // Il contrasto lo misura il browser: i due colori della pastiglia scelta si leggono
