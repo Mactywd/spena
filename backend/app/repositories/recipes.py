@@ -133,10 +133,13 @@ async def recipe_categories(session: AsyncSession) -> list[str]:
     Un posto solo per due domande: il filtro del ricettario (`GET /recipes/categories`)
     e il controllo sulla categoria scelta nel modulo (R10). Solo quelle che esistono
     davvero: un filtro che offre voci vuote porta a una schermata vuota.
+
+    Le ricette eliminate non contano: una categoria che resta solo su quelle
+    porterebbe a un filtro vuoto (R10).
     """
     rows = await session.execute(
         select(Recipe.category)
-        .where(Recipe.category.is_not(None))
+        .where(Recipe.category.is_not(None), Recipe.archived_at.is_(None))
         .distinct()
         .order_by(Recipe.category)
     )

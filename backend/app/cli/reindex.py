@@ -39,7 +39,10 @@ async def reindex(session: AsyncSession) -> int:
     written = 0
     while True:
         rows = await session.execute(
-            select(Recipe).where(Recipe.embedding.is_(None)).limit(BATCH)
+            select(Recipe)
+            # un'eliminata non si cerca, e il vettore lo riceve se torna (R10)
+            .where(Recipe.embedding.is_(None), Recipe.archived_at.is_(None))
+            .limit(BATCH)
         )
         batch = list(rows.scalars())
         if not batch:

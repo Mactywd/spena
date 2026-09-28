@@ -12,7 +12,7 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import and_, false, func, or_, select, true
+from sqlalchemy import and_, false, func, or_, select, text, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -89,6 +89,27 @@ SEMANTIC_OFF_MODEL = (
 # Una volta per processo, per la stessa ragione di log_degradation_once: un avviso a
 # ogni ricerca è rumore, e il rumore non lo legge nessuno.
 _model_mismatch_logged = False
+
+# Se l'estensione vector sa scandire l'indice HNSW in modo iterativo (0.8.0 in poi).
+# Una volta per processo: la versione non cambia mentre il backend gira.
+_iterative_scan_known: bool | None = None
+ITERATIVE_SCAN_SINCE = (0, 8, 0)
+
+
+async def _iterative_scan_available(session: AsyncSession) -> bool:
+    """Se si può chiedere `hnsw.iterative_scan`. Letto dalla versione dell'estensione e
+    non dalla libreria: un'estensione a 0.8 ha per forza una libreria almeno a 0.8,
+    mentre il contrario non vale, e nel dubbio non si chiede niente — un parametro
+    `hnsw.*` sconosciuto sarebbe un errore a ogni ricerca."""
+    global _iterative_scan_known
+    if _iterative_scan_known is None:
+        version = await session.scalar(
+            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        )
+        parts = tuple(int(part) for part in str(version or "0").split(".")[:3] if part.isdigit())
+        _iterative_scan_known = parts >= ITERATIVE_SCAN_SINCE
+    return _iterative_scan_known
+
 
 # Quanto si aspetta un vettore prima di considerare la ricerca semantica non pronta.
 # Con il fornitore locale il primo calcolo scarica il modello (~500 MB) e solo dopo
@@ -252,10 +273,22 @@ async def _semantic_ranking(session: AsyncSession, query: str) -> list[uuid.UUID
         # degradazione: resta la sola ricerca testuale, ma si deve sapere
         log_degradation_once(exc)
         return []
+    if await _iterative_scan_available(session):
+        # Con un filtro nella query l'indice HNSW vede solo i primi `hnsw.ef_search`
+        # vicini (40) e poi filtra: cento eliminate vicine lascerebbero fuori la viva.
+        # `strict_order` continua la scansione finché il limite è pieno, nell'ordine
+        # esatto. LOCAL: vale fino alla fine della transazione di questa richiesta.
+        await session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
     distance = Recipe.embedding.cosine_distance(vector)
     statement = (
         select(Recipe.id)
-        .where(Recipe.embedding.is_not(None), distance <= SEMANTIC_MAX_DISTANCE)
+        .where(
+            Recipe.embedding.is_not(None),
+            # dentro la query che ha il limite, non dopo: altrimenti cento archiviate
+            # vicine riempirebbero la piscina (R10, sesta lezione di CLAUDE.md)
+            Recipe.archived_at.is_(None),
+            distance <= SEMANTIC_MAX_DISTANCE,
+        )
         .order_by(distance)
         .limit(CANDIDATE_POOL)
     )
@@ -266,7 +299,7 @@ async def _textual_ranking(session: AsyncSession, query: str) -> list[uuid.UUID]
     ts_query = func.plainto_tsquery("italian", query)
     statement = (
         select(Recipe.id)
-        .where(Recipe.search_tsv.op("@@")(ts_query))
+        .where(Recipe.search_tsv.op("@@")(ts_query), Recipe.archived_at.is_(None))
         .order_by(func.ts_rank(Recipe.search_tsv, ts_query).desc())
         .limit(CANDIDATE_POOL)
     )
@@ -394,6 +427,8 @@ async def _browse(
     statement = (
         select(Recipe.id, missing)
         .outerjoin(line, line.recipe_id == Recipe.id)
+        # prima della pagina, come ogni altro filtro dello sfoglio (R10)
+        .where(Recipe.archived_at.is_(None))
         .group_by(Recipe.id)
     )
     if category is not None:
