@@ -95,6 +95,15 @@ test("una ricetta si modifica e diventa cucinabile, si elimina e torna; a 375px 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`/ricette/${ricettaId}/modifica`);
     await expect(page.getByRole("button", { name: "Salva le modifiche" })).toBeVisible();
+    // il ruolo non scelto è un bottone che si vede: fondo della scheda e contorno, non il
+    // fondo della pagina su cui sta (--color-card: #ffffff); e un bersaglio da pollice
+    const secondario = page
+      .getByRole("group", { name: "Ruolo di cetriolo" })
+      .getByRole("button", { name: "secondario" });
+    await expect(secondario).toHaveAttribute("aria-pressed", "false");
+    await expect(secondario).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await expect(secondario).not.toHaveCSS("box-shadow", "none");
+    expect((await secondario.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await page.screenshot({ path: test.info().outputPath("modifica-375.png"), fullPage: true });
     await nonScorreDiLato(page, "il modulo di modifica");
   } finally {

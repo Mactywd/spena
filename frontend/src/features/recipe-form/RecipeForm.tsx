@@ -161,8 +161,12 @@ function LineRow({
                 type="button"
                 onClick={() => onUpdate({ role })}
                 aria-pressed={line.role === role}
+                // quello non scelto porta fondo e contorno suoi: un `bg-page` sul fondo
+                // della pagina era un'etichetta, non un bottone da toccare
                 className={`min-h-11 rounded-full px-3 py-2 text-xs font-medium ${
-                  line.role === role ? "bg-brand text-white" : "bg-page text-ink-soft"
+                  line.role === role
+                    ? "bg-brand text-white"
+                    : "bg-card text-ink-soft ring-1 ring-line ring-inset"
                 }`}
               >
                 {ROLE_LABELS[role]}
