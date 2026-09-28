@@ -1560,8 +1560,10 @@ perché l'avviso «salvando diventa tua» sia vero solo quando lo è; l'anagrafi
 a contare le ricette eliminate, perché una ricetta ripristinata non torni con una riga
 non alimentare, e nel rifiuto le segna «(eliminata)»; la coda conta le pagine prese in
 carico fra quelle «già dentro»; la migrazione è la `0012`, perché la `0011` è di S9
-(`created_ingredient`), su cui l'annullamento legge se l'ingrediente l'aveva creato la
-decisione.
+(`created_ingredient`), su cui l'annullamento legge se tocca a quel termine cancellare
+l'ingrediente nato dall'import — perché l'ha creato, o perché l'ha ereditato dal creatore
+annullato; per questo la coda dice «creato dall'import» e non «creato da questa
+decisione».
 
 **Resta aperto:**
 - `POST /recipes/{id}/cook` non rifiuta una ricetta eliminata: il dettaglio non offre

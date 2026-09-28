@@ -493,7 +493,7 @@ describe("coda di revisione dell'import", () => {
     );
 
     expect(
-      await screen.findByText(/L'ingrediente che questa decisione aveva creato è stato eliminato/)
+      await screen.findByText(/L'ingrediente creato dall'import è stato eliminato/)
     ).toBeInTheDocument();
   });
 
@@ -521,15 +521,16 @@ describe("coda di revisione dell'import", () => {
     expect(
       await screen.findByText(
         "1 ricetta è tornata in coda. 1 ricetta tua non è stata toccata. " +
-          "L'ingrediente creato da questa decisione resta in anagrafica: lo usa una ricetta tua."
+          "L'ingrediente creato dall'import resta in anagrafica: lo usa una ricetta tua."
       )
     ).toBeInTheDocument();
   });
 
   it("l'elenco delle decisioni recenti dice quando annullare cancella l'ingrediente e quando no", async () => {
-    // Il backend cancella solo un ingrediente che la decisione ha scritto di aver
-    // creato (`created_ingredient`), e che niente altro usa: un aggancio a uno che
-    // c'era già («pasta» sotto «Rigatoni») e le decisioni di prima lo lasciano.
+    // Il backend cancella solo un ingrediente di cui il termine possiede la
+    // cancellazione (`created_ingredient`), e che niente altro usa — un'altra decisione
+    // compresa: un aggancio a uno che c'era già («pasta» sotto «Rigatoni») e le
+    // decisioni di prima lo lasciano.
     renderQueue({
       pending: [],
       decided: [
@@ -543,7 +544,7 @@ describe("coda di revisione dell'import", () => {
 
     await screen.findByText("Rigatoni");
     expect(
-      screen.getByText(/se questa decisione l'aveva creato e niente altro lo usa, l'annullamento lo cancella/i)
+      screen.getByText(/se l'ha creato l'import e niente altro lo usa — né un'altra decisione, né la dispensa, né una ricetta — l'annullamento lo cancella/i)
     ).toBeInTheDocument();
     expect(screen.getByText(/altrimenti resta in anagrafica/i)).toBeInTheDocument();
   });

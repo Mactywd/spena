@@ -156,8 +156,9 @@ async def _pending_out(
 
 def _decided_action(term: ImportTerm) -> str | None:
     """«map» per ogni decisione che punta a un ingrediente, «ignored» per chi non lo
-    tiene in dispensa. Se il «map» ha creato l'ingrediente non lo dice questa etichetta
-    ma `created_ingredient`, accanto a lei in `TermOut`.
+    tiene in dispensa. Se il «map» possiede l'ingrediente nato dall'import — l'ha creato,
+    o l'ha ereditato dal creatore annullato — non lo dice questa etichetta ma
+    `created_ingredient`, accanto a lei in `TermOut`.
 
     Quel fatto si scrive alla decisione dal 2026-09-28 (`import_terms.created_ingredient`,
     migrazione 0011): prima esisteva solo nell'istante di `decide_terms` o della

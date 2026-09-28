@@ -26,7 +26,7 @@ describe("DecidedTermRow", () => {
     expect(screen.getByText(/pasta/)).toBeInTheDocument();
   });
 
-  it("dice «creato» quando la decisione ha creato l'ingrediente, «collegato» altrimenti", () => {
+  it("dice «creato dall'import» quando il termine possiede l'ingrediente creato, «collegato» altrimenti", () => {
     const { rerender } = render(
       <DecidedTermRow
         term={term({ display_name: "Speck", decided_name: "speck", created_ingredient: true })}
@@ -34,7 +34,9 @@ describe("DecidedTermRow", () => {
         onUndo={vi.fn()}
       />
     );
-    expect(screen.getByText("creato: speck")).toBeInTheDocument();
+    // «dall'import» e non «da questa decisione»: il flag può essere passato a questo
+    // termine dal creatore annullato, e la frase resta vera anche lì
+    expect(screen.getByText("creato dall'import: speck")).toBeInTheDocument();
 
     rerender(
       <DecidedTermRow term={term({ created_ingredient: false })} pending={false} onUndo={vi.fn()} />

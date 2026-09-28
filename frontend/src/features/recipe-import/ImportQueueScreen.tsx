@@ -94,10 +94,12 @@ interface UndoSummary {
 
 /** L'esito di un annullamento riuscito: quante ricette sono tornate in coda, quante
  * ricette tue non ha toccato (R10), e che fine ha fatto l'ingrediente. Il backend lo
- * cancella solo se la decisione ha scritto di averlo creato (`created_ingredient`) e
- * niente altro lo usa, quindi `ingredient_deleted` vero vuol dire proprio questo; e
- * `ingredient_kept_for_adopted` vuol dire che l'aveva creato, e che resta perché lo usa
- * una ricetta resa tua (spec R10 §4). È l'unica cosa che dice cosa ha mosso l'unico
+ * cancella solo se il termine ne possiede la cancellazione (`created_ingredient`: l'ha
+ * creato, o l'ha ereditato dal creatore annullato) e niente altro lo usa, quindi
+ * `ingredient_deleted` vero vuol dire proprio questo; e `ingredient_kept_for_adopted`
+ * vuol dire che l'avrebbe cancellato, e che resta perché lo usa una ricetta resa tua
+ * (spec R10 §4). «Creato dall'import» e non «creato da questa decisione»: vero in tutti
+ * e due i casi. È l'unica cosa che dice cosa ha mosso l'unico
  * gesto distruttivo di questa schermata: senza dirlo qui, si scopre solo
  * nell'anagrafica o nel ricettario.
  */
@@ -120,9 +122,9 @@ function undoResultMessage({
         ? " 1 ricetta tua non è stata toccata."
         : ` ${adoptedUntouched} ricette tue non sono state toccate.`;
   const ingredientPart = ingredientDeleted
-    ? " L'ingrediente che questa decisione aveva creato è stato eliminato, perché nessun'altra cosa lo usava."
+    ? " L'ingrediente creato dall'import è stato eliminato, perché nessun'altra cosa lo usava."
     : ingredientKeptForAdopted
-      ? " L'ingrediente creato da questa decisione resta in anagrafica: lo usa una ricetta tua."
+      ? " L'ingrediente creato dall'import resta in anagrafica: lo usa una ricetta tua."
       : "";
   return `${recipesPart}${adoptedPart}${ingredientPart}`;
 }
@@ -422,8 +424,9 @@ export function ImportQueueScreen() {
           <p className="pt-1 text-xs text-ink-faint">
             Le più recenti, tue e dell'AI, non tutte quelle prese. Ogni riga si può
             annullare: il termine torna in coda e le ricette che ne erano nate si
-            rifanno. Quanto all'ingrediente: se questa decisione l'aveva creato e niente
-            altro lo usa, l'annullamento lo cancella; altrimenti resta in anagrafica.
+            rifanno. Quanto all'ingrediente: se l'ha creato l'import e niente altro lo usa
+            — né un'altra decisione, né la dispensa, né una ricetta — l'annullamento lo
+            cancella; altrimenti resta in anagrafica.
           </p>
           <ul className="pt-2">
             {decided.map((term) => (

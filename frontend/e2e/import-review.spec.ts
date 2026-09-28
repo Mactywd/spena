@@ -151,8 +151,8 @@ test("le decisioni dell'AI si rivedono a 375px, e annullarne una dice cosa ha di
       .click();
     await expect(
       page.getByText(
-        "Nessuna ricetta è tornata in coda. L'ingrediente che questa decisione aveva " +
-          "creato è stato eliminato, perché nessun'altra cosa lo usava.",
+        "Nessuna ricetta è tornata in coda. L'ingrediente creato dall'import " +
+          "è stato eliminato, perché nessun'altra cosa lo usava.",
         { exact: true }
       )
     ).toBeVisible();

@@ -32,10 +32,11 @@ class TermOut(BaseModel):
     waiting_titles: list[str]
     # Valorizzati solo per un termine già deciso. Servono all'elenco della revisione,
     # che deve dire in una riga cosa è stato fatto: «Rigatoni → pasta», «Acqua →
-    # ignorato». `decided_action` distingue solo "map" da "ignored"; se un "map" ha
-    # creato l'ingrediente lo dice `created_ingredient`, scritto alla decisione dal
-    # 2026-09-28 e NULL per quelle di prima (vedi `_decided_action` in
-    # `app/api/imports.py`).
+    # ignorato». `decided_action` distingue solo "map" da "ignored"; se annullare un
+    # "map" cancella l'ingrediente nato dall'import lo dice `created_ingredient` —
+    # scritto alla decisione dal 2026-09-28, NULL per quelle di prima, e passato a un
+    # altro termine quando il creatore viene annullato (vedi la colonna in
+    # `app/db/models/recipe_import.py` e `_decided_action` in `app/api/imports.py`).
     decided_by: str | None = None
     decided_action: Literal["map", "ignored"] | None = None
     decided_name: str | None = None

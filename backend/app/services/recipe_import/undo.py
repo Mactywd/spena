@@ -26,9 +26,9 @@ nella stessa transazione, e qui si selezionano solo le pagine `imported`. Una pa
 `adopted` non si cancella e non torna in coda: rifarla dal `payload` cancellerebbe il
 lavoro di chi l'ha corretta, ed è per questo che la presa in carico esiste. Le si conta
 soltanto (`adopted_untouched`), perché la coda dica che l'annullamento non le ha
-toccate; e se l'ingrediente che la decisione aveva creato (`created_ingredient`) resta
-perché una di loro lo usa ancora — `delete_ingredient_if_unused` lo lascia — lo si dice
-(`ingredient_kept_for_adopted`).
+toccate; e se l'ingrediente che l'annullamento avrebbe cancellato (`created_ingredient`)
+resta perché una ricetta presa in carico lo usa ancora — `delete_ingredient_if_unused` lo
+lascia — lo si dice (`ingredient_kept_for_adopted`).
 Le loro righe restano sull'ingrediente di prima: spostarle è una modifica della ricetta,
 o una fusione in anagrafica, che le sposta in loco.
 """
@@ -94,10 +94,18 @@ async def _pages_with(
 
 
 async def _hand_over_creation(session: AsyncSession, ingredient_id: uuid.UUID) -> None:
-    """Il creatore se ne va, l'ingrediente resta perché altri termini lo indicano: il
-    fatto «nato dall'import» passa a uno di loro, il primo deciso. Senza, annullati
-    anche quelli (tutti `False`) l'ingrediente resterebbe orfano in anagrafica. Se lo
-    tiene in piedi altro (dispensa, lista, una ricetta), nessun termine lo riceve.
+    """Il termine che possedeva la cancellazione è stato annullato e l'ingrediente è
+    rimasto, perché qualcosa lo usa ancora. Se fra quelle cose c'è un altro termine
+    deciso su di lui, il primo deciso riceve `created_ingredient = True`: da qui in poi è
+    annullando lui che l'ingrediente si cancella, se niente altro lo usa. Senza, annullati
+    anche quelli (tutti `False`) l'ingrediente resterebbe orfano in anagrafica.
+
+    Il passaggio avviene quando un termine lo indica, qualunque altra cosa lo usi insieme
+    (dispensa, lista, una ricetta): quelle lo tengono in vita al prossimo annullamento
+    come a questo. Se nessun termine lo indica, nessuno lo riceve e l'ingrediente resta
+    come uno scritto a mano. L'erede non l'ha creato: il `True` passato vuol dire «tocca a
+    te toglierlo», e i testi della coda sono scritti per essere veri in tutti e due i casi
+    («creato dall'import»).
     """
     heir = (
         await session.execute(
@@ -118,7 +126,7 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     """Rimette il mondo come era prima che quella decisione fosse presa.
 
     Quattro effetti, in quest'ordine: le pagine e le ricette, l'alias, l'ingrediente
-    (solo se la decisione l'aveva creato), il termine. Nessuno rifiuta: le ricette già
+    (solo se il termine ne possiede la cancellazione, `created_ingredient`), il termine. Nessuno rifiuta: le ricette già
     cucinate si rifanno come le altre, perché le loro cotture aspettano nel `payload`
     (vedi la docstring del modulo).
     """
@@ -174,10 +182,11 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
 
     if ingredient_id is not None:
         alias_forgotten = await forget_alias(session, ingredient_id, term.display_name)
-        # Solo un ingrediente che questa decisione ha creato, e che niente altro usa.
-        # Uno agganciato («Rigatoni» → «pasta», che c'era da prima) resta; e resta
-        # anche su NULL, le decisioni prese prima che il fatto si scrivesse: `mapped`
-        # da solo non distingue le due storie, e nel dubbio non si cancella.
+        # Solo un ingrediente di cui questo termine possiede la cancellazione (l'ha
+        # creato, o l'ha ereditato dal creatore annullato), e che niente altro usa. Uno
+        # agganciato («Rigatoni» → «pasta», che c'era da prima) resta; e resta anche su
+        # NULL, le decisioni prese prima che il fatto si scrivesse: `mapped` da solo non
+        # distingue le due storie, e nel dubbio non si cancella.
         if created_ingredient is True:
             ingredient_deleted = await delete_ingredient_if_unused(session, ingredient_id)
             if not ingredient_deleted:

@@ -129,10 +129,15 @@ class ImportTerm(UUIDMixin, Base):
     # proprietà dell'ingrediente.
     role_override: Mapped[str | None] = mapped_column(String(20), nullable=True)
     decided_by: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    # Se questa decisione ha creato l'ingrediente (`True`) o ne ha agganciato uno che
-    # c'era già (`False`). L'annullamento cancella l'ingrediente solo su `True`, e solo
-    # se niente altro lo usa. NULL è «non si sa»: le decisioni prese prima del
-    # 2026-09-28, e i termini mai decisi. Mai ricavato: `mapped` da solo non lo dice.
+    # Se annullare questo termine cancella l'ingrediente, quando niente altro lo usa
+    # (`True`), o lo lascia comunque (`False`). Alla decisione vuol dire «l'ha creato»
+    # contro «ne ha agganciato uno che c'era già»; dopo può passare: quando il creatore
+    # viene annullato ma l'ingrediente resta perché altri termini lo indicano, il `True`
+    # va al primo di loro (`_hand_over_creation` in `services/recipe_import/undo.py`),
+    # che non l'ha creato ma ora ne possiede la cancellazione. Per questo il `True` si
+    # legge «nato dall'import, e tocca a questo termine toglierlo», non «creato da questa
+    # decisione». NULL è «non si sa»: le decisioni prese prima del 2026-09-28, e i
+    # termini mai decisi. Mai ricavato: `mapped` da solo non lo dice.
     created_ingredient: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

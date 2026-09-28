@@ -36,9 +36,11 @@ function DecidedByLabel({ decidedBy }: { decidedBy: string | null }) {
 
 function decisionSummary(term: ImportTerm): string {
   if (term.decided_action === "ignored") return "ignorato: non si tiene in dispensa";
-  // «creato» solo quando la decisione l'ha scritto; le decisioni di prima non lo
-  // sanno, e «collegato» non promette niente in più
-  if (term.created_ingredient === true) return `creato: ${term.decided_name ?? "un ingrediente"}`;
+  // «creato dall'import» e non «creato»: il `true` può essere passato a questo termine da
+  // quello che l'ha creato davvero, poi annullato, e la frase deve restare vera anche lì.
+  // Le decisioni di prima non lo sanno, e «collegato» non promette niente in più.
+  if (term.created_ingredient === true)
+    return `creato dall'import: ${term.decided_name ?? "un ingrediente"}`;
   return `collegato a ${term.decided_name ?? "un ingrediente"}`;
 }
 
