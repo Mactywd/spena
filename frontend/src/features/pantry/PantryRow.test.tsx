@@ -111,11 +111,11 @@ describe("PantryRow", () => {
   });
 
   it("con reveal si porta in vista e lo dice", () => {
-    const scroll = vi.fn();
-    Element.prototype.scrollIntoView = scroll;
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
     const { onRevealed } = renderRow({}, { reveal: true });
     expect(scroll).toHaveBeenCalled();
     expect(onRevealed).toHaveBeenCalled();
+    scroll.mockRestore();
   });
 
   // Riportati da PantryScreen.test.tsx (Task 5): comportamenti della riga, non

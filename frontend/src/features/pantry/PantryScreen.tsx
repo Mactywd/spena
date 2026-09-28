@@ -194,7 +194,10 @@ export function PantryScreen() {
           leadingIcon={IconSearch}
           value={query}
           onChange={setQuery}
-          onAdd={(text) => setAdding(text)}
+          onAdd={(text) => {
+            setAddFailed(false);
+            setAdding(text);
+          }}
         />
 
         {adding !== null && (
@@ -216,7 +219,10 @@ export function PantryScreen() {
                 variant="ghost"
                 icon={IconX}
                 label="Chiudi l'aggiunta"
-                onClick={() => setAdding(null)}
+                onClick={() => {
+                  setAddFailed(false);
+                  setAdding(null);
+                }}
               />
             </div>
             <p className="text-xs text-ink-faint">Entra come disponibile e senza marca.</p>
@@ -266,7 +272,13 @@ export function PantryScreen() {
           <EmptyState
             title={`Niente in dispensa per «${query.trim()}»`}
             action={
-              <Button icon={IconPlus} onClick={() => setAdding(query.trim())}>
+              <Button
+                icon={IconPlus}
+                onClick={() => {
+                  setAddFailed(false);
+                  setAdding(query.trim());
+                }}
+              >
                 {`Aggiungi «${query.trim()}»`}
               </Button>
             }

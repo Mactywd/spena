@@ -128,13 +128,23 @@ describe("PantryScreen", () => {
 
   it("il + apre l'aggiunta con il testo della barra, e scegliere mette in dispensa", async () => {
     const created = { ...ITEMS[2], id: "p9" };
+    // dopo la POST, la dispensa che il refetch legge contiene anche la voce nuova:
+    // senza, `revealId` non troverebbe mai la riga "p9" e il porta-in-vista non
+    // scatterebbe mai — il test non proverebbe niente sull'aggancio
+    let added = false;
     const fetchSpy = stubRoutedFetch((path, init) => {
       if (path.includes("/shopping-list")) return [[], 200];
       if (path.includes("/ingredients")) return [[MELA], 200];
-      if (init?.method === "POST") return [created, 201];
-      return [ITEMS, 200];
+      if (init?.method === "POST") {
+        added = true;
+        return [created, 201];
+      }
+      return [added ? [...ITEMS, created] : ITEMS, 200];
     });
-    Element.prototype.scrollIntoView = vi.fn();
+    // uno spy e non un'assegnazione diretta: quella sovrascriverebbe per il resto del
+    // file il no-op che `vitest.setup.ts` mette su `Element.prototype`, e nessuna riga
+    // qui sotto lo rimetterebbe a posto
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
     renderScreen();
     await screen.findByText("Total 0%");
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
@@ -146,6 +156,32 @@ describe("PantryScreen", () => {
     // l'aggiunta si chiude e la barra torna vuota
     expect(screen.queryByLabelText("Ingrediente da mettere in dispensa")).toBeNull();
     expect(screen.getByLabelText("Cerca o aggiungi in dispensa")).toHaveProperty("value", "");
+    // la riga nuova arriva e va in vista una volta sola: `onRevealed` spegne `revealId`
+    // subito dopo, e un secondo giro non deve richiamare lo scorrimento
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1));
+    scrollSpy.mockRestore();
+  });
+
+  it("chiudere l'aggiunta dopo un fallimento non lo riporta nella prossima", async () => {
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") return [{ detail: "no" }, 500];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    expect(await screen.findByText("Non sono riuscito ad aggiungere la voce in dispensa. Riprova.")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Chiudi l'aggiunta" }));
+
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "pane" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    expect(
+      screen.queryByText("Non sono riuscito ad aggiungere la voce in dispensa. Riprova.")
+    ).toBeNull();
   });
 
   it("un'aggiunta rifiutata lo dice nella scheda dell'aggiunta, che resta aperta", async () => {
