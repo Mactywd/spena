@@ -864,6 +864,17 @@ Consegna 2.
 backend 850, vitest 416, e2e 16/16, lint, typecheck e build puliti, e un giro a mano a
 375 px sullo stack e2e.
 
+**Provato da Mattia sul telefono, in produzione, il 2026-09-28**, tutto passato: il ☰,
+la lista (S16, S17, S18), «Sistema la spesa» (S19 con un ingrediente creato lì, S20 con
+la domanda «È un …?» e il codice che non torna, S8 nella sua prima strada — codice
+ignoto, «Crea il prodotto a mano» dal catalogo, e la riscansione lo trova), il cursore
+della dispensa (S13) e l'ordine delle righe (S21), la scheda del prodotto (nome, marca,
+«Sposta sotto», togli e rimetti il codice, eliminazione che lascia sfuso), la scheda
+dell'ingrediente (rinomina con proposta d'unione, alias, reparto, rifiuto del non
+alimentare su «pomodoro», unione di due doppioni di prova), le etichette «AI»/«tu» di
+R11 e il foglio della cottura di T4. Le strade 2 e 3 di S8 non sono state rifatte a
+mano.
+
 **Nota della revisione del Task 3, chiusa il 2026-09-28:** dopo un annullamento, una
 pagina rimessa in coda che finisce `SKIPPED` tiene gli id delle cotture nel `payload`;
 quelle cotture restano con `recipe_id` `NULL`. Raro, gli id sono recuperabili dal
@@ -1000,7 +1011,7 @@ Vincoli: un fondo colorato passa dal blocco `@theme`, con il contrasto sopra 4.5
 non deve confondersi con i colori che vogliono già dire qualcosa (le zone del cursore,
 il viola della scadenza). Da decidere insieme alla revisione di T3.
 
-## S13. Il cursore della dispensa si sposta mentre si scorre **[FATTO 2026-09-27 — manca la prova sul telefono]**
+## S13. Il cursore della dispensa si sposta mentre si scorre **[FATTO 2026-09-27 — provato sul telefono il 2026-09-28]**
 
 > **Fatto il 2026-09-27**, sul ramo `dispensa-difetti`. `FillSlider.tsx` resta un
 > `<input type="range">` — ruolo, nome, valore letto a voce e frecce della tastiera
@@ -1532,7 +1543,7 @@ costo, 0 sparite dalla fonte). La verifica a mano sul telefono — che il grigio
 gradini spenti si veda alla luce del giorno e non si confonda col nero — è dichiarata
 fatta; `e2e/style.spec.ts` misura i due colori, non come li legge un occhio in corsia.
 
-## R10. Una ricetta salvata non si corregge né si cancella **[FATTO 2026-09-28 — spec: `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`, piano: `docs/superpowers/plans/2026-09-28-modifica-ricette.md`; non ancora in produzione]**
+## R10. Una ricetta salvata non si corregge né si cancella **[FATTO 2026-09-28 — spec: `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`, piano: `docs/superpowers/plans/2026-09-28-modifica-ricette.md`; in produzione dal 2026-09-28]**
 Una ricetta scritta a mano o dalla bozza AI restava per sempre com'era: un refuso nel
 titolo, un ingrediente dimenticato, una ricetta di prova. È lo stesso principio di S9,
 applicato alle ricette. Non c'era una `DELETE`, e la `PATCH /recipes/{id}` cambiava solo
@@ -1570,19 +1581,18 @@ decisione».
   «Cucina», ma una PWA con la cache vecchia potrebbe ancora mandarla.
 - La scansione iterativa di HNSW (`hnsw.iterative_scan`, che tiene le eliminate fuori
   senza perdere le vive) si accende solo se l'estensione `vector` è almeno alla 0.8.0.
-  Sul database di sviluppo è alla 0.8.6; in produzione non si è potuto guardare, e un
-  database creato con un'immagine più vecchia resta alla sua versione finché qualcuno non
-  fa `ALTER EXTENSION vector UPDATE`. Oggi non conta — in produzione gli embedding non ci
-  sono — ma va controllato il giorno in cui si accendono.
+  *Controllato al deploy del 2026-09-28: in produzione è alla 0.8.6, come in sviluppo,
+  quindi la scansione iterativa è accesa il giorno in cui arrivano gli embedding.*
 - Una ricetta eliminata (archiviata) su una pagina presa in carico continua a contare
   in «N ricette tue non toccate»: si può ripristinare, e le sue righe tengono davvero
   l'ingrediente.
 - Manca la prova a mano sul telefono del modulo di modifica a 375 px: l'e2e lo misura
   a quella larghezza, ma solo il telefono dice se si usa bene col pollice.
-- La distribuzione, con la migrazione `0012` all'avvio, la decide Mattia.
 
-**Verificato il 2026-09-28 sul ramo `r10-ricette`:** backend 931, vitest 464, e2e 20/20, lint,
-typecheck e build puliti. Non ancora distribuito.
+**Verificato il 2026-09-28 sul ramo `r10-ricette`:** backend 933, vitest 473, e2e 20/20, lint,
+typecheck e build puliti. **In produzione dal 2026-09-28**, con il via di Mattia
+(`a1d841b`, migrazioni `0011` e `0012` applicate all'avvio; copia del database presa
+prima sul server, in `~/backups/spena-pre-r10-20260928-0746.dump`).
 
 ## R11. Le decisioni prese a mano nella coda non si annullano dall'app **[FATTO 2026-09-27]**
 In «Ingredienti da abbinare», una decisione dell'AI ha il suo «Annulla» sotto «Deciso
