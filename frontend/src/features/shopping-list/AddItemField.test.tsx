@@ -40,6 +40,18 @@ describe("AddItemField", () => {
     expect(await screen.findByRole("option", { name: /Pomodoro/ })).toBeDefined();
   });
 
+  it("l'elenco dei suggerimenti ha un nome, che dice di quale campo è", async () => {
+    // ARIA vuole un nome per ogni listbox; diverso da quello del campo, o chi cerca il
+    // campo per etichetta troverebbe due elementi
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([POMODORO]), { status: 200 })
+    ));
+    renderField({ onAdd: added() });
+
+    await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "pomo");
+    expect(await screen.findByRole("listbox", { name: "Suggerimenti: Aggiungi alla lista" })).toBeDefined();
+  });
+
   it("scegliendo un suggerimento passa l'ingrediente risolto", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify([POMODORO]), { status: 200 })

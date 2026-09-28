@@ -7,8 +7,10 @@
          env(safe-area-inset-*) valgono 0 su iOS, quindi --safe-bottom (src/index.css)
          non fa niente e la barra delle schede finisce sotto l'indicatore home. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <!-- lo stesso valore del manifesto: colora la barra di stato quando l'app è
-         installata, e il fondo della pagina è ciò che le sta sotto -->
+    <!-- il fondo della pagina di ciascun tema (--color-page in src/index.css):
+         colora la barra di stato, che così continua la pagina. Il chiaro è anche il
+         theme_color del manifesto; lo scuro no, perché il manifesto ha un colore
+         solo e non segue prefers-color-scheme -->
     <meta name="theme-color" content="#f1f4f2" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0e1210" media="(prefers-color-scheme: dark)" />
     <title>Spena</title>

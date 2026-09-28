@@ -31,8 +31,9 @@ describe("Button", () => {
 
   // La guardia di TypeScript che il vincolo globale chiede: un pulsante di sola
   // icona senza `label` non deve compilare, perché per uno screen reader non ha
-  // nome. Se la riga sotto smette di dare errore, la regola si è rotta.
-  it("compila solo se l'unione icona+etichetta è rispettata (vedi riga @ts-expect-error sopra)", () => {
+  // nome. Se la riga del `@ts-expect-error` smette di dare errore, la regola si è
+  // rotta, e `npm run typecheck` lo dice.
+  it("compila solo se l'unione icona+etichetta è rispettata (vedi il @ts-expect-error qui dentro)", () => {
     // @ts-expect-error icona sola senza `label` non deve compilare
     render(<Button icon={IconTrash} />);
   });

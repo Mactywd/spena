@@ -1821,21 +1821,45 @@ produzione: token chiari e scuri, Inter, icone Tabler, il cesto nell'intestazion
 barra delle schede con le icone e «Lista» accesa su `/sistema`, la pagina «Non trovata»,
 e le primitive (`Button`, `IconToolbar`, `ActionBar`, `Section`, `StockGauge`,
 `StatusDot`, `Chip`, l'avviso unico, `ErrorState`, `EmptyState`, `IngredientPicker` con
-«Aggiungi»). Le schermate le adottano dalla Consegna 1. Da provare sul telefono: il tema
-scuro vero, la barra di stato nei due temi, l'icona dell'app reinstallata.
-Suite alla fine: 592 test in jsdom (48 file), typecheck, lint e build puliti; 27 e2e
-verdi, di cui 7 nuovi in `e2e/style.spec.ts` (fondo della pagina, contrasto di ogni
-testo e nome di ogni pulsante su sette schermate, il dettaglio, il ☰ e l'accesso, in
-chiaro e in scuro; Inter caricato davvero). Il primo giro dell'e2e ha trovato due cose:
-i cinque € spenti del costo nel dettaglio, che sono un segno e non testo (il nome sta
-nell'`aria-label`) e ora sono `aria-hidden` come in `CostMeter`; e due prove che
-cercavano «la» regione `status`, diventate ambigue perché l'avviso unico ne tiene
-sempre una sua nella pagina. Nessun token è cambiato. Dal giro a occhio a 375 px, da
-decidere con la Consegna 1 e non difetti di contrasto: in scuro un pulsante primario
-spento (`opacity`) diventa un verde torbido con la scritta scura, poco leggibile anche
-se WCAG esenta i controlli spenti; le tre zone del cursore della dispensa, fatte con le
-tinte, restano tenui come in chiaro; il velo del ☰ scurisce poco una pagina già scura,
-e il pannello si stacca solo per il fondo `card`.
+«Aggiungi»). Le schermate le adottano dalla Consegna 1.
+
+**Da provare sul telefono:** il tema scuro vero; la barra di stato nei due temi; l'icona
+dell'app reinstallata; Inter senza rete (il service worker ora mette da parte latino e
+latino esteso: aperta l'app una volta, in aereo il testo deve restare Inter); la
+schermata d'avvio dell'app installata su un telefono in scuro, perché il
+`background_color` del manifesto è uno solo, quello chiaro, e un lampo chiaro è
+probabile; l'avviso di conferma, che in scuro è una pastiglia chiara su una pagina scura
+(il suo fondo `ink` si rovescia col tema) mentre la spec §3.5 dice «fondo scuro» — **da
+chiedere a Mattia** se il rovescio va bene o se l'avviso deve restare scuro in tutti e
+due i temi; il velo del ☰, che su una pagina già scura scurisce poco. Nel frattempo il
+dettaglio ricetta mostra ancora «manca» in ambra, mentre `StatusDot` e la spec lo fanno
+rosso (`finished`): due colori per la stessa notizia finché la Consegna 5 non adotta
+`StatusDot` nel dettaglio.
+
+**Tre punti di disegno del tema scuro per la Consegna 1**, dal giro a occhio a 375 px, non
+difetti di contrasto: il pulsante primario spento (`opacity`) diventa un verde torbido
+con la scritta scura, poco leggibile anche se WCAG esenta i controlli spenti; le tre zone
+del cursore della dispensa, fatte con le tinte, restano tenui come in chiaro (le
+sostituisce `StockGauge`, e la domanda passa alle sue tacche spente); il velo del ☰, con
+il pannello che si stacca dalla pagina solo per il fondo `card`.
+
+Suite alla fine: 606 test in jsdom (50 file), typecheck, lint e build puliti; 29 e2e
+verdi, di cui 9 nuovi in `e2e/style.spec.ts`: fondo della pagina, contrasto di ogni testo
+e nome di ogni pulsante in chiaro e in scuro, su ogni rotta (le otto fisse, il dettaglio,
+la modifica della ricetta, il foglio della cottura con «Finito» scelto, la scheda di un
+ingrediente e quella di un prodotto), il ☰ e l'accesso; Inter caricato davvero; il
+`sw.js` servito che mette da parte Inter; il raggio del pulsante quadrato misurato a
+video. Il primo giro dell'e2e ha trovato due cose: i cinque € spenti del costo nel
+dettaglio, che sono un segno e non testo (il nome sta nell'`aria-label`) e ora sono
+`aria-hidden` come in `CostMeter`; e due prove che cercavano «la» regione `status`,
+diventate ambigue perché l'avviso unico ne tiene sempre una sua nella pagina. La
+revisione finale ne ha aggiunte tre: Inter fuori dal precaricamento del service worker,
+il + di `ActionBar` che il CSS compilato disegnava tondo, e «Aggiungi «latte»» offerto
+sulla risposta vuota di «lattr». Allargando il contrasto al foglio della cottura,
+«Finito» misurato appena toccato stava a metà della sua transizione (3,15:1): ora si
+misura a transizioni finite, e regge 6,54:1 in chiaro e 8,07:1 in scuro. Nessun token è
+cambiato.
+
 Oltre alle voci puntuali di S8–S15 serve una revisione dell'interfaccia. L'esempio di
 Mattia: **pulsanti con icone al posto di testo cliccabile**, a cominciare dalla
 scansione del codice a barre. Prima di progettarla, però, serve sapere tutto quel che

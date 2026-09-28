@@ -124,6 +124,7 @@ export function AddItemField({
         <div className="pt-2">
           <OptionList
             options={suggestions}
+            fieldLabel="Aggiungi alla lista"
             onPick={(ingredient) => void add(ingredient.name, ingredient.id)}
           />
         </div>

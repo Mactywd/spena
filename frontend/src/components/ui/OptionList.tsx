@@ -8,16 +8,25 @@ export function OptionList({
   options,
   onPick,
   disabled = false,
+  fieldLabel,
 }: {
   options: Ingredient[];
   onPick: (ingredient: Ingredient) => void;
   disabled?: boolean;
+  /** L'etichetta del campo che l'elenco completa. ARIA vuole un nome per ogni listbox;
+   * il nome non è l'etichetta nuda, perché chi cerca il campo per etichetta (uno
+   * screen reader, un test) troverebbe due elementi con lo stesso nome. */
+  fieldLabel?: string;
 }) {
   const baseId = useId();
   return (
     // un listbox contiene opzioni e basta: niente `<ul>/<li>` in mezzo, che uno screen
     // reader leggerebbe come un elenco di voci e non come una scelta (dal giro di T3)
-    <div role="listbox" className="flex flex-col overflow-hidden rounded-card bg-card">
+    <div
+      role="listbox"
+      aria-label={fieldLabel ? `Suggerimenti: ${fieldLabel}` : undefined}
+      className="flex flex-col overflow-hidden rounded-card bg-card"
+    >
       {options.map((ingredient) => {
         const categoryId = `${baseId}-${ingredient.id}`;
         return (

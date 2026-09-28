@@ -1,12 +1,14 @@
 import type { Availability } from "../../domain/types";
+import { STATUS_LABELS } from "../../features/pantry/statusLabels";
 
 // I colori sono quelli degli stati della dispensa (STATUS_TONE): «manca» è il rosso di
-// «finito», perché per una ricetta sono la stessa notizia. Le parole sono quelle di
-// STATUS_LABELS (ruling del controller): un solo vocabolario per gli stessi tre
-// stati, non uno diverso qui e uno in dispensa.
+// «finito», perché per una ricetta sono la stessa notizia. Le parole di «disponibile» e
+// «quasi finito» si prendono da STATUS_LABELS e non si ribattono qui: un solo
+// vocabolario per gli stessi stati, che non può scollarsi da quello della dispensa.
+// «manca» resta sua: è la disponibilità di una ricetta, e in dispensa non esiste.
 const DOT: Record<Availability, { colour: string; words: string }> = {
-  available: { colour: "bg-brand", words: "disponibile" },
-  low: { colour: "bg-low", words: "quasi finito" },
+  available: { colour: "bg-brand", words: STATUS_LABELS.available.toLowerCase() },
+  low: { colour: "bg-low", words: STATUS_LABELS.low.toLowerCase() },
   missing: { colour: "bg-finished", words: "manca" },
 };
 

@@ -92,7 +92,8 @@ describe("IngredientPicker", () => {
     stubRoutedFetch(() => [[LATTE], 200]);
     renderWithClient(<IngredientPicker label="Contiene ingredienti" failureNote="x" onPick={() => {}} />);
     fireEvent.change(screen.getByLabelText("Contiene ingredienti"), { target: { value: "lat" } });
-    const listbox = await screen.findByRole("listbox");
+    // con un nome, come ARIA vuole per ogni listbox: quello del campo di cui è
+    const listbox = await screen.findByRole("listbox", { name: "Suggerimenti: Contiene ingredienti" });
     // ARIA: i figli di un listbox sono opzioni, non `listitem` (dal giro di T3)
     expect(within(listbox).queryAllByRole("listitem")).toHaveLength(0);
     // il nome è l'ingrediente e basta, il reparto è una descrizione: prima si leggeva

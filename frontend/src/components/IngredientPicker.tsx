@@ -86,6 +86,7 @@ export function IngredientPicker({
       {showOptions && found.length > 0 && (
         <OptionList
           options={found}
+          fieldLabel={accessibleLabel ?? label}
           disabled={disabled}
           onPick={(ingredient) => {
             onPick(ingredient);

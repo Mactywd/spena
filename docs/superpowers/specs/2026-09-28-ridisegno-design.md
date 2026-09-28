@@ -45,9 +45,9 @@ Restano un blocco `@theme` in `frontend/src/index.css`, la sola casa dei colori 
 | `card` | `#ffffff` | `#171c19` | sezioni, campi |
 | `ink` / `ink-soft` / `ink-faint` | `#101512` / `#4e5a52` / `#636e66` | `#e7ece9` / `#b4beb8` / `#8f9a94` | testo |
 | `line` | `#e1e6e3` | `#28302b` | bordi di campi e pulsanti, non fra le righe |
-| `brand` | `#0f7a4a` | `#3cb878` | azione principale, «c'è», tacche piene |
-| `low` | `#9a5f0c` (testo) / `#c98a1a` (tacca) | `#e0a63a` | «sta finendo» |
-| `finished` | `#b3261e` | `#ff8a80` | «finito», ingrediente mancante |
+| `brand` | `#0f7a4a` | `#3cb878` | azione principale, «Disponibile», tacche piene |
+| `low` | `#9a5f0c` (testo) / `#c98a1a` (tacca) | `#e0a63a` | «Quasi finito» |
+| `finished` | `#b3261e` | `#ff8a80` | «Finito», ingrediente che manca |
 | `danger` | = `finished` | = `finished` | errori |
 | `expiry` | `#5b45a8` | `#b9a6ff` | scadenza |
 | cinque tinte di reparto | §3.3 | §3.3 | solo il quadratino del titolo di sezione |
@@ -74,8 +74,8 @@ foglio della cottura. Il rosso di «finito» può coincidere con quello degli er
 ### 3.3 Le icone
 
 **Reparti** (i 14 di `frontend/src/domain/categories.ts`), con cinque tinte per famiglia,
-scelte lontane da verde, giallo, rosso e viola, che vogliono già dire «c'è», «sta finendo»,
-«finito» e «scade»:
+scelte lontane da verde, giallo, rosso e viola, che vogliono già dire «Disponibile», «Quasi
+finito», «Finito» e «scade»:
 
 | Tinta | Reparti e icona |
 |---|---|
@@ -124,7 +124,9 @@ e le consegne seguenti migrano le schermate su di esse.
 - **`Section`** — la scheda di reparto: quadratino con icona e tinta, titolo, conteggio,
   righe senza separatori. Prende il reparto e trova da sé icona e tinta.
 - **`StockGauge`** — le tre tacche, §4.4.
-- **`StatusDot`** — il pallino dello stato di un ingrediente di ricetta.
+- **`StatusDot`** — il pallino dello stato di un ingrediente di ricetta. Il suo nome per chi
+  ascolta è «disponibile», «quasi finito» o «manca»: le prime due sono `STATUS_LABELS` in
+  minuscolo, «manca» è la disponibilità di una ricetta e in dispensa non esiste.
 - **`Chip`** — pastiglie di stato e di scadenza; sostituisce `StatusChip` ed `ExpiryChip`.
 - **`Notice`** — l'**avviso di conferma unico** (resto di T4): in basso, sopra la barra delle
   schede, fondo scuro, testo breve, un'azione facoltativa («Annulla», «Vedi»), dura 6 secondi
@@ -223,8 +225,13 @@ dove si vuole che arrivi. Ogni tacca è un bersaglio di 44 px (le tre insieme ne
 circa 132), il disegno è una barretta di circa 16×6. Toccare la tacca dello stato attuale
 non manda niente.
 
-- **Accessibilità**: `radiogroup` con tre `radio` chiamati «c'è», «sta finendo», «finito»;
-  le frecce della tastiera scorrono fra loro, come oggi il cursore.
+- **Accessibilità**: `radiogroup` con tre `radio` chiamati con le parole di `STATUS_LABELS`,
+  «Finito», «Quasi finito», «Disponibile»; le frecce della tastiera scorrono fra loro, come
+  oggi il cursore.
+- **Un vocabolario solo** (deciso nella Consegna 0): le bozze di questa spec dicevano «c'è /
+  sta finendo / finito» per le tacche e «c'è / sta finendo / manca» per il pallino, ma due
+  parole per lo stesso stato sono proprio l'incoerenza che il giro ha segnalato. Tacche,
+  pallino e pastiglie parlano con `STATUS_LABELS`.
 - **Lo scorrimento**: un gesto che si muove oltre 10 px non è un tocco (la stessa regola di
   S13), così scorrere partendo dalle tacche non cambia mai uno stato.
 - **Dove si usa**: in Dispensa e nel **foglio della cottura**, al posto dei suoi tre pulsanti
