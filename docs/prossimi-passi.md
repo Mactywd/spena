@@ -1030,11 +1030,14 @@ il viola della scadenza). Da decidere insieme alla revisione di T3.
 ## S13. Il cursore della dispensa si sposta mentre si scorre **[FATTO 2026-09-27 — provato sul telefono il 2026-09-28]**
 
 *`FillSlider.tsx` è stato tolto con il cursore al T3 Consegna 1 (2026-09-28): le tacche
-di `StockGauge` sono tre `radio`, non un `<input type="range">` con `pointer-events-none`
-da leggere a gesti, e riusano la stessa soglia di 10 px di questa voce per la stessa
-distinzione — uno scorrimento che parte su una tacca non diventa mai un tocco (spec
-§4.4). Il resto di questa voce resta com'era, come il verbale del gesto che il cursore
-doveva gestire e che le tacche non devono più.*
+di `StockGauge` sono tre `<button role="radio">` con `onClick`, non un
+`<input type="range">` con `pointer-events-none` da leggere a gesti — non misurano
+nessuna distanza e non hanno una soglia propria. La distinzione fra tocco e
+scorrimento è quella nativa del browser: un tocco che diventa uno scorrimento non si
+trasforma mai in un clic, quindi scorrere partendo da una tacca non cambia mai uno
+stato (commento in `StockGauge.tsx`, spec §4.4). Il resto di questa voce resta
+com'era, come il verbale del gesto che il cursore doveva gestire e che le tacche non
+devono più.*
 
 > **Fatto il 2026-09-27**, sul ramo `dispensa-difetti`. `FillSlider.tsx` resta un
 > `<input type="range">` — ruolo, nome, valore letto a voce e frecce della tastiera
