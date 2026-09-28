@@ -66,6 +66,8 @@ export function IngredientPicker({
   // sul testo corrente, non sul termine ritardato: svuotando il campo l'elenco
   // deve sparire subito, non dopo l'attesa
   const showOptions = term.trim().length >= 2;
+  // la risposta in mano è di quel che c'è scritto adesso, e non di un testo di prima
+  const searchedIsTyped = ready && debounced === term.trim();
 
   return (
     <div className="flex flex-col gap-2">
@@ -93,17 +95,20 @@ export function IngredientPicker({
       )}
 
       {/* solo a ricerca finita e vuota: mentre la risposta arriva, offrire di creare
-          «latt» accanto al latte che sta per comparire sarebbe l'errore di S18 */}
-      {onCreate && showOptions && isSuccess && found.length === 0 && (
+          «latt» accanto al latte che sta per comparire sarebbe l'errore di S18. E solo
+          per il testo che quella ricerca ha cercato: corretto «lattr» in «latte», la
+          risposta vuota in mano resta quella di «lattr» per tutta l'attesa, e offrire
+          «latte» lì ne creerebbe un doppione */}
+      {onCreate && searchedIsTyped && isSuccess && found.length === 0 && (
         <Button
           icon={IconPlus}
           onClick={() => {
-            onCreate(term.trim());
+            onCreate(debounced);
             setTerm("");
           }}
           disabled={disabled}
         >
-          {`Aggiungi «${term.trim()}»`}
+          {`Aggiungi «${debounced}»`}
         </Button>
       )}
 

@@ -111,6 +111,34 @@ describe("IngredientPicker", () => {
     expect(onCreate).toHaveBeenCalledWith("zz tre");
   });
 
+  // S18 dall'altro lato: l'offerta di creare vale per il testo *cercato*, non per quello
+  // scritto. Corretto «lattr» in «latte», per tutta l'attesa della ricerca la risposta
+  // vuota in mano è ancora quella di «lattr»: offrire «Aggiungi «latte»» lì creerebbe
+  // un doppione del latte che la ricerca sta per trovare.
+  it("dopo una ricerca vuota, il testo corretto non si offre finché la sua ricerca non è finita", async () => {
+    const cercati: string[] = [];
+    stubRoutedFetch((path) => {
+      cercati.push(new URL(path, "http://x").searchParams.get("q") ?? "");
+      return [[], 200];
+    });
+    const onCreate = vi.fn();
+    renderWithClient(
+      <IngredientPicker label="Aggiungi un ingrediente" failureNote="x" onPick={() => {}} onCreate={onCreate} />
+    );
+    const campo = screen.getByLabelText("Aggiungi un ingrediente");
+    fireEvent.change(campo, { target: { value: "lattr" } });
+    await screen.findByRole("button", { name: "Aggiungi «lattr»" });
+
+    fireEvent.change(campo, { target: { value: "latte" } });
+    // subito dopo la correzione: nessuna offerta, né per il testo nuovo né per il vecchio
+    expect(screen.queryByRole("button", { name: /^Aggiungi/ })).toBeNull();
+
+    // finita la sua ricerca, vuota anche lei, l'offerta torna: per il testo cercato
+    fireEvent.click(await screen.findByRole("button", { name: "Aggiungi «latte»" }));
+    expect(cercati).toContain("latte");
+    expect(onCreate).toHaveBeenCalledWith("latte");
+  });
+
   it("senza onCreate, a ricerca vuota non offre niente: resta com'era", async () => {
     stubRoutedFetch(() => [[], 200]);
     renderWithClient(<IngredientPicker label="Contiene ingredienti" failureNote="x" onPick={() => {}} />);
