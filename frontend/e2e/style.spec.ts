@@ -1244,19 +1244,18 @@ test("la barra della lista resta sotto l'intestazione scorrendo, e la ✕ offre 
     await page.getByRole("button", { name: "Annulla" }).click();
     await expect(page.getByRole("checkbox", { name: "prova scorrimento 1" })).toBeVisible();
   } finally {
-    // pulizia best-effort, come altrove in questo file (righe 985-1072): un `finally`
-    // che solleva nasconderebbe l'errore vero del `try`, quindi ogni PATCH ha il suo
-    // try/catch e una riga che non si archivia non ne salta altre
+    // pulizia in un `finally`: un `finally` che solleva nasconderebbe l'errore vero
+    // del `try`, quindi ogni PATCH resta un `expect.soft` — non lancia, quindi non
+    // salta le altre voci — ma segna comunque la prova fallita, così una riga
+    // rimasta in lista non passa per un successo silenzioso
     for (const id of create) {
       try {
         const risposta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
           data: { status: "archived" },
         });
-        if (!risposta.ok()) {
-          console.warn(`pulizia: l'archiviazione di ${id} non è andata a buon fine (${risposta.status()})`);
-        }
+        expect.soft(risposta.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
       } catch (guasto) {
-        console.warn(`pulizia: non sono riuscito ad archiviare la voce ${id}`, guasto);
+        expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
       }
     }
   }
