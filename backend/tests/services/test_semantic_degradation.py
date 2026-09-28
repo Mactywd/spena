@@ -105,6 +105,26 @@ async def test_la_rotta_dichiara_la_ricerca_ibrida_quando_i_vettori_ci_sono(
     assert response.json() == {"semantic": True}
 
 
+async def test_la_rotta_non_conta_un_vettore_su_una_ricetta_eliminata(
+    logged_client, una_ricetta_con_vettore, db_session
+):
+    """R10: l'unico vettore del ricettario è su una ricetta eliminata — nessuna
+    ricerca la può trovare, quindi non deve promettere `semantic: true`."""
+    from sqlalchemy import select
+
+    from app.db.models.recipe import Recipe
+
+    ricetta = (await db_session.execute(select(Recipe))).scalars().one()
+    risposta = await logged_client.patch(
+        f"/api/v1/recipes/{ricetta.id}", json={"archived": True}
+    )
+    assert risposta.status_code == 200, risposta.text
+
+    assert (await logged_client.get("/api/v1/recipes/search-mode")).json() == {
+        "semantic": False
+    }
+
+
 async def test_la_rotta_dichiara_la_ricerca_testuale_se_nessuna_ricetta_ha_un_vettore(
     logged_client,
 ):

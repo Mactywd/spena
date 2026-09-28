@@ -1,6 +1,44 @@
 import uuid
 
+import pytest
+
+from app.services import recipe_search
 from app.services.recipe_search import reciprocal_rank_fusion
+
+
+class _SessioneFinta:
+    """Restituisce l'`extversion` scelta dal test, senza toccare il database: la
+    tabella `pg_extension` non si può popolare con versioni a piacere, e qui non
+    serve — `_iterative_scan_available` legge solo lo scalare."""
+
+    def __init__(self, extversion):
+        self._extversion = extversion
+
+    async def scalar(self, _statement):
+        return self._extversion
+
+
+@pytest.fixture(autouse=True)
+def _azzera_la_cache_della_scansione_iterativa(monkeypatch):
+    """«Una volta per processo» vale anche per la suite: senza l'azzeramento, il
+    primo parametro deciderebbe per tutti gli altri, e anche per test in altri
+    file eseguiti prima (stessa ragione di `modello_sbagliato_da_dire` in
+    `test_semantic_degradation.py`)."""
+    monkeypatch.setattr(recipe_search, "_iterative_scan_known", None)
+
+
+@pytest.mark.parametrize(
+    ("extversion", "atteso"),
+    [
+        (None, False),  # estensione assente: pg_extension non ha la riga
+        ("0.7.4", False),  # prima della scansione iterativa (arrivata in 0.8.0)
+        ("0.8.0", True),  # da qui in poi c'è
+        ("non-numerica", False),  # non si riesce a leggere: nel dubbio, niente
+    ],
+)
+async def test_la_scansione_iterativa_si_chiede_solo_da_0_8_0(extversion, atteso):
+    disponibile = await recipe_search._iterative_scan_available(_SessioneFinta(extversion))
+    assert disponibile is atteso
 
 
 def test_fusion_rewards_agreement_between_the_two_rankings():

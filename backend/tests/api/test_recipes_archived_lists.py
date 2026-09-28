@@ -173,8 +173,18 @@ async def test_la_ricerca_semantica_esclude_le_eliminate_prima_della_piscina(
     logged_client, db_session, query_nel_punto_zero
 ):
     for numero in range(CANDIDATE_POOL + 5):
+        # Vettori distinti, non lo stesso ripetuto: HNSW deduplica i vettori
+        # identici in un solo elemento dell'indice (fino a 10 TID condivisi), quindi
+        # con un unico vettore ripetuto 105 volte l'indice ha ~11 elementi e
+        # `ef_search` (40) li vede tutti comunque — il test passerebbe anche senza
+        # scansione iterativa, senza provare niente. Con vettori distinti, tutti più
+        # vicini della ricetta viva, l'indice ha 106 elementi distinti e i primi
+        # `ef_search` sono tutte eliminate.
         _archiviata_da_sempre(
-            await _ricetta(db_session, f"Vicinissima {numero}", embedding=_vettore_a_distanza(0.05))
+            await _ricetta(
+                db_session, f"Vicinissima {numero}",
+                embedding=_vettore_a_distanza(0.05 + numero * 1e-4),
+            )
         )
     await _ricetta(db_session, "Ricetta vicina", embedding=_vettore_a_distanza(0.10))
     await db_session.flush()
@@ -182,7 +192,9 @@ async def test_la_ricerca_semantica_esclude_le_eliminate_prima_della_piscina(
     # esatta; in produzione, con migliaia di vettori, sceglie l'indice HNSW, che è
     # approssimato e con un filtro vede solo i primi `ef_search` vicini (40). Si segue
     # il piano di produzione: senza la scansione iterativa, i 40 vicini sono tutti
-    # eliminati e la viva non arriva (deviazione 14).
+    # eliminati e la viva non arriva (deviazione 14). Verificato che il test è rosso
+    # forzando il gate a `False` (con vettori distinti) e verde con il gate reale su
+    # questo pgvector (0.8.6): la prova sta nel report del task.
     await db_session.execute(text("SET LOCAL enable_seqscan = off"))
 
     assert await _titoli(logged_client, "q=xyzzy") == {"Ricetta vicina"}

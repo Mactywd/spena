@@ -258,7 +258,14 @@ async def semantic_search_usable(session: AsyncSession) -> bool:
 
 
 async def _any_recipe_has_a_vector(session: AsyncSession) -> bool:
-    statement = select(Recipe.id).where(Recipe.embedding.is_not(None)).limit(1)
+    statement = (
+        select(Recipe.id)
+        # un'eliminata non conta: la ricerca semantica su di essa non serve a
+        # nessuno, e altrimenti la rotta direbbe `semantic: true` mentre l'unico
+        # vettore del ricettario è su una ricetta che nessuna ricerca può trovare
+        .where(Recipe.embedding.is_not(None), Recipe.archived_at.is_(None))
+        .limit(1)
+    )
     return await session.scalar(statement) is not None
 
 
