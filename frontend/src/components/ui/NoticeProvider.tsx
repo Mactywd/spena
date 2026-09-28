@@ -41,8 +41,14 @@ export function NoticeProvider({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     onClick={() => {
+                      // l'azione può mostrare un avviso nuovo prima di tornare (l'«Annulla»
+                      // del doppione lo fa: «Era già in lista.» prende il posto di questo
+                      // stesso avviso). Chiudere solo se è rimasto questo: un `setCurrent(null)`
+                      // incondizionato, applicato dopo, cancellerebbe anche quello nuovo — React
+                      // mette in coda entrambi gli aggiornamenti dello stesso gestore
+                      const key = current.key;
                       current.action!.onClick();
-                      setCurrent(null);
+                      setCurrent((prev) => (prev?.key === key ? null : prev));
                     }}
                     className="min-h-11 shrink-0 px-2 font-semibold text-brand-tint"
                   >

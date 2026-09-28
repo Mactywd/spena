@@ -1,236 +1,238 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { ShoppingListScreen } from "./ShoppingListScreen";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
+import type { ShoppingItem } from "../../domain/types";
 
-const ITEMS = [
-  { id: "s1", raw_text: "pomodoro", ingredient_id: "i1", ingredient_name: "pomodoro",
-    ingredient_category: "verdura", status: "pending", reason: "manual",
-    created_at: "2026-09-11T10:00:00Z" },
-  { id: "s2", raw_text: "Total 0%", ingredient_id: "i2", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", status: "pending", reason: "finished_while_cooking",
-    created_at: "2026-09-11T11:00:00Z" },
-  { id: "s3", raw_text: "cosa verde", ingredient_id: null, ingredient_name: null,
-    ingredient_category: null, status: "checked", reason: "manual",
-    created_at: "2026-09-11T12:00:00Z" },
+function item(over: Partial<ShoppingItem> & Pick<ShoppingItem, "id" | "raw_text">): ShoppingItem {
+  return {
+    ingredient_id: null, ingredient_name: null, ingredient_category: null, ingredient_kind: null,
+    status: "pending", reason: "manual", created_at: "2026-09-28T10:00:00Z", ...over,
+  };
+}
+
+const ITEMS: ShoppingItem[] = [
+  item({ id: "s4", raw_text: "zucchine", ingredient_id: "i4", ingredient_name: "zucchina",
+    ingredient_category: "verdura", status: "checked" }),
+  item({ id: "s1", raw_text: "pomodoro", ingredient_id: "i1", ingredient_name: "pomodoro",
+    ingredient_category: "verdura" }),
+  item({ id: "s2", raw_text: "Total 0%", ingredient_id: "i2", ingredient_name: "yogurt greco",
+    ingredient_category: "latticini", reason: "finished_while_cooking" }),
+  item({ id: "s3", raw_text: "cosa verde", status: "checked" }),
 ];
 
+type Route = (path: string, init?: RequestInit) => [unknown, number];
+
+/** Un fetch che risponde in base a metodo e percorso, e tiene le chiamate. */
+function stubRoutedFetch(route: Route) {
+  const spy = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const [body, status] = route(String(input), init);
+    return Promise.resolve(new Response(JSON.stringify(body), { status }));
+  });
+  vi.stubGlobal("fetch", spy);
+  return spy;
+}
+
+const patchesOf = (spy: ReturnType<typeof stubRoutedFetch>) =>
+  spy.mock.calls
+    .filter(([, init]) => init?.method === "PATCH")
+    .map(([url, init]) => [String(url).match(/\/shopping-list\/[^/?]+$/)?.[0], JSON.parse(String(init?.body))]);
+
+// senza `NoticeProvider` l'avviso di conferma (la ✕, «Era già in lista.») non avrebbe
+// dove comparire: `useNotice()` restituirebbe il no-op del contesto vuoto
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <ShoppingListScreen />
+        <NoticeProvider>
+          <ShoppingListScreen />
+        </NoticeProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
 }
 
+/** Le caselle di una sezione, nell'ordine in cui si vedono. */
+async function boxesIn(heading: string) {
+  const section = (await screen.findByRole("heading", { name: heading })).closest("section")!;
+  return within(section).getAllByRole("checkbox").map((box) => box.getAttribute("aria-label"));
+}
+
 describe("ShoppingListScreen", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(ITEMS), { status: 200 })
-    ));
+  it("una sezione per reparto, con il conteggio; quello ignoto in fondo", async () => {
+    stubRoutedFetch(() => [ITEMS, 200]);
+    renderScreen();
+    await screen.findByRole("heading", { name: "Verdura" });
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Latticini", "Verdura", "Senza reparto"]);
+    const verdura = screen.getByRole("heading", { name: "Verdura" }).closest("section")!;
+    expect(within(verdura).getByText("2")).toBeDefined();
   });
 
-  it("raggruppa le voci per reparto, per seguire il giro del supermercato", async () => {
+  it("le voci nel carrello vanno in fondo al loro reparto (dal giro)", async () => {
+    stubRoutedFetch(() => [ITEMS, 200]);
     renderScreen();
-    expect(await screen.findByRole("heading", { name: "verdura" })).toBeDefined();
-    expect(screen.getByRole("heading", { name: "latticini" })).toBeDefined();
+    // «zucchine» arriva per prima dal server, ma è nel carrello
+    expect(await boxesIn("Verdura")).toEqual(["pomodoro", "zucchina"]);
   });
 
   it("segnala le voci rientrate dopo aver cucinato", async () => {
+    stubRoutedFetch(() => [ITEMS, 200]);
     renderScreen();
     expect(await screen.findByText("rientrata perché finita cucinando")).toBeDefined();
   });
 
-  it("mostra le voci non risolte col testo che hai scritto", async () => {
+  it("mostra le voci non abbinate col testo che hai scritto", async () => {
+    stubRoutedFetch(() => [ITEMS, 200]);
     renderScreen();
     expect(await screen.findByText("cosa verde")).toBeDefined();
   });
 
-  it("spuntando una voce la manda in stato checked", async () => {
-    const spy = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(ITEMS), { status: 200 }))
-      .mockResolvedValue(new Response(JSON.stringify({ ...ITEMS[0], status: "checked" }),
-        { status: 200 }));
-    vi.stubGlobal("fetch", spy);
-
+  it("la scheda d'ingresso conta quel che è nel carrello", async () => {
+    stubRoutedFetch(() => [ITEMS, 200]);
     renderScreen();
-    await userEvent.click(await screen.findByRole("checkbox", { name: /pomodoro/ }));
-
-    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(patch?.[0]).toContain("/shopping-list/s1");
-    expect(JSON.parse(patch?.[1].body)).toEqual({ status: "checked" });
+    expect(await screen.findByText("2 nel carrello")).toBeDefined();
   });
 
-  // S17: in corsia spuntare è il gesto che si fa di più, e col pollice si tocca la
-  // parola, non un quadratino da 20px accanto a lei
-  it("toccando il nome la voce si spunta, non solo sulla casella", async () => {
-    const spy = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(ITEMS), { status: 200 }))
-      .mockResolvedValue(new Response(JSON.stringify({ ...ITEMS[0], status: "checked" }),
-        { status: 200 }));
-    vi.stubGlobal("fetch", spy);
-
-    renderScreen();
-    await userEvent.click(await screen.findByText("pomodoro"));
-
-    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(patch?.[0]).toContain("/shopping-list/s1");
-    expect(JSON.parse(patch?.[1].body)).toEqual({ status: "checked" });
-  });
-
-  it("anche la nota del rientro fa parte del bersaglio che spunta", async () => {
-    const spy = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(ITEMS), { status: 200 }))
-      .mockResolvedValue(new Response(JSON.stringify({ ...ITEMS[1], status: "checked" }),
-        { status: 200 }));
-    vi.stubGlobal("fetch", spy);
-
-    renderScreen();
-    await userEvent.click(await screen.findByText("rientrata perché finita cucinando"));
-
-    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(patch?.[0]).toContain("/shopping-list/s2");
-    expect(JSON.parse(patch?.[1].body)).toEqual({ status: "checked" });
-  });
-
-  it("la X resta fuori dal bersaglio della spunta: togliere non spunta", async () => {
-    const spy = vi.fn()
-      .mockResolvedValue(new Response(JSON.stringify(ITEMS), { status: 200 }));
-    vi.stubGlobal("fetch", spy);
-
-    renderScreen();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Togli pomodoro dalla lista" })
+  it("spuntando una voce la manda nel carrello", async () => {
+    const spy = stubRoutedFetch((_path, init) =>
+      init?.method === "PATCH" ? [{ ...ITEMS[1], status: "checked" }, 200] : [ITEMS, 200]
     );
-
-    const patches = spy.mock.calls.filter(([, init]) => init?.method === "PATCH");
-    expect(patches.map(([, init]) => JSON.parse(init.body))).toEqual([{ status: "archived" }]);
+    renderScreen();
+    await userEvent.click(await screen.findByRole("checkbox", { name: "pomodoro" }));
+    await waitFor(() => expect(patchesOf(spy)).toEqual([["/shopping-list/s1", { status: "checked" }]]));
   });
 
-  it("offre di sistemare la spesa quando c'è almeno una voce spuntata", async () => {
+  it("la ✕ toglie la voce e l'avviso offre «Annulla», che la rimette da comprare", async () => {
+    const spy = stubRoutedFetch((_path, init) => (init?.method === "PATCH" ? [ITEMS[1], 200] : [ITEMS, 200]));
     renderScreen();
-    // la scheda è sempre presente: si aspetta che il conteggio arrivi, non il link
-    await screen.findByText("1 voce spuntata da mettere via");
-    expect(screen.getByRole("link", { name: /Sistema la spesa/ })).toHaveClass("bg-low-tint");
-  });
-
-  it("l'ingresso a «Sistema la spesa» resta anche senza voci spuntate", async () => {
-    // stub: la lista risponde con voci tutte `pending`
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(ITEMS.map((i) => ({ ...i, status: "pending" }))), { status: 200 })
-    ));
-    renderScreen();
-    // si aspetta che la lista sia arrivata, non solo lo stato iniziale a zero
-    await screen.findByText("cosa verde");
-    const link = screen.getByRole("link", { name: /Sistema la spesa/ });
-    expect(link.getAttribute("href")).toBe("/sistema");
-    expect(screen.getByText("Niente di spuntato, per ora")).toBeDefined();
-  });
-
-  // M1: senza questo comando una voce scritta per sbaglio resta in lista per la vita
-  // dell'app, e l'unico modo di farla sparire — spuntarla e sistemarla in dispensa —
-  // crea una voce di dispensa falsa.
-  it("si può togliere dalla lista una voce scritta per sbaglio", async () => {
-    const spy = vi.fn()
-      .mockResolvedValue(new Response(JSON.stringify(ITEMS), { status: 200 }));
-    vi.stubGlobal("fetch", spy);
-
-    renderScreen();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Togli pomodoro dalla lista" })
-    );
-
-    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(patch?.[0]).toContain("/shopping-list/s1");
-    expect(JSON.parse(patch?.[1].body)).toEqual({ status: "archived" });
-  });
-
-  it("una modifica rifiutata lo dice, accanto alla voce giusta", async () => {
-    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-      init?.method === "PATCH"
-        ? Promise.resolve(new Response(JSON.stringify({ detail: "no" }), { status: 500 }))
-        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
-    );
-    vi.stubGlobal("fetch", spy);
-
-    renderScreen();
-    const row = (await screen.findByText("pomodoro")).closest("li")!;
-    await userEvent.click(
-      within(row).getByRole("button", { name: "Togli pomodoro dalla lista" })
-    );
-
-    expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
-    const other = screen.getByText("Total 0%").closest("li")!;
-    expect(within(other).queryByRole("alert")).toBeNull();
-  });
-
-  it("mentre una scrittura è in volo i controlli di quella voce sono bloccati", async () => {
-    // due PATCH sulla stessa riga arrivano in ordine ignoto e l'ultima a rispondere
-    // vince: togliere una voce mentre la spunta è in volo non deve nemmeno partire
-    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-      init?.method === "PATCH"
-        ? new Promise<Response>(() => {})
-        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
-    );
-    vi.stubGlobal("fetch", spy);
-
-    renderScreen();
-    const row = (await screen.findByText("pomodoro")).closest("li")!;
-    await userEvent.click(within(row).getByRole("checkbox", { name: "pomodoro" }));
-
+    fireEvent.click(await screen.findByRole("button", { name: "Togli pomodoro dalla lista" }));
+    expect(await screen.findByText("Tolto dalla lista: pomodoro")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
     await waitFor(() =>
-      expect(within(row).getByRole("button", { name: "Togli pomodoro dalla lista" }))
-        .toBeDisabled()
+      expect(patchesOf(spy)).toEqual([
+        ["/shopping-list/s1", { status: "archived" }],
+        ["/shopping-list/s1", { status: "pending" }],
+      ])
     );
-    expect(within(row).getByRole("checkbox", { name: "pomodoro" })).toBeDisabled();
-    const other = screen.getByText("Total 0%").closest("li")!;
-    expect(within(other).getByRole("checkbox", { name: "yogurt greco" })).not.toBeDisabled();
   });
 
-  // S18: «pomodoro» + Invio con il pomodoro già in lista. Il backend aggancia il
-  // testo e risponde con la voce che c'era: nessuna riga in più, e lo si dice
-  it("un ingrediente già in lista non si doppia: «Era già in lista.»", async () => {
-    const spy = vi.fn().mockImplementation((url: string, init?: RequestInit) =>
-      init?.method === "POST"
-        ? Promise.resolve(new Response(JSON.stringify({ ...ITEMS[0], added: false }),
-          { status: 200 }))
-        : String(url).includes("/ingredients/search")
-          ? Promise.resolve(new Response("[]", { status: 200 }))
-          : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
+  it("«Annulla» rimette nel carrello una voce che era nel carrello", async () => {
+    const spy = stubRoutedFetch((_path, init) => (init?.method === "PATCH" ? [ITEMS[0], 200] : [ITEMS, 200]));
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli zucchine dalla lista" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+    await waitFor(() =>
+      expect(patchesOf(spy)).toEqual([
+        ["/shopping-list/s4", { status: "archived" }],
+        ["/shopping-list/s4", { status: "checked" }],
+      ])
+    );
+  });
+
+  it("un «Annulla» fallito lo dice, e offre di riprovare", async () => {
+    let patches = 0;
+    stubRoutedFetch((_path, init) => {
+      if (init?.method !== "PATCH") return [ITEMS, 200];
+      patches += 1;
+      return patches === 1 ? [ITEMS[1], 200] : [{ detail: "no" }, 500];
+    });
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli pomodoro dalla lista" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+    expect(await screen.findByText("Non sono riuscito a rimettere pomodoro in lista.")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
+    await waitFor(() => expect(patches).toBe(3));
+  });
+
+  it("se nel frattempo la stessa cosa è tornata in lista, «Annulla» non fa il doppione", async () => {
+    // dopo la ✕ il server risponde con la voce tolta sparita e un «pomodoro» nuovo,
+    // riscritto dalla barra: stesso ingrediente, altra voce
+    let archived = false;
+    const rewritten = item({ id: "s9", raw_text: "pomodori", ingredient_id: "i1",
+      ingredient_name: "pomodoro", ingredient_category: "verdura" });
+    const spy = stubRoutedFetch((_path, init) => {
+      if (init?.method === "PATCH") {
+        archived = true;
+        return [ITEMS[1], 200];
+      }
+      return [archived ? [...ITEMS.filter((i) => i.id !== "s1"), rewritten] : ITEMS, 200];
+    });
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli pomodoro dalla lista" }));
+    await screen.findByText("pomodori");
+    fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(await screen.findByText("Era già in lista.")).toBeDefined();
+    expect(patchesOf(spy)).toEqual([["/shopping-list/s1", { status: "archived" }]]);
+  });
+
+  it("una modifica rifiutata lo dice accanto alla voce giusta, e la voce resta", async () => {
+    stubRoutedFetch((_path, init) => (init?.method === "PATCH" ? [{ detail: "no" }, 500] : [ITEMS, 200]));
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli pomodoro dalla lista" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.closest("li")).toBe(screen.getByRole("checkbox", { name: "pomodoro" }).closest("li"));
+    expect(screen.queryByText("Tolto dalla lista: pomodoro")).toBeNull();
+  });
+
+  it("mentre una scrittura è in volo, la stessa voce non ne parte una seconda", async () => {
+    let release: (response: Response) => void = () => {};
+    const spy = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      init?.method === "PATCH"
+        ? new Promise<Response>((resolve) => { release = resolve; })
+        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
     );
     vi.stubGlobal("fetch", spy);
-
     renderScreen();
-    await screen.findByRole("checkbox", { name: "pomodoro" });
-    await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "pomodoro{Enter}");
-
-    expect(await screen.findByText("Era già in lista.")).toBeDefined();
-    const post = spy.mock.calls.find(([, init]) => init?.method === "POST");
-    // il testo va com'è: a riconoscerlo è il backend, non il campo
-    expect(JSON.parse(post?.[1].body)).toEqual({ raw_text: "pomodoro", ingredient_id: null });
-    expect(screen.getAllByRole("checkbox", { name: "pomodoro" })).toHaveLength(1);
-    expect(screen.queryByRole("alert")).toBeNull();
+    const box = await screen.findByRole("checkbox", { name: "pomodoro" });
+    fireEvent.click(box);
+    await waitFor(() => expect(box).toHaveAttribute("aria-disabled", "true"));
+    fireEvent.click(box);
+    expect(screen.getByRole("button", { name: "Togli pomodoro dalla lista" })).toBeDisabled();
+    expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
+    release(new Response(JSON.stringify({ ...ITEMS[1], status: "checked" }), { status: 200 }));
   });
 
-  it("un caricamento fallito non viene spacciato per lista vuota", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 500 })));
+  it("un ingrediente già in lista non si doppia: «Era già in lista.» nell'avviso", async () => {
+    stubRoutedFetch((path, init) =>
+      init?.method === "POST"
+        ? [{ ...ITEMS[1], added: false }, 200]
+        : path.includes("/ingredients") // i suggerimenti della barra: nessuno
+          ? [[], 200]
+          : [ITEMS, 200]
+    );
     renderScreen();
+    await screen.findByText("pomodoro");
+    await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "pomodoro{Enter}");
+    expect(await screen.findByText("Era già in lista.")).toBeDefined();
+  });
 
-    expect(await screen.findByRole("alert")).toBeDefined();
-    expect(screen.queryByText(/Lista vuota/)).toBeNull();
-    // e nemmeno per lista senza niente di spuntato: la scheda d'ingresso contava
-    // su `items`, che nasce vuoto, e affermava «Niente di spuntato, per ora» due
-    // righe sopra il messaggio che dice di non aver potuto leggere la lista.
-    // Stessa forma della gemella in dispensa: la nota diventa generica, la strada
-    // resta aperta
-    expect(screen.queryByText("Niente di spuntato, per ora")).toBeNull();
+  it("una lista vuota lo dice, e dice cosa fare", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderScreen();
+    expect(await screen.findByRole("heading", { name: "Lista vuota" })).toBeDefined();
+    expect(screen.getByText("Niente nel carrello, per ora")).toBeDefined();
+  });
+
+  it("un caricamento fallito non viene spacciato per lista vuota, e si può riprovare", async () => {
+    let calls = 0;
+    stubRoutedFetch((_path, init) => {
+      if (init?.method) return [{}, 200];
+      calls += 1;
+      return calls === 1 ? [{ detail: "no" }, 500] : [ITEMS, 200];
+    });
+    renderScreen();
+    expect(await screen.findByText(/Non sono riuscito a caricare la lista/)).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Lista vuota" })).toBeNull();
+    // né la scheda d'ingresso afferma qualcosa sul contenuto
     expect(screen.getByText("Metti via quello che hai comprato")).toBeDefined();
-    const link = screen.getByRole("link", { name: /Sistema la spesa/ });
-    expect(link.getAttribute("href")).toBe("/sistema");
+    // e scrivere resta possibile
+    expect(screen.getByLabelText("Aggiungi alla lista")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
+    expect(await screen.findByText("pomodoro")).toBeDefined();
   });
 });

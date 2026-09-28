@@ -1,200 +1,163 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AddItemField } from "./AddItemField";
+import { ListRow } from "./ListRow";
+import { ShoppingEntryCard } from "./ShoppingEntryCard";
+import { groupForDisplay } from "./listView";
 import { addShoppingItem, fetchShoppingList, patchShoppingItem } from "./api";
-import { Alert } from "../../components/ui/Alert";
-import { Card } from "../../components/ui/Card";
-import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
-import { SectionHeading } from "../../components/ui/SectionHeading";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { ErrorState } from "../../components/ui/ErrorState";
+import { Screen } from "../../components/ui/Screen";
+import { Section } from "../../components/ui/Section";
+import { useNotice } from "../../components/ui/noticeContext";
 import type { ShoppingItem } from "../../domain/types";
 
-// Parziale e tipizzato sull'unione: "manual" non ha nota perché non c'è niente da
-// spiegare, e il giorno in cui il backend aggiunge un motivo il compilatore lo dice.
-const REASON_HINT: Partial<Record<ShoppingItem["reason"], string>> = {
-  finished_while_cooking: "rientrata perché finita cucinando",
-  low_while_cooking: "rientrata perché quasi finita cucinando",
-};
-
-const UNSORTED = "senza reparto";
-
-function groupByCategory(items: ShoppingItem[]): [string, ShoppingItem[]][] {
-  const groups = new Map<string, ShoppingItem[]>();
-  for (const item of items) {
-    const key = item.ingredient_category ?? UNSORTED;
-    groups.set(key, [...(groups.get(key) ?? []), item]);
-  }
-  // il reparto ignoto va in fondo: sono le voci da chiarire
-  return [...groups.entries()].sort(([a], [b]) =>
-    a === UNSORTED ? 1 : b === UNSORTED ? -1 : a.localeCompare(b)
-  );
-}
+// la stessa chiave della Dispensa, che ne legge la scheda d'ingresso: la cache è una
+const LIST_KEY = ["shopping-list"];
 
 export function ShoppingListScreen() {
   const queryClient = useQueryClient();
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["shopping-list"],
+  const notice = useNotice();
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey: LIST_KEY,
     queryFn: () => fetchShoppingList(),
   });
+  // un caricamento fallito non è una lista vuota; ma se uno era già riuscito, React
+  // Query ne tiene i dati anche quando il successivo fallisce, e quelli restano a video
+  // sotto l'errore. `loaded` distingue i due casi, come in PantryScreen
+  const loaded = data !== undefined;
   const items = data ?? [];
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["shopping-list"] });
+  // quali voci hanno rifiutato l'ultima modifica. Un insieme, non un solo id: una
+  // spunta fallita su una voce e un «Annulla» fallito su un'altra sono indipendenti.
+  // Il messaggio va accanto alla voce e non in cima: la lista si scorre camminando per
+  // i reparti, e un avviso fuori schermo non è un avviso
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  const markFailed = (id: string) =>
+    setFailedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  const clearFailed = (id: string) =>
+    setFailedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: LIST_KEY });
+
   const add = useMutation({
     mutationFn: ({ text, id }: { text: string; id?: string }) => addShoppingItem(text, id),
     onSuccess: invalidate,
   });
-  // quale voce ha rifiutato l'ultima scrittura. Il messaggio va accanto a quella
-  // voce e non in cima: la lista si scorre mentre si cammina per i reparti, e un
-  // avviso fuori schermo non è un avviso (stessa scelta di PantryScreen)
-  const [failedId, setFailedId] = useState<string | null>(null);
 
   const toggle = useMutation({
     mutationFn: (item: ShoppingItem) =>
-      patchShoppingItem(item.id, {
-        status: item.status === "checked" ? "pending" : "checked",
-      }),
-    onMutate: () => setFailedId(null),
+      patchShoppingItem(item.id, { status: item.status === "checked" ? "pending" : "checked" }),
+    onMutate: (item) => clearFailed(item.id),
     onSuccess: invalidate,
-    // senza questo una PATCH fallita non dice niente: la casella torna da sé al
-    // valore del server e chi guarda resta convinto di aver spuntato
-    onError: (_error, item) => setFailedId(item.id),
+    // senza questo una PATCH fallita non dice niente: la casella torna da sé al valore
+    // del server e chi guarda resta convinto di aver spuntato
+    onError: (_error, item) => markFailed(item.id),
   });
 
-  // Archiviare è l'unico modo di togliere una voce: «pomdoro» scritto per sbaglio
-  // non si cancella spuntandolo, perché spuntarlo lo fa entrare in dispensa — cioè
-  // sporca la dispensa per pulire la lista. `fetchShoppingList` chiede solo
-  // `pending` e `checked`, quindi la riga sparisce senza altro lavoro.
+  // L'annulla vive nell'avviso, che è dell'app e non di questo schermo: si può toccare
+  // anche dopo essere passati a un'altra scheda. Per questo non è una useMutation
+  // (legata al componente) ma una chiamata col queryClient dell'app, come in
+  // PantryScreen. La voce torna allo stato che aveva — da comprare o nel carrello —
+  // con la PATCH di sempre (spec §4.2).
+  function undoRemove(item: ShoppingItem) {
+    // nei 6 secondi dell'avviso la stessa cosa può essere stata riscritta dalla barra:
+    // rimettere anche questa farebbe il doppione che S18 esiste per evitare
+    const current = queryClient.getQueryData<ShoppingItem[]>(LIST_KEY) ?? [];
+    const relisted =
+      item.ingredient_id !== null &&
+      current.some((other) => other.id !== item.id && other.ingredient_id === item.ingredient_id);
+    if (relisted) {
+      notice({ text: "Era già in lista." });
+      return;
+    }
+    patchShoppingItem(item.id, { status: item.status }).then(
+      () => queryClient.invalidateQueries({ queryKey: LIST_KEY }),
+      // la voce è archiviata davvero: perderla qui sarebbe il vicolo cieco
+      () =>
+        notice({
+          text: `Non sono riuscito a rimettere ${item.raw_text} in lista.`,
+          action: { label: "Riprova", onClick: () => undoRemove(item) },
+        })
+    );
+  }
+
+  // Archiviare è l'unico modo di togliere una voce: «pomdoro» scritto per sbaglio non
+  // si cancella spuntandolo, perché spuntarlo lo fa entrare in dispensa — cioè sporca
+  // la dispensa per pulire la lista. `fetchShoppingList` chiede solo `pending` e
+  // `checked`, quindi la riga sparisce senza altro lavoro.
   const archive = useMutation({
-    mutationFn: (id: string) => patchShoppingItem(id, { status: "archived" }),
-    onMutate: () => setFailedId(null),
-    onSuccess: invalidate,
-    onError: (_error, id) => setFailedId(id),
+    mutationFn: (item: ShoppingItem) => patchShoppingItem(item.id, { status: "archived" }),
+    onMutate: (item) => clearFailed(item.id),
+    onSuccess: (_data, item) => {
+      invalidate();
+      notice({
+        text: `Tolto dalla lista: ${item.raw_text}`,
+        action: { label: "Annulla", onClick: () => undoRemove(item) },
+      });
+    },
+    onError: (_error, item) => markFailed(item.id),
   });
 
-  // due PATCH sulla stessa riga arrivano in ordine ignoto e l'ultima a rispondere
-  // vince: spuntare mentre l'archiviazione è in volo è proprio il caso in cui il
-  // risultato dipenderebbe dalla rete
-  const busyId = toggle.isPending
-    ? toggle.variables.id
-    : archive.isPending
-      ? archive.variables
-      : null;
-
-  const checkedCount = items.filter((i) => i.status === "checked").length;
+  // quali voci hanno una richiesta in volo: due PATCH sulla stessa riga arrivano in
+  // ordine ignoto e l'ultima a rispondere vince. Il limite è quello di PantryScreen:
+  // `variables` tiene solo l'ultima chiamata di ogni mutazione
+  const busyIds = new Set<string>();
+  if (toggle.isPending) busyIds.add(toggle.variables.id);
+  if (archive.isPending) busyIds.add(archive.variables.id);
 
   return (
-    <div>
-      <div className="px-4 pt-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Lista</h1>
+    <Screen title="Lista">
+      <div className="flex flex-col gap-3">
+        <AddItemField onAdd={(text, id) => add.mutateAsync({ text, id })} />
+
+        {/* sempre presente, anche a carrello vuoto: «Sistema la spesa» è una
+            sottosezione, non un avviso (D3 di docs/prossimi-passi.md) */}
+        <ShoppingEntryCard items={data} failed={isError} />
+
+        {isLoading && <p className="text-ink-soft">Carico…</p>}
+
+        {/* scrivere resta possibile in ogni caso: la barra è sopra, e non dipende dal
+            caricamento */}
+        {isError && (
+          <ErrorState
+            message={
+              loaded
+                ? "Non sono riuscito ad aggiornare la lista. Quella qui sotto è dell'ultimo caricamento."
+                : "Non sono riuscito a caricare la lista. Puoi comunque aggiungere voci."
+            }
+            onRetry={() => void refetch()}
+            retrying={isFetching}
+          />
+        )}
+
+        {loaded && items.length === 0 && (
+          <EmptyState title="Lista vuota" body="Scrivi qui sopra cosa ti serve e tocca +." />
+        )}
+
+        {loaded &&
+          groupForDisplay(items).map(([category, rows]) => (
+            <Section key={category ?? "senza-reparto"} category={category} count={rows.length}>
+              <ul>
+                {rows.map((item) => (
+                  <ListRow
+                    key={item.id}
+                    item={item}
+                    busy={busyIds.has(item.id)}
+                    failed={failedIds.has(item.id)}
+                    onToggle={() => toggle.mutate(item)}
+                    onRemove={() => archive.mutate(item)}
+                  />
+                ))}
+              </ul>
+            </Section>
+          ))}
       </div>
-
-      <AddItemField onAdd={(text, id) => add.mutateAsync({ text, id })} />
-
-      {/* sempre presente, anche a zero spuntate: «sistema la spesa» è una
-          sottosezione, non un avviso. Vedi D3 in docs/prossimi-passi.md */}
-      <div className="px-4 pb-1">
-        <SectionEntryCard
-          to="/sistema"
-          title="Sistema la spesa"
-          note={
-            // finché la lista non è arrivata — e dopo un errore — non si dice
-            // niente sul suo contenuto: `items` nasce vuoto, e «niente di
-            // spuntato» sarebbe la stessa bugia che due righe sotto ci si vieta.
-            // Stessa forma della gemella in PantryScreen: nota generica, strada
-            // aperta (D3/CLAUDE.md, «mai un vicolo cieco»)
-            isError || data === undefined
-              ? "Metti via quello che hai comprato"
-              : checkedCount === 0
-                ? "Niente di spuntato, per ora"
-                : checkedCount === 1
-                  ? "1 voce spuntata da mettere via"
-                  : `${checkedCount} voci spuntate da mettere via`
-          }
-          pending={checkedCount > 0}
-        />
-      </div>
-
-      {isLoading && <p className="px-4 py-3 text-ink-soft">Carico…</p>}
-      {/* un caricamento fallito non è una lista vuota: dirlo sarebbe una bugia su
-          quello che c'è da comprare. Scrivere resta possibile in entrambi i casi */}
-      {isError && (
-        <Alert className="px-4 py-3">
-          Non sono riuscito a caricare la lista. Puoi comunque aggiungere voci.
-        </Alert>
-      )}
-      {!isLoading && !isError && items.length === 0 && (
-        <p className="px-4 py-3 text-ink-soft">Lista vuota. Scrivi cosa ti serve.</p>
-      )}
-
-      {groupByCategory(items).map(([category, group]) => (
-        <section key={category} className="px-4">
-          <SectionHeading>{category}</SectionHeading>
-          {/* una scheda per reparto, righe divise da una linea: trenta schede
-              separate su uno schermo da 375px sono tutto bordo e niente lista */}
-          <Card pad={false}>
-            <ul className="divide-y divide-line">
-              {group.map((item) => (
-                <li key={item.id} className="flex flex-col">
-                  <div className="flex items-center">
-                    {/* S17: in corsia spuntare è il gesto che si fa di più, e il
-                        pollice tocca la parola, non il quadratino da 20px accanto.
-                        La label prende casella, nome e nota, ed è alta almeno 44px.
-                        L'`aria-label` sulla casella resta e vince sul testo della
-                        label: il nome accessibile è l'ingrediente abbinato, non
-                        «Total 0% rientrata perché…». La X sta fuori, bersaglio suo:
-                        dentro, un tocco per togliere una voce la spunterebbe anche */}
-                    <label className="flex min-h-11 min-w-0 flex-1 items-center gap-3 py-3 pl-3">
-                      <input
-                        type="checkbox"
-                        aria-label={item.ingredient_name ?? item.raw_text}
-                        checked={item.status === "checked"}
-                        disabled={busyId === item.id}
-                        onChange={() => toggle.mutate(item)}
-                        className="size-5 shrink-0"
-                      />
-                      {/* S16: `min-w-0` lascia stringere la colonna sotto la sua
-                          parola più lunga, e `break-words` spezza un nome che non ci
-                          sta. Senza, a 375px la riga spingeva la pagina di lato */}
-                      <span className="flex min-w-0 flex-1 flex-col break-words">
-                        <span
-                          className={
-                            item.status === "checked" ? "text-ink-faint line-through" : ""
-                          }
-                        >
-                          {item.raw_text}
-                        </span>
-                        {/* visibile, non un tooltip: da telefono non esiste il
-                            passaggio del mouse, e il motivo per cui una voce è
-                            rientrata va letto. Sotto il nome e non accanto: accanto
-                            non ci stava (S16) */}
-                        {REASON_HINT[item.reason] && (
-                          <span className="text-xs text-low">{REASON_HINT[item.reason]}</span>
-                        )}
-                      </span>
-                    </label>
-                    {/* il nome sta nell'etichetta accessibile e non sullo schermo: su
-                        375px una riga per voce è quel che rende la lista leggibile
-                        camminando, e un bersaglio da pollice ci sta comunque */}
-                    <button
-                      type="button"
-                      aria-label={`Togli ${item.raw_text} dalla lista`}
-                      disabled={busyId === item.id}
-                      onClick={() => archive.mutate(item.id)}
-                      className="min-h-11 shrink-0 px-3 text-lg leading-none text-ink-faint disabled:opacity-40"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  {failedId === item.id && (
-                    <Alert className="px-3 pb-2">
-                      Non sono riuscito a salvare la modifica. La voce è ancora qui: riprova.
-                    </Alert>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </section>
-      ))}
-    </div>
+    </Screen>
   );
 }
