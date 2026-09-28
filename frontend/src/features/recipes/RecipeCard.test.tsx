@@ -9,6 +9,7 @@ function ricetta(overrides: Partial<RecipeSummary> = {}): RecipeSummary {
     id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "dataset",
     missing: 0, cookable: true, missing_names: [], image_url: null,
     prep_minutes: null, cook_minutes: null, category: null, cost: null,
+    archived_at: null,
     ...overrides,
   };
 }

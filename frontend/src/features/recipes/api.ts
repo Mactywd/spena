@@ -1,5 +1,12 @@
 import { apiFetch } from "../../api/client";
-import type { CookResult, RecipeDetail, RecipeDraft, RecipeSummary } from "../../domain/types";
+import type {
+  CookResult,
+  RecipeBody,
+  RecipeDetail,
+  RecipeDraft,
+  RecipeSource,
+  RecipeSummary,
+} from "../../domain/types";
 
 /** Quante ricette per pagina. Si manda sempre, così il numero sta in un posto solo e
  * «l'ultima pagina era piena» si confronta con quel che si è chiesto davvero. */
@@ -65,8 +72,21 @@ export function updateRecipeCost(id: string, cost: number | null) {
   });
 }
 
-export function createRecipe(body: unknown) {
+export function createRecipe(body: RecipeBody & { source: RecipeSource; source_ref: string | null }) {
   return apiFetch<RecipeDetail>("/recipes", { method: "POST", body: JSON.stringify(body) });
+}
+
+/** La ricetta intera, righe comprese (R10). La provenienza non si manda: non si cambia. */
+export function updateRecipe(id: string, body: RecipeBody) {
+  return apiFetch<RecipeDetail>(`/recipes/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+/** Elimina (`true`) o ripristina (`false`): non c'è una `DELETE`, come in dispensa. */
+export function setRecipeArchived(id: string, archived: boolean) {
+  return apiFetch<RecipeDetail>(`/recipes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived }),
+  });
 }
 
 // Propone una ricetta, non la salva: il salvataggio passa da createRecipe come

@@ -9,8 +9,8 @@ import type { PantryItem, RecipeDetail } from "../../domain/types";
 const DETAIL: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
   missing: 2, cookable: false, missing_names: ["Basilico", "Pomodoro"], image_url: null, prep_minutes: null, cook_minutes: null,
-  category: null, cost: null, instructions: "Cuoci.",
-  servings: 2, source_ref: null, scaled_to: null,
+  category: null, cost: null, archived_at: null, instructions: "Cuoci.",
+  servings: 2, source_ref: null, scaled_to: null, owned_by_import: false,
   // quattro righe su cinque portano una dose: «basilico» non ne ha nessuna, ed è la
   // riga che tiene onesto il denominatore — il conto delle dosi non è il conto degli
   // ingredienti, e il server manda il primo

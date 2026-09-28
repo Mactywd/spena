@@ -98,6 +98,10 @@ export interface RecipeSummary {
   category: string | null;
   /** Il costo, da 1 a 5 (R9). `null` è «non indicato», non «economica». */
   cost: number | null;
+  /** Quando è stata eliminata, in ISO 8601 (R10). Negli elenchi è sempre `null`: il
+   * server esclude le eliminate. Il dettaglio la manda, perché un collegamento vecchio
+   * porti a «Ripristina» e non a un errore. */
+  archived_at: string | null;
 }
 
 export interface RecipeIngredientLine {
@@ -128,6 +132,32 @@ export interface RecipeDetail extends RecipeSummary {
    * Arriva dal server e non si ricalcola qui — `ingredients.length` conterebbe anche
    * le righe senza dose, che non sono dosi mancate. */
   dose_lines: number;
+  /** Vero finché una pagina dell'import rifà questa ricetta: salvare una modifica la
+   * rende tua, e l'import non la riscrive più (R10 §4). Lo decide il server. */
+  owned_by_import: boolean;
+}
+
+/** Una riga come la si scrive: un ingrediente esistente, oppure nome e categoria con
+ * cui crearlo salvando (`RecipeIngredientIn` nel backend). `note` si manda solo se c'è. */
+export interface RecipeIngredientBody {
+  ingredient_id?: string;
+  name?: string;
+  category?: string | null;
+  role: IngredientRole;
+  quantity_text: string | null;
+  note?: string;
+}
+
+/** Quel che si scrive di una ricetta, alla creazione e alla modifica (`RecipeFields`
+ * nel backend). La provenienza la aggiunge solo la creazione. */
+export interface RecipeBody {
+  title: string;
+  description: string | null;
+  category: string | null;
+  instructions: string;
+  servings: number | null;
+  cost: number | null;
+  ingredients: RecipeIngredientBody[];
 }
 
 // L'esito di una cottura, così come lo restituisce il backend: quante voci di
@@ -220,6 +250,11 @@ export interface UndoResult {
   recipes_requeued: number;
   ingredient_deleted: boolean;
   remaining_terms: number;
+  /** R10: le ricette tue (modificate o eliminate) che contengono il termine, lasciate
+   * come sono. */
+  adopted_untouched: number;
+  /** L'ingrediente del termine resta perché una di quelle ricette lo usa. */
+  ingredient_kept_for_adopted: boolean;
 }
 
 // L'esito di un rientro in lista. `added` falso non è un errore: la voce era già da

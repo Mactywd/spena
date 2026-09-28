@@ -222,6 +222,7 @@ export function AiDraftScreen() {
       createRecipe({
         title: title.trim(),
         description: draft?.description ?? null,
+        category: null,
         instructions,
         servings: servingsText.trim() === "" ? null : Number(servingsText.trim()),
         cost,

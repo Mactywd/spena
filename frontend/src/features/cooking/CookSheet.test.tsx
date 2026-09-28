@@ -8,8 +8,8 @@ import type { PantryItem, RecipeDetail } from "../../domain/types";
 const RECIPE: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null, cook_minutes: null,
-  category: null, cost: null, instructions: "Cuoci.", servings: 2, source_ref: null,
-  scaled_to: null, unscalable_lines: 0, dose_lines: 1,
+  category: null, cost: null, archived_at: null, instructions: "Cuoci.", servings: 2, source_ref: null,
+  scaled_to: null, unscalable_lines: 0, dose_lines: 1, owned_by_import: false,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
       quantity_display: "180 g", quantity_scaled: false,
