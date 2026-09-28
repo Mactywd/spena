@@ -1848,8 +1848,7 @@ e le primitive (`Button`, `IconToolbar`, `ActionBar`, `Section`, `StockGauge`,
 `StatusDot`, `Chip`, l'avviso unico, `ErrorState`, `EmptyState`, `IngredientPicker` con
 «Aggiungi»). Le schermate le adottano dalla Consegna 1.
 
-**Consegna 1 (Dispensa) fatta il 2026-09-28, sul ramo `t3-dispensa`, non ancora in
-produzione.** Cosa è cambiato: la barra «Cerca o aggiungi» in cima (S11), il riepilogo
+**Consegna 1 (Dispensa) fatta il 2026-09-28, in produzione dallo stesso giorno.** Cosa è cambiato: la barra «Cerca o aggiungi» in cima (S11), il riepilogo
 delle scadenze, i reparti in sezioni, le righe con l'ingrediente sopra e il prodotto
 sotto, la scadenza scritta relativa, le tre tacche al posto del cursore, «In lista» per
 chi è già nella lista della spesa, la ✕ che passa dall'avviso unico; escono di scena il
@@ -1892,6 +1891,26 @@ Le scelte prese nel piano che Mattia può voler rivedere:
 - l'avviso che tiene solo l'**ultima** ✕: toglierne due di fila lascia l'annulla solo
   della seconda. La lapide ne teneva più d'una; la spec ha scelto l'avviso unico, e la
   prima voce si rimette con il + (sfusa e senza scadenza).
+
+**Provata nel browser dell'app sulla dispensa vera, il 2026-09-28** (viewport 375 px,
+toccando solo quel che si poteva rimettere com'era). Funzionano: la tacca «Quasi finito»
+e il ritorno a «Disponibile» (la riga resta dov'è, le tacche si spengono mentre salva),
+il fuoco da tastiera sulla tacca scelta, l'Invio nella barra che apre l'aggiunta col testo
+già scritto, il campo data che si apre al posto della scadenza e, lasciato vuoto, non
+scrive. **Un difetto che il seme non poteva mostrare**: accanto alle tacche e alla ✕ la
+colonna del testo era larga 135 px, e con i nomi di prodotto veri 39 righe su 49
+mandavano la scadenza a capo lasciando il «·» da solo, 14 nomi andavano su due o tre
+righe, le righe erano alte da 88 a 142 px (a 412 px ancora 32 su 49). L'e2e delle tacche
+girava a 1280 px, dove non si vede. **Corretto sul ramo `dispensa-righe`**: il prodotto su
+una riga tagliata coi puntini, la scadenza su una riga sua larga quanto la voce, ogni
+riga alta 106 px; Esc chiude il campo data senza scrivere, e Esc e Invio rimettono il
+fuoco sul pulsante della scadenza (che si spegne con `aria-disabled`, come le tacche,
+perché un `disabled` a salvataggio in volo buttava il fuoco sul `body`). L'e2e ora gira a
+375 px e misura un nome lungo, e un Invio e un Esc con una PATCH vera. Resta un vuoto di
+circa 28 px sotto l'ultima riga di ogni reparto: è la metà bassa del bersaglio da 44 px
+della scadenza. Non provati nel browser: lo scorrimento che parte dalle tacche (i clic
+arrivano come mouse, non come dita), il calendario nativo del telefono, le righe
+«Finito» (non ce n'erano, e crearne una avrebbe rimesso la voce in lista).
 
 **Da provare sul telefono**, prima di tutto le tacche col pollice (spec §7, il rischio
 più grosso): si toccano bene, lo scorrimento che parte da lì non cambia niente, e si
