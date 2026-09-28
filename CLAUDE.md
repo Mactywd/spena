@@ -217,7 +217,11 @@ production, which is the first defect listed above.
   a resync never see it, a merge moves its lines in place, `reread_costs` skips it.
   Deleting archives (`recipes.archived_at`, restored from the tombstone or an old link),
   and every recipe listing excludes archived recipes inside the query that carries the
-  limit. Spec: `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`.
+  limit — except the registry's usage lists (`recipes_using`, `ingredient_usage`), which
+  include them on purpose and mark them «(eliminata)»: a correction that a recipe line
+  forbids (turning an ingredient non-food) must still see them, or a restored recipe
+  would come back with a non-food line. Spec:
+  `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`.
 
   A response that cannot be verified against the real registry is never applied — the
   term stays in the queue. Specs are
