@@ -83,6 +83,9 @@ export function CategoryForm({
                   >
                     {recipe.title}
                   </Link>
+                  {/* eliminata: nel ricettario non si vede più, ma ripristinata tornerebbe
+                      con la sua riga — il link porta al dettaglio, che offre «Ripristina» */}
+                  {recipe.archived && <span className="text-ink-soft"> (eliminata)</span>}
                 </li>
               ))}
             </ul>

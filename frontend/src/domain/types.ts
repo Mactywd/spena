@@ -325,7 +325,9 @@ export type RegistryRefusal =
       code: "non_food_in_recipes";
       detail: string;
       recipe_count: number;
-      recipes: { id: string; title: string }[];
+      /** Le ricette che lo usano, eliminate comprese (R10): una ricetta eliminata si
+       * ripristina con le sue righe, quindi blocca come le altre, ma va segnata. */
+      recipes: { id: string; title: string; archived: boolean }[];
       /** Le pagine dell'import in attesa che, materializzate, lo userebbero. */
       pending_import_count: number;
       /** I termini che le legano qui, al più dieci per nome; il conto dice il resto. */

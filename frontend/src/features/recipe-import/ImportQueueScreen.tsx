@@ -85,29 +85,46 @@ function aiRunMessage(result: DecideResult): string {
   return `${decisePart}, ${pendingPart} ${unlockedPart}`;
 }
 
-/** L'esito di un annullamento riuscito: quante ricette sono tornate in coda, e se
- * ha cancellato l'ingrediente che quella decisione aveva creato. Il backend lo
+interface UndoSummary {
+  recipesRequeued: number;
+  ingredientDeleted: boolean;
+  adoptedUntouched: number;
+  ingredientKeptForAdopted: boolean;
+}
+
+/** L'esito di un annullamento riuscito: quante ricette sono tornate in coda, quante
+ * ricette tue non ha toccato (R10), e che fine ha fatto l'ingrediente. Il backend lo
  * cancella solo se la decisione ha scritto di averlo creato (`created_ingredient`) e
- * niente altro lo usa, quindi `ingredient_deleted` vero vuol dire proprio questo. Il
- * secondo fatto è l'unica cosa che dice cosa è stato distrutto dall'unico gesto
- * distruttivo di questa schermata: senza dirlo qui, si scopre solo nell'anagrafica.
+ * niente altro lo usa, quindi `ingredient_deleted` vero vuol dire proprio questo; e
+ * `ingredient_kept_for_adopted` vuol dire che l'aveva creato, e che resta perché lo usa
+ * una ricetta resa tua (spec R10 §4). È l'unica cosa che dice cosa ha mosso l'unico
+ * gesto distruttivo di questa schermata: senza dirlo qui, si scopre solo
+ * nell'anagrafica o nel ricettario.
  */
 function undoResultMessage({
   recipesRequeued,
   ingredientDeleted,
-}: {
-  recipesRequeued: number;
-  ingredientDeleted: boolean;
-}): string {
+  adoptedUntouched,
+  ingredientKeptForAdopted,
+}: UndoSummary): string {
   const recipesPart =
     recipesRequeued === 0
       ? "Nessuna ricetta è tornata in coda."
       : recipesRequeued === 1
         ? "1 ricetta è tornata in coda."
         : `${recipesRequeued} ricette sono tornate in coda.`;
-  return ingredientDeleted
-    ? `${recipesPart} L'ingrediente che questa decisione aveva creato è stato eliminato, perché nessun'altra cosa lo usava.`
-    : recipesPart;
+  const adoptedPart =
+    adoptedUntouched === 0
+      ? ""
+      : adoptedUntouched === 1
+        ? " 1 ricetta tua non è stata toccata."
+        : ` ${adoptedUntouched} ricette tue non sono state toccate.`;
+  const ingredientPart = ingredientDeleted
+    ? " L'ingrediente che questa decisione aveva creato è stato eliminato, perché nessun'altra cosa lo usava."
+    : ingredientKeptForAdopted
+      ? " L'ingrediente creato da questa decisione resta in anagrafica: lo usa una ricetta tua."
+      : "";
+  return `${recipesPart}${adoptedPart}${ingredientPart}`;
 }
 
 /** Quante decisioni recenti mostra l'elenco: lo stesso tetto che `fetchImportTerms`
@@ -154,10 +171,7 @@ type LastRun = { kind: "manual"; unlocked: number } | { kind: "ai"; result: Deci
 export function ImportQueueScreen() {
   const queryClient = useQueryClient();
   const [lastRun, setLastRun] = useState<LastRun | null>(null);
-  const [lastUndo, setLastUndo] = useState<{
-    recipesRequeued: number;
-    ingredientDeleted: boolean;
-  } | null>(null);
+  const [lastUndo, setLastUndo] = useState<UndoSummary | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
 
   const { data: queue = [], isLoading, isError } = useQuery({
@@ -235,6 +249,10 @@ export function ImportQueueScreen() {
       setLastUndo({
         recipesRequeued: result.recipes_requeued,
         ingredientDeleted: result.ingredient_deleted,
+        // `?? 0` e `?? false`: una risposta di un backend di prima di R10 non li porta,
+        // e un `undefined` finirebbe scritto nella frase
+        adoptedUntouched: result.adopted_untouched ?? 0,
+        ingredientKeptForAdopted: result.ingredient_kept_for_adopted ?? false,
       });
       setLastRun(null);
       queryClient.invalidateQueries({ queryKey: ["import-terms"] });

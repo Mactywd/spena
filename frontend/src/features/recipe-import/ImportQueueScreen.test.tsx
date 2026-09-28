@@ -74,6 +74,8 @@ type CodaOptions = {
   undoDetail?: string;
   /** `ingredient_deleted` di un annullamento riuscito */
   undoDeleted?: boolean;
+  /** il corpo intero di un annullamento riuscito, quando `undoDeleted` non basta */
+  undoResult?: unknown;
   /** l'indirizzo della schermata, per `?termine=` */
   path?: string;
   /** la risposta di `GET /imports/terms/{id}`, il termine messo a fuoco */
@@ -107,7 +109,9 @@ function renderQueue(options: CodaOptions = {}) {
         return [{ detail: options.undoDetail ?? "conflitto" }, options.undoStatus];
       }
       return [
-        { recipes_requeued: 0, ingredient_deleted: options.undoDeleted ?? false, remaining_terms: 0 },
+        options.undoResult ?? {
+          recipes_requeued: 0, ingredient_deleted: options.undoDeleted ?? false, remaining_terms: 0,
+        },
         200,
       ];
     }
@@ -490,6 +494,35 @@ describe("coda di revisione dell'import", () => {
 
     expect(
       await screen.findByText(/L'ingrediente che questa decisione aveva creato è stato eliminato/)
+    ).toBeInTheDocument();
+  });
+
+  it("un annullamento dice quali ricette tue non ha toccato, e che l'ingrediente creato resta per loro", async () => {
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Guanciale", occurrences: 2, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "guanciale", decided_at: "2026-09-20T10:00:00Z",
+        },
+      ],
+      undoStatus: 200,
+      undoResult: {
+        recipes_requeued: 1, ingredient_deleted: false, remaining_terms: 1,
+        adopted_untouched: 1, ingredient_kept_for_adopted: true,
+      },
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Guanciale»/i })
+    );
+
+    expect(
+      await screen.findByText(
+        "1 ricetta è tornata in coda. 1 ricetta tua non è stata toccata. " +
+          "L'ingrediente creato da questa decisione resta in anagrafica: lo usa una ricetta tua."
+      )
     ).toBeInTheDocument();
   });
 
