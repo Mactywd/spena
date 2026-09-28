@@ -43,4 +43,36 @@ describe("la barra delle schede sopra l'indicatore home", () => {
     expect(screen.getByRole("link", { name: "Lista" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Dispensa" })).not.toHaveAttribute("aria-current");
   });
+
+  // Il confronto è scritto a mano (TabBar.tsx, non più un `NavLink`): questi tre
+  // fissano quel confronto — combacia sul percorso esatto, combacia annidato, non
+  // combacia su un prefisso che gli somiglia soltanto.
+  it.each([
+    ["/dispensa", "Dispensa"],
+    ["/ricette/123", "Ricette"],
+  ])("su %s segna «%s»", (path, label) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <TabBar />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
+    for (const altro of ["Lista", "Dispensa", "Ricette"].filter((nome) => nome !== label)) {
+      expect(screen.getByRole("link", { name: altro })).not.toHaveAttribute("aria-current");
+    }
+  });
+
+  it.each(["/listaX", "/dispensaX"])(
+    "su %s, un percorso che solo somiglia a una scheda, non ne segna nessuna",
+    (path) => {
+      render(
+        <MemoryRouter initialEntries={[path]}>
+          <TabBar />
+        </MemoryRouter>
+      );
+      for (const nome of ["Lista", "Dispensa", "Ricette"]) {
+        expect(screen.getByRole("link", { name: nome })).not.toHaveAttribute("aria-current");
+      }
+    }
+  );
 });

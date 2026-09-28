@@ -25,9 +25,11 @@ export function TabBar() {
           // `NavLink` (react-router 7) rifiuta un `aria-current` passato a mano: quando il
           // suo stesso confronto con `to` non combacia, lo sovrascrive sempre a `undefined`
           // (chunk-BV7QT456.mjs:10714), scartando quanto passato per i percorsi di `also` —
-          // misurato con il test sotto. Per questo il confronto è qui, uguale a quello che
-          // `NavLink` farebbe da sé (`end` non passato, quindi combacia anche sui percorsi
-          // annidati), e il link è un `Link` semplice.
+          // misurato con il test sotto. Per questo il confronto è qui, e il link è un `Link`
+          // semplice: combacia anche sui percorsi annidati come farebbe `NavLink` senza `end`,
+          // ma qui è sensibile alle maiuscole — `NavLink` non lo è di default — perché ogni
+          // `to` in questo file è già minuscolo e non c'è un motivo per far combaciare un
+          // maiuscolo per errore.
           const pathActive = pathname === tab.to || pathname.startsWith(`${tab.to}/`);
           const alsoActive = tab.also?.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ?? false;
           const active = pathActive || alsoActive;
