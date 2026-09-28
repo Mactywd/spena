@@ -187,7 +187,10 @@ production, which is the first defect listed above.
   same file, so no screen knows which theme it is in. Text on a solid fill uses the
   matching `on-*` token (`text-on-brand`), never `text-white`: in the dark theme the
   fills get lighter. `src/theme.test.ts` checks every text/background pair in both
-  themes; `e2e/style.spec.ts` measures every visible text on every screen. No
+  themes; `e2e/style.spec.ts` measures every visible text in both themes on every
+  route, the open cook sheet and the ☰ menu — in the state the seed and the test
+  leave them (the import queue empty, no AI draft), so a state no test opens is
+  not measured. No
   screen names a raw colour: grepping `src/` for `emerald` or `neutral-` must keep
   returning nothing. Shared primitives are in `frontend/src/components/ui/`; look
   there before writing a fourth button variant. Contrast is a constraint, not a

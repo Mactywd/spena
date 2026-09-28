@@ -310,8 +310,9 @@ Attraversa lista, dispensa, ricettario, cottura e rientro in lista con un browse
 vero, contro l'app costruita e servita da Nginx. Nello stesso stack girano anche i
 controlli di `e2e/style.spec.ts`, che sono lì per un motivo preciso: Tailwind genera
 il CSS al momento della costruzione e jsdom non lo calcola, quindi lo stile è l'unica
-parte dell'app che i test di Vitest non possono vedere. Quelli non scrivono niente e
-non vogliono uno stack pulito. Gira su uno stack Compose a parte,
+parte dell'app che i test di Vitest non possono vedere. Quelli non vogliono uno stack
+pulito: i pochi che scrivono (una voce di dispensa, un prodotto) la tolgono prima di
+finire. Gira su uno stack Compose a parte,
 `spena-e2e`, per due motivi: la password serve conosciuta (`.env.e2e` contiene
 l'hash della parola `test`, e non protegge niente) e lo stack va distrutto con i
 volumi alla fine, cosa che non si può fare sul progetto di sviluppo senza perdere la

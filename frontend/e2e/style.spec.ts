@@ -17,11 +17,13 @@ import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
  * qui è di proposito uno senza `type`: provarne uno tipizzato non avrebbe visto niente.
  *
  * I controlli sul colore e sui campi non scrivono niente e non leggono lo stato:
- * girano anche su uno stack già usato. Il controllo sul cursore della dispensa fa
- * eccezione — aggiunge una voce con l'ingresso diretto (spec §8.3) perché il seme
- * non popola la dispensa, e senza una voce non c'è nessun cursore da provare — ma
- * la archivia prima di finire: questo file non lascia niente dietro di sé, e
- * nessun altro file dipende dal proprio posto nell'ordine alfabetico.
+ * girano anche su uno stack già usato. Fanno eccezione il controllo sul cursore della
+ * dispensa — aggiunge una voce con l'ingresso diretto (spec §8.3) perché il seme
+ * non popola la dispensa, e senza una voce non c'è nessun cursore da provare — e i
+ * giri dei due temi, che creano un prodotto e una sua confezione (`perOgniLuogo`);
+ * tutti e due tolgono quel che hanno messo prima di finire: questo file non lascia
+ * niente dietro di sé, e nessun altro file dipende dal proprio posto nell'ordine
+ * alfabetico.
  */
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
 
@@ -345,7 +347,14 @@ async function testiIlleggibili(page: Page): Promise<string[]> {
         if (fondo === null && (canali(s.backgroundColor)[3] ?? 1) > 0) fondo = s.backgroundColor;
       }
       if (opacita < 1) continue;
-      const a = lum(view.getComputedStyle(el).color);
+      const colore = view.getComputedStyle(el).color;
+      // i numeri si estraggono come canali rgb: un `oklab(… / 0.6)` o un `color-mix()`
+      // darebbe un rapporto inventato, quindi si dice che non si sa misurare
+      if (!/^rgba?\(/.test(colore) || (fondo !== null && !/^rgba?\(/.test(fondo))) {
+        cattivi.push(`«${testo.slice(0, 40)}» colore che lo scanner non sa leggere: ${colore} su ${fondo}`);
+        continue;
+      }
+      const a = lum(colore);
       const b = lum(fondo ?? "rgb(255, 255, 255)");
       const rapporto = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
       if (rapporto < 4.5) cattivi.push(`«${testo.slice(0, 40)}» ${rapporto.toFixed(2)}:1 su ${fondo}`);
@@ -643,11 +652,156 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
 });
 
 // T3, Consegna 0: il tema scuro. `theme.test.ts` fa l'aritmetica sui valori scritti in
-// `index.css`; qui si misura quel che arriva a video, su ogni testo di ogni schermata
-// che il seme `--con-ricette` raggiunge senza scrivere niente. Una coppia che nessuno
-// ha messo in PAIRS — un `text-brand` finito su `bg-low-tint`, un `/60` di opacità —
-// l'aritmetica non la vede; il browser sì.
-const SCHERMATE = ["/lista", "/sistema", "/dispensa", "/ricette", "/ricette/importa", "/anagrafica", "/non-esiste"];
+// `index.css`; qui si misura quel che arriva a video, su ogni testo di ogni luogo che il
+// seme `--con-ricette` raggiunge. Una coppia che nessuno ha messo in PAIRS — un
+// `text-brand` finito su `bg-low-tint` — l'aritmetica non la vede; il browser sì.
+//
+// Cosa lo scanner (`testiIlleggibili`) misura e cosa no, detto esatto: prende il colore
+// calcolato del testo e quello del primo antenato con un fondo non trasparente, e ne fa
+// il rapporto WCAG. Salta il testo sotto un antenato con `opacity` minore di 1 (i
+// controlli spenti, gli elementi velati), dentro `aria-hidden`, `disabled` o `.sr-only`.
+// Non misura segnaposto e valori dei campi (non sono nodi di testo), né il testo sopra
+// un'immagine o un gradiente, che confronta col primo fondo pieno. Legge i colori come
+// `rgb()`/`rgba()`: un colore con l'alfa di Tailwind 4 (`text-ink/60`) si calcola in
+// `oklab(… / 0.6)`, che non saprebbe leggere, e per questo lo segnala invece di
+// misurarlo male. Oggi in `src/` nessun testo porta un'opacità.
+const SCHERMATE = [
+  "/lista",
+  "/sistema",
+  "/dispensa",
+  "/ricette",
+  "/ricette/nuova-ai",
+  "/ricette/importa",
+  "/anagrafica",
+  "/non-esiste",
+];
+
+/** Passa da ogni luogo misurato e chiama `misura` su ciascuno, già caricato.
+ *
+ * Prima le schermate che si aprono da un indirizzo fisso. Poi quelle che hanno bisogno
+ * di un id, raggiunte toccando come fa chi usa l'app: il dettaglio della prima ricetta,
+ * il foglio della cottura aperto, la modifica della ricetta, la scheda di un ingrediente
+ * e quella di un prodotto dall'anagrafica. Il seme non ha prodotti e non popola la
+ * dispensa, e senza una confezione il foglio della cottura non mostra i tre stati (né il
+ * rosso pieno di «Finito», `STATUS_TONE.finished.fill`), né l'ingrediente elenca un
+ * prodotto da aprire: così prodotto e confezione si creano con `page.request`, sotto il
+ * primo ingrediente della ricetta, e si tolgono nel `finally`. Nella cottura si sceglie
+ * «Finito» e poi «Annulla»: niente si registra. Per ultimi il ☰ aperto e l'accesso, che
+ * butta via i cookie e quindi viene dopo la pulizia. */
+// scritto a mano: questo file non ha la libreria DOM (vedi `testiIlleggibili`)
+type Animazione = { effect: { getTiming: () => { iterations?: number } } | null; finished: Promise<unknown> };
+
+async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>) {
+  // `transition-colors` sposta il colore in 150 ms: misurato appena dopo un tocco, un
+  // pulsante appena scelto sta a metà fra il fondo di prima e quello di dopo, e il
+  // rapporto è di un colore che nessuno vede fermo (è successo: «Finito» a 3,15:1 su un
+  // rosso a metà strada). Prima di ogni misura si aspettano le transizioni in corso;
+  // quelle infinite (una rotella che gira) non finirebbero mai, e restano fuori.
+  const misuraFermo = async (luogo: string) => {
+    await page.locator("body").evaluate((body) =>
+      Promise.all(
+        body.ownerDocument
+          .getAnimations()
+          .filter((a: Animazione) => a.effect?.getTiming().iterations !== Infinity)
+          .map((a: Animazione) => a.finished.catch(() => undefined))
+      )
+    );
+    await misura(luogo);
+  };
+  for (const indirizzo of SCHERMATE) {
+    await page.goto(indirizzo);
+    await page.waitForLoadState("networkidle");
+    // la schermata vera, non l'accesso: vedi il `beforeEach` del tema qui sotto
+    await expect(page.getByLabel("Password")).toHaveCount(0);
+    await misuraFermo(indirizzo);
+  }
+
+  // il dettaglio: la prima scheda del ricettario. Una scheda è un link dentro una voce
+  // della lista (RecipeCard), senza titoli `h2`/`h3`
+  await page.goto("/ricette");
+  await page.getByRole("listitem").getByRole("link").first().click();
+  await expect(page.getByRole("button", { name: "Cucina", exact: true })).toBeVisible();
+  const ricettaId = new URL(page.url()).pathname.split("/").pop()!;
+  const ricetta = (await (await page.request.get(`/api/v1/recipes/${ricettaId}`)).json()) as {
+    ingredients: { ingredient_id: string }[];
+  };
+  const ingredienteId = ricetta.ingredients[0].ingredient_id;
+
+  const nome = `Prodotto e2e ${Date.now()}`;
+  const creato = await page.request.post("/api/v1/products", {
+    // marca e codice a barre anche, per misurare le righe che li mostrano; il codice è
+    // unico nel catalogo e qui cambia a ogni esecuzione
+    data: { ingredient_id: ingredienteId, name: nome, brand: "Marca e2e", barcode: String(Date.now()) },
+  });
+  expect(creato.ok()).toBe(true);
+  const prodottoId = ((await creato.json()) as { id: string }).id;
+  let voceId: string | undefined;
+  try {
+    const inDispensa = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: ingredienteId, product_id: prodottoId, note: "nota e2e" },
+    });
+    expect(inDispensa.ok()).toBe(true);
+    voceId = ((await inDispensa.json()) as { id: string }).id;
+
+    // di nuovo il dettaglio, ora che la dispensa ha qualcosa per questa ricetta
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Cucina", exact: true })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await misuraFermo("dettaglio");
+
+    await page.getByRole("button", { name: "Cucina", exact: true }).click();
+    const finito = page.getByRole("button", { name: "Finito", exact: true }).first();
+    await finito.click();
+    await expect(finito).toHaveAttribute("aria-pressed", "true");
+    await misuraFermo("cottura, con «Finito» scelto");
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+
+    await page.getByRole("link", { name: "Modifica", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Modifica la ricetta" })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await misuraFermo("modifica della ricetta");
+
+    // dall'anagrafica, cercando il prodotto; dalla sua scheda, il suo ingrediente
+    await page.goto("/anagrafica");
+    await page.getByLabel("Cerca in anagrafica").fill(nome);
+    await page.getByRole("link", { name: new RegExp(nome) }).click();
+    await expect(page.getByRole("heading", { name: nome })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await misuraFermo("scheda del prodotto");
+
+    await page.getByRole("main").locator(`a[href^="/anagrafica/ingrediente/${ingredienteId}"]`).click();
+    await expect(page.getByRole("link", { name: new RegExp(nome) })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await misuraFermo("scheda dell'ingrediente");
+  } finally {
+    // best-effort e senza asserzioni, come in `anagrafica.spec.ts`: un `finally` che
+    // solleva nasconderebbe l'errore vero del `try`. Prima la voce, poi il prodotto
+    if (voceId) {
+      try {
+        await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+      } catch (guasto) {
+        console.warn(`pulizia: non sono riuscito ad archiviare la voce ${voceId}`, guasto);
+      }
+    }
+    try {
+      await page.request.delete(`/api/v1/products/${prodottoId}`);
+    } catch (guasto) {
+      console.warn(`pulizia: non sono riuscito a eliminare il prodotto ${prodottoId}`, guasto);
+    }
+  }
+
+  // il ☰ aperto: il pannello sta in un portale suo, con un fondo suo
+  await page.goto("/lista");
+  await page.getByRole("button", { name: "Apri il menu" }).click();
+  await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
+  await misuraFermo("☰");
+  // e l'accesso, l'unica schermata che si vede da fuori: senza il cookie, il primo 401
+  // la fa comparire
+  await page.context().clearCookies();
+  await page.goto("/");
+  await expect(page.getByLabel("Password")).toBeVisible();
+  await misuraFermo("accesso");
+}
 
 for (const tema of ["light", "dark"] as const) {
   test.describe(`tema ${tema === "light" ? "chiaro" : "scuro"}`, () => {
@@ -655,7 +809,7 @@ for (const tema of ["light", "dark"] as const) {
 
     // Il `beforeEach` in cima al file preme «Entra» e non aspetta la risposta: un
     // `page.goto` subito dopo interrompe l'accesso, e ogni schermata qui sotto diventa
-    // la schermata d'accesso — misurata sette volte, con un verde che non dice niente
+    // la schermata d'accesso — misurata a ogni giro, con un verde che non dice niente
     // delle altre. Si aspetta la barra delle schede, che c'è solo da dentro.
     test.beforeEach(async ({ page }) => {
       await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
@@ -666,42 +820,17 @@ for (const tema of ["light", "dark"] as const) {
       await expect(page.locator("body")).toHaveCSS("background-color", atteso);
     });
 
-    test("su ogni schermata ogni testo sta sopra 4,5:1", async ({ page }) => {
+    test("in ogni luogo ogni testo sta sopra 4,5:1", async ({ page }) => {
       const tutti: string[] = [];
-      for (const indirizzo of SCHERMATE) {
-        await page.goto(indirizzo);
-        await page.waitForLoadState("networkidle");
-        // la schermata vera, non l'accesso: vedi il `beforeEach` qui sopra
-        await expect(page.getByLabel("Password")).toHaveCount(0);
-        tutti.push(...(await testiIlleggibili(page)).map((t) => `${indirizzo}: ${t}`));
-      }
-      // anche il dettaglio di una ricetta: la prima scheda del ricettario. Una scheda è un
-      // link dentro una voce della lista (RecipeCard), senza titoli `h2`/`h3`
-      await page.goto("/ricette");
-      await page.getByRole("listitem").getByRole("link").first().click();
-      await expect(page.getByRole("button", { name: "Cucina", exact: true })).toBeVisible();
-      await page.waitForLoadState("networkidle");
-      tutti.push(...(await testiIlleggibili(page)).map((t) => `dettaglio: ${t}`));
-      // il ☰ aperto: il pannello sta in un portale suo, con un fondo suo
-      await page.goto("/lista");
-      await page.getByRole("button", { name: "Apri il menu" }).click();
-      await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
-      tutti.push(...(await testiIlleggibili(page)).map((t) => `☰: ${t}`));
-      // e l'accesso, l'unica schermata che si vede da fuori: senza il cookie, il primo
-      // 401 la fa comparire
-      await page.context().clearCookies();
-      await page.goto("/");
-      await expect(page.getByLabel("Password")).toBeVisible();
-      tutti.push(...(await testiIlleggibili(page)).map((t) => `accesso: ${t}`));
+      await perOgniLuogo(page, async (luogo) => {
+        tutti.push(...(await testiIlleggibili(page)).map((t) => `${luogo}: ${t}`));
+      });
       expect(tutti).toEqual([]);
     });
 
     test("ogni pulsante ha un nome, anche quelli di sola icona", async ({ page }) => {
       const muti: string[] = [];
-      for (const indirizzo of SCHERMATE) {
-        await page.goto(indirizzo);
-        await page.waitForLoadState("networkidle");
-        await expect(page.getByLabel("Password")).toHaveCount(0);
+      await perOgniLuogo(page, async (luogo) => {
         // da `body`, per il motivo di `testiIlleggibili`
         const qui = await page.locator("body").evaluate((body) =>
           [...body.querySelectorAll("button")]
@@ -711,8 +840,8 @@ for (const tema of ["light", "dark"] as const) {
             )
             .map((b) => b.outerHTML.slice(0, 80) as string)
         );
-        muti.push(...qui.map((b) => `${indirizzo}: ${b}`));
-      }
+        muti.push(...qui.map((b) => `${luogo}: ${b}`));
+      });
       expect(muti).toEqual([]);
     });
   });
