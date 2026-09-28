@@ -1858,9 +1858,21 @@ cima alla Dispensa come prima; il collegamento della riga porta dove portava pri
 anche se il nome che si legge è ora l'ingrediente; il + con la barra vuota mette il
 fuoco sul campo.
 
-I conti veri della suite: 613 test in jsdom (48 file), lint, typecheck e build puliti;
-30 e2e verdi su 30 sullo stack pulito `spena-e2e` (erano 29; il nuovo è la prova sul
-riepilogo delle scadenze).
+I conti veri della suite, dopo il giro di correzioni della revisione finale: 634 test
+in jsdom (48 file), lint, typecheck e build puliti; 30 e2e verdi su 30 sullo stack
+pulito `spena-e2e` (erano 29; il nuovo è la prova sul riepilogo delle scadenze, e la
+prova sulle tacche ora misura anche quella spenta).
+
+Il giro di correzioni della revisione finale, in breve: col riepilogo premuto una voce
+segnata «Finito» resta in vista col suo «In lista» (il conteggio la lascia fuori, la
+vista no), e un testo che trova solo voci non in scadenza dice «Niente in scadenza» e
+offre «Mostra tutto»; il riepilogo che sparisce si porta via il filtro; l'aggiunta
+che non trova niente in anagrafica lo dice e porta alla Lista; un aggiornamento fallito
+lascia a video la dispensa dell'ultimo caricamento sotto l'errore; durante una
+scrittura le tacche tengono il fuoco (`aria-disabled`), così le frecce passano alla
+seguente; la tacca spenta ha un token suo, `--color-notch-off` (#848e87 in chiaro,
+#69736d in scuro), misurato a video 3,39:1 e 3,45:1 sul fondo `card` — con `line`
+stava a 1,3:1, e theme.test.ts ora tiene anche le coppie dei segni, a 3:1.
 
 Le scelte prese nel piano che Mattia può voler rivedere:
 - «scadeva ieri» / «oltre la scadenza» al posto di «scaduto», per l'accordo;
@@ -1873,11 +1885,18 @@ Le scelte prese nel piano che Mattia può voler rivedere:
 
 **Da provare sul telefono**, prima di tutto le tacche col pollice (spec §7, il rischio
 più grosso): si toccano bene, lo scorrimento che parte da lì non cambia niente, e si
-capisce che si toccano. Poi il riepilogo, e il campo data nativo del «+ scadenza».
+capisce che si toccano — anche le spente, ora grigie sopra 3:1 e non più del colore
+delle righe. Poi il riepilogo, e il campo data nativo del «+ scadenza». Poi due cose
+che si notano solo usandola: l'Invio nella barra «Cerca o aggiungi» apre l'aggiunta
+(è l'invio del modulo, come il +), quindi chi preme Invio solo per chiudere la
+tastiera dopo aver cercato se la trova aperta; e la seconda riga di una voce mostra il
+prodotto senza la marca («Total 0%», non «Fage Total 0%»), mentre la ricerca la marca
+la trova ancora — cercando «fage» compare una riga in cui «fage» non si legge.
 
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
-chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa contro il
-fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e non un testo). Gli
+chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
+spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
+non un testo). Gli
 altri due — il pulsante primario spento, il velo del ☰ — restano aperti, e non toccano
 la Dispensa.
 
@@ -1901,8 +1920,9 @@ del cursore della dispensa, fatte con le tinte, restavano tenui come in chiaro; 
 del ☰, con il pannello che si stacca dalla pagina solo per il fondo `card`.
 
 **Il secondo si chiude con la Consegna 1** (2026-09-28): il cursore a zone non c'è più,
-lo sostituiscono le tre tacche di `StockGauge`. L'e2e misura la tacca accesa contro il
-fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e non un testo, non la
+lo sostituiscono le tre tacche di `StockGauge`. L'e2e misura la tacca accesa e quella
+spenta (`--color-notch-off`, 3,39:1 e 3,45:1) contro il fondo `card`, in chiaro e in
+scuro: ≥3:1 (WCAG 1.4.11, è un segno e non un testo, non la
 soglia 4,5:1 di un testo). Gli altri due — il pulsante primario spento, il velo del ☰ —
 restano aperti, e non toccano la Dispensa.
 
