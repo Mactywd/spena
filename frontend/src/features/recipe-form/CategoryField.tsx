@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCategories } from "../recipes/api";
 import { Alert } from "../../components/ui/Alert";
@@ -24,6 +24,7 @@ export function CategoryField({
   onChange: (category: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const labelId = useId();
   const listId = useId();
   const { data: categories = [], isLoading, isError } = useQuery({
@@ -32,9 +33,12 @@ export function CategoryField({
     enabled: open,
   });
 
+  // l'opzione toccata sparisce con l'elenco, e il fuoco con lei cadrebbe sul `body`:
+  // torna al bottone che ha aperto la scelta, da dove chi usa la tastiera ripartiva
   function choose(category: string | null) {
     onChange(category);
     setOpen(false);
+    toggleRef.current?.focus();
   }
 
   return (
@@ -43,6 +47,7 @@ export function CategoryField({
       <div className="flex min-h-11 items-center justify-between gap-2">
         <span className={value === null ? "text-ink-faint" : ""}>{value ?? "nessuna"}</span>
         <button
+          ref={toggleRef}
           type="button"
           aria-label={open ? "Chiudi la scelta della categoria" : "Cambia la categoria"}
           aria-expanded={open}

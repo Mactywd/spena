@@ -166,6 +166,18 @@ describe("la categoria", () => {
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ category: null }));
   });
 
+  it("scelta una categoria, il fuoco torna al bottone che apre la scelta", async () => {
+    // l'opzione toccata sparisce con l'elenco: senza, il fuoco cadrebbe sul `body` e chi
+    // naviga da tastiera o con lo screen reader ripartirebbe dall'inizio della pagina
+    stubCategories([["Dolci", "Primi piatti"], 200]);
+    renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.click(screen.getByRole("button", { name: "Cambia la categoria" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Dolci" }));
+
+    expect(screen.getByRole("button", { name: "Cambia la categoria" })).toHaveFocus();
+  });
+
   it(
     "se le categorie non arrivano lo dice, e la ricetta si salva lo stesso",
     async () => {
