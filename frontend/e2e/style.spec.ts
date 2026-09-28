@@ -33,9 +33,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("i token del colore arrivano davvero alla pagina", async ({ page }) => {
-  // --color-page: #eef1ee. Se il blocco @theme non venisse compilato, questo
-  // resterebbe il bianco di default e tutto il resto sarebbe da rifare
-  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(238, 241, 238)");
+  // se il blocco @theme non venisse compilato, il fondo resterebbe il bianco di
+  // default e tutto il resto sarebbe da rifare
+  await expect(page.locator("body")).toHaveCSS("background-color", tokenDelTema("page"));
 });
 
 test("un campo di testo si vede: ha fondo e bordo", async ({ page }) => {

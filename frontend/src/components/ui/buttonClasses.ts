@@ -12,10 +12,10 @@ type Shape = "pill" | "block";
 const BASE = "inline-flex min-h-11 items-center justify-center gap-2 font-medium transition-colors disabled:opacity-40";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-brand text-white",
+  primary: "bg-brand text-on-brand",
   secondary: "bg-card text-ink ring-1 ring-line ring-inset",
   // ambra: lo stesso colore del problema che questo bottone risolve
-  warn: "bg-low text-white",
+  warn: "bg-low text-on-low",
   ghost: "text-ink-soft",
   danger: "text-danger",
 };

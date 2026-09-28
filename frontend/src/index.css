@@ -10,9 +10,11 @@
    sta sopra 4.5:1 di contrasto, che è il minimo AA per il testo piccolo delle
    pastiglie di stato, e `ink-faint` è il più chiaro che regge 4.5:1 sul fondo della
    pagina. Schiarirli è esattamente ciò che rende la lista illeggibile al sole, cioè
-   in corsia, che è dove questa app si usa davvero. */
+   in corsia, che è dove questa app si usa davvero. E il tema scuro ridefinisce le
+   stesse variabili qui sotto, sotto `prefers-color-scheme`: nessuna schermata sa in
+   che tema è. */
 @theme {
-  --color-page: #eef1ee;
+  --color-page: #f1f4f2;
   --color-card: #ffffff;
 
   --color-ink: #16281f;
@@ -27,9 +29,17 @@
   --color-ink-ghost: #b3bcb5;
 
   --color-line: #dce1dc;
+  /* il velo dietro un pannello: scuro in entrambi i temi, perché deve spegnere la
+     pagina, non schiarirla */
+  --color-scrim: #0b0f0d;
 
-  --color-brand: #14804f;
+  /* 4,86:1 sulla pagina e 4,56:1 sulla sua tinta: il verde di prima, #14804f, come
+     testo stava a 4,48:1 e 4,21:1, sotto la soglia */
+  --color-brand: #0f7a4a;
   --color-brand-tint: #e4efe8;
+  /* il testo sopra un fondo pieno ha un token suo, e non è `text-white`: in scuro il
+     verde si schiarisce, e il bianco sopra non si leggerebbe più */
+  --color-on-brand: #ffffff;
 
   /* `low` ha un colore suo e non una sfumatura del verde: è l'unico stato che
      cambia la risposta alla domanda «questa ricetta si può cucinare?» (la regola
@@ -38,22 +48,87 @@
      tenere aggiornata la dispensa. */
   --color-low: #9a5f0c;
   --color-low-tint: #fbefdc;
+  --color-on-low: #ffffff;
 
-  /* La scadenza ha un colore suo, e non è il giallo: la zona gialla del cursore vuol
-     già dire «comincia a mancare» (LOW_MAX_FILL), e due fatti diversi sullo stesso
-     colore non ne dicono più nessuno. Due intensità e non due colori: «sta per
-     scadere» e «scaduto» sono lo stesso fatto a due distanze. */
-  --color-expiry: #5b45a8;
-  --color-expiry-tint: #efeaf9;
-
+  /* «finito» ha un colore solo in tutta l'app (dal giro di T3: ne aveva tre). È lo
+     stesso rosso degli errori perché la ✕ non è più rossa: il rosso vuol dire «manca»
+     o «non è andata», e basta. */
+  --color-finished: #b3261e;
+  --color-finished-tint: #fbe7e5;
+  --color-on-finished: #ffffff;
   --color-danger: #b3261e;
 
+  /* La scadenza ha un colore suo, e non è il giallo: la zona gialla vuol già dire
+     «comincia a mancare», e due fatti diversi sullo stesso colore non ne dicono più
+     nessuno. Due intensità e non due colori: «sta per scadere» e «scaduto» sono lo
+     stesso fatto a due distanze. */
+  --color-expiry: #5b45a8;
+  --color-expiry-tint: #efeaf9;
+  --color-on-expiry: #ffffff;
+
+  /* Le tinte dei reparti (spec T3 §3.3): cinque, una per famiglia, lontane da verde,
+     giallo, rosso e viola, che vogliono già dire «c'è», «sta finendo», «finito» e
+     «scade». Stanno solo nel quadratino del titolo di una sezione, mai sulle righe. */
+  --color-dept-peach: #fde7dc;
+  --color-dept-peach-ink: #8a3b17;
+  --color-dept-pink: #fbe3ee;
+  --color-dept-pink-ink: #8a2651;
+  --color-dept-blue: #dcecff;
+  --color-dept-blue-ink: #1a4f8f;
+  --color-dept-sand: #f1e8d8;
+  --color-dept-sand-ink: #6b4d1f;
+  --color-dept-slate: #e6e9ee;
+  --color-dept-slate-ink: #3d4756;
+
   --radius-card: 14px;
+}
+
+/* Il tema scuro: le stesse variabili, altri valori. Tailwind scrive ogni classe come
+   `var(--color-…)`, quindi ridefinire la variabile qui cambia `bg-page` e `text-brand`
+   dappertutto senza che una schermata lo sappia. I valori non sono il chiaro rovesciato:
+   ogni coppia di theme.test.ts sta sopra 4,5:1 anche qui. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-page: #0e1210;
+    --color-card: #181e1a;
+    --color-ink: #e7ece9;
+    --color-ink-soft: #b4beb8;
+    --color-ink-faint: #939e98;
+    --color-ink-ghost: #4a544e;
+    --color-line: #2c342f;
+    --color-scrim: #000000;
+    --color-brand: #3cb878;
+    --color-brand-tint: #16301f;
+    --color-on-brand: #06170e;
+    --color-low: #e0a63a;
+    --color-low-tint: #33260d;
+    --color-on-low: #1f1503;
+    --color-finished: #ff8a80;
+    --color-finished-tint: #3a1714;
+    --color-on-finished: #2b0805;
+    --color-danger: #ff8a80;
+    --color-expiry: #b9a6ff;
+    --color-expiry-tint: #261f3d;
+    --color-on-expiry: #150d33;
+    --color-dept-peach: #3d2317;
+    --color-dept-peach-ink: #f5b99c;
+    --color-dept-pink: #3f1a2c;
+    --color-dept-pink-ink: #f5b3cf;
+    --color-dept-blue: #16304d;
+    --color-dept-blue-ink: #a8cdf5;
+    --color-dept-sand: #352b1b;
+    --color-dept-sand-ink: #e3cfa6;
+    --color-dept-slate: #262b33;
+    --color-dept-slate-ink: #c3cad6;
+  }
 }
 
 /* la barra delle schede non deve finire sotto la tacca del telefono */
 :root {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* i controlli nativi (il selettore della data, le barre di scorrimento) seguono
+     il tema anche loro */
+  color-scheme: light dark;
 }
 
 @layer base {

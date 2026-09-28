@@ -187,12 +187,13 @@ export function AppHeader() {
           <div className="fixed inset-0 z-30">
             {/* il tocco fuori chiude: il velo è un bersaglio, non una decorazione. Fuori
                 dall'albero accessibile, perché per chi non lo vede la chiusura è Esc o
-                «Chiudi il menu» */}
+                «Chiudi il menu». `scrim` e non `ink`: in scuro `ink` è chiaro, e il
+                velo schiarirebbe la pagina invece di spegnerla */}
             <div
               data-menu-backdrop=""
               aria-hidden="true"
               onClick={close}
-              className="absolute inset-0 bg-ink/40"
+              className="absolute inset-0 bg-scrim/40"
             />
             <div
               ref={panelRef}

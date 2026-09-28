@@ -28,7 +28,7 @@ export function formatExpiry(expiresOn: string, expiry: ExpiryState | null): str
  * un componente rompe il fast refresh. */
 export const EXPIRY_TONE: Record<ExpiryState, string> = {
   soon: "bg-expiry-tint text-expiry",
-  expired: "bg-expiry text-white",
+  expired: "bg-expiry text-on-expiry",
 };
 
 /** Il `max` di ogni campo data della scadenza.

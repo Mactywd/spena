@@ -25,9 +25,11 @@ export type StatusTone = {
 //
 // `low` non è una sfumatura del verde: è l'unico stato che cambia la risposta alla
 // domanda «si può cucinare?», e prima di questa mappa era verde identico a
-// `available`, cioè invisibile.
+// `available`, cioè invisibile. «finito» non è più `ink` ma il rosso di
+// `--color-finished`, l'unico colore di quello stato in tutta l'app (dal giro di T3:
+// ne aveva tre).
 export const STATUS_TONE: Record<PantryStatus, StatusTone> = {
-  available: { fill: "bg-brand text-white", tint: "bg-brand-tint text-brand" },
-  low: { fill: "bg-low text-white", tint: "bg-low-tint text-low" },
-  finished: { fill: "bg-ink text-white", tint: "bg-page text-ink-soft" },
+  available: { fill: "bg-brand text-on-brand", tint: "bg-brand-tint text-brand" },
+  low: { fill: "bg-low text-on-low", tint: "bg-low-tint text-low" },
+  finished: { fill: "bg-finished text-on-finished", tint: "bg-finished-tint text-finished" },
 };

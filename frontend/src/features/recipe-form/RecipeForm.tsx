@@ -165,7 +165,7 @@ function LineRow({
                 // della pagina era un'etichetta, non un bottone da toccare
                 className={`min-h-11 rounded-full px-3 py-2 text-xs font-medium ${
                   line.role === role
-                    ? "bg-brand text-white"
+                    ? "bg-brand text-on-brand"
                     : "bg-card text-ink-soft ring-1 ring-line ring-inset"
                 }`}
               >
