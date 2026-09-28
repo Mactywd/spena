@@ -40,9 +40,9 @@ test("il ciclo si chiude: lista, dispensa, cottura, ritorno in lista", async ({ 
   await page.getByRole("button", { name: /Sfuso.*pomodoro/i }).click();
   await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
 
-  // 3. la dispensa la mostra disponibile. Lo stato lo dice la pastiglia
-  // (StatusChip), non più tre pulsanti: il cursore a fianco è solo un'indicazione
-  // a occhio e non porta l'aria-pressed di un controllo scelto.
+  // 3. la dispensa la mostra disponibile: lo stato lo dice la tacca «Disponibile»
+  // scelta nel radiogroup della riga (spec T3 §4.4), non più il testo di una
+  // pastiglia (StatusChip, che questa dispensa non usa più).
   //
   // `.first()` qui e sotto presuppone che questo sia l'unico «pomodoro» in
   // dispensa, e su uno stack pulito (la guardia qui sopra) lo è: nessun altro file
@@ -50,7 +50,10 @@ test("il ciclo si chiude: lista, dispensa, cottura, ritorno in lista", async ({ 
   // si aggiunge. L'ordine alfabetico dei file non c'entra più niente.
   await expect(page.getByRole("heading", { name: "Dispensa" })).toBeVisible();
   const pantryRow = page.locator("li", { hasText: "pomodoro" }).first();
-  await expect(pantryRow.getByText("Disponibile", { exact: true })).toBeVisible();
+  await expect(pantryRow.getByRole("radio", { name: "Disponibile" })).toHaveAttribute(
+    "aria-checked",
+    "true"
+  );
 
   // 4. apro una ricetta del seme e la cucino, dichiarando il pomodoro finito
   await page.getByRole("link", { name: "Ricette", exact: true }).click();

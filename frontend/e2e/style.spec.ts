@@ -17,13 +17,13 @@ import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
  * qui è di proposito uno senza `type`: provarne uno tipizzato non avrebbe visto niente.
  *
  * I controlli sul colore e sui campi non scrivono niente e non leggono lo stato:
- * girano anche su uno stack già usato. Fanno eccezione il controllo sul cursore della
- * dispensa — aggiunge una voce con l'ingresso diretto (spec §8.3) perché il seme
- * non popola la dispensa, e senza una voce non c'è nessun cursore da provare — e i
- * giri dei due temi, che creano un prodotto e una sua confezione (`perOgniLuogo`);
- * tutti e due tolgono quel che hanno messo prima di finire: questo file non lascia
- * niente dietro di sé, e nessun altro file dipende dal proprio posto nell'ordine
- * alfabetico.
+ * girano anche su uno stack già usato. Fanno eccezione i controlli che toccano la
+ * dispensa — aggiungono una voce con l'ingresso diretto (spec §8.3) perché il seme
+ * non la popola, e senza una voce non c'è niente da provare, né una tacca né un
+ * riepilogo — e i giri dei due temi, che creano un prodotto e una sua confezione
+ * (`perOgniLuogo`); tutti tolgono quel che hanno messo prima di finire: questo file
+ * non lascia niente dietro di sé, e nessun altro file dipende dal proprio posto
+ * nell'ordine alfabetico.
  */
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
 
@@ -92,15 +92,14 @@ test("l'intestazione è sempre visibile, anche scorrendo, e la pagina non scorre
   await expect(page.getByRole("banner")).toBeVisible();
 });
 
-test("il cursore della dispensa è un bersaglio da pollice, e le zone si vedono", async ({
-  page,
-}) => {
-  // jsdom non calcola il CSS: che il pallino esista, si veda e si possa toccare
-  // non lo può dire nessun test in memoria (quarta lezione di CLAUDE.md)
+test("le tacche della dispensa sono bersagli da pollice", async ({ page }) => {
+  // jsdom non calcola il CSS: che le tacche esistano, si vedano e si possano
+  // toccare non lo può dire nessun test in memoria (quarta lezione di CLAUDE.md)
   await page.getByRole("link", { name: "Dispensa" }).click();
 
-  // il seme non popola la dispensa: senza una voce non c'è nessun cursore da
-  // provare. L'ingresso diretto (spec §8.3) evita di passare dalla lista.
+  // il seme non popola la dispensa: senza una voce non c'è niente da provare.
+  // L'aggiunta passa dalla barra in cima (spec T3 §2): si scrive nel campo, si
+  // tocca il +, e si sceglie nel selettore che si apre già riempito di quel testo.
   //
   // La dispensa è stato condiviso fra i file e il database vive quanto lo stack,
   // quindi questo test rimette le cose com'erano: sceglie una voce che nessun
@@ -109,28 +108,120 @@ test("il cursore della dispensa è un bersaglio da pollice, e le zone si vedono"
   // i file alfabeticamente e `cooking` gira prima di `style`: un `--grep`, un file
   // nuovo con un nome che viene prima, o più worker, e il `.first()` di
   // `cooking.spec.ts` avrebbe trovato la voce lasciata qui.
-  await page.getByLabel("Aggiungi in dispensa").fill("cipoll");
+  await page.getByLabel("Cerca o aggiungi in dispensa").fill("cipoll");
+  await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Cipolla\b/ }).click();
 
-  // il cursore di QUESTA voce, non il primo dello schermo: la dispensa può
-  // contenere anche quel che ha lasciato il resto della suite
+  // la riga di QUESTA voce, non la prima dello schermo: la dispensa può contenere
+  // anche quel che ha lasciato il resto della suite
   const riga = page.locator("li", { hasText: "cipolla" });
-  const cursore = riga.getByRole("slider");
-  await expect(cursore).toBeVisible();
 
-  const box = await cursore.boundingBox();
-  expect(box!.height).toBeGreaterThanOrEqual(40);
+  // le tre tacche: ognuna è un bersaglio da 44px (spec T3 §4.4), non solo quella
+  // scelta — un tocco un po' storto su una tacca spenta deve prendere comunque lei
+  const tacche = riga.getByRole("radio");
+  await expect(tacche).toHaveCount(3);
+  for (const tacca of await tacche.all()) {
+    const box = await tacca.boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
 
-  // le tre zone stanno su un elemento dietro al cursore: se il gradiente non
-  // arrivasse, resterebbe un binario invisibile e il cursore non direbbe più nulla
-  const zone = riga.locator("input[type='range']").locator("xpath=preceding-sibling::div[1]");
-  await expect(zone).toHaveCSS("background-image", /linear-gradient/);
+  // la ✕ che archivia la voce
+  const togli = riga.getByRole("button", { name: "Togli cipolla dalla dispensa" });
+  const boxTogli = await togli.boundingBox();
+  expect(boxTogli!.width).toBeGreaterThanOrEqual(44);
+  expect(boxTogli!.height).toBeGreaterThanOrEqual(44);
 
-  // la pulizia: la X archivia davvero la voce sul server (la lapide che resta è
-  // solo l'annulla, a video). Senza questo la dispensa cresce di una riga a ogni
-  // esecuzione su uno stack riusato.
-  await riga.getByRole("button", { name: "Togli cipolla dalla dispensa" }).click();
-  await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+  // la scadenza: nessuna data ancora, quindi il pulsante dice «+ scadenza per
+  // cipolla» — il testo è piccolo di proposito, ma il bersaglio dev'essere quello
+  // di tutti gli altri
+  const scadenza = riga.getByRole("button", { name: "+ scadenza per cipolla" });
+  const boxScadenza = await scadenza.boundingBox();
+  expect(boxScadenza!.height).toBeGreaterThanOrEqual(44);
+
+  // il nome e la scadenza non si sovrappongono: due bersagli vicini che si
+  // toccassero sarebbero mezzo bersaglio ciascuno
+  const nome = riga.getByRole("link", { name: "cipolla" });
+  const boxNome = await nome.boundingBox();
+  expect(boxNome!.y + boxNome!.height, "il nome e la scadenza si sovrappongono").toBeLessThanOrEqual(
+    boxScadenza!.y
+  );
+
+  // la tacca accesa (l'ingresso diretto entra sempre «Disponibile») è un segno, non
+  // un testo: la soglia WCAG 1.4.11 è 3:1 e non 4,5:1, misurata sul fondo `card`
+  // della riga, in chiaro e in scuro — i colori sono quelli calcolati a video, gli
+  // stessi helper (`tokenDelTema`/`tokenDelTemaScuro`) del resto del file
+  const barretta = riga.locator('[role="radio"][aria-checked="true"] span');
+  await page.emulateMedia({ colorScheme: "light" });
+  const chiaro = await contrastoSegno(barretta);
+  expect(chiaro.fondo).toBe(tokenDelTema("card"));
+  expect(chiaro.rapporto, "tacca accesa su --color-card, chiaro").toBeGreaterThanOrEqual(3);
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  const scuro = await contrastoSegno(barretta);
+  expect(scuro.fondo).toBe(tokenDelTemaScuro("card"));
+  expect(scuro.rapporto, "tacca accesa su --color-card, scuro").toBeGreaterThanOrEqual(3);
+  await page.emulateMedia({ colorScheme: "light" });
+
+  // la pulizia: la X archivia davvero la voce sul server. Senza questo la dispensa
+  // cresce di una riga a ogni esecuzione su uno stack riusato.
+  await togli.click();
+  await expect(page.getByText("Tolto dalla dispensa: cipolla")).toBeVisible();
+});
+
+test("il riepilogo delle scadenze conta chi sta per scadere, ed è un bersaglio da pollice", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: senza un'attesa qui,
+  // la prima `page.request` qui sotto può partire prima che il cookie di sessione
+  // sia scritto, e tornare 401. Le altre prove di questo file non se ne accorgono
+  // perché cominciano con un tocco sulla UI (aspetta da sé finché il login non è
+  // fatto); qui la prima cosa è una `page.request`, quindi l'attesa va messa a mano.
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+
+  // il seme non popola la dispensa: senza una voce con `expires_on` vicino non c'è
+  // nessun riepilogo da provare. Si crea con `page.request`, che condivide i
+  // cookie della pagina — la POST di dispensa non prende la scadenza (schema
+  // `PantryItemCreate`), che si scrive con una PATCH separata, come fa il campo
+  // della riga.
+  //
+  // «zucchina» è un ingrediente che nessun altro file della suite nomina, e si
+  // archivia nella pulizia con la X, come le altre voci di questo file: questo
+  // file non lascia niente dietro di sé.
+  const trovati = (await (
+    await page.request.get("/api/v1/ingredients/search?q=zucchina")
+  ).json()) as { id: string; name: string }[];
+  const zucchina = trovati.find((voce) => voce.name === "zucchina");
+  expect(zucchina, "«zucchina» non è nel seme").toBeDefined();
+
+  const creata = await page.request.post("/api/v1/pantry", {
+    data: { ingredient_id: zucchina!.id },
+  });
+  expect(creata.ok()).toBe(true);
+  const voceId = ((await creata.json()) as { id: string }).id;
+
+  const fraDueGiorni = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const scritta = await page.request.patch(`/api/v1/pantry/${voceId}`, {
+    data: { expires_on: fraDueGiorni },
+  });
+  expect(scritta.ok()).toBe(true);
+
+  await page.getByRole("link", { name: "Dispensa" }).click();
+
+  const riepilogo = page.getByRole("button", { name: /in scadenza questa settimana/ });
+  await expect(riepilogo).toBeVisible();
+  const box = await riepilogo.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+
+  // premuto, mostra la voce: `aria-pressed` e non solo il filtro applicato, perché
+  // è un controllo scelto e non un'azione
+  await riepilogo.click();
+  await expect(riepilogo).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("li", { hasText: "zucchina" })).toBeVisible();
+
+  // la pulizia: la X archivia davvero la voce sul server
+  await page.getByRole("button", { name: "Togli zucchina dalla dispensa" }).click();
+  await expect(page.getByText("Tolto dalla dispensa: zucchina")).toBeVisible();
 });
 
 test("la X di una pastiglia del filtro è un bersaglio da pollice, e la pastiglia si vede", async ({
@@ -425,6 +516,44 @@ async function controllaContrasto(testo: Locator, token: string) {
   expect(misura.rapporto, `--color-${token} su --color-page`).toBeGreaterThanOrEqual(4.5);
 }
 
+/** Il contrasto WCAG 1.4.11 di un segno non testuale — qui, la barretta di una tacca
+ * della dispensa — contro il fondo del primo antenato non trasparente: la stessa
+ * risalita di `contrastoAVideo`, letta sul `backgroundColor` del segno invece che sul
+ * `color` di un testo. La soglia per un segno è 3:1, non 4,5:1: non c'è niente da
+ * leggere, solo da distinguere dal fondo. */
+async function contrastoSegno(segno: Locator) {
+  return segno.evaluate((el) => {
+    const view = el.ownerDocument.defaultView;
+    const canali = (colore: string) => (colore.match(/[\d.]+/g) ?? []).map(Number);
+    const luminanza = (colore: string) => {
+      const [r, g, b] = canali(colore).map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+
+    const proprio = view.getComputedStyle(el).backgroundColor;
+    let fondo: string | null = null;
+    for (let nodo = el.parentElement; nodo; nodo = nodo.parentElement) {
+      const stile = view.getComputedStyle(nodo);
+      const alfa = canali(stile.backgroundColor)[3] ?? 1;
+      if (alfa > 0) {
+        fondo = stile.backgroundColor;
+        break;
+      }
+    }
+
+    const a = luminanza(proprio);
+    const b = luminanza(fondo ?? "rgb(255, 255, 255)");
+    return {
+      colore: proprio as string,
+      fondo: fondo as string | null,
+      rapporto: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+    };
+  });
+}
+
 // Parte IX, a. `index.css` *afferma* che `ink-faint` è il più chiaro che regge 4.5:1 sul
 // fondo della pagina, e `low` ci sta sopra di un soffio: misurati qui il 2026-09-28,
 // 4.67:1 e 4.59:1, cioè un 4% e un 2% di margine (la stima a mano di `ink-faint` diceva
@@ -495,10 +624,12 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   // si vede.
   await page.getByRole("link", { name: "Dispensa" }).click();
 
-  // stessa cautela del test sul cursore: una voce che nessun altro file nomina
+  // stessa cautela del test sulle tacche: una voce che nessun altro file nomina
   // («cipolla» è già di quel test, «pomodoro» di cooking.spec.ts), e archiviata in
-  // fondo, perché la dispensa è stato condiviso e il database vive quanto lo stack
-  await page.getByLabel("Aggiungi in dispensa").fill("carot");
+  // fondo, perché la dispensa è stato condiviso e il database vive quanto lo stack.
+  // L'aggiunta passa dalla barra in cima, come nel test sulle tacche.
+  await page.getByLabel("Cerca o aggiungi in dispensa").fill("carot");
+  await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Carota\b/ }).click();
 
   const riga = page.locator("li", { hasText: "carota" });
@@ -547,7 +678,13 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   // del colore ereditato e direbbe quanto una scritta qualsiasi. Questo valore e
   // quello in index.css sono gli unici due posti dove il colore compare: se
   // l'occhio allo Step 3 lo fa cambiare, cambiano insieme.
-  const pastiglia = riga.getByText(/^Scade il /);
+  //
+  // Rilievo di revisione: fra tre giorni `expiryText` scrive «scade tra 3 gg», non
+  // «Scade il …» (quella forma è per una data «soon» a un giorno o meno, o per una
+  // già passata) — misurato qui il 2026-09-28. Il testo minuscolo copre tutti i rami
+  // «soon» (oggi, domani, fra N giorni): è quello che questo controllo vuole, il
+  // colore del token, non la parola esatta.
+  const pastiglia = riga.getByText(/^scade /);
   await expect(pastiglia).toHaveCSS("color", "rgb(91, 69, 168)");
 
   // La pastiglia è anche un pulsante: toccarla riapre il campo, ed è l'unica strada
@@ -555,14 +692,16 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   // 24px; il bersaglio dev'essere quello di tutti gli altri, come il «+ scadenza»
   // che stava qui un momento fa — due controlli affiancati, uno da 44px e uno da 24,
   // sarebbero mezza correzione. Anche questa misura la può fare solo un browser.
-  const correggi = riga.getByRole("button", { name: /^Scade il / });
+  // Il nome accessibile porta il prefisso «Scadenza di <label>: », non la sola
+  // parola della pastiglia (stesso rilievo di revisione qui sopra).
+  const correggi = riga.getByRole("button", { name: /^Scadenza di carota: scade/ });
   const boxPastiglia = await correggi.boundingBox();
   expect(boxPastiglia!.height).toBeGreaterThanOrEqual(40);
 
-  // la pulizia, come fa il test del cursore: senza, la dispensa cresce di una riga
-  // a ogni esecuzione su uno stack riusato
+  // la pulizia, come fa il test sulle tacche: senza, la dispensa cresce di una
+  // riga a ogni esecuzione su uno stack riusato
   await riga.getByRole("button", { name: "Togli carota dalla dispensa" }).click();
-  await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+  await expect(page.getByText("Tolto dalla dispensa: carota")).toBeVisible();
 });
 
 test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il nome", async ({
@@ -581,7 +720,8 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
   // Ingrediente e ricetta non li nomina nessun altro file, e in fondo si tolgono
   // voce di lista e voce di dispensa: questo file non lascia niente dietro di sé.
   await page.getByRole("link", { name: "Dispensa" }).click();
-  await page.getByLabel("Aggiungi in dispensa").fill("mascarp");
+  await page.getByLabel("Cerca o aggiungi in dispensa").fill("mascarp");
+  await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Mascarpone\b/ }).click();
   await expect(page.locator("li", { hasText: "mascarpone" })).toBeVisible();
 
@@ -648,7 +788,7 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
   await expect(page.getByRole("checkbox", { name: "mascarpone" })).toHaveCount(0);
   await page.goto("/dispensa");
   await page.getByRole("button", { name: "Togli mascarpone dalla dispensa" }).click();
-  await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+  await expect(page.getByText("Tolto dalla dispensa: mascarpone")).toBeVisible();
 });
 
 // T3, Consegna 0: il tema scuro. `theme.test.ts` fa l'aritmetica sui valori scritti in
@@ -708,12 +848,40 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
     );
     await misura(luogo);
   };
-  for (const indirizzo of SCHERMATE) {
-    await page.goto(indirizzo);
-    await page.waitForLoadState("networkidle");
-    // la schermata vera, non l'accesso: vedi il `beforeEach` del tema qui sotto
-    await expect(page.getByLabel("Password")).toHaveCount(0);
-    await misuraFermo(indirizzo);
+
+  // «/dispensa» è fra le SCHERMATE, e il seme non la popola: misurata vuota non
+  // mostra né una tacca né la ✕ né il pulsante «+ scadenza», e lo scanner del
+  // contrasto e quello dei nomi dei pulsanti non li vedrebbero mai. Una voce
+  // feriale, creata e tolta qui perché serve solo a questo giro e non a un test
+  // suo — «farina» non la nomina nessun altro file o test di questa suite.
+  const trovate = (await (
+    await page.request.get("/api/v1/ingredients/search?q=farina")
+  ).json()) as { id: string; name: string }[];
+  const farina = trovate.find((voce) => voce.name === "farina");
+  expect(farina, "«farina» non è nel seme").toBeDefined();
+  const riempimento = await page.request.post("/api/v1/pantry", {
+    data: { ingredient_id: farina!.id },
+  });
+  expect(riempimento.ok()).toBe(true);
+  const riempimentoId = ((await riempimento.json()) as { id: string }).id;
+
+  try {
+    for (const indirizzo of SCHERMATE) {
+      await page.goto(indirizzo);
+      await page.waitForLoadState("networkidle");
+      // la schermata vera, non l'accesso: vedi il `beforeEach` del tema qui sotto
+      await expect(page.getByLabel("Password")).toHaveCount(0);
+      await misuraFermo(indirizzo);
+    }
+  } finally {
+    // prima che i cookie spariscano (in fondo a questa funzione, per la schermata
+    // d'accesso): dopo, una PATCH autenticata non arriverebbe da nessuna parte e la
+    // voce resterebbe, crescendo la dispensa a ogni esecuzione su uno stack riusato
+    try {
+      await page.request.patch(`/api/v1/pantry/${riempimentoId}`, { data: { archived: true } });
+    } catch (guasto) {
+      console.warn(`pulizia: non sono riuscito ad archiviare la voce ${riempimentoId}`, guasto);
+    }
   }
 
   // il dettaglio: la prima scheda del ricettario. Una scheda è un link dentro una voce

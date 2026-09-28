@@ -44,17 +44,16 @@ test("un detersivo fa il giro: lista, dispensa, e ritorno in lista", async ({ pa
   await page.getByRole("link", { name: "Dispensa", exact: true }).click();
   const riga = page.locator("li", { hasText: "detersivo per i piatti" });
   const sezione = riga.locator("xpath=ancestor::section[1]");
-  await expect(sezione.getByText("casa", { exact: true })).toBeVisible();
+  await expect(sezione.getByText("Casa", { exact: true })).toBeVisible();
 
-  // 4. lo porto a zero e la domanda del rientro arriva
-  const cursore = page.getByRole("slider", { name: "Quanto ne resta di detersivo per i piatti" });
-  // un tocco sul bordo sinistro, come col pollice: il cursore si cambia solo
-  // toccando (S13), e il tocco lo riceve il contenitore, non l'`<input>` — che
-  // non riceve il puntatore e che Playwright rifiuterebbe di cliccare
-  await cursore.locator("..").click({ position: { x: 1, y: 22 } });
-  await expect(page.getByText("Lo rimetto in lista?")).toBeVisible();
-  await page.getByRole("button", { name: "Sì" }).click();
-  await expect(page.getByText("Rimesso in lista.")).toBeVisible();
+  // 4. lo porto a zero: la tacca «Finito» del radiogroup «Quanto resta di…» (spec
+  // T3 §4.4), al posto del cursore. Il rientro non chiede più conferma — «In
+  // lista» resta sulla riga finché serve, e ignorarlo è il «No» di prima.
+  // `exact` non è decorativo: senza, «Finito» corrisponde anche a «Quasi finito»
+  // (il nome accessibile si cerca come sottostringa), come in `cooking.spec.ts`.
+  await riga.getByRole("radio", { name: "Finito", exact: true }).click();
+  await riga.getByRole("button", { name: "In lista" }).click();
+  await expect(page.getByText("Rimesso in lista: detersivo per i piatti")).toBeVisible();
 
   // 5. nel ricettario invece non esiste: il filtro per ingrediente (kind=food)
   // non lo offre. Un conteggio a zero da solo non proverebbe niente — passerebbe
@@ -98,13 +97,13 @@ test("un detersivo fa il giro: lista, dispensa, e ritorno in lista", async ({ pa
 
   // 6. la pulizia, che non è un contorno: la dispensa e la lista sono stato
   // condiviso con gli altri file, e cooking.spec.ts pretende una lista vuota.
-  // La X archivia davvero sul server — la lapide che resta a video è solo la
+  // La X archivia davvero sul server — l'avviso che resta a video è solo la
   // finestra dell'annulla.
   await page.getByRole("link", { name: "Dispensa", exact: true }).click();
   await page
     .getByRole("button", { name: "Togli detersivo per i piatti dalla dispensa" })
     .click();
-  await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+  await expect(page.getByText("Tolto dalla dispensa: detersivo per i piatti")).toBeVisible();
 
   await page.getByRole("link", { name: "Lista", exact: true }).click();
   await page

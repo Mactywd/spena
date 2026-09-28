@@ -65,9 +65,13 @@ test("il parmigiano sotto «burro» si sposta dalla dispensa, e a 375px niente s
     expect(inDispensa.ok()).toBe(true);
     voceId = (await inDispensa.json()).id as string;
 
-    // tocco 1: il nome nella riga della dispensa, un bersaglio da pollice
+    // tocco 1: il nome nella riga della dispensa, un bersaglio da pollice — il link
+    // porta ora il nome dell'ingrediente («burro», prima dello spostamento) e non
+    // più quello del prodotto (dal giro): si risale dal testo del prodotto, che in
+    // dispensa resta unico, all'`li` che lo contiene e al link dentro
     await page.getByRole("link", { name: "Dispensa", exact: true }).click();
-    const link = page.getByRole("link", { name: nome });
+    const rigaProdotto = page.locator("li", { hasText: nome });
+    const link = rigaProdotto.getByRole("link");
     await expect(link).toBeVisible();
     const box = await link.boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
@@ -86,10 +90,12 @@ test("il parmigiano sotto «burro» si sposta dalla dispensa, e a 375px niente s
     ).toBeVisible();
     await expect(page.getByRole("link", { name: "Parmigiano", exact: true })).toBeVisible();
 
-    // la riga della dispensa mostra il nome del prodotto, non l'ingrediente: che ora
-    // stia sotto «parmigiano» lo dice la risposta che la dispensa legge
+    // la riga della dispensa mostra ora il nome dell'ingrediente e non più quello
+    // del prodotto (dal giro): che stia sotto «parmigiano» lo dice il link stesso,
+    // e la risposta che la dispensa legge lo conferma
     await page.getByRole("main").getByRole("link", { name: "Dispensa" }).click();
-    await expect(page.getByRole("link", { name: nome })).toBeVisible();
+    const rigaSpostata = page.locator("li", { hasText: nome });
+    await expect(rigaSpostata.getByRole("link", { name: "parmigiano" })).toBeVisible();
     const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
       id: string;
       ingredient_name: string;
@@ -135,7 +141,7 @@ test("il parmigiano sotto «burro» si sposta dalla dispensa, e a 375px niente s
     // riga. Il `finally` qui sotto è la rete di sicurezza per quando non ci si arriva.
     await page.goto("/dispensa");
     await page.getByRole("button", { name: `Togli ${nome} dalla dispensa` }).click();
-    await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+    await expect(page.getByText(`Tolto dalla dispensa: ${nome}`)).toBeVisible();
     expect((await page.request.delete(`/api/v1/products/${prodottoId}`)).ok()).toBe(true);
   } finally {
     // la rete di sicurezza: gira sempre, che il `try` sia arrivato in fondo o si sia
