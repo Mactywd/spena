@@ -74,10 +74,11 @@ async def seed(tag: str) -> dict:
     # creato è stato eliminato, che è la frase che quel gesto esiste per dire.
     new_name = f"Speck {NAME_MARK} {tag}"
     async with SessionLocal() as session:
-        # Il termine lungo si collega a un ingrediente che nasce qui, non a uno del seme:
-        # annullare un `map` può cancellare l'ingrediente d'arrivo se nient'altro lo usa
-        # (difetto noto, curato altrove), e la pulizia non deve contare sul fatto che
-        # «pasta» sopravviva perché per caso le ricette del seme la usano.
+        # Il termine lungo si collega a un ingrediente che nasce qui, non a uno del seme.
+        # Nato quando annullare un `map` poteva cancellare l'ingrediente d'arrivo se
+        # nient'altro lo usava; il difetto è chiuso (migrazione 0011: un aggancio porta
+        # `created_ingredient` falso e l'annullamento non lo cancella più), e l'ingrediente
+        # proprio resta perché la prova non tocchi niente del seme: lo toglie `clean`.
         target = await create_ingredient(
             session,
             name=f"pasta {NAME_MARK} {tag}",

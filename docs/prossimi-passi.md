@@ -2201,9 +2201,10 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   chiamata esce. Il file per questo usa `docker compose exec` sullo stack e2e (il nome del
   progetto si cambia con `E2E_PROJECT`), e pulisce sia prima di seminare sia in fondo. Il
   termine lungo si collega a un ingrediente che l'aiutante crea e poi toglie, non a
-  «pasta»: annullare un `map` può cancellare l'ingrediente d'arrivo (difetto curato su
-  un altro ramo), e la pulizia non deve contare su una «pasta» che sopravvive perché le
-  ricette del seme la usano. A 375px: la riga con un nome di 88 caratteri non fa
+  «pasta»: quando la prova è nata, annullare un `map` poteva cancellare l'ingrediente
+  d'arrivo (difetto chiuso poi dalla migrazione `0011`, `created_ingredient`), e la
+  pulizia non doveva contare su una «pasta» che sopravvive perché le ricette del seme la
+  usano; l'ingrediente proprio resta perché la prova non tocchi niente del seme. A 375px: la riga con un nome di 88 caratteri non fa
   scorrere la pagina, il nome è davvero troncato (`scrollWidth` > `clientWidth` del
   testo), e l'etichetta «AI» e il tasto «Annulla» restano interi nello schermo, a destra
   del nome. Poi annulla la decisione che aveva creato un ingrediente e controlla la
