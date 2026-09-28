@@ -223,6 +223,77 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Total 0%")).toBeDefined();
   });
 
+  it("dal riepilogo premuto, segnare «Finito» lascia la voce in vista con il suo «In lista»", async () => {
+    // due voci in scadenza: finita la mela, il riepilogo resta (conta ancora lo
+    // yogurt) e con lui il filtro — è lì che la mela spariva insieme al suo «In lista»
+    let rows = [{ ...ITEMS[0], expires_on: "2026-09-29", expiry: "soon" }, ITEMS[1], ITEMS[2]];
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (init?.method === "PATCH") {
+        const { status } = JSON.parse(String(init.body));
+        rows = rows.map((row) => (path.includes(`/pantry/${row.id}`) ? { ...row, status } : row));
+        return [rows.find((row) => path.includes(`/pantry/${row.id}`)), 200];
+      }
+      return [rows, 200];
+    });
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "2 in scadenza questa settimana" }));
+    const gauge = screen.getByRole("radiogroup", { name: "Quanto resta di mela" });
+    fireEvent.click(within(gauge).getByRole("radio", { name: "Finito" }));
+
+    const summary = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    expect(summary.getAttribute("aria-pressed")).toBe("true");
+    const row = screen.getByRole("link", { name: "mela" }).closest("li")!;
+    expect(within(row).getByRole("button", { name: "In lista" })).toBeDefined();
+  });
+
+  it("dal riepilogo premuto, un testo che trova solo voci non in scadenza lo dice e offre di mostrare tutto", async () => {
+    // «Niente in dispensa per «fage»» sarebbe falso (lo yogurt c'è), e «Aggiungi
+    // «fage»» ne creerebbe un doppione
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    const summary = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    fireEvent.click(summary);
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "fage" } });
+    expect(screen.getByRole("heading", { name: "Niente in scadenza per «fage»" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: /Niente in dispensa/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aggiungi «fage»" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Mostra tutto" }));
+    expect(summary.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("Total 0%")).toBeDefined();
+  });
+
+  it("con l'aggiunta aperta, il vuoto non offre un secondo «Aggiungi»", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list") ? [[], 200] : path.includes("/ingredients") ? [[], 200] : [ITEMS, 200]
+    );
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "sale" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi «sale»" }));
+    expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Aggiungi «sale»" })).toBeNull();
+  });
+
+  it("un riepilogo che sparisce e poi torna, torna non premuto", async () => {
+    let archived = false;
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (init?.method === "PATCH") {
+        archived = JSON.parse(String(init.body)).archived;
+        return [ITEMS[2], 200];
+      }
+      return [archived ? ITEMS.slice(0, 2) : ITEMS, 200];
+    });
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "1 in scadenza questa settimana" }));
+    fireEvent.click(screen.getByRole("button", { name: "Togli mela dalla dispensa" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /in scadenza/ })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    const summary = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    expect(summary.getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("senza scadenze vicine il riepilogo non c'è", async () => {
     const quiet = ITEMS.map((item) => ({ ...item, expires_on: null, expiry: null }));
     stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [quiet, 200]));

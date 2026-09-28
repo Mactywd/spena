@@ -12,7 +12,7 @@ import { ActionBar } from "../../components/ui/ActionBar";
 import { IconCalendarEvent, IconPlus, IconSearch, IconX } from "../../components/ui/icons";
 import { useNotice } from "../../components/ui/noticeContext";
 import { PantryRow } from "./PantryRow";
-import { expiryCounts, expirySummary, groupForDisplay, isExpiring, itemLabel, matchesQuery } from "./pantryView";
+import { expiryCounts, expirySummary, groupForDisplay, hasExpiry, itemLabel, matchesQuery } from "./pantryView";
 import { addPantryItem, fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
@@ -162,12 +162,17 @@ export function PantryScreen() {
   if (expiry.isPending) busyIds.add(expiry.variables.id);
 
   const summary = isError ? null : expirySummary(expiryCounts(items));
-  // premuto su un riepilogo che non c'è più (l'ultima voce in scadenza è stata tolta)
-  // non filtra: una dispensa vuota per un filtro invisibile sarebbe una bugia
-  const showExpiring = expiringOnly && summary !== null;
+  // un riepilogo che sparisce (l'ultima voce in scadenza tolta o finita) si porta via
+  // il filtro: una dispensa vuota per un filtro invisibile sarebbe una bugia, e quando
+  // il riepilogo torna deve tornare non premuto. Si spegne qui, durante il disegno, e
+  // non in un effetto: React ridisegna subito con lo stato nuovo, senza un giro in cui
+  // il filtro fantasma resta applicato
+  if (summary === null && expiringOnly) setExpiringOnly(false);
+  // il filtro guarda la data, non il conteggio: una voce finita non conta nel
+  // riepilogo ma resta in vista, col suo «In lista» (hasExpiry)
   const visible = (isError ? [] : items)
     .filter((item) => matchesQuery(item, query))
-    .filter((item) => !showExpiring || isExpiring(item));
+    .filter((item) => !expiringOnly || hasExpiry(item));
 
   return (
     <Screen title="Dispensa">
@@ -268,19 +273,32 @@ export function PantryScreen() {
           />
         )}
 
-        {!isLoading && !isError && visible.length === 0 && query.trim() !== "" && (
+        {/* col riepilogo premuto il vuoto è del filtro, non della dispensa: dirlo
+            «niente in dispensa» sarebbe falso, e «Aggiungi» ne farebbe un doppione.
+            La via d'uscita è spegnere il filtro */}
+        {!isLoading && !isError && visible.length === 0 && query.trim() !== "" && expiringOnly && (
+          <EmptyState
+            title={`Niente in scadenza per «${query.trim()}»`}
+            action={<Button onClick={() => setExpiringOnly(false)}>Mostra tutto</Button>}
+          />
+        )}
+
+        {/* con l'aggiunta già aperta l'offerta sarebbe un doppione del pannello qui sopra */}
+        {!isLoading && !isError && visible.length === 0 && query.trim() !== "" && !expiringOnly && (
           <EmptyState
             title={`Niente in dispensa per «${query.trim()}»`}
             action={
-              <Button
-                icon={IconPlus}
-                onClick={() => {
-                  setAddFailed(false);
-                  setAdding(query.trim());
-                }}
-              >
-                {`Aggiungi «${query.trim()}»`}
-              </Button>
+              adding === null && (
+                <Button
+                  icon={IconPlus}
+                  onClick={() => {
+                    setAddFailed(false);
+                    setAdding(query.trim());
+                  }}
+                >
+                  {`Aggiungi «${query.trim()}»`}
+                </Button>
+              )
             }
           />
         )}

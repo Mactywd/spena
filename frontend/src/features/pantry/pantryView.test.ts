@@ -4,6 +4,7 @@ import {
   expiryCounts,
   expirySummary,
   groupForDisplay,
+  hasExpiry,
   isExpiring,
   itemLabel,
   matchesQuery,
@@ -65,6 +66,22 @@ describe("isExpiring", () => {
     [{ expiry: "expired" as const, status: "low" as const }, true],
   ])("%o → %s", (over, expected) => {
     expect(isExpiring(item(over))).toBe(expected);
+  });
+});
+
+describe("hasExpiry", () => {
+  // il filtro del riepilogo premuto: le finite restano, con il loro «In lista». Il
+  // conteggio no (isExpiring), la vista sì — una voce segnata «Finito» dal filtro non
+  // deve sparire sotto le dita insieme alla strada per rimetterla in lista
+  it.each([
+    [{ expiry: "soon" as const }, true],
+    [{ expiry: "expired" as const }, true],
+    [{ expiry: null }, false],
+    [{ expiry: "soon" as const, status: "finished" as const }, true],
+    [{ expiry: "expired" as const, status: "finished" as const }, true],
+    [{ expiry: null, status: "finished" as const }, false],
+  ])("%o → %s", (over, expected) => {
+    expect(hasExpiry(item(over))).toBe(expected);
   });
 });
 

@@ -29,6 +29,14 @@ export function isExpiring(item: PantryItem): boolean {
   return item.expiry !== null && item.status !== "finished";
 }
 
+/** Se la voce resta in vista col riepilogo premuto. Non è `isExpiring`: il conteggio
+ * lascia fuori le finite, la vista no. Una voce segnata «Finito» dal filtro deve
+ * restare lì, in fondo alla sua sezione, con il suo «In lista»: sparire sotto le dita
+ * si porterebbe via proprio la strada che rimette in lista quel che è finito. */
+export function hasExpiry(item: PantryItem): boolean {
+  return item.expiry !== null;
+}
+
 export function expiryCounts(items: PantryItem[]): { soon: number; expired: number } {
   let soon = 0;
   let expired = 0;
