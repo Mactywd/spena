@@ -134,12 +134,13 @@ describe("AiDraftScreen", () => {
     await proposeDraft();
     await draftLanded();
 
-    const boxes = screen.getAllByRole("checkbox", { name: "Includi pomodoro" });
-    expect(boxes).toHaveLength(2);
+    // R10: una riga si toglie con la ✕, non togliendo la spunta (spec §6.2)
+    const crocette = screen.getAllByRole("button", { name: "Togli pomodoro" });
+    expect(crocette).toHaveLength(2);
 
-    await userEvent.click(boxes[0]);
-    expect(boxes[0]).not.toBeChecked();
-    expect(boxes[1]).toBeChecked();
+    await userEvent.click(crocette[0]);
+    expect(screen.getAllByRole("button", { name: "Togli pomodoro" })).toHaveLength(1);
+    expect(screen.getByLabelText("Quantità per pomodoro")).toHaveValue("2 cucchiai");
   });
 
   // Il requisito fondante: "mai un vicolo cieco". Il modulo non è una conseguenza
@@ -198,7 +199,9 @@ describe("AiDraftScreen", () => {
     await draftLanded();
 
     expect(await screen.findByLabelText(/includi basilico fresco/i)).not.toBeChecked();
-    expect(screen.getByLabelText(/includi pasta/i)).toBeChecked();
+    // un aggancio sicuro non ha casella da spuntare: è dentro, e si toglie con la ✕
+    expect(screen.queryByLabelText(/includi pasta/i)).toBeNull();
+    expect(screen.getByRole("button", { name: "Togli pasta" })).toBeInTheDocument();
     expect(screen.getByText(/spunta la casella se è quello giusto/i)).toBeDefined();
   });
 
@@ -250,7 +253,7 @@ describe("AiDraftScreen", () => {
     renderScreen();
     await proposeDraft();
     await draftLanded();
-    await userEvent.click(await screen.findByLabelText(/includi pasta/i));
+    await userEvent.click(await screen.findByRole("button", { name: "Togli pasta" }));
 
     expect(screen.getByRole("status")).toHaveTextContent(/nessun ingrediente agganciato/i);
 
@@ -521,7 +524,8 @@ describe("AiDraftScreen", () => {
   // era un vicolo cieco. L'assert è sul CORPO della POST, non sul DOM: una riga
   // tolta dalla vista ma ancora mandata al backend supererebbe un test che guarda
   // solo lo schermo.
-  it("un ingrediente da creare si esclude con la sua casella, e resta fuori dal corpo salvato", async () => {
+  // R10: la casella è diventata la ✕; l'assert resta sul corpo della POST.
+  it("un ingrediente da creare si toglie con la sua ✕, e resta fuori dal corpo salvato", async () => {
     await mostraBozzaCon([
       {
         raw_name: "speck", role: "primary", quantity_text: "100 g",
@@ -530,11 +534,8 @@ describe("AiDraftScreen", () => {
       },
     ]);
 
-    const casella = await screen.findByLabelText(/includi speck/i);
-    expect(casella).toBeChecked();
-
-    await userEvent.click(casella);
-    expect(casella).not.toBeChecked();
+    await userEvent.click(await screen.findByRole("button", { name: "Togli speck" }));
+    expect(screen.queryByLabelText("Quantità per speck")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /salva/i }));
 
     const corpo = ultimoCorpoDiPost("/recipes");
