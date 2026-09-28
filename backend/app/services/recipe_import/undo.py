@@ -54,10 +54,10 @@ class Undone:
     # le ricette prese in carico che contengono il termine: l'annullamento non le tocca,
     # e la coda lo dice (R10 §4)
     adopted_untouched: int
-    # l'ingrediente del termine non è stato cancellato e una di quelle ricette lo usa:
-    # resta per lei. Vero solo se la decisione aveva creato l'ingrediente
-    # (`created_ingredient`), non è stato cancellato, e una di quelle ricette prese in
-    # carico lo usa ancora.
+    # l'ingrediente del termine non è stato cancellato e una ricetta presa in carico lo
+    # usa: resta per lei. Vero solo se l'annullamento l'avrebbe cancellato
+    # (`created_ingredient`), non l'ha cancellato, e una ricetta presa in carico — una
+    # qualunque, non solo fra quelle che contano in `adopted_untouched` — lo usa ancora.
     ingredient_kept_for_adopted: bool
 
 
@@ -183,19 +183,23 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
             if not ingredient_deleted:
                 await _hand_over_creation(session, ingredient_id)
 
-    # Spec §4: la decisione aveva creato l'ingrediente, l'annullamento non l'ha cancellato,
-    # e lo tiene una ricetta tua. `created_ingredient` è la variabile letta sopra, prima
-    # che il termine si azzerasse; «tua» è una ricetta di una pagina `adopted`, le stesse
-    # che `adopted_untouched` conta (deviazione 5). Una ricetta scritta a mano che lo usa
-    # lo tiene in vita anche lei, ma quello non è R10 e la coda non lo dice.
+    # Spec §4: l'annullamento avrebbe cancellato l'ingrediente, non l'ha fatto, e lo tiene
+    # una ricetta tua. `created_ingredient` è la variabile letta sopra, prima che il termine
+    # si azzerasse. «Tua» è la ricetta di una pagina `adopted` qualunque, non solo di quelle
+    # che contengono questo termine (che `adopted_untouched` conta): dopo un passaggio
+    # (`_hand_over_creation`) l'erede può non comparire in nessuna pagina tua, mentre la
+    # ricetta tua che tiene l'ingrediente contiene il termine del creatore. Una ricetta
+    # scritta a mano che lo usa lo tiene in vita anche lei, ma quello non è R10 e la coda
+    # non lo dice.
     kept_for_adopted = False
-    if created_ingredient is True and ingredient_id is not None and not ingredient_deleted and adopted:
+    if created_ingredient is True and ingredient_id is not None and not ingredient_deleted:
         kept_for_adopted = (
             await session.scalar(
                 select(RecipeIngredient.id)
+                .join(RecipeImport, RecipeImport.recipe_id == RecipeIngredient.recipe_id)
                 .where(
                     RecipeIngredient.ingredient_id == ingredient_id,
-                    RecipeIngredient.recipe_id.in_([page.recipe_id for page in adopted]),
+                    RecipeImport.state == ImportState.ADOPTED,
                 )
                 .limit(1)
             )

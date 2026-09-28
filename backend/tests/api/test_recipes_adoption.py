@@ -140,6 +140,42 @@ async def test_un_aggancio_annullato_non_dice_di_tenere_un_ingrediente_che_non_a
     assert esito["ingredient_kept_for_adopted"] is False
 
 
+async def test_l_erede_annullato_dice_che_l_ingrediente_resta_per_la_ricetta_tua(
+    logged_client, db_session, mondo
+):
+    """Dopo il passaggio del creatore: «Guanciale» aveva creato il guanciale, un secondo
+    termine vi è agganciato. Annullato il creatore, l'ingrediente resta (lo usano la
+    carbonara tua e l'altro termine) e la cancellazione passa all'altro termine. Annullato
+    anche quello, l'ingrediente resta ancora, per la carbonara — che però contiene il
+    primo termine, non questo: cercarla solo fra le pagine di questo termine rispondeva
+    «non cancellato, e non per una ricetta tua», cioè senza un perché."""
+    await _adotta(logged_client, db_session, CARBONARA, "La mia carbonara")
+    erede = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-guanciale-dolce", display_name="Guanciale dolce",
+        occurrences=1, decision=TermDecision.MAPPED, ingredient_id=mondo["guanciale"].id,
+        decided_by="ai", decided_at=datetime.now(UTC), created_ingredient=False,
+    )
+    db_session.add(erede)
+    await db_session.flush()
+    await remember_alias(db_session, erede.ingredient_id, erede.display_name)
+
+    primo = (
+        await logged_client.post(f"/api/v1/imports/terms/{mondo['t-guanciale'].id}/undo")
+    ).json()
+    assert (primo["ingredient_deleted"], primo["ingredient_kept_for_adopted"]) == (False, True)
+    await db_session.refresh(erede)
+    assert erede.created_ingredient is True  # la cancellazione è passata a lui
+
+    risposta = await logged_client.post(f"/api/v1/imports/terms/{erede.id}/undo")
+
+    assert risposta.status_code == 200, risposta.text
+    esito = risposta.json()
+    assert esito["adopted_untouched"] == 0  # nessuna pagina tua contiene questo termine
+    assert esito["ingredient_deleted"] is False
+    assert esito["ingredient_kept_for_adopted"] is True
+    assert await db_session.get(Ingredient, mondo["guanciale"].id) is not None
+
+
 async def test_rideciso_il_termine_l_import_rifa_solo_la_sua(logged_client, db_session, mondo):
     mia = await _adotta(logged_client, db_session, CARBONARA, "La mia carbonara")
     termine = mondo["t-guanciale"]
