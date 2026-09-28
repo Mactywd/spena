@@ -170,6 +170,36 @@ describe("ShoppingListScreen", () => {
     expect(patchesOf(spy)).toEqual([["/shopping-list/s1", { status: "archived" }]]);
   });
 
+  it("la riga resta bloccata finché il riordino dopo la ✕ non è arrivato (regressione)", async () => {
+    // la PATCH torna subito, ma il GET che `invalidate()` lancia in `onSuccess` resta
+    // appeso finché non lo sblocchiamo: se `onSuccess` non ne aspetta la promise, React
+    // Query lascia `isPending` prima che il riordino sia arrivato, e la riga si sblocca
+    // con la voce ancora a video
+    let releaseGet: (response: Response) => void = () => {};
+    let getCalls = 0;
+    const spy = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify(ITEMS[1]), { status: 200 }));
+      }
+      getCalls += 1;
+      if (getCalls === 1) return Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }));
+      return new Promise<Response>((resolve) => { releaseGet = resolve; });
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli pomodoro dalla lista" }));
+    await screen.findByText("Tolto dalla lista: pomodoro");
+    // la PATCH è tornata (l'avviso lo prova), ma il refetch è ancora appeso: la riga
+    // deve restare bloccata
+    const box = screen.getByRole("checkbox", { name: "pomodoro" });
+    expect(box).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Togli pomodoro dalla lista" })).toBeDisabled();
+    fireEvent.click(box);
+    expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
+    releaseGet(new Response(JSON.stringify(ITEMS.filter((i) => i.id !== "s1")), { status: 200 }));
+    await waitFor(() => expect(screen.queryByText("pomodoro")).toBeNull());
+  });
+
   it("una modifica rifiutata lo dice accanto alla voce giusta, e la voce resta", async () => {
     stubRoutedFetch((_path, init) => (init?.method === "PATCH" ? [{ detail: "no" }, 500] : [ITEMS, 200]));
     renderScreen();

@@ -97,11 +97,15 @@ export function PantryScreen() {
     mutationFn: (item: PantryItem) => patchPantryItem(item.id, { archived: true }),
     onMutate: (item) => clearFailed(item.id),
     onSuccess: (_data, item) => {
-      invalidate();
       notice({
         text: `Tolto dalla dispensa: ${itemLabel(item)}`,
         action: { label: "Annulla", onClick: () => undoRemove(item) },
       });
+      // React Query aspetta la promise che `onSuccess` restituisce prima di lasciare
+      // `isPending`: senza questo `return` la riga si sbloccava prima che il riordino
+      // fosse arrivato, con la voce ancora a video ma i controlli di nuovo toccabili
+      // (stesso difetto di ShoppingListScreen, dal giro)
+      return invalidate();
     },
     onError: (_error, item) => markFailed(item.id),
   });

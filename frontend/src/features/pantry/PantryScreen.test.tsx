@@ -440,6 +440,39 @@ describe("PantryScreen", () => {
     });
   });
 
+  it("la riga resta bloccata finché il riordino dopo la ✕ non è arrivato (regressione)", async () => {
+    // la PATCH torna subito, ma il GET che `invalidate()` lancia in `onSuccess` resta
+    // appeso finché non lo sblocchiamo: se `onSuccess` non ne aspetta la promise, React
+    // Query lascia `isPending` prima che il riordino sia arrivato, e la riga si sblocca
+    // con la voce ancora a video. Non passa da `stubRoutedFetch`, che risponde solo in
+    // modo sincrono: qui serve poter tenere il refetch appeso a piacere
+    let releaseGet: (response: Response) => void = () => {};
+    let getCalls = 0;
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      if (init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify(ITEMS[0]), { status: 200 }));
+      }
+      if (path.includes("/shopping-list")) return Promise.resolve(new Response("[]", { status: 200 }));
+      getCalls += 1;
+      if (getCalls === 1) return Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }));
+      return new Promise<Response>((resolve) => { releaseGet = resolve; });
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli Total 0% dalla dispensa" }));
+    await screen.findByText("Tolto dalla dispensa: Total 0%");
+    // la PATCH è tornata (l'avviso lo prova), ma il refetch è ancora appeso: la riga
+    // deve restare bloccata
+    const row = screen.getByText("Total 0%").closest("li")!;
+    expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-disabled", "true");
+    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
+    fireEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
+    releaseGet(new Response(JSON.stringify(ITEMS.filter((i) => i.id !== "p1")), { status: 200 }));
+    await waitFor(() => expect(screen.queryByText("Total 0%")).toBeNull());
+  });
+
   it("un annulla che fallisce lo dice nell'avviso e offre di riprovare", async () => {
     let patches = 0;
     stubRoutedFetch((path, init) => {

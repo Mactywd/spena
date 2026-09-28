@@ -95,11 +95,15 @@ export function ShoppingListScreen() {
     mutationFn: (item: ShoppingItem) => patchShoppingItem(item.id, { status: "archived" }),
     onMutate: (item) => clearFailed(item.id),
     onSuccess: (_data, item) => {
-      invalidate();
       notice({
         text: `Tolto dalla lista: ${item.raw_text}`,
         action: { label: "Annulla", onClick: () => undoRemove(item) },
       });
+      // React Query aspetta la promise che `onSuccess` restituisce prima di lasciare
+      // `isPending`: senza questo `return` la riga si sbloccava prima che il riordino
+      // fosse arrivato, con la voce ancora a video ma la casella di nuovo toccabile (dal
+      // giro)
+      return invalidate();
     },
     onError: (_error, item) => markFailed(item.id),
   });
