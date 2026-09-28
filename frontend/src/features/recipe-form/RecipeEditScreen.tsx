@@ -29,7 +29,12 @@ function EditForm({ recipe }: { recipe: RecipeDetail }) {
         values={values}
         onChange={setValues}
         save={(body) => updateRecipe(recipe.id, body)}
-        onSaved={() => {
+        onSaved={(saved) => {
+          // la risposta della PUT è la ricetta a 1×, la stessa della GET senza porzioni:
+          // il dettaglio la mostra subito, e «Salvata» non sta mai sopra la versione di
+          // prima mentre la rilettura è in viaggio. Le altre chiavi (le porzioni, il
+          // ricettario, le categorie) si rileggono come prima.
+          queryClient.setQueryData(["recipe", recipe.id, null], saved);
           void queryClient.invalidateQueries({ queryKey: ["recipe", recipe.id] });
           void queryClient.invalidateQueries({ queryKey: ["recipes"] });
           void queryClient.invalidateQueries({ queryKey: ["recipe-categories"] });

@@ -100,6 +100,36 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     expect(corpo.source).toBeUndefined();
   });
 
+  it("«Salvata» sta sopra la ricetta salvata, anche mentre il dettaglio rilegge", async () => {
+    // la risposta della PUT è la ricetta a 1×: il dettaglio la mostra subito, invece di
+    // mostrare la versione di prima sotto «Salvata» finché la rilettura non torna
+    let saved = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown, init?: RequestInit) => {
+        const path = String(url);
+        if (path.includes("/pantry")) return Promise.resolve(new Response("[]", { status: 200 }));
+        if (init?.method === "PUT") {
+          saved = true;
+          const body = { ...DETAIL, title: "Pasta al sugo" };
+          return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+        }
+        // dopo il salvataggio la rilettura non torna mai: si vede solo la risposta della PUT
+        if (saved) return new Promise<Response>(() => {});
+        return Promise.resolve(new Response(JSON.stringify(DETAIL), { status: 200 }));
+      })
+    );
+    renderEdit();
+
+    const titolo = await screen.findByDisplayValue("Pasta al pomodoro");
+    await userEvent.clear(titolo);
+    await userEvent.type(titolo, "Pasta al sugo");
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Salvata.");
+    expect(screen.getByRole("heading", { name: "Pasta al sugo" })).toBeInTheDocument();
+  });
+
   it("dopo porzioni e costo cambiati nel dettaglio, il modulo parte dal costo salvato", async () => {
     // Il dettaglio a 3 porzioni ha la chiave ["recipe", id, 3]: cambiare il costo
     // invalida il prefisso, ma rilegge solo le chiavi attive, e quella a 1× — da cui la
