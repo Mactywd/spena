@@ -29,7 +29,11 @@ export function CostPicker({
             value !== null && step <= value ? "text-ink" : "text-ink-ghost"
           }`}
         >
-          €
+          {/* il segno non è testo da leggere: il nome del pulsante è l'`aria-label`, e
+              il grigio dei gradini spenti (`ink-ghost`) non ha il vincolo dei 4,5:1 — vedi
+              index.css. Nascosto come in `CostMeter`, così anche il controllo del
+              contrasto in e2e/style.spec.ts lo tratta per quel che è */}
+          <span aria-hidden="true">€</span>
         </button>
       ))}
     </div>

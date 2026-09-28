@@ -63,8 +63,10 @@ test("il ciclo si chiude: lista, dispensa, cottura, ritorno in lista", async ({ 
   await row.getByRole("button", { name: "Finito", exact: true }).click();
   await expect(row.getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
   await page.getByRole("button", { name: "Ho cucinato", exact: true }).click();
-  // il conto viene dal backend: è lui a sapere quante voci sono rientrate
-  await expect(page.getByRole("status")).toHaveText(
+  // il conto viene dal backend: è lui a sapere quante voci sono rientrate. La regione
+  // `status` si sceglie per il suo testo: da T3 l'avviso di conferma unico
+  // (NoticeProvider) ne tiene sempre una sua nella pagina, vuota finché non parla
+  await expect(page.getByRole("status").filter({ hasText: /^Segnato\./ })).toHaveText(
     "Segnato. Una cosa è tornata in lista della spesa."
   );
 
