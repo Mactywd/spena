@@ -214,13 +214,28 @@ async def test_una_fusione_sposta_in_loco_la_riga_della_ricetta_tua(
 async def test_materialize_ready_non_tocca_la_pagina_presa_in_carico(
     logged_client, db_session, mondo
 ):
+    """`materialize_ready` deve girare davvero sulle pagine: l'amatriciana torna in coda
+    (come la rimette un annullamento, ma con i termini ancora decisi) e si rifà, mentre la
+    carbonara presa in carico resta la tua. Senza una pagina in coda la funzione non
+    guardava niente, e la prova non poteva fallire."""
     mia = await _adotta(logged_client, db_session, CARBONARA, "La mia carbonara")
+    sorella = await _pagina(db_session, AMATRICIANA)
+    await db_session.delete(await db_session.get(Recipe, sorella.recipe_id))
+    sorella.state = ImportState.PENDING
+    sorella.recipe_id = None
+    await db_session.flush()
 
     esito = await materialize_ready(db_session, GIALLOZAFFERANO)
 
-    assert esito.created == 0
+    assert esito.created == 1  # l'amatriciana, e solo lei
+    assert (await _pagina(db_session, AMATRICIANA)).state == ImportState.IMPORTED
     pagina = await _pagina(db_session, CARBONARA)
     assert (pagina.state, str(pagina.recipe_id)) == (ImportState.ADOPTED, mia)
+    quante = await db_session.scalar(
+        select(func.count()).select_from(Recipe).where(Recipe.source_ref == CARBONARA)
+    )
+    assert quante == 1
+    assert (await _ricetta(logged_client, mia))["title"] == "La mia carbonara"
 
 
 async def test_la_risincronizzazione_salta_l_indirizzo_della_ricetta_tua(
