@@ -1941,6 +1941,19 @@ suggerimenti che si aprono sotto la barra appiccicata (su una lista lunga copron
 righe finché non si sceglie o si svuota il campo); spuntare camminando, ora che le righe
 non hanno più le linee fra loro; «Annulla» dopo la ✕ su una voce nel carrello.
 
+**Restano aperti, da questa consegna:** la difesa del doppione sull'annulla guarda la
+cache del client (`queryClient.getQueryData`), non il server: nei secondi fra la POST
+della barra che riscrive una voce e il refetch, un «Annulla» rapido può ancora rimettere
+un doppione — si vede e si toglie con la ✕, ma la difesa vera sarebbe un controllo lato
+server sulla PATCH che rimanda a `pending`/`checked`. La ✕ usa ancora `disabled` (il
+primitivo `Button` non ha una variante `aria-disabled`): dopo una ✕ fallita chi naviga da
+tastiera perde il fuoco, che cade sulla pagina. L'elenco dei suggerimenti sotto la barra
+appiccicata non ha un'altezza massima: su uno schermo basso con la tastiera aperta gli
+ultimi suggerimenti chiedono di scorrere la pagina, non solo l'elenco. E la pulizia e2e
+più vecchia di `style.spec.ts` (la prova su prodotto e dispensa, intorno alle righe
+985-1072) si limita ad avvisare in console se la pulizia fallisce: non fa fallire la
+prova, a differenza di quella più recente per la barra della lista.
+
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
 chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
 spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
