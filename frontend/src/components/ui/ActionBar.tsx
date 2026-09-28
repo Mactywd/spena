@@ -1,4 +1,4 @@
-import { useId, type FormEvent } from "react";
+import { useId, useRef, type FormEvent } from "react";
 import { Button } from "./Button";
 import { IconPlus, type IconComponent } from "./icons";
 
@@ -24,10 +24,13 @@ export function ActionBar({
   leadingIcon?: IconComponent;
 }) {
   const id = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
   function submit(event: FormEvent) {
     event.preventDefault();
     const text = value.trim();
+    // un + che non fa niente è un controllo morto: a campo vuoto porta dove si scrive
     if (text) onAdd(text);
+    else inputRef.current?.focus();
   }
   return (
     <form onSubmit={submit} className="flex items-center gap-2">
@@ -39,6 +42,7 @@ export function ActionBar({
           />
         )}
         <input
+          ref={inputRef}
           id={id}
           aria-label={inputLabel}
           value={value}

@@ -26,11 +26,12 @@ describe("ActionBar", () => {
     expect(onAdd).toHaveBeenCalledWith("latte");
   });
 
-  it("a campo vuoto il + non manda niente", () => {
+  it("a campo vuoto il + non manda niente e porta il fuoco nel campo", () => {
     const onAdd = vi.fn();
     render(<Harness onAdd={onAdd} />);
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
     expect(onAdd).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByLabelText("Cerca o aggiungi in dispensa"));
   });
 
   it("il campo resta a 16px: sotto, iOS ingrandisce la pagina", () => {

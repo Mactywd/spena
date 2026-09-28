@@ -29,6 +29,8 @@ export function IngredientPicker({
   disabled = false,
   kind,
   onCreate,
+  initialTerm = "",
+  autoFocus = false,
 }: {
   /** Etichetta visibile: dice a cosa serve *qui*. */
   label: string;
@@ -48,8 +50,14 @@ export function IngredientPicker({
   /** Chi sa creare un ingrediente nuovo lo offre quando la ricerca non trova niente
    * (R12). Senza, la ricerca vuota non propone niente, come prima. */
   onCreate?: (name: string) => void;
+  /** Il testo con cui il campo nasce: la Dispensa apre l'aggiunta con quel che era
+   * scritto nella barra. Vale solo alla nascita — chi vuole ripartire da un altro
+   * testo cambia la `key`. */
+  initialTerm?: string;
+  /** Il campo prende il fuoco appena compare: l'aggiunta si è aperta con un tocco. */
+  autoFocus?: boolean;
 }) {
-  const [term, setTerm] = useState("");
+  const [term, setTerm] = useState(initialTerm);
   const debounced = useDebounced(term, DEBOUNCE_MS).trim();
   // sotto 2 caratteri non vale la pena interrogare il backend, come in AddItemField
   const ready = debounced.length >= 2;
@@ -74,6 +82,7 @@ export function IngredientPicker({
       <label className="text-sm font-medium text-ink-soft">
         {label}
         <input
+          autoFocus={autoFocus}
           aria-label={accessibleLabel ?? label}
           value={term}
           onChange={(e) => setTerm(e.target.value)}

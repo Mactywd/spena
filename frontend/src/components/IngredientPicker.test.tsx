@@ -147,4 +147,20 @@ describe("IngredientPicker", () => {
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
     expect(screen.queryByRole("button", { name: /Aggiungi/ })).toBeNull();
   });
+
+  it("parte dal testo che gli si passa, e cerca subito quello", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([{ id: "i1", name: "sale", display_name: "Sale", category: "condimenti", kind: "food" }]), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    renderWithClient(<IngredientPicker label="Quale ingrediente?" failureNote="Riprova." onPick={() => {}} initialTerm="sale" />);
+    expect(screen.getByLabelText("Quale ingrediente?")).toHaveProperty("value", "sale");
+    expect(await screen.findByRole("option", { name: "Sale" })).toBeDefined();
+  });
+
+  it("con autoFocus il campo prende il fuoco appena compare", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    renderWithClient(<IngredientPicker label="Quale ingrediente?" failureNote="Riprova." onPick={() => {}} autoFocus={true} />);
+    expect(document.activeElement).toBe(screen.getByLabelText("Quale ingrediente?"));
+  });
 });
