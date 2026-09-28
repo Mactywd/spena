@@ -19,12 +19,14 @@ from app.domain.rules import (
 )
 from app.repositories.ingredients import create_ingredient
 from app.repositories.pantry import availability_map
+from app.repositories.imports import adopt_import_page
 from app.repositories.recipes import (
     IngredientLine,
     NonFoodInRecipe,
     create_recipe,
     get_recipe,
     recipe_categories,
+    write_recipe_ingredients,
 )
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
 from app.schemas.recipe import (
@@ -32,6 +34,7 @@ from app.schemas.recipe import (
     RecipeIngredientIn,
     RecipeIngredientOut,
     RecipeOut,
+    RecipeReplace,
     RecipeSummaryOut,
     RecipeUpdate,
     SearchModeOut,
@@ -50,6 +53,8 @@ from app.services.recipe_search import search_recipes, semantic_search_usable
 router = APIRouter(
     prefix="/api/v1/recipes", tags=["recipes"], dependencies=[Depends(require_session)]
 )
+
+RECIPE_ARCHIVED = "Questa ricetta è stata eliminata: ripristinala prima di modificarla."
 
 
 async def _to_out(
@@ -226,6 +231,50 @@ async def update(
         recipe.cost = payload.cost
     await session.commit()
     return await _to_out(session, recipe)
+
+
+@router.put("/{recipe_id}", response_model=RecipeOut)
+async def replace(
+    recipe_id: uuid.UUID, payload: RecipeReplace, session: AsyncSession = Depends(get_session)
+) -> RecipeOut:
+    """La ricetta intera, righe comprese (R10 §5).
+
+    Le righe passano dalla stessa strada della creazione: stessi nomi risolti
+    (`_resolve_lines`), stesso imbuto e stesse quantità (`write_recipe_ingredients`),
+    stessi errori (`_writing_recipe`). Se la ricetta viene dall'import e la sua pagina è
+    ancora `imported`, passa ad `adopted` in questa transazione: da qui l'import non la
+    rifà più.
+    """
+    recipe = await get_recipe(session, recipe_id)
+    if recipe is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
+    if recipe.archived_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+    await _check_category(session, payload.category, current=recipe.category)
+    # il vettore nasce da titolo e descrizione: solo se cambiano va rifatto, e senza
+    # modello va a NULL — un vettore del testo vecchio mentirebbe sulla ricetta nuova
+    new_text = (payload.title, payload.description) != (recipe.title, recipe.description)
+    embedding = await _embedding_for(payload.title, payload.description) if new_text else None
+    async with _writing_recipe(session):
+        await write_recipe_ingredients(
+            session, recipe, await _resolve_lines(session, payload.ingredients)
+        )
+        recipe.title = payload.title
+        recipe.description = payload.description
+        recipe.category = payload.category
+        recipe.instructions = payload.instructions
+        recipe.servings = payload.servings
+        recipe.cost = payload.cost
+        if new_text:
+            recipe.embedding = embedding
+        await adopt_import_page(session, recipe.id)
+        await session.commit()
+    # Le righe appena scritte non hanno l'ingrediente caricato: si rilegge la ricetta
+    # intera invece di scoprirlo con un caricamento pigro, che in una sessione async è un
+    # MissingGreenlet.
+    session.expire(recipe)
+    stored = await get_recipe(session, recipe_id)
+    return await _to_out(session, stored)
 
 
 async def _resolve_lines(

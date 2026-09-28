@@ -172,3 +172,21 @@ async def waiting_titles(
             if key in wanted and len(titles[key]) < per_term and title not in titles[key]:
                 titles[key].append(title)
     return titles
+
+
+async def adopt_import_page(session: AsyncSession, recipe_id: uuid.UUID) -> bool:
+    """La pagina da cui la ricetta è nata passa ad `adopted`, se è ancora `imported`.
+
+    Si chiama nella stessa transazione del primo salvataggio di una modifica e
+    dell'eliminazione (R10 §4). Non torna mai indietro: una pagina già `adopted` resta
+    tale, e ripristinare la ricetta non la rende di nuovo dell'import. Vero se l'ha
+    cambiata adesso.
+    """
+    page = (
+        await session.execute(select(RecipeImport).where(RecipeImport.recipe_id == recipe_id))
+    ).scalars().first()
+    if page is None or page.state != ImportState.IMPORTED:
+        return False
+    page.state = ImportState.ADOPTED
+    await session.flush()
+    return True

@@ -54,6 +54,15 @@ class RecipeCreate(RecipeFields):
     source_ref: str | None = Field(default=None, max_length=500)
 
 
+class RecipeReplace(RecipeFields):
+    """La ricetta intera, per `PUT /recipes/{id}` (R10 §5).
+
+    Tutto quel che ha `RecipeCreate` tranne la provenienza, che non si cambia: una
+    ricetta importata e poi modificata resta `dataset`, con il suo `source_ref`. Un
+    `source` mandato comunque si ignora, come ogni campo che il modello non dichiara.
+    """
+
+
 class RecipeUpdate(BaseModel):
     """Quel che si cambia di una ricetta dopo averla salvata: oggi il costo e basta.
 
