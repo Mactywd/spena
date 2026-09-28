@@ -1863,6 +1863,16 @@ in jsdom (48 file), lint, typecheck e build puliti; 30 e2e verdi su 30 sullo sta
 pulito `spena-e2e` (erano 29; il nuovo è la prova sul riepilogo delle scadenze, e la
 prova sulle tacche ora misura anche quella spenta).
 
+Un difetto in più, trovato con un giro a 375px dopo quella consegna: nella seconda
+riga della voce, il pulsante «+ scadenza» / «scade tra…» leggeva come una terza riga,
+rientrata — un `<button>` nativo centra il contenuto in verticale, quindi il suo box
+partiva allo stesso punto del prodotto ma il testo dentro scendeva di 13px (misurato in
+Chromium). `PantryRow.tsx` aggiunge `flex items-start` al pulsante; la prova sulle
+tacche ora misura anche il TOP del testo — con un `Range` sul nodo di testo, non il box
+del pulsante — fra prodotto e scadenza, entro 2px. 634 jsdom, lint e typecheck restano
+puliti; 30 e2e verdi su 30 (stesso numero: la prova nuova sta dentro quella esistente
+sulle tacche).
+
 Il giro di correzioni della revisione finale, in breve: col riepilogo premuto una voce
 segnata «Finito» resta in vista col suo «In lista» (il conteggio la lascia fuori, la
 vista no), e un testo che trova solo voci non in scadenza dice «Niente in scadenza» e

@@ -147,6 +147,19 @@ test("le tacche della dispensa sono bersagli da pollice", async ({ page }) => {
     boxScadenza!.y
   );
 
+  // la scadenza sta sulla riga del prodotto, non centrata nel bersaglio da 44px del
+  // pulsante: un <button> nativo centra il contenuto in verticale, quindi il TOP del
+  // suo box (misurato sopra, per il bersaglio) parte più in alto del testo che
+  // contiene. Qui si misura il TOP del TESTO con un Range, non del box — «sfuso»
+  // perché l'ingresso diretto non lega un prodotto.
+  const prodotto = riga.locator("span", { hasText: "sfuso" });
+  const cimaProdotto = await cimaDelTesto(prodotto);
+  const cimaScadenza = await cimaDelTesto(scadenza);
+  expect(
+    Math.abs(cimaScadenza - cimaProdotto),
+    "il testo della scadenza non è allineato in alto con quello del prodotto"
+  ).toBeLessThanOrEqual(2);
+
   // la tacca accesa (l'ingresso diretto entra sempre «Disponibile») è un segno, non
   // un testo: la soglia WCAG 1.4.11 è 3:1 e non 4,5:1, misurata sul fondo `card`
   // della riga, in chiaro e in scuro — i colori sono quelli calcolati a video, gli
@@ -584,6 +597,26 @@ async function contrastoSegno(segno: Locator) {
       rapporto: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
     };
   });
+}
+
+/** Il TOP del TESTO dentro un elemento, non del suo box: un `<button>` nativo centra
+ * il contenuto in verticale, quindi il bounding box del pulsante parte più in alto
+ * del testo che contiene — misurarlo direbbe che due righe sono allineate quando non
+ * lo sono. Un `Range` sul primo nodo di testo prende il rettangolo del testo stesso,
+ * indipendente dal centraggio o dal padding del contenitore. */
+async function cimaDelTesto(elemento: Locator): Promise<number> {
+  const cima = await elemento.evaluate((el) => {
+    const nodo = [...el.childNodes].find(
+      (figlio) => figlio.nodeType === 3 && figlio.textContent?.trim()
+    );
+    if (!nodo) return null;
+    const range = el.ownerDocument.createRange();
+    range.selectNodeContents(nodo);
+    const rects = range.getClientRects();
+    return rects.length ? rects[0].top : null;
+  });
+  expect(cima, "nessun nodo di testo diretto nell'elemento").not.toBeNull();
+  return cima!;
 }
 
 // Parte IX, a. `index.css` *afferma* che `ink-faint` è il più chiaro che regge 4.5:1 sul

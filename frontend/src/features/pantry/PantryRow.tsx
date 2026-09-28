@@ -125,7 +125,7 @@ export function PantryRow({
                 disabled={busy}
                 onClick={() => setEditingExpiry(true)}
                 aria-label={expiry ? `Scadenza di ${label}: ${expiry}` : `+ scadenza per ${label}`}
-                className={`-mt-0.5 min-h-11 pt-0.5 text-left disabled:opacity-40 ${
+                className={`-mt-0.5 flex min-h-11 items-start pt-0.5 text-left disabled:opacity-40 ${
                   item.expiry ? EXPIRY_TONE_TEXT[item.expiry] : ""
                 }`}
               >
