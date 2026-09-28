@@ -75,3 +75,22 @@ async def test_uno_stato_inventato_e_rifiutato(db_session):
     db_session.add(pagina)
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+async def test_una_pagina_presa_in_carico_e_uno_stato_valido(db_session):
+    """R10: la pagina di una ricetta modificata o eliminata a mano è `adopted`."""
+    from app.db.models.recipe_import import ImportState
+
+    pagina = una_pagina("https://ricette.giallozafferano.it/Carbonara.html")
+    pagina.state = ImportState.ADOPTED
+    db_session.add(pagina)
+    await db_session.flush()
+
+
+async def test_una_ricetta_ha_la_data_di_eliminazione_vuota_finche_c_e(db_session):
+    from app.db.models.recipe import Recipe, RecipeSource
+
+    ricetta = Recipe(title="Carbonara", instructions="x", source=RecipeSource.MANUAL)
+    db_session.add(ricetta)
+    await db_session.flush()
+    assert ricetta.archived_at is None

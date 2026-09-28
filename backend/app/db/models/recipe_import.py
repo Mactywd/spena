@@ -35,6 +35,10 @@ class ImportState(StrEnum):
     PENDING = "pending"
     IMPORTED = "imported"
     SKIPPED = "skipped"
+    # Presa in carico (R10): la ricetta è stata modificata o eliminata a mano. L'import
+    # non la rifà più — l'annullamento e la materializzazione lavorano su `imported` e
+    # `pending` — e non si torna indietro, nemmeno ripristinandola.
+    ADOPTED = "adopted"
 
 
 class TermDecision(StrEnum):
@@ -56,7 +60,8 @@ class RecipeImport(UUIDMixin, Base):
     __table_args__ = (
         UniqueConstraint("source", "url"),
         CheckConstraint(
-            "state IN ('pending', 'imported', 'skipped')", name="ck_recipe_import_state"
+            "state IN ('pending', 'imported', 'skipped', 'adopted')",
+            name="ck_recipe_import_state",
         ),
         Index("ix_recipe_imports_state", "state"),
     )

@@ -68,6 +68,11 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
     # mentirebbe il giorno in cui si smette (R9). Annullabile, perché una ricetta
     # senza costo non è una ricetta da 1 — e il budget di P3 dovrà saperle contare.
     cost: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    # Presente vuol dire eliminata (R10), come `pantry_items.archived_at`: la riga resta,
+    # con le sue righe e le sue cotture, e si ripristina togliendo la data. Ogni elenco
+    # di ricette la esclude; il dettaglio no, perché un collegamento vecchio non deve
+    # finire in un 404.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
     search_tsv: Mapped[str] = mapped_column(
         TSVECTOR,
