@@ -1922,6 +1922,25 @@ tastiera dopo aver cercato se la trova aperta; e la seconda riga di una voce mos
 prodotto senza la marca («Total 0%», non «Fage Total 0%»), mentre la ricerca la marca
 la trova ancora — cercando «fage» compare una riga in cui «fage» non si legge.
 
+**Consegna 2 (Lista) fatta il 2026-09-28, sul ramo `t3-lista`, non ancora in
+produzione.** Cosa è cambiato: la barra «Cosa manca?» col + al posto del campo con
+«Aggiungi», appiccicata sotto l'intestazione invece che sopra (erano tutte e due `sticky
+top-0 z-10`, e scorrendo la barra la copriva); la scheda «Sistema la spesa» dice «N nel
+carrello», ed è ora un componente solo per Lista e Dispensa (`ShoppingEntryCard`), che
+quindi cambiano nota insieme; i reparti in sezioni, con le voci nel carrello in fondo al
+loro reparto; la ✕ con l'avviso unico e «Annulla», che rimette la voce com'era — da
+comprare o nel carrello — e non scrive se nel frattempo la stessa cosa è tornata in lista
+dalla barra; l'avviso è stato aggiustato affinché il pulsante chiudesse solo quello in
+vista al tocco, non un avviso diverso appena sollevato dall'azione stessa; «Era già in
+lista.» esce dall'avviso unico, come in dispensa; l'errore di caricamento ha «Riprova»,
+e la lista vuota dice cosa fare. La casella si spegne con `aria-disabled` mentre la spunta
+è in volo, come le tacche: con `disabled` chi spunta con la tastiera perdeva il fuoco.
+
+**Da provare sul telefono:** la barra che resta sotto l'intestazione scorrendo, e i
+suggerimenti che si aprono sotto la barra appiccicata (su una lista lunga coprono le
+righe finché non si sceglie o si svuota il campo); spuntare camminando, ora che le righe
+non hanno più le linee fra loro; «Annulla» dopo la ✕ su una voce nel carrello.
+
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
 chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
 spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
@@ -2109,11 +2128,15 @@ Queste restano per il telefono.
 
 **Lista**
 - **Il campo di aggiunta scorrendo copre l'intestazione.** Sono tutti e due `sticky
-  top-0`, con lo stesso `z-index`, e la scheda «Sistema la spesa» esce tagliata sotto.
-- **La X della lista non ha la lapide con «Annulla»**, che la dispensa invece ha.
+  top-0`, con lo stesso `z-index`, e la scheda «Sistema la spesa» esce tagliata sotto. *(T3 Consegna 2)*
+- **La X della lista non ha la lapide con «Annulla»**, che la dispensa invece ha. *(T3 Consegna 2)*
 - **Le voci spuntate restano in mezzo alle altre.** Potrebbero andare in fondo al
-  reparto.
+  reparto. *(T3 Consegna 2)*
 - **C'è una scheda per reparto anche con una voce sola.**
+
+Resta com'è, di proposito, «c'è una scheda per reparto anche con una voce sola»: le
+sezioni per reparto sono una decisione della spec del ridisegno (§2), e una sezione di
+una voce è il prezzo di avere la stessa forma sempre.
 
 **Sistema la spesa** (oltre a S10, S19 e S20)
 - **Una voce risolta si riconosce solo dal colore verde.** Non dice «sfuso» né quale
