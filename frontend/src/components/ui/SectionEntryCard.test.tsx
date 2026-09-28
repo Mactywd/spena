@@ -15,21 +15,21 @@ describe("SectionEntryCard", () => {
   it("resta un collegamento anche quando non c'è niente da fare", () => {
     // è il punto della voce: una sottosezione che sparisce quando è vuota non si
     // può visitare apposta
-    renderCard(false, "Niente di spuntato, per ora");
+    renderCard(false, "Niente nel carrello, per ora");
     const link = screen.getByRole("link", { name: /Sistema la spesa/ });
     expect(link.getAttribute("href")).toBe("/sistema");
-    expect(screen.getByText("Niente di spuntato, per ora")).toBeDefined();
+    expect(screen.getByText("Niente nel carrello, per ora")).toBeDefined();
   });
 
   it("quando c'è da fare prende il fondo ambra e il pallino", () => {
-    const { container } = renderCard(true, "3 voci spuntate da mettere via");
+    const { container } = renderCard(true, "3 nel carrello");
     expect(screen.getByRole("link", { name: /Sistema la spesa/ })).toHaveClass("bg-low-tint");
     // il pallino è decorazione: il messaggio lo porta la nota, che si legge
     expect(container.querySelector(".bg-low")).not.toBeNull();
   });
 
   it("senza da fare non c'è né pallino né ambra", () => {
-    const { container } = renderCard(false, "Niente di spuntato, per ora");
+    const { container } = renderCard(false, "Niente nel carrello, per ora");
     expect(screen.getByRole("link", { name: /Sistema la spesa/ })).not.toHaveClass("bg-low-tint");
     expect(container.querySelector(".bg-low")).toBeNull();
   });

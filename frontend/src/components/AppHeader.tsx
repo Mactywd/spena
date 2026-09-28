@@ -124,10 +124,11 @@ export function AppHeader() {
 
       {open &&
         createPortal(
-          // in un portale su document.body (ruling F4): l'header è `sticky z-10`,
-          // che apre un proprio stacking context, e su /lista il form sticky
-          // dell'aggiunta voce (anch'esso z-10 ma dopo nel DOM) dipingerebbe sopra
-          // il velo e la cima del pannello, coprendo «Sistema la spesa»
+          // in un portale su document.body (ruling F4): l'header è `sticky z-10`, un
+          // suo stacking context, e le barre sticky degli schermi (su /lista
+          // `AddItemField` è `sticky top-12 z-5`) e l'avviso (`z-20`) vivono ciascuno
+          // nel proprio. Il portale mette menu e velo sopra tutti loro con un solo
+          // `z-30`, senza dover inseguire lo z-index di ognuno
           <div className="fixed inset-0 z-30">
             {/* il tocco fuori chiude: il velo è un bersaglio, non una decorazione. Fuori
                 dall'albero accessibile, perché per chi non lo vede la chiusura è Esc o

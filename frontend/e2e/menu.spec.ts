@@ -2,10 +2,10 @@ import { test, expect } from "@playwright/test";
 
 /**
  * Il velo e il pannello del ☰ (Task 13) vanno in un portale su `document.body`
- * (ruling F4): l'intestazione è `sticky top-0 z-10`, uno stacking context suo, e su
- * `/lista` il modulo sticky per aggiungere una voce (`AddItemField`, anch'esso `z-10`
- * ma dopo nel DOM) dipingerebbe sopra il velo e la cima del pannello — coprendo «Sistema
- * la spesa» — se menu e velo restassero dentro l'header invece che nel portale.
+ * (ruling F4): l'intestazione è `sticky top-0 z-10`, un suo stacking context, e le
+ * barre sticky degli schermi (su `/lista`, `AddItemField` è `sticky top-12 z-5`) e
+ * l'avviso unico (`z-20`) vivono ciascuno nel proprio. Il portale mette menu e velo
+ * sopra tutti loro con un solo `z-30`, senza inseguire lo z-index di ognuno.
  *
  * Nessun test in jsdom vede questo: jsdom non calcola gli stacking context CSS, quindi
  * un test di componente vedrebbe il link nell'albero accessibile e lo cliccherebbe a
