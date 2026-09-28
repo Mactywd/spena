@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AddItemField } from "./AddItemField";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import { UnauthorizedError } from "../../api/client";
 
 const POMODORO = { id: "i1", name: "pomodoro", display_name: "Pomodoro", category: "verdura" };
@@ -12,8 +13,9 @@ const PORRO = { id: "i9", name: "porro", display_name: "Porro", category: "verdu
 const added = () => vi.fn().mockResolvedValue({ added: true });
 
 /** La ricerca dei suggerimenti passa da react-query, quindi il campo vuole il suo
- * provider: è anche il punto del difetto che questo schermo aveva, perché un 401
- * che non arriva alla QueryCache non riporta all'accesso. */
+ * provider: un 401 che non arriva alla QueryCache non riporta all'accesso. E
+ * «Era già in lista.» esce dall'avviso unico: senza `NoticeProvider` non avrebbe dove
+ * comparire. */
 function renderField(
   props: { onAdd: (rawText: string, ingredientId?: string) => Promise<{ added: boolean }> },
   queryCache?: QueryCache
@@ -24,12 +26,21 @@ function renderField(
   });
   return render(
     <QueryClientProvider client={client}>
-      <AddItemField {...props} />
+      <NoticeProvider>
+        <AddItemField {...props} />
+      </NoticeProvider>
     </QueryClientProvider>
   );
 }
 
 describe("AddItemField", () => {
+  it("il campo dice cosa scriverci, e il + ha il suo nome", () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
+    renderField({ onAdd: added() });
+    expect(screen.getByLabelText("Aggiungi alla lista").getAttribute("placeholder")).toBe("Cosa manca?");
+    expect(screen.getByRole("button", { name: "Aggiungi" })).toBeDefined();
+  });
+
   it("suggerisce ingredienti mentre si digita", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify([POMODORO]), { status: 200 })
@@ -41,8 +52,6 @@ describe("AddItemField", () => {
   });
 
   it("l'elenco dei suggerimenti ha un nome, che dice di quale campo è", async () => {
-    // ARIA vuole un nome per ogni listbox; diverso da quello del campo, o chi cerca il
-    // campo per etichetta troverebbe due elementi
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify([POMODORO]), { status: 200 })
     ));
@@ -65,14 +74,33 @@ describe("AddItemField", () => {
     expect(onAdd).toHaveBeenCalledWith("pomodoro", "i1");
   });
 
-  it("accetta testo libero senza corrispondenze, perché non deve bloccare", async () => {
+  it("accetta testo libero con l'Invio, perché non deve bloccare", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
     const onAdd = added();
     renderField({ onAdd });
 
-    const field = screen.getByLabelText("Aggiungi alla lista");
-    await userEvent.type(field, "quella cosa verde{Enter}");
+    await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "quella cosa verde{Enter}");
     await waitFor(() => expect(onAdd).toHaveBeenCalledWith("quella cosa verde", undefined));
+  });
+
+  it("e col +: da telefono il tasto invio della tastiera non si vede", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
+    const onAdd = added();
+    renderField({ onAdd });
+
+    await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "  quella cosa verde  ");
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
+    expect(onAdd).toHaveBeenCalledWith("quella cosa verde", undefined);
+  });
+
+  it("il + a campo vuoto non aggiunge niente e porta nel campo", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
+    const onAdd = added();
+    renderField({ onAdd });
+
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByLabelText("Aggiungi alla lista"));
   });
 
   it("una ricerca lenta e superata non sovrascrive i suggerimenti freschi", async () => {
@@ -112,20 +140,19 @@ describe("AddItemField", () => {
     expect(field).toHaveValue("quella cosa verde");
   });
 
-  it("un'aggiunta riuscita svuota il campo", async () => {
+  it("un'aggiunta riuscita svuota il campo, e non dice niente", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
     renderField({ onAdd: added() });
 
     const field = screen.getByLabelText("Aggiungi alla lista");
-    await userEvent.type(field, "quella cosa verde{Enter}");
+    await userEvent.type(field, "latte{Enter}");
 
     await waitFor(() => expect(field).toHaveValue(""));
+    expect(screen.queryByText("Era già in lista.")).toBeNull();
   });
 
-  // m10: era l'ultimo dei tre consumatori di `searchIngredients` a catturare
-  // l'errore in un `.catch` locale. Un 401 non arrivava alla QueryCache che
-  // App.tsx aggancia al ritorno all'accesso: la sessione scadeva e il campo
-  // smetteva semplicemente di suggerire, senza dire perché.
+  // m10: un 401 durante la ricerca deve arrivare alla QueryCache che App.tsx aggancia
+  // al ritorno all'accesso, non morire in un `.catch` locale
   it("una sessione scaduta durante la ricerca arriva alla QueryCache", async () => {
     const onError = vi.fn();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
@@ -138,66 +165,31 @@ describe("AddItemField", () => {
   });
 
   it("una ricerca che non risponde non blocca il testo libero, e lo dice", async () => {
-    // la decisione di casa: i suggerimenti sono un aiuto, non un pedaggio. Il
-    // testo libero deve passare comunque, e il silenzio di prima era una rinuncia
-    // invisibile
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
     const onAdd = added();
     renderField({ onAdd });
 
-    const field = screen.getByLabelText("Aggiungi alla lista");
-    await userEvent.type(field, "quella cosa verde");
-    expect(await screen.findByRole("status")).toHaveTextContent(/autocomplete non risponde/i);
+    await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "quella cosa verde");
+    // per testo e non per ruolo: la regione `status` dell'avviso unico c'è sempre
+    expect(await screen.findByText(/autocomplete non risponde/i)).toBeDefined();
 
     await userEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
     expect(onAdd).toHaveBeenCalledWith("quella cosa verde", undefined);
   });
 
-  // S18: il backend non doppia un ingrediente già da comprare e risponde con la
-  // voce che c'era, `added` falso. Non è un errore: si dice come in dispensa
-  it("se la voce era già in lista lo dice, senza allarmi, e svuota il campo", async () => {
+  // S18: il backend non doppia un ingrediente già da comprare e risponde con la voce
+  // che c'era, `added` falso. Non è un errore: lo dice l'avviso unico, con le stesse
+  // parole della dispensa quando rimette in lista
+  it("se la voce era già in lista lo dice nell'avviso, senza allarmi, e svuota il campo", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
     renderField({ onAdd: vi.fn().mockResolvedValue({ added: false }) });
 
     const field = screen.getByLabelText("Aggiungi alla lista");
     await userEvent.type(field, "latte{Enter}");
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Era già in lista.");
+    const status = await screen.findByRole("status");
+    await waitFor(() => expect(status).toHaveTextContent("Era già in lista."));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(field).toHaveValue("");
-  });
-
-  it("l'avviso «era già in lista» se ne va appena si scrive altro", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
-    renderField({ onAdd: vi.fn().mockResolvedValue({ added: false }) });
-
-    const field = screen.getByLabelText("Aggiungi alla lista");
-    await userEvent.type(field, "latte{Enter}");
-    await screen.findByText("Era già in lista.");
-
-    await userEvent.type(field, "u");
-    expect(screen.queryByText("Era già in lista.")).toBeNull();
-  });
-
-  it("una voce aggiunta davvero non dice niente", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
-    renderField({ onAdd: vi.fn().mockResolvedValue({ added: true }) });
-
-    const field = screen.getByLabelText("Aggiungi alla lista");
-    await userEvent.type(field, "latte{Enter}");
-
-    await waitFor(() => expect(field).toHaveValue(""));
-    expect(screen.queryByText("Era già in lista.")).toBeNull();
-  });
-
-  it("offre un bersaglio visibile per il testo libero, non solo il tasto invio", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
-    const onAdd = added();
-    renderField({ onAdd });
-
-    await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "quella cosa verde");
-    await userEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
-
-    expect(onAdd).toHaveBeenCalledWith("quella cosa verde", undefined);
   });
 });
