@@ -62,4 +62,11 @@ describe("App", () => {
     expect(await screen.findByRole("banner")).toBeDefined();
     expect(screen.getByRole("link", { name: "Spena" })).toBeDefined();
   });
+
+  it("un indirizzo che non esiste dice «Pagina non trovata» e porta alla lista", async () => {
+    window.history.pushState({}, "", "/non-esiste");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Pagina non trovata" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Torna alla lista" })).toHaveAttribute("href", "/lista");
+  });
 });

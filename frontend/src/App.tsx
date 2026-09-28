@@ -13,6 +13,7 @@ import { PantryScreen } from "./features/pantry/PantryScreen";
 import { ImportQueueScreen } from "./features/recipe-import/ImportQueueScreen";
 import { RecipeEditScreen } from "./features/recipe-form/RecipeEditScreen";
 import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
+import { NotFoundScreen } from "./features/not-found/NotFoundScreen";
 import { IngredientScreen } from "./features/registry/IngredientScreen";
 import { ProductScreen } from "./features/registry/ProductScreen";
 import { RegistryScreen } from "./features/registry/RegistryScreen";
@@ -80,6 +81,8 @@ export default function App() {
               <Route path="/anagrafica" element={<RegistryScreen />} />
               <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
               <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
+              {/* in fondo: prende solo ciò che nessuna rotta sopra ha preso */}
+              <Route path="*" element={<NotFoundScreen />} />
             </Routes>
           </main>
           <TabBar />
