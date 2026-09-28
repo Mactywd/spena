@@ -72,7 +72,7 @@ test("a 375px la riga «da creare salvando» con un nome lungo sta nello schermo
   const riga = page.getByRole("listitem").filter({ has: togli });
   const nome = riga.getByText(NOME_LUNGO, { exact: true });
   // la nota non ripete il nome: sta su una riga sua, sotto
-  await expect(riga.getByText(/da creare salvando/)).toBeVisible();
+  await expect(riga.getByText("da creare salvando", { exact: true })).toBeVisible();
   await expect(riga.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
   await expect(page.getByLabel(`Categoria per «${NOME_LUNGO}»`)).toHaveValue("carne");
   await expect(page.getByLabel(`Quantità per ${NOME_LUNGO}`)).toHaveValue("150 g");
@@ -89,6 +89,7 @@ test("a 375px la riga «da creare salvando» con un nome lungo sta nello schermo
   // e il nome sta al più su due righe, non in una colonna di una parola per riga. `el` è
   // `any` (tsconfig.node.json non ha la libreria DOM), e la finestra dell'elemento dà
   // `getComputedStyle` senza un globale.
+  await expect(nome).toBeVisible();
   const forma = await nome.evaluate((el) => ({
     altezza: el.getBoundingClientRect().height as number,
     interlinea: parseFloat(el.ownerDocument.defaultView.getComputedStyle(el).lineHeight),
