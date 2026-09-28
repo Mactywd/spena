@@ -228,7 +228,7 @@ describe("ShoppingListScreen", () => {
   });
 
   it("un ingrediente già in lista non si doppia: «Era già in lista.» nell'avviso", async () => {
-    stubRoutedFetch((path, init) =>
+    const spy = stubRoutedFetch((path, init) =>
       init?.method === "POST"
         ? [{ ...ITEMS[1], added: false }, 200]
         : path.includes("/ingredients") // i suggerimenti della barra: nessuno
@@ -239,6 +239,10 @@ describe("ShoppingListScreen", () => {
     await screen.findByText("pomodoro");
     await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "pomodoro{Enter}");
     expect(await screen.findByText("Era già in lista.")).toBeDefined();
+    // guarda il filo barra reale → schermo → POST (S18): il testo va com'è, a
+    // riconoscerlo è il backend, non il campo
+    const post = spy.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ raw_text: "pomodoro", ingredient_id: null });
   });
 
   it("una lista vuota lo dice, e dice cosa fare", async () => {

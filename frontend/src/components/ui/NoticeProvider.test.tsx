@@ -37,6 +37,36 @@ describe("NoticeProvider", () => {
     expect(screen.queryByText("Tolto: kiwi")).toBeNull();
   });
 
+  it("un'azione che mostra un avviso nuovo lo lascia lì, non lo chiude", () => {
+    // «Annulla» del doppione fa proprio questo: chiama `show` con un nuovo testo
+    // prima di tornare. Un `setCurrent(null)` incondizionato dopo l'azione
+    // cancellerebbe anche quello nuovo, perché React mette in coda entrambi gli
+    // aggiornamenti dello stesso gestore
+    function Chain() {
+      const show = useNotice();
+      return (
+        <button
+          onClick={() =>
+            show({
+              text: "primo",
+              action: { label: "Annulla", onClick: () => show({ text: "secondo" }) },
+            })
+          }
+        >
+          mostra
+        </button>
+      );
+    }
+    render(
+      <NoticeProvider>
+        <Chain />
+      </NoticeProvider>
+    );
+    fireEvent.click(screen.getByText("mostra"));
+    fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(screen.getByText("secondo")).toBeInTheDocument();
+  });
+
   it("un avviso nuovo prende il posto del vecchio e riparte da sei secondi", () => {
     function Two() {
       const show = useNotice();
