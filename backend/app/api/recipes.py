@@ -2,7 +2,6 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +18,12 @@ from app.domain.rules import (
 )
 from app.repositories.ingredients import create_ingredient
 from app.repositories.pantry import availability_map
-from app.repositories.recipes import NonFoodInRecipe, create_recipe, get_recipe
+from app.repositories.recipes import (
+    NonFoodInRecipe,
+    create_recipe,
+    get_recipe,
+    recipe_categories,
+)
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
 from app.schemas.recipe import (
     RecipeCreate,
@@ -191,18 +195,8 @@ async def search_mode(session: AsyncSession = Depends(get_session)) -> SearchMod
 
 @router.get("/categories", response_model=list[str])
 async def categories(session: AsyncSession = Depends(get_session)) -> list[str]:
-    """Le categorie presenti nel ricettario, per il filtro.
-
-    Solo quelle che esistono davvero: un filtro che offre voci vuote è un filtro che
-    porta a una schermata vuota.
-    """
-    rows = await session.execute(
-        select(Recipe.category)
-        .where(Recipe.category.is_not(None))
-        .distinct()
-        .order_by(Recipe.category)
-    )
-    return list(rows.scalars())
+    """Le categorie presenti nel ricettario, per il filtro (vedi `recipe_categories`)."""
+    return await recipe_categories(session)
 
 
 @router.get("/{recipe_id}", response_model=RecipeOut)
