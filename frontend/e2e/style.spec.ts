@@ -1200,54 +1200,64 @@ test("la barra della lista resta sotto l'intestazione scorrendo, e la ✕ offre 
   await page.setViewportSize({ width: 375, height: 500 });
   const voci = Array.from({ length: 8 }, (_, i) => `prova scorrimento ${i + 1}`);
   const create: string[] = [];
-  for (const raw_text of voci) {
-    const risposta = await page.request.post("/api/v1/shopping-list", {
-      data: { raw_text, ingredient_id: null },
-    });
-    expect(risposta.ok()).toBe(true);
-    create.push(((await risposta.json()) as { id: string }).id);
-  }
+  try {
+    for (const raw_text of voci) {
+      const risposta = await page.request.post("/api/v1/shopping-list", {
+        data: { raw_text, ingredient_id: null },
+      });
+      expect(risposta.ok()).toBe(true);
+      create.push(((await risposta.json()) as { id: string }).id);
+    }
 
-  await page.goto("/lista");
-  await expect(page.getByRole("checkbox", { name: "prova scorrimento 8" })).toBeVisible();
-  await page.mouse.wheel(0, 1500);
-  // aspetta che lo scorrimento sia arrivato davvero, o le misure qui sotto
-  // guarderebbero la pagina ferma in cima
-  await expect.poll(() => page.evaluate<number>("window.scrollY")).toBeGreaterThan(100);
+    await page.goto("/lista");
+    await expect(page.getByRole("checkbox", { name: "prova scorrimento 8" })).toBeVisible();
+    await page.mouse.wheel(0, 1500);
+    // aspetta che lo scorrimento sia arrivato davvero, o le misure qui sotto
+    // guarderebbero la pagina ferma in cima
+    await expect.poll(() => page.evaluate<number>("window.scrollY")).toBeGreaterThan(100);
 
-  const intestazione = await page.getByRole("banner").boundingBox();
-  const campo = page.getByLabel("Aggiungi alla lista");
-  await expect(campo).toBeInViewport();
-  const barra = await campo.boundingBox();
-  expect(
-    barra!.y,
-    "la barra della lista copre l'intestazione"
-  ).toBeGreaterThanOrEqual(intestazione!.y + intestazione!.height);
-  // e l'intestazione è davvero quella che si vede lì sopra, non qualcosa che le
-  // passa sopra: il punto al centro del marchio appartiene all'intestazione
-  const sopra = await page.evaluate<boolean>(
-    `(() => { const h = document.querySelector("header"); const r = h.getBoundingClientRect();
-       const el = document.elementFromPoint(r.left + 40, r.top + r.height / 2);
-       return !!el && h.contains(el); })()`
-  );
-  expect(sopra, "qualcosa copre l'intestazione").toBe(true);
+    const intestazione = await page.getByRole("banner").boundingBox();
+    const campo = page.getByLabel("Aggiungi alla lista");
+    await expect(campo).toBeInViewport();
+    const barra = await campo.boundingBox();
+    expect(
+      barra!.y,
+      "la barra della lista copre l'intestazione"
+    ).toBeGreaterThanOrEqual(intestazione!.y + intestazione!.height);
+    // e l'intestazione è davvero quella che si vede lì sopra, non qualcosa che le
+    // passa sopra: il punto al centro del marchio appartiene all'intestazione
+    const sopra = await page.evaluate<boolean>(
+      `(() => { const h = document.querySelector("header"); const r = h.getBoundingClientRect();
+         const el = document.elementFromPoint(r.left + 40, r.top + r.height / 2);
+         return !!el && h.contains(el); })()`
+    );
+    expect(sopra, "qualcosa copre l'intestazione").toBe(true);
 
-  // la ✕ è un bersaglio da pollice, e togliere offre «Annulla», che rimette la voce
-  const togli = page.getByRole("button", { name: "Togli prova scorrimento 1 dalla lista" });
-  const box = await togli.boundingBox();
-  expect(box!.width).toBeGreaterThanOrEqual(44);
-  expect(box!.height).toBeGreaterThanOrEqual(44);
-  await togli.click();
-  await expect(page.getByText("Tolto dalla lista: prova scorrimento 1")).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: "prova scorrimento 1" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Annulla" }).click();
-  await expect(page.getByRole("checkbox", { name: "prova scorrimento 1" })).toBeVisible();
-
-  // la pulizia
-  for (const id of create) {
-    const risposta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
-      data: { status: "archived" },
-    });
-    expect(risposta.ok()).toBe(true);
+    // la ✕ è un bersaglio da pollice, e togliere offre «Annulla», che rimette la voce
+    const togli = page.getByRole("button", { name: "Togli prova scorrimento 1 dalla lista" });
+    const box = await togli.boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    await togli.click();
+    await expect(page.getByText("Tolto dalla lista: prova scorrimento 1")).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "prova scorrimento 1" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByRole("checkbox", { name: "prova scorrimento 1" })).toBeVisible();
+  } finally {
+    // pulizia best-effort, come altrove in questo file (righe 985-1072): un `finally`
+    // che solleva nasconderebbe l'errore vero del `try`, quindi ogni PATCH ha il suo
+    // try/catch e una riga che non si archivia non ne salta altre
+    for (const id of create) {
+      try {
+        const risposta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+          data: { status: "archived" },
+        });
+        if (!risposta.ok()) {
+          console.warn(`pulizia: l'archiviazione di ${id} non è andata a buon fine (${risposta.status()})`);
+        }
+      } catch (guasto) {
+        console.warn(`pulizia: non sono riuscito ad archiviare la voce ${id}`, guasto);
+      }
+    }
   }
 });
