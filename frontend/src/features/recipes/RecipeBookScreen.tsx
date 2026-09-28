@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
@@ -14,6 +14,7 @@ import {
 import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
 import { UNDO_MS } from "../../lib/undo";
+import { revealAtTop } from "../../lib/revealAtTop";
 import { Alert } from "../../components/ui/Alert";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { Screen } from "../../components/ui/Screen";
@@ -154,6 +155,16 @@ export function RecipeBookScreen() {
     navigate(location.pathname, { replace: true, state: null });
   }, [incomingId, navigate, location.pathname]);
 
+  // Si arriva dal dettaglio scorso in fondo, dov'era «Elimina» (R10 §6.1): senza
+  // riportare la vista in cima, la lapide nasce sotto l'intestazione fissa e i sei
+  // secondi del suo «Annulla» passano senza che nessuno la veda. Solo all'arrivo:
+  // `incomingId` è definito solo sul render che porta la lapide, non su quelli dopo
+  // (countdown, «Annulla», errore) che non devono far scattare un altro scorrimento.
+  const tombstoneRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (incomingId !== undefined && tombstoneRef.current) revealAtTop(tombstoneRef.current);
+  }, [incomingId]);
+
   // sei secondi, come in dispensa; non mentre l'annulla è in volo né dopo che è
   // fallito — una lapide che scade mostrando un errore toglie l'unico modo di riprovare
   useEffect(() => {
@@ -282,7 +293,11 @@ export function RecipeBookScreen() {
       }
     >
       {tombstone && (
-        <div role="status" className="mb-3 flex flex-col gap-2 rounded-card bg-card p-3">
+        <div
+          ref={tombstoneRef}
+          role="status"
+          className="mb-3 scroll-mt-16 flex flex-col gap-2 rounded-card bg-card p-3"
+        >
           <div className="flex min-h-11 items-center justify-between gap-3">
             <span className="min-w-0 truncate text-ink-soft">
               <span className="font-medium text-ink">{tombstone.title}</span> eliminata

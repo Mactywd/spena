@@ -155,3 +155,47 @@ describe("la lapide del ricettario (R10 §6.1)", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 });
+
+// jsdom non ha layout: non scorre niente e non sa dove stia un elemento. Quel che si
+// può controllare qui è *a chi* si chiede di venire in vista; che ci arrivi davvero
+// sotto l'intestazione fissa lo dice solo un browser vero (frontend/e2e/modifica-ricette.spec.ts).
+describe("la lapide si porta in vista all'arrivo (R10 §6.1)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("arrivando con una ricetta eliminata, la lapide viene portata in cima", async () => {
+    stubFetch(() => [[AGLIO], 200]);
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    renderBook();
+
+    const tombstone = await screen.findByRole("status");
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(scroll.mock.contexts.at(-1)).toBe(tombstone);
+    expect(scroll).toHaveBeenLastCalledWith({ block: "start", behavior: "smooth" });
+  });
+
+  it("senza una ricetta eliminata in arrivo, non scorre niente", async () => {
+    stubFetch(() => [[AGLIO], 200]);
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    renderBook(null);
+
+    await screen.findByText("Aglio e olio");
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it("scaduta la lapide da sola, il suo sparire non fa scorrere di nuovo", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    stubFetch(() => [[AGLIO], 200]);
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    renderBook();
+
+    await screen.findByRole("status");
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+    scroll.mockClear();
+
+    await vi.advanceTimersByTimeAsync(6000);
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(scroll).not.toHaveBeenCalled();
+  });
+});
