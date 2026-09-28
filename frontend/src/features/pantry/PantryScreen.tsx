@@ -10,10 +10,7 @@ import { PantryRow } from "./PantryRow";
 import { addPantryItem, fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import type { Ingredient, PantryItem } from "../../domain/types";
-
-// quanto dura l'annulla. Sei secondi: il tempo di accorgersi di aver sbagliato
-// riga senza che la dispensa resti mezza finta per mezzo minuto
-const UNDO_MS = 6000;
+import { UNDO_MS } from "../../lib/undo";
 
 /** L'elenco da mostrare: quello del server più le istantanee delle voci appena
  * tolte che il server non manda più. Le lapidi vivono qui e non nella risposta,

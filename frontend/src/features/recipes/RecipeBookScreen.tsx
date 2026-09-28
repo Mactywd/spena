@@ -1,12 +1,19 @@
-import { useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { RecipeCard } from "./RecipeCard";
 import { MissingBudgetFilter } from "./MissingBudgetFilter";
 import { MAX_BUDGET } from "./missingBudget";
-import { RECIPE_PAGE_SIZE, fetchCategories, fetchSearchMode, searchRecipes } from "./api";
+import {
+  RECIPE_PAGE_SIZE,
+  fetchCategories,
+  fetchSearchMode,
+  searchRecipes,
+  setRecipeArchived,
+} from "./api";
 import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
+import { UNDO_MS } from "../../lib/undo";
 import { Alert } from "../../components/ui/Alert";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { Screen } from "../../components/ui/Screen";
@@ -115,7 +122,60 @@ function uniqueById<T extends { id: string }>(items: T[]): T[] {
   });
 }
 
+interface DeletedRecipe {
+  id: string;
+  title: string;
+}
+
+/** La lapide: la ricetta appena eliminata, e a che punto è il suo annulla. */
+type Tombstone = DeletedRecipe & { phase: "waiting" | "restoring" | "failed" };
+
+/** La ricetta che il dettaglio ha appena eliminato, se la navigazione la porta (R10
+ * §6.1): il segnale passa con lo stato della navigazione, non con la cache. */
+function deletedFrom(state: unknown): DeletedRecipe | null {
+  return (state as { deletedRecipe?: DeletedRecipe } | null)?.deletedRecipe ?? null;
+}
+
 export function RecipeBookScreen() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // La lapide nasce dallo stato della navigazione e vive qui, non lì: la voce della
+  // cronologia si pulisce appena letta (sotto), così un «indietro» dal prossimo
+  // dettaglio non resuscita una lapide già scaduta con un «Annulla» ancora premibile.
+  const incoming = deletedFrom(location.state);
+  const [tombstone, setTombstone] = useState<Tombstone | null>(() =>
+    incoming ? { ...incoming, phase: "waiting" } : null
+  );
+  const incomingId = incoming?.id;
+  useEffect(() => {
+    if (incomingId === undefined) return;
+    navigate(location.pathname, { replace: true, state: null });
+  }, [incomingId, navigate, location.pathname]);
+
+  // sei secondi, come in dispensa; non mentre l'annulla è in volo né dopo che è
+  // fallito — una lapide che scade mostrando un errore toglie l'unico modo di riprovare
+  useEffect(() => {
+    if (tombstone?.phase !== "waiting") return;
+    const timer = setTimeout(() => setTombstone(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [tombstone]);
+
+  const restore = useMutation({
+    mutationFn: (id: string) => setRecipeArchived(id, false),
+    onMutate: () => setTombstone((current) => current && { ...current, phase: "restoring" }),
+    onSuccess: (_data, id) => {
+      setTombstone(null);
+      void queryClient.invalidateQueries({ queryKey: ["recipes"] });
+      void queryClient.invalidateQueries({ queryKey: ["recipe-categories"] });
+      void queryClient.invalidateQueries({ queryKey: ["recipe", id] });
+    },
+    // la lapide RESTA, con l'errore dentro: la ricetta è eliminata davvero, e senza la
+    // lapide non ci sarebbe più un modo di riportarla (mai un vicolo cieco)
+    onError: () => setTombstone((current) => current && { ...current, phase: "failed" }),
+  });
+
   const [query, setQuery] = useState("");
   // `null` è «Tutte»: l'assenza di soglia, non una soglia larghissima
   const [maxMissing, setMaxMissing] = useState<number | null>(null);
@@ -167,6 +227,9 @@ export function RecipeBookScreen() {
   // Un inserimento sopra la pagina (l'import che gira) sposta tutto in giù di uno:
   // l'offset fa vedere un doppione, mai un buco, e il doppione si scarta qui.
   const recipes = uniqueById(data?.pages.flat() ?? []);
+  // una risposta arrivata prima dell'eliminazione la manda ancora: sotto la sua lapide
+  // non deve comparire
+  const visible = tombstone ? recipes.filter((recipe) => recipe.id !== tombstone.id) : recipes;
   // l'errore di una pagina successiva non cancella quel che è già a video
   const searchFailed = isError && !isFetchNextPageError;
 
@@ -218,6 +281,27 @@ export function RecipeBookScreen() {
         </Link>
       }
     >
+      {tombstone && (
+        <div role="status" className="mb-3 flex flex-col gap-2 rounded-card bg-card p-3">
+          <div className="flex min-h-11 items-center justify-between gap-3">
+            <span className="min-w-0 truncate text-ink-soft">
+              <span className="font-medium text-ink">{tombstone.title}</span> eliminata
+            </span>
+            <button
+              type="button"
+              disabled={tombstone.phase === "restoring"}
+              onClick={() => restore.mutate(tombstone.id)}
+              className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand disabled:opacity-40"
+            >
+              Annulla
+            </button>
+          </div>
+          {tombstone.phase === "failed" && (
+            <Alert>Non sono riuscito a riportarla nel ricettario. Riprova.</Alert>
+          )}
+        </div>
+      )}
+
       <SectionEntryCard
         to="/ricette/importa"
         title="Ingredienti da abbinare"
@@ -324,7 +408,7 @@ export function RecipeBookScreen() {
         </Alert>
       )}
 
-      {!isLoading && !searchFailed && recipes.length === 0 && (
+      {!isLoading && !searchFailed && visible.length === 0 && (
         <p className="pt-4 text-ink-soft">
           {emptyMessage({
             query: debouncedQuery,
@@ -335,9 +419,9 @@ export function RecipeBookScreen() {
         </p>
       )}
 
-      {!isLoading && !searchFailed && recipes.length > 0 && (
+      {!isLoading && !searchFailed && visible.length > 0 && (
         <ul className="flex flex-col gap-2 pt-2">
-          {recipes.map((recipe) => (
+          {visible.map((recipe) => (
             <RecipeCard key={recipe.id} recipe={recipe} />
           ))}
         </ul>
