@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
-import { fetchRecipe, updateRecipeCost } from "../recipes/api";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { fetchRecipe, setRecipeArchived, updateRecipeCost } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { CookSheet } from "./CookSheet";
 import { ServingsStepper } from "./ServingsStepper";
@@ -43,6 +43,42 @@ export function RecipeDetailScreen() {
   const [servings, setServings] = useState<number | null>(null);
 
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  // «Salvata» arriva con la navigazione dalla modifica (R10 §6.2). Si legge una volta,
+  // nello stato di questo schermo, e la voce della cronologia si pulisce subito (sotto),
+  // come la lapide del ricettario: un «indietro» e un «avanti» non devono ridire
+  // «Salvata» di un salvataggio vecchio.
+  const location = useLocation();
+  const savedNow = (location.state as { saved?: boolean } | null)?.saved === true;
+  const [justSaved] = useState(savedNow);
+  useEffect(() => {
+    if (savedNow) navigate(location.pathname, { replace: true, state: null });
+  }, [savedNow, navigate, location.pathname]);
+
+  // Eliminare e ripristinare cambiano cosa elencano ricettario e filtro per categoria,
+  // oltre al dettaglio stesso: si rinfrescano tutti e tre.
+  const refreshAfterArchive = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["recipe", id] }),
+      queryClient.invalidateQueries({ queryKey: ["recipes"] }),
+      queryClient.invalidateQueries({ queryKey: ["recipe-categories"] }),
+    ]);
+
+  // «Elimina» archivia subito, senza chiedere: la conferma è la lapide con «Annulla»
+  // nel ricettario, dove si torna (R10 §6.1)
+  const archive = useMutation({
+    mutationFn: () => setRecipeArchived(id, true),
+    onSuccess: (archived) => {
+      void refreshAfterArchive();
+      navigate("/ricette", { state: { deletedRecipe: { id, title: archived.title } } });
+    },
+  });
+
+  const restore = useMutation({
+    mutationFn: () => setRecipeArchived(id, false),
+    onSuccess: () => refreshAfterArchive(),
+  });
+
   // Il valore mostrato è sempre quello che il server ha salvato, non quello toccato:
   // niente aggiornamento ottimistico, perché un tocco fallito che restasse a video
   // direbbe un costo che la ricetta non ha. La rilettura costa un giro, e il
@@ -108,6 +144,14 @@ export function RecipeDetailScreen() {
     revealAtTop(outcomeRef.current);
   }, [lastCook]);
 
+  // «Salvata» in vista: si arriva dal pulsante in fondo al modulo, e la pagina nuova non
+  // riparte dall'alto da sola
+  const savedRef = useRef<HTMLParagraphElement>(null);
+  const hasRecipe = recipe !== undefined;
+  useEffect(() => {
+    if (justSaved && hasRecipe && savedRef.current) revealAtTop(savedRef.current);
+  }, [justSaved, hasRecipe]);
+
   if (isRecipeLoading) return <p className="p-4 text-ink-soft">Carico…</p>;
 
   // un caricamento fallito non è una ricetta vuota: dirlo sarebbe una bugia su
@@ -127,6 +171,29 @@ export function RecipeDetailScreen() {
     );
   }
 
+  // Una ricetta eliminata, aperta da un collegamento vecchio: «Ripristina» e
+  // nient'altro — niente «Cucina», niente «Modifica» (R10 §6.1).
+  if (recipe.archived_at !== null) {
+    return (
+      <div className="px-4 pt-2 pb-4">
+        <BackLink to="/ricette" label="Ricette" />
+        <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
+        <p className="pt-2 text-ink-soft">Questa ricetta è stata eliminata.</p>
+        <button
+          type="button"
+          onClick={() => restore.mutate()}
+          disabled={restore.isPending}
+          className={`${buttonClasses("primary", "block")} mt-4`}
+        >
+          {restore.isPending ? "Ripristino…" : "Ripristina"}
+        </button>
+        {restore.isError && (
+          <Alert className="pt-2">Non sono riuscito a ripristinarla. Riprova.</Alert>
+        )}
+      </div>
+    );
+  }
+
   const primary = recipe.ingredients.filter((line) => line.role === "primary");
   const secondary = recipe.ingredients.filter((line) => line.role === "secondary");
   const groups: { label: string; lines: RecipeIngredientLine[] }[] = [
@@ -137,6 +204,18 @@ export function RecipeDetailScreen() {
   return (
     <div className="px-4 pt-2 pb-4">
       <BackLink to="/ricette" label="Ricette" />
+      {justSaved && (
+        // `scroll-mt-16`: l'intestazione fissa (h-12) più un respiro, come l'esito
+        // della cottura; `tabIndex={-1}` per il fuoco dato dal codice, non dal Tab
+        <p
+          ref={savedRef}
+          role="status"
+          tabIndex={-1}
+          className="mb-3 scroll-mt-16 rounded-card bg-brand-tint px-3 py-2.5 text-sm text-brand"
+        >
+          Salvata.
+        </p>
+      )}
       <RecipeImage
         url={recipe.image_url}
         alt={recipe.title}
@@ -304,6 +383,27 @@ export function RecipeDetailScreen() {
                 <p className="pt-2 text-xs text-ink-soft">Carico la dispensa…</p>
               )}
             </>
+          )}
+
+          {/* due azioni secondarie sotto «Cucina» (R10 §6.1): si correggono o si
+              tolgono ricette di rado, e non devono competere con il gesto principale */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link to={`/ricette/${id}/modifica`} className={buttonClasses("secondary")}>
+              Modifica
+            </Link>
+            <button
+              type="button"
+              onClick={() => archive.mutate()}
+              disabled={archive.isPending}
+              className={buttonClasses("danger")}
+            >
+              {archive.isPending ? "Elimino…" : "Elimina"}
+            </button>
+          </div>
+          {archive.isError && (
+            <Alert className="pt-2">
+              Non sono riuscito a eliminarla: è ancora nel ricettario. Riprova.
+            </Alert>
           )}
         </>
       )}
