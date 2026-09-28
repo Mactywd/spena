@@ -190,3 +190,14 @@ async def adopt_import_page(session: AsyncSession, recipe_id: uuid.UUID) -> bool
     page.state = ImportState.ADOPTED
     await session.flush()
     return True
+
+
+async def owned_by_import(session: AsyncSession, recipe_id: uuid.UUID) -> bool:
+    """Vero se una pagina dell'import rifà ancora questa ricetta: è `imported`, non
+    presa in carico (R10 §4)."""
+    found = await session.scalar(
+        select(RecipeImport.id)
+        .where(RecipeImport.recipe_id == recipe_id, RecipeImport.state == ImportState.IMPORTED)
+        .limit(1)
+    )
+    return found is not None

@@ -94,6 +94,9 @@ class RegistryRefusal(Exception):
 class RecipeRef:
     id: uuid.UUID
     title: str
+    # eliminata (R10): conta ancora — ripristinata tornerebbe con la sua riga — e lo
+    # schermo la segna, perché nel ricettario non si vede più
+    archived: bool = False
 
 
 @dataclass(frozen=True)
@@ -160,14 +163,18 @@ async def recipes_using(session: AsyncSession, ingredient_id: uuid.UUID) -> Reci
         )
     ).scalar_one()
     rows = await session.execute(
-        select(Recipe.id, Recipe.title)
+        select(Recipe.id, Recipe.title, Recipe.archived_at)
         .join(RecipeIngredient, RecipeIngredient.recipe_id == Recipe.id)
         .where(RecipeIngredient.ingredient_id == ingredient_id)
         .order_by(Recipe.title, Recipe.id)
         .limit(RECIPES_SHOWN)
     )
     return RecipesInUse(
-        count=count, recipes=tuple(RecipeRef(id=row.id, title=row.title) for row in rows)
+        count=count,
+        recipes=tuple(
+            RecipeRef(id=row.id, title=row.title, archived=row.archived_at is not None)
+            for row in rows
+        ),
     )
 
 

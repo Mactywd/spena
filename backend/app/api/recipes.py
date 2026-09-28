@@ -1,5 +1,6 @@
 import uuid
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,7 +20,7 @@ from app.domain.rules import (
 )
 from app.repositories.ingredients import create_ingredient
 from app.repositories.pantry import availability_map
-from app.repositories.imports import adopt_import_page
+from app.repositories.imports import adopt_import_page, owned_by_import
 from app.repositories.recipes import (
     IngredientLine,
     NonFoodInRecipe,
@@ -135,6 +136,8 @@ async def _to_out(
         cook_minutes=recipe.cook_minutes, category=recipe.category, cost=recipe.cost,
         scaled_to=servings if factor is not None else None,
         unscalable_lines=unscalable, dose_lines=dose_lines,
+        archived_at=recipe.archived_at,
+        owned_by_import=await owned_by_import(session, recipe.id),
     )
 
 
@@ -186,6 +189,7 @@ async def search(
             image_url=r.recipe.image_url, prep_minutes=r.recipe.prep_minutes,
             cook_minutes=r.recipe.cook_minutes, category=r.recipe.category,
             cost=r.recipe.cost,
+            archived_at=r.recipe.archived_at,
         )
         for r in results
     ]
@@ -223,10 +227,28 @@ async def detail(
 async def update(
     recipe_id: uuid.UUID, payload: RecipeUpdate, session: AsyncSession = Depends(get_session)
 ) -> RecipeOut:
-    """Cambia quel che `RecipeUpdate` dichiara, e solo i campi mandati davvero."""
+    """Cambia quel che `RecipeUpdate` dichiara, e solo i campi mandati davvero.
+
+    `archived` elimina e ripristina (R10 §5). Eliminare prende in carico la pagina
+    d'import, come il primo salvataggio di una modifica; ripristinare no, e la pagina
+    resta `adopted`. Il costo di una ricetta eliminata non si cambia, come il resto: il
+    409 lo dice prima di toccare qualunque cosa.
+    """
     recipe = await get_recipe(session, recipe_id)
     if recipe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
+    archived_after = (
+        recipe.archived_at is not None if payload.archived is None else payload.archived
+    )
+    if "cost" in payload.model_fields_set and archived_after:
+        raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+    if payload.archived is True:
+        # la prima data resta: eliminare due volte non sposta l'eliminazione
+        if recipe.archived_at is None:
+            recipe.archived_at = datetime.now(UTC)
+        await adopt_import_page(session, recipe.id)
+    elif payload.archived is False:
+        recipe.archived_at = None
     if "cost" in payload.model_fields_set:
         recipe.cost = payload.cost
     await session.commit()

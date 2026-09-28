@@ -16,7 +16,7 @@ from sqlalchemy import select
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
-from app.db.models.recipe import RecipeSource
+from app.db.models.recipe import Recipe, RecipeSource
 from app.db.models.recipe_import import (
     GIALLOZAFFERANO,
     ImportState,
@@ -151,10 +151,28 @@ async def test_il_non_alimentare_con_ricette_e_un_409_che_le_elenca(logged_clien
     corpo = risposta.json()
     assert corpo["code"] == "non_food_in_recipes"
     assert corpo["recipe_count"] == 1
-    assert corpo["recipes"] == [{"id": str(anagrafica["risotto"]), "title": "Risotto al burro"}]
+    assert corpo["recipes"] == [
+        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": False}
+    ]
     assert corpo["pending_import_count"] == 0
     assert (corpo["pending_terms"], corpo["pending_term_count"]) == ([], 0)
     assert (await logged_client.get(f"{BASE}/{anagrafica['burro']}")).json()["category"] == "latticini"
+
+
+async def test_il_rifiuto_segna_le_ricette_eliminate(logged_client, db_session, anagrafica):
+    """R10: una ricetta eliminata usa ancora il burro, e il rifiuto la conta — ripristinata
+    non deve tornare con una riga non alimentare. La segna, perché chi non la vede più nel
+    ricettario capisca da dove viene il blocco (deviazione 6 del piano)."""
+    risotto = await db_session.get(Recipe, anagrafica["risotto"])
+    risotto.archived_at = datetime.now(UTC)
+    await db_session.flush()
+
+    risposta = await logged_client.patch(f"{BASE}/{anagrafica['burro']}", json={"category": "casa"})
+
+    assert risposta.status_code == 409
+    assert risposta.json()["recipes"] == [
+        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": True}
+    ]
 
 
 async def test_il_non_alimentare_con_pagine_in_attesa_e_un_409_che_le_conta(

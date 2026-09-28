@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -64,14 +65,19 @@ class RecipeReplace(RecipeFields):
 
 
 class RecipeUpdate(BaseModel):
-    """Quel che si cambia di una ricetta dopo averla salvata: oggi il costo e basta.
+    """Quel che si cambia di una ricetta con un tocco: il costo, e l'eliminazione.
 
     Un campo assente non si tocca, `null` lo azzera: per questo la rotta legge
     `model_fields_set` e non il valore. `strict` perché `2.5` o `"3"` non sono un
     gradino, e arrotondarli sarebbe decidere al posto di chi ha toccato.
+
+    `archived` elimina (`true`) e ripristina (`false`), come nella dispensa (R10 §5):
+    non c'è una `DELETE`. Annullabile, perché «non l'ho detto» e «ripristina» sono due
+    richieste diverse.
     """
 
     cost: int | None = Field(default=None, ge=COST_MIN, le=COST_MAX, strict=True)
+    archived: bool | None = Field(default=None, strict=True)
 
 
 class RecipeIngredientOut(BaseModel):
@@ -117,6 +123,12 @@ class RecipeOut(BaseModel):
     # manda il server perché è il server a saperlo — `len(ingredients)` conterebbe
     # anche le righe senza `quantity_text`, che non sono dosi mancate
     dose_lines: int = 0
+    # presente vuol dire eliminata (R10): il dettaglio risponde lo stesso, perché un
+    # collegamento vecchio porti a «Ripristina» e non a un 404
+    archived_at: datetime | None = None
+    # vero finché una pagina dell'import la rifà: modificarla la rende tua, e lo schermo
+    # di modifica lo dice prima del salvataggio (R10 §6.2)
+    owned_by_import: bool = False
 
 
 class RecipeSummaryOut(BaseModel):
@@ -137,6 +149,9 @@ class RecipeSummaryOut(BaseModel):
     cook_minutes: int | None = None
     category: str | None = None
     cost: int | None = None
+    # negli elenchi è sempre `None`, perché le archiviate ne sono escluse; c'è perché nel
+    # frontend `RecipeDetail extends RecipeSummary`, come `missing_names` qui sopra
+    archived_at: datetime | None = None
 
 
 class SearchModeOut(BaseModel):
