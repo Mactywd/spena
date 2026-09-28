@@ -163,6 +163,37 @@ test("le tacche della dispensa sono bersagli da pollice", async ({ page }) => {
   expect(scuro.rapporto, "tacca accesa su --color-card, scuro").toBeGreaterThanOrEqual(3);
   await page.emulateMedia({ colorScheme: "light" });
 
+  // la tacca spenta, che è quella che deve dire «si tocca anche qui» (spec §7): con
+  // «Disponibile» sono accese tutte e tre, quindi si scende a «Finito» e si misura
+  // quella di «Disponibile». Si aspetta che la scrittura sia finita — mentre è in
+  // volo le tacche sono attenuate, e il numero sarebbe di un altro stato
+  const finito = riga.getByRole("radio", { name: "Finito" });
+  await finito.click();
+  await expect(finito).toHaveAttribute("aria-checked", "true");
+  await expect(finito).not.toHaveAttribute("aria-disabled", "true");
+  const spenta = riga.locator('[role="radio"][aria-label="Disponibile"] span');
+  await expect(spenta.locator("..")).toHaveAttribute("data-lit", "false");
+
+  const spentaChiaro = await contrastoSegno(spenta);
+  expect(spentaChiaro.colore).toBe(tokenDelTema("notch-off"));
+  expect(spentaChiaro.fondo).toBe(tokenDelTema("card"));
+  test.info().annotations.push({
+    type: "contrasto",
+    description: `tacca spenta su card, chiaro: ${spentaChiaro.rapporto.toFixed(2)}:1`,
+  });
+  expect(spentaChiaro.rapporto, "tacca spenta su --color-card, chiaro").toBeGreaterThanOrEqual(3);
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  const spentaScuro = await contrastoSegno(spenta);
+  expect(spentaScuro.colore).toBe(tokenDelTemaScuro("notch-off"));
+  expect(spentaScuro.fondo).toBe(tokenDelTemaScuro("card"));
+  test.info().annotations.push({
+    type: "contrasto",
+    description: `tacca spenta su card, scuro: ${spentaScuro.rapporto.toFixed(2)}:1`,
+  });
+  expect(spentaScuro.rapporto, "tacca spenta su --color-card, scuro").toBeGreaterThanOrEqual(3);
+  await page.emulateMedia({ colorScheme: "light" });
+
   // la pulizia: la X archivia davvero la voce sul server. Senza questo la dispensa
   // cresce di una riga a ogni esecuzione su uno stack riusato.
   await togli.click();

@@ -64,7 +64,7 @@ export function StockGauge({
             onKeyDown={onKeyDown}
             className="flex size-11 items-center justify-center disabled:opacity-40"
           >
-            <span className={`h-1.5 w-4 rounded-full ${lit ? LIT[status] : "bg-line"}`} />
+            <span className={`h-1.5 w-4 rounded-full ${lit ? LIT[status] : "bg-notch-off"}`} />
           </button>
         );
       })}

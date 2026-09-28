@@ -29,6 +29,13 @@
   --color-ink-ghost: #b3bcb5;
 
   --color-line: #dce1dc;
+  /* La tacca spenta di `StockGauge`: un segno che dice «qui si tocca», non una riga
+     di separazione. Con `line` stava a 1,3:1 sul bianco della sezione, e il rischio
+     più grosso della spec T3 (§7) è proprio che le tacche non si capiscano toccabili:
+     qui sta sopra 3:1 su `card` (WCAG 1.4.11, 3,39:1 in chiaro e 3,45:1 in scuro,
+     theme.test.ts). Grigio e non una tinta: le accese sono verde, ambra e rosso, e
+     una spenta colorata direbbe uno stato che non c'è. */
+  --color-notch-off: #848e87;
   /* il velo dietro un pannello: scuro in entrambi i temi, perché deve spegnere la
      pagina, non schiarirla */
   --color-scrim: #0b0f0d;
@@ -97,6 +104,7 @@
     --color-ink-faint: #939e98;
     --color-ink-ghost: #4a544e;
     --color-line: #2c342f;
+    --color-notch-off: #69736d;
     --color-scrim: #000000;
     --color-brand: #3cb878;
     --color-brand-tint: #16301f;

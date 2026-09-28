@@ -64,6 +64,12 @@ const PAIRS: [string, string][] = [
   ["dept-sand-ink", "dept-sand"], ["dept-slate-ink", "dept-slate"],
 ];
 
+// [segno, fondo]: le coppie di un segno che non si legge ma identifica un controllo
+// (WCAG 1.4.11): la soglia è 3:1, non 4,5:1. La tacca spenta di `StockGauge` è la
+// ragione per cui c'è: a 1,3:1 (`line` su `card`) le tacche non si capivano toccabili,
+// che è il rischio più grosso della spec T3 (§7).
+const MARK_PAIRS: [string, string][] = [["notch-off", "card"]];
+
 describe("i token del colore", () => {
   it("ogni token chiaro ha il suo valore scuro, e viceversa", () => {
     expect(Object.keys(dark).sort()).toEqual(Object.keys(light).sort());
@@ -74,6 +80,12 @@ describe("i token del colore", () => {
       expect(palette[text], `--color-${text} manca in ${mode}`).toBeDefined();
       expect(palette[background], `--color-${background} manca in ${mode}`).toBeDefined();
       expect(ratio(palette[text], palette[background])).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it.each(MARK_PAIRS)(`in ${mode}, il segno %s su %s sta sopra 3:1`, (mark, background) => {
+      expect(palette[mark], `--color-${mark} manca in ${mode}`).toBeDefined();
+      expect(palette[background], `--color-${background} manca in ${mode}`).toBeDefined();
+      expect(ratio(palette[mark], palette[background])).toBeGreaterThanOrEqual(3);
     });
   }
 });
