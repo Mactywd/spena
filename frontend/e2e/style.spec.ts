@@ -787,6 +787,34 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   const boxPastiglia = await correggi.boundingBox();
   expect(boxPastiglia!.height).toBeGreaterThanOrEqual(40);
 
+  // Dalla tastiera il fuoco torna al pulsante, e resta lì anche dopo il salvataggio.
+  // Invio con una data cambiata manda la PATCH, la riga si spegne finché la risposta
+  // non torna, e un pulsante `disabled` perde il fuoco senza nemmeno un blur: finiva
+  // sul `body`. jsdom non toglie il fuoco a un pulsante disabilitato, quindi lo vede
+  // solo un browser, e solo con una scrittura vera.
+  const fraCinqueGiorni = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  await correggi.click();
+  const salvata = page.waitForResponse(
+    (risposta) => risposta.request().method() === "PATCH" && risposta.url().includes("/pantry/")
+  );
+  await campo.fill(fraCinqueGiorni);
+  await campo.press("Enter");
+  await salvata;
+  const scadenzaNuova = riga.getByRole("button", { name: /^Scadenza di carota: scade tra 5 gg/ });
+  await expect(scadenzaNuova).toBeVisible();
+  await expect(scadenzaNuova).toBeFocused();
+
+  // Esc chiude senza scrivere: la data resta quella di prima e il fuoco torna lì
+  await scadenzaNuova.click();
+  await campo.fill(fraTreGiorni);
+  await campo.press("Escape");
+  // l'`input` e non `campo`: `getByLabel` prende anche l'`aria-label` del pulsante,
+  // che comincia con «Scadenza di carota», e il conto sarebbe 1 a campo chiuso
+  await expect(riga.locator('input[type="date"]')).toHaveCount(0);
+  await expect(scadenzaNuova).toBeFocused();
+
   // la pulizia, come fa il test sulle tacche: senza, la dispensa cresce di una
   // riga a ogni esecuzione su uno stack riusato
   await riga.getByRole("button", { name: "Togli carota dalla dispensa" }).click();

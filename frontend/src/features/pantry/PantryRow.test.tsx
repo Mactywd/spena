@@ -116,6 +116,13 @@ describe("PantryRow", () => {
     expect(onStatus).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "In lista" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Togli Total 0% dalla dispensa" }).hasAttribute("disabled")).toBe(true);
+    // la scadenza come le tacche: dopo un Invio il fuoco torna qui mentre il
+    // salvataggio è in volo, e un `disabled` lo buttava sul `body` (lo misura l'e2e)
+    const expiry = screen.getByRole("button", { name: "+ scadenza per Total 0%" });
+    expect(expiry.hasAttribute("disabled")).toBe(false);
+    expect(expiry).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(expiry);
+    expect(screen.queryByLabelText("Scadenza di Total 0%")).toBeNull();
   });
 
   it("una scrittura fallita lo dice nella riga", () => {
@@ -172,8 +179,6 @@ describe("PantryRow", () => {
     const field = screen.getByLabelText("Scadenza di Total 0%");
     fireEvent.change(field, { target: { value: "2027-01-01" } });
     fireEvent.keyDown(field, { key: "Escape" });
-    // il blur che il browser può mandare quando il campo sparisce non deve salvare
-    fireEvent.blur(field);
 
     const button = screen.getByRole("button", { name: /Scadenza di Total 0%/ });
     expect(onExpiry).not.toHaveBeenCalled();

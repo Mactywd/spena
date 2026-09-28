@@ -54,8 +54,10 @@ export function PantryRow({
   const [editingExpiry, setEditingExpiry] = useState(false);
   const ref = useRef<HTMLLIElement>(null);
   const expiryButton = useRef<HTMLButtonElement>(null);
-  // Esc chiude il campo senza scrivere: il blur che può seguire (il campo sparisce
-  // mentre ha il fuoco) trova questo segno e non salva. Si azzera a ogni apertura.
+  // Esc chiude il campo senza scrivere. Se un browser mandasse un blur mentre il
+  // campo sparisce col fuoco dentro, troverebbe questo segno e non salverebbe: è una
+  // guardia difensiva — la specifica non prevede quel blur, e React non lo vedrebbe
+  // su un nodo già staccato — e nessun test la esercita. Si azzera a ogni apertura.
   const expiryCancelled = useRef(false);
   // Invio ed Esc chiudono il campo dalla tastiera: il fuoco torna al pulsante della
   // scadenza invece di cadere sul `body`. Un tocco altrove no — lì il fuoco va dove
@@ -148,6 +150,9 @@ export function PantryRow({
               onBlur={(event) => void commitExpiry(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
+                  // senza, l'Invio arriva anche al pulsante che riprende il fuoco qui
+                  // sotto, e lo «preme»: il campo si riapriva con la data di prima
+                  event.preventDefault();
                   refocusExpiry.current = true;
                   event.currentTarget.blur();
                 } else if (event.key === "Escape") {
@@ -163,13 +168,17 @@ export function PantryRow({
           <button
             ref={expiryButton}
             type="button"
-            disabled={busy}
+            // `aria-disabled` e non `disabled`, come le tacche: dopo un Invio il fuoco
+            // torna qui mentre il salvataggio è in volo, e il browser toglie il fuoco a
+            // un pulsante che diventa `disabled` — finiva sul `body`
+            aria-disabled={busy || undefined}
             onClick={() => {
+              if (busy) return;
               expiryCancelled.current = false;
               setEditingExpiry(true);
             }}
             aria-label={expiry ? `Scadenza di ${label}: ${expiry}` : `+ scadenza per ${label}`}
-            className={`flex min-h-11 items-start pt-0.5 text-left disabled:opacity-40 ${
+            className={`flex min-h-11 items-start pt-0.5 text-left aria-disabled:opacity-40 ${
               item.expiry ? EXPIRY_TONE_TEXT[item.expiry] : ""
             }`}
           >
