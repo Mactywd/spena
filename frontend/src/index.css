@@ -81,6 +81,7 @@
   --color-dept-slate-ink: #3d4756;
 
   --radius-card: 14px;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Il tema scuro: le stesse variabili, altri valori. Tailwind scrive ogni classe come
