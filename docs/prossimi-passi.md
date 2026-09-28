@@ -252,7 +252,9 @@ strutturate accanto al testo:
 > una soglia, non un'aritmetica. Non si somma, non si scala, non nutre. La decisione
 > fondante numero 1, ristretta alla dispensa il 2026-09-20, resta intera anche lì:
 > questa colonna c'è, e l'emendamento di `CLAUDE.md` l'ha citata apposta perché non
-> conti come precedente.
+> conti come precedente. Dal 2026-09-28 (T3 Consegna 1) le tacche mandano lo stato e
+> nessuno scrive più la colonna. La via `PATCH` di `fill_percent` resta nel backend
+> senza chiamanti, ed è una voce piccola da togliere quando si tocca `api/pantry.py`.
 
 **Perché non l'alternativa.** Quantità vere anche in dispensa avrebbero sbloccato
 conti più precisi, ma avrebbero reintrodotto la manutenzione giornaliera che la
@@ -439,8 +441,11 @@ deciso che cosa si costruisce.
    un giorno appena si viaggia — ed è esattamente la forma di «il frontend che calcola
    invece di chiedere» che tiene il porting a Capacitor un involucro e non un
    riscrittura. La soglia è una costante come `LOW_MAX_FILL`, e va difesa dal
-   ricopiarla: `backend/tests/test_frontend_fill_zones.py` è il precedente — legge la
-   soglia dal sorgente TypeScript e fallisce se i due linguaggi divergono.
+   ricopiarla: ~~`backend/tests/test_frontend_fill_zones.py` è il precedente — legge
+   la soglia dal sorgente TypeScript e fallisce se i due linguaggi divergono.~~ *Dal
+   T3 Consegna 1 (2026-09-28) il cursore, e con lui la copia frontend di
+   `LOW_MAX_FILL`, non esistono più: quel test è stato tolto, e non c'è più niente da
+   tenere allineato.*
 5. **E il giorno dopo?** Scaduto è un terzo caso, non lo stesso di «sta per scadere»:
    serve un colore diverso, o la stessa cosa detta più forte? E soprattutto: una cosa
    scaduta torna in lista da sé, chiede come fa il cursore a zero («Lo rimetto in
@@ -487,12 +492,14 @@ zona gialla deve dire «comincia a mancare», non «siamo a metà» — vedi il 
 `app/domain/rules.py`). La posizione vive in `pantry_items.fill_percent`
 (annullabile, 0–100, migrazione `0006`), la `PATCH` la accetta e risponde con lo
 stato già ricavato dal server — il client chiede, non calcola, come ogni altra
-regola di questo modulo. `backend/tests/test_frontend_fill_zones.py` legge la
+regola di questo modulo. ~~`backend/tests/test_frontend_fill_zones.py` legge la
 stessa soglia dal sorgente TypeScript e fallisce se i due linguaggi divergono
-(stesso schema di `test_frontend_categories.py`). Scrivere lo stato a mano (senza
-passare dal cursore) azzera la posizione: un `available` deciso altrove non deve
-mostrare un barattolo pieno che non c'è più. **`StatusToggle` è stato cancellato**:
-il cursore lo sostituisce, e `StatusChip` è rimasto l'unico posto in dispensa dove
+(stesso schema di `test_frontend_categories.py`).~~ *Il cursore, e con lui quel
+test, non esistono più dal T3 Consegna 1 (2026-09-28) — vedi lì.* Scrivere lo stato a
+mano (senza passare dal cursore) azzera la posizione: un `available` deciso altrove
+non deve mostrare un barattolo pieno che non c'è più. **`StatusToggle` è stato
+cancellato**: il cursore lo sostituisce, e `StatusChip` è rimasto l'unico posto in
+dispensa dove
 lo stato si vede.
 
 **Il TBD era mal posto, e la frase sotto correggeva un'idea sbagliata, non un
@@ -703,8 +710,9 @@ erano elencati qui:
   **di proposito fuori di lui**, e il verdetto viaggia già preso dentro
   `PantryItemOut` (`expiry`: `"soon"` / `"expired"` / `null`). Il sette non attraversa
   il confine, quindi fra i due linguaggi non c'è niente da tenere allineato: è il modo
-  più solido di passare il controllo che `test_frontend_fill_zones.py` fa per
-  `LOW_MAX_FILL`, cioè non averne bisogno.
+  più solido di passare il controllo che `test_frontend_fill_zones.py` faceva per
+  `LOW_MAX_FILL` (tolto con il cursore al T3 Consegna 1, 2026-09-28), cioè non averne
+  bisogno.
 
 **Il dato.** `pantry_items.expires_on`, `DATE` annullabile, migrazione `0009`, **senza
 `CHECK`**: una data già passata è legittima, perché capita di scriverla il giorno dopo
@@ -986,13 +994,21 @@ pannello.
 - **senza fotocamera il pannello promette «Puoi inserire il prodotto a mano»** e non
   offre quella strada: c'è solo il campo del codice, con «Annulla» in mezzo.
 
-## S11. Cercare in dispensa **[D]**
+## S11. Cercare in dispensa **[FATTO 2026-09-28 — T3 Consegna 1]**
 Per sapere se c'è il sale oggi bisogna scorrere tutta la dispensa. Serve un campo che
 filtri le righe mentre si scrive. **TBD**: se è lo stesso campo di «Aggiungi in
 dispensa» (scrivo «sale»: se c'è mi mostra la riga, se non c'è mi offre di
 aggiungerlo) o un campo a parte. Il primo è più veloce, ma un campo che fa due cose
 deve dire chiaramente quale sta facendo. Con i reparti chiusi (S15) una ricerca apre
 quelli che contengono un risultato.
+
+**Fatto:**
+- la barra «Cerca o aggiungi» filtra per ingrediente, prodotto e marca, senza badare
+  agli accenti;
+- il + apre l'aggiunta con quel testo;
+- un testo che non trova niente offre «Aggiungi «…»».
+- La domanda del TBD («un campo che fa due cose deve dire quale sta facendo») si è
+  chiusa così: il campo filtra sempre, e aggiunge solo il +.
 
 ## S12. Le righe della dispensa sono tutte uguali **[TBD — brainstorming]**
 Serve un modo di riconoscere una riga senza leggerla. Le strade proposte da Mattia
@@ -1822,6 +1838,39 @@ e le primitive (`Button`, `IconToolbar`, `ActionBar`, `Section`, `StockGauge`,
 `StatusDot`, `Chip`, l'avviso unico, `ErrorState`, `EmptyState`, `IngredientPicker` con
 «Aggiungi»). Le schermate le adottano dalla Consegna 1.
 
+**Consegna 1 (Dispensa) fatta il 2026-09-28, sul ramo `t3-dispensa`, non ancora in
+produzione.** Cosa è cambiato: la barra «Cerca o aggiungi» in cima (S11), il riepilogo
+delle scadenze, i reparti in sezioni, le righe con l'ingrediente sopra e il prodotto
+sotto, la scadenza scritta relativa, le tre tacche al posto del cursore, «In lista» per
+chi è già nella lista della spesa, la ✕ che passa dall'avviso unico; escono di scena il
+cursore a zone, la lapide e le pastiglie di stato. La scheda «Sistema la spesa» resta in
+cima alla Dispensa come prima; il collegamento della riga porta dove portava prima,
+anche se il nome che si legge è ora l'ingrediente; il + con la barra vuota mette il
+fuoco sul campo.
+
+I conti veri della suite: 613 test in jsdom (48 file), lint, typecheck e build puliti;
+30 e2e verdi su 30 sullo stack pulito `spena-e2e` (erano 29; il nuovo è la prova sul
+riepilogo delle scadenze).
+
+Le scelte prese nel piano che Mattia può voler rivedere:
+- «scadeva ieri» / «oltre la scadenza» al posto di «scaduto», per l'accordo;
+- le voci finite fuori dal riepilogo delle scadenze;
+- le date passate da più di un giorno scritte assolute, perché nessuna soglia di giorni
+  entra nel TypeScript;
+- l'avviso che tiene solo l'**ultima** ✕: toglierne due di fila lascia l'annulla solo
+  della seconda. La lapide ne teneva più d'una; la spec ha scelto l'avviso unico, e la
+  prima voce si rimette con il + (sfusa e senza scadenza).
+
+**Da provare sul telefono**, prima di tutto le tacche col pollice (spec §7, il rischio
+più grosso): si toccano bene, lo scorrimento che parte da lì non cambia niente, e si
+capisce che si toccano. Poi il riepilogo, e il campo data nativo del «+ scadenza».
+
+Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
+chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa contro il
+fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e non un testo). Gli
+altri due — il pulsante primario spento, il velo del ☰ — restano aperti, e non toccano
+la Dispensa.
+
 **Da provare sul telefono:** il tema scuro vero; la barra di stato nei due temi; l'icona
 dell'app reinstallata; Inter senza rete (il service worker ora mette da parte latino e
 latino esteso: aperta l'app una volta, in aereo il testo deve restare Inter); la
@@ -1838,9 +1887,14 @@ rosso (`finished`): due colori per la stessa notizia finché la Consegna 5 non a
 **Tre punti di disegno del tema scuro per la Consegna 1**, dal giro a occhio a 375 px, non
 difetti di contrasto: il pulsante primario spento (`opacity`) diventa un verde torbido
 con la scritta scura, poco leggibile anche se WCAG esenta i controlli spenti; le tre zone
-del cursore della dispensa, fatte con le tinte, restano tenui come in chiaro (le
-sostituisce `StockGauge`, e la domanda passa alle sue tacche spente); il velo del ☰, con
-il pannello che si stacca dalla pagina solo per il fondo `card`.
+del cursore della dispensa, fatte con le tinte, restavano tenui come in chiaro; il velo
+del ☰, con il pannello che si stacca dalla pagina solo per il fondo `card`.
+
+**Il secondo si chiude con la Consegna 1** (2026-09-28): il cursore a zone non c'è più,
+lo sostituiscono le tre tacche di `StockGauge`. L'e2e misura la tacca accesa contro il
+fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e non un testo, non la
+soglia 4,5:1 di un testo). Gli altri due — il pulsante primario spento, il velo del ☰ —
+restano aperti, e non toccano la Dispensa.
 
 Suite alla fine: 606 test in jsdom (50 file), typecheck, lint e build puliti; 29 e2e
 verdi, di cui 9 nuovi in `e2e/style.spec.ts`: fondo della pagina, contrasto di ogni testo
@@ -2023,26 +2077,31 @@ Queste restano per il telefono.
 
 **Dispensa** (oltre a S11, S12, S14, S15)
 - **Le righe sono alte circa 150 px**, e ci stanno 5 righe per schermo. Metà della riga
-  è il vuoto fra il nome e il cursore.
+  è il vuoto fra il nome e il cursore. *(T3 Consegna 1)*
 - **Il cursore non dice come si usa.** Il pallino è grigio e non prende il colore della
   zona, non ci sono etichette sotto la traccia, e niente dice che si tocca e non si
-  trascina (S13).
+  trascina (S13). *(T3 Consegna 1)*
 - **La riga mostra il prodotto e non l'ingrediente**, quindi un aggancio sbagliato come
   il parmigiano sotto «burro» è invisibile proprio qui. È anche la porta naturale di S9.
+  *(T3 Consegna 1)*
 - **Due confezioni dello stesso prodotto non si distinguono**, né in dispensa né nel
   foglio della cottura, dove manca la scadenza.
 - **Un «Finito» ignorato resta fra le altre righe**, e «Lo rimetto in lista?» non torna
-  più.
-- **«Sì» e «No» sono larghi 35 e 43 px** e non sembrano pulsanti.
-- **La lapide dura 6 secondi** e non lo dice.
+  più. *(T3 Consegna 1)*
+- **«Sì» e «No» sono larghi 35 e 43 px** e non sembrano pulsanti. *(T3 Consegna 1)*
+- **La lapide dura 6 secondi** e non lo dice. *(T3 Consegna 1)*
 - **Le scadenze non hanno un riepilogo**: si trovano per caso a metà pagina. Una scheda
-  d'ingresso «2 in scadenza» resterebbe un segnale, come vuole D5.
+  d'ingresso «2 in scadenza» resterebbe un segnale, come vuole D5. *(T3 Consegna 1)*
 - **Le date sono scritte assolute e con l'anno.** Sotto i 7 giorni si leggerebbero
-  meglio relative.
+  meglio relative. *(T3 Consegna 1)*
 - **«Aggiungi in dispensa»** non dice cosa fare se l'ingrediente non c'è (S3).
-- **La domanda del rientro compare anche per ciò che è già in lista.**
-- **Prima della prima riga ci sono due schede.** Si risolve con S11.
-- **Una X rossa per ogni riga** (S1).
+- **La domanda del rientro compare anche per ciò che è già in lista.** *(T3 Consegna 1)*
+- **Prima della prima riga ci sono due schede.** Si risolve con S11. *(T3 Consegna 1)*
+- **Una X rossa per ogni riga** (S1). *(T3 Consegna 1)*
+
+Restano aperte «due confezioni dello stesso prodotto non si distinguono» (la scadenza
+sotto il prodotto aiuta, ma solo se scritta) e «Aggiungi in dispensa non dice cosa fare
+se l'ingrediente non c'è» (S3/R12).
 
 **Ricette**
 - **I filtri occupano tutta la prima schermata**: la prima ricetta è sotto la piega.
@@ -2130,9 +2189,10 @@ passano da `revealAtTop` (`frontend/src/lib/revealAtTop.ts`): `scrollIntoView({b
 sotto l'intestazione fissa lo dice uno `scroll-mt-*` sull'elemento, non un numero in
 JavaScript. I test in jsdom controllano a chi si chiede di venire in vista e dove
 finisce il fuoco; che arrivi davvero sotto l'header si guarda in un browser vero.
-**Restano aperti** «Metti in dispensa», «Aggiungi in dispensa» e «Salva nel
-ricettario», con l'avviso uguale in tutta l'app che li servirebbe: aspettano la spec
-del ridisegno di T3, perché dove sta quell'avviso è una domanda sua.
+**«Aggiungi in dispensa» è fatto** (T3 Consegna 1, 2026-09-28): l'avviso «In
+dispensa: …» compare in un punto fisso, e la riga nuova è portata in vista con
+`revealAtTop`. **Restano aperti** «Metti in dispensa» (Consegna 3) e «Salva nel
+ricettario», con lo stesso avviso che li servirebbe.
 
 ---
 

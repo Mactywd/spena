@@ -88,9 +88,11 @@ def is_cookable(requirements: Iterable[tuple[IngredientRole, Availability]]) -> 
     return within_budget(requirements, 0)
 
 
-# Il secondo pallino del cursore della dispensa: fin qui è «quasi finito», oltre è
-# «disponibile». 30 e non 50: la zona gialla deve dire «comincia a mancare», non
-# «siamo a metà».
+# La soglia di `status_for_fill`: fin qui è «quasi finito», oltre è «disponibile».
+# 30 e non 50: la zona bassa deve dire «comincia a mancare», non «siamo a metà».
+# Dal T3 Consegna 1 (2026-09-28) nessun client scrive più `fill_percent` — le tre
+# tacche della dispensa mandano lo stato direttamente — ma la via `PATCH` che lo
+# accetta (`set_fill`) resta nel backend, e questa soglia resta la sua unica lettura.
 #
 # È una soglia display con una conseguenza che display non è: `low` è l'unico stato
 # che cambia la risposta a «questa ricetta si può cucinare?» (vedi `is_satisfied`),

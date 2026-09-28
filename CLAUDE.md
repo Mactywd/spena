@@ -71,11 +71,14 @@ not pay for them again:
 **1. No quantities, in the pantry.** The pantry does not know amounts or units. An
 ingredient is `available`, `low`, or `finished`. This is deliberate, not an omission:
 it removes unit conversion and the daily upkeep that makes apps like this get
-abandoned. `pantry_items.fill_percent` (0–100, nullable) is not an exception: it is a
-slider *position* — no unit, nothing to convert — read only by `status_for_fill` to
-pick one of the three statuses, which stays the only truth the rest of the app
-reasons on. The reasoning is in the note under D1 of `docs/prossimi-passi.md`; read
-it before citing this column as a precedent.
+abandoned. `pantry_items.fill_percent` (0–100, nullable) is not an exception: it was
+a slider *position* — no unit, nothing to convert — and since T3's first screen
+(2026-09-28) no client writes it any more: the pantry's three notches send `status`
+directly, and `set_status` clears the column. It stays in the schema, nullable, with
+its `PATCH` path (`set_fill`) still accepted by the API and used by nobody. The
+three statuses stay the only truth the rest of the app reasons on. The reasoning is
+in the note under D1 of `docs/prossimi-passi.md`; read it before citing this column
+as a precedent.
 
 The rule narrows to exactly that (decided 2026-09-17, built since): recipes — and
 only recipes — carry structured quantities too. A recipe ingredient has
