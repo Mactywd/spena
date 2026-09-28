@@ -1184,3 +1184,70 @@ test("il pulsante quadrato ha gli angoli dei pulsanti, non il cerchio", async ({
   }, buttonClasses("primary", "square"));
   expect(misura).toEqual({ raggio: "10px", lato: "44px" });
 });
+
+test("la barra della lista resta sotto l'intestazione scorrendo, e la ✕ offre «Annulla»", async ({
+  page,
+}) => {
+  // Dal giro: la barra e l'intestazione erano tutte e due `sticky top-0 z-10`, e
+  // scorrendo la barra copriva l'intestazione. Ora la barra si ferma sotto. Serve una
+  // lista più alta della finestra: otto voci a testo libero, create con l'API e tolte
+  // in fondo, perché la lista è stato condiviso e il database vive quanto lo stack.
+  //
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: senza un'attesa qui,
+  // la prima `page.request` qui sotto può partire prima che il cookie di sessione
+  // sia scritto, e tornare 401 (vedi lo stesso appunto sopra, al riepilogo scadenze).
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 500 });
+  const voci = Array.from({ length: 8 }, (_, i) => `prova scorrimento ${i + 1}`);
+  const create: string[] = [];
+  for (const raw_text of voci) {
+    const risposta = await page.request.post("/api/v1/shopping-list", {
+      data: { raw_text, ingredient_id: null },
+    });
+    expect(risposta.ok()).toBe(true);
+    create.push(((await risposta.json()) as { id: string }).id);
+  }
+
+  await page.goto("/lista");
+  await expect(page.getByRole("checkbox", { name: "prova scorrimento 8" })).toBeVisible();
+  await page.mouse.wheel(0, 1500);
+  // aspetta che lo scorrimento sia arrivato davvero, o le misure qui sotto
+  // guarderebbero la pagina ferma in cima
+  await expect.poll(() => page.evaluate<number>("window.scrollY")).toBeGreaterThan(100);
+
+  const intestazione = await page.getByRole("banner").boundingBox();
+  const campo = page.getByLabel("Aggiungi alla lista");
+  await expect(campo).toBeInViewport();
+  const barra = await campo.boundingBox();
+  expect(
+    barra!.y,
+    "la barra della lista copre l'intestazione"
+  ).toBeGreaterThanOrEqual(intestazione!.y + intestazione!.height);
+  // e l'intestazione è davvero quella che si vede lì sopra, non qualcosa che le
+  // passa sopra: il punto al centro del marchio appartiene all'intestazione
+  const sopra = await page.evaluate<boolean>(
+    `(() => { const h = document.querySelector("header"); const r = h.getBoundingClientRect();
+       const el = document.elementFromPoint(r.left + 40, r.top + r.height / 2);
+       return !!el && h.contains(el); })()`
+  );
+  expect(sopra, "qualcosa copre l'intestazione").toBe(true);
+
+  // la ✕ è un bersaglio da pollice, e togliere offre «Annulla», che rimette la voce
+  const togli = page.getByRole("button", { name: "Togli prova scorrimento 1 dalla lista" });
+  const box = await togli.boundingBox();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  await togli.click();
+  await expect(page.getByText("Tolto dalla lista: prova scorrimento 1")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "prova scorrimento 1" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Annulla" }).click();
+  await expect(page.getByRole("checkbox", { name: "prova scorrimento 1" })).toBeVisible();
+
+  // la pulizia
+  for (const id of create) {
+    const risposta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+      data: { status: "archived" },
+    });
+    expect(risposta.ok()).toBe(true);
+  }
+});

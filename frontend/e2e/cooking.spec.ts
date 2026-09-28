@@ -18,7 +18,7 @@ test("il ciclo si chiude: lista, dispensa, cottura, ritorno in lista", async ({ 
   // rieseguirlo senza ricreare lo stack trova due «pomodoro» e fallisce con un
   // errore di selettore ambiguo che non dice perché. Detto qui, si capisce.
   await expect(
-    page.getByText("Lista vuota. Scrivi cosa ti serve."),
+    page.getByRole("heading", { name: "Lista vuota" }),
     "lo stack e2e non è pulito: ricrealo con `down -v` e riesegui (vedi README)"
   ).toBeVisible();
 
