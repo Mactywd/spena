@@ -1638,6 +1638,7 @@ che mette la riga come quelle dell'AI non agganciate: nota «lo creo io salvando
 scelta del reparto, e l'ingrediente nasce al salvataggio con lo stesso percorso di
 `create_recipe`. Da decidere con T3, perché tocca un componente che il ridisegno
 rifarà.
+*La spec di T3 (2026-09-28) la chiude dentro il `IngredientPicker` unico, §3.5.*
 
 ---
 
@@ -1813,7 +1814,7 @@ davvero.
 
 ↳ H1 ora è sbloccata: da oggi lo storico si può dividere.
 
-## T3. Revisione di UI e UX, a partire da un giro del sito fatto da un sottoagente **[D, chiesto da Mattia il 2026-09-27 — il giro è fatto, la spec no]**
+## T3. Revisione di UI e UX, a partire da un giro del sito fatto da un sottoagente **[D, chiesto da Mattia il 2026-09-27 — giro fatto; spec del 2026-09-28: `docs/superpowers/specs/2026-09-28-ridisegno-design.md`]**
 Oltre alle voci puntuali di S8–S15 serve una revisione dell'interfaccia. L'esempio di
 Mattia: **pulsanti con icone al posto di testo cliccabile**, a cominciare dalla
 scansione del codice a barre. Prima di progettarla, però, serve sapere tutto quel che
