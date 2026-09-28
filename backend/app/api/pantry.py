@@ -103,8 +103,10 @@ async def patch(
                 else await unarchive_item(session, item_id)
             )
         elif payload.fill_percent is not None:
-            # prima dello stato: una richiesta che porta entrambi viene dal cursore,
-            # e lì lo stato è una conseguenza, non una seconda opinione
+            # prima dello stato: in una richiesta che porta entrambi lo stato è una
+            # conseguenza della posizione, non una seconda opinione. Nessun client la
+            # manda più dal 2026-09-28 (T3 Consegna 1: le tacche mandano `status`),
+            # e questa via resta senza chiamanti — vedi D1 in docs/prossimi-passi.md
             item = await set_fill(session, item_id, payload.fill_percent)
         elif payload.status is not None:
             item = await set_status(session, item_id, payload.status)

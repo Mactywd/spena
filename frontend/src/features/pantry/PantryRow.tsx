@@ -141,7 +141,6 @@ export function PantryRow({
           label={`Togli ${label} dalla dispensa`}
           onClick={onRemove}
           disabled={busy}
-          className="text-ink-faint"
         />
       </div>
       {item.status === "finished" && (

@@ -412,6 +412,8 @@ describe("PantryScreen", () => {
     fireEvent.click(within(gauge).getByRole("radio", { name: "Quasi finito" }));
     await waitFor(() => {
       const patch = fetchSpy.mock.calls.find(([, init]) => init?.method === "PATCH");
+      // ITEMS[0] è "p1": la voce toccata, non un'altra con lo stesso ingrediente
+      expect(String(patch?.[0])).toMatch(/\/pantry\/p1$/);
       expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ status: "low" });
     });
   });
@@ -425,10 +427,16 @@ describe("PantryScreen", () => {
     expect(await screen.findByText("Tolto dalla dispensa: Total 0%")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
     await waitFor(() => {
-      const bodies = fetchSpy.mock.calls
-        .filter(([, init]) => init?.method === "PATCH")
-        .map(([, init]) => JSON.parse(String(init?.body)));
-      expect(bodies).toEqual([{ archived: true }, { archived: false }]);
+      const patches = fetchSpy.mock.calls.filter(([, init]) => init?.method === "PATCH");
+      expect(patches.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
+        { archived: true },
+        { archived: false },
+      ]);
+      // tutte e due sulla voce toccata, "p1": l'annulla rimette quella, non un'altra
+      expect(patches.map(([url]) => String(url).match(/\/pantry\/[^/?]+$/)?.[0])).toEqual([
+        "/pantry/p1",
+        "/pantry/p1",
+      ]);
     });
   });
 
@@ -469,6 +477,18 @@ describe("PantryScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
     expect(await screen.findByText("Rimesso in lista: mela")).toBeDefined();
     expect(fetchSpy.mock.calls.some(([url, init]) => String(url).includes("/pantry/p3/restock") && init?.method === "POST")).toBe(true);
+  });
+
+  it("un rientro in lista che fallisce lo dice nella riga, e «In lista» resta per riprovare", async () => {
+    const finished = [{ ...ITEMS[2], status: "finished" }];
+    stubRoutedFetch((path) =>
+      path.includes("/restock") ? [{ detail: "no" }, 500] : path.includes("/shopping-list") ? [[], 200] : [finished, 200]
+    );
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
+    const row = screen.getByRole("link", { name: "mela" }).closest("li")!;
+    expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
+    expect(within(row).getByRole("button", { name: "In lista" })).not.toBeDisabled();
   });
 
   it("se era già in lista, l'avviso lo dice", async () => {

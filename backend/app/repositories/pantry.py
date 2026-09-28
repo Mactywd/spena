@@ -118,9 +118,10 @@ async def set_status(session: AsyncSession, item_id: uuid.UUID, status: PantrySt
     if item is None:
         raise KeyError(item_id)
     item.status = status
-    # la posizione del cursore non sopravvive a uno stato deciso altrove: restare a
-    # 80 mentre lo stato dice «finito» mostrerebbe un barattolo pieno per qualcosa
-    # che non c'è più. Sconosciuta è la verità, e il cursore riparte dalla zona giusta
+    # una posizione (`fill_percent`) non sopravvive a uno stato deciso altrove: restare
+    # a 80 mentre lo stato dice «finito» direbbe un barattolo pieno per qualcosa che
+    # non c'è più. Sconosciuta è la verità. Dal 2026-09-28 (T3 Consegna 1) è questa la
+    # via di ogni tocco sulle tacche: una voce toccata da allora ha la colonna vuota
     item.fill_percent = None
     item.status_changed_at = datetime.now(UTC)
     await session.flush()

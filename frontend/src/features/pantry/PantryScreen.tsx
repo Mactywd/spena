@@ -66,8 +66,8 @@ export function PantryScreen() {
     onError: (_error, { id }) => markFailed(id),
   });
 
-  // la scadenza, sulla falsariga di `change`: stessa forma, stesso terzetto di
-  // handler. `expiresOn` nullo cancella la data — mandarla come `{}` non
+  // la scadenza, sulla falsariga di `status` qui sopra: stessa forma, stesso terzetto
+  // di handler. `expiresOn` nullo cancella la data — mandarla come `{}` non
   // funzionerebbe: il backend rifiuta un corpo vuoto con 400.
   const expiry = useMutation({
     mutationFn: ({ id, expiresOn }: { id: string; expiresOn: string | null }) =>
@@ -161,6 +161,11 @@ export function PantryScreen() {
   // quali voci hanno una richiesta in volo. Un insieme, come prima, e per la
   // stessa ragione: un solo id per tutto lo schermo faceva vincere una
   // mutazione sull'altra.
+  //
+  // Il limite che resta: `variables` tiene solo l'ultima chiamata di ogni mutazione.
+  // Due righe che lanciano la stessa mutazione insieme (due tacche toccate su due
+  // voci prima che la prima risposta torni) lasciano sbloccata la prima: la sua
+  // richiesta è ancora in volo, ma `status.variables.id` dice già la seconda.
   const busyIds = new Set<string>();
   if (status.isPending) busyIds.add(status.variables.id);
   if (archive.isPending) busyIds.add(archive.variables.id);

@@ -47,9 +47,18 @@ describe("PantryRow", () => {
     expect(screen.getByText("sfuso")).toBeDefined();
   });
 
-  it("il nome porta alla scheda del prodotto se c'è, dell'ingrediente se è sfuso", () => {
+  it("il nome porta alla scheda del prodotto se c'è, e ci porta da dispensa", () => {
     renderRow();
-    expect(screen.getByRole("link", { name: "yogurt greco" }).getAttribute("href")).toContain("/anagrafica/prodotto/pr1");
+    expect(screen.getByRole("link", { name: "yogurt greco" }).getAttribute("href")).toBe(
+      "/anagrafica/prodotto/pr1?da=dispensa"
+    );
+  });
+
+  it("il nome di una voce sfusa porta alla scheda dell'ingrediente, e ci porta da dispensa", () => {
+    renderRow({ product_id: null, product_name: null, product_brand: null });
+    expect(screen.getByRole("link", { name: "yogurt greco" }).getAttribute("href")).toBe(
+      "/anagrafica/ingrediente/i1?da=dispensa"
+    );
   });
 
   it("le tacche mandano lo stato toccato, non una percentuale", () => {
@@ -122,8 +131,8 @@ describe("PantryRow", () => {
     scroll.mockRestore();
   });
 
-  // Riportati da PantryScreen.test.tsx (Task 5): comportamenti della riga, non
-  // dello schermo, sulla scadenza.
+  // Comportamenti della riga, non dello schermo, sulla scadenza: `commitExpiry` in
+  // PantryRow.tsx. Quel che la PATCH vera porta al server lo prova PantryScreen.test.tsx.
 
   it("scrivere una data la manda al server, e solo all'uscita dal campo", async () => {
     // Un `input[type="date"]` fa scattare `change` a ogni segmento toccato, non una
@@ -179,7 +188,8 @@ describe("PantryRow", () => {
   });
 
   it("una scrittura della scadenza rifiutata non lascia il campo bloccato: il guasto lo dice l'Alert della riga", async () => {
-    // il rifiuto lo mostra `failed` (governato dallo schermo, vedi Step 1): qui si
+    // il rifiuto lo mostra `failed` (lo decide lo schermo, `markFailed` in
+    // PantryScreen.tsx nell'`onError` della mutazione `expiry`): qui si
     // prova solo che `commitExpiry` non propaga l'errore e chiude comunque il campo,
     // rirenderizzando poi con `failed` a vero come farebbe lo schermo dopo l'`onError`
     const onExpiry = vi.fn().mockRejectedValue(new Error("no"));

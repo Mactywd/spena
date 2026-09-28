@@ -258,7 +258,8 @@ test("il riepilogo delle scadenze conta chi sta per scadere, ed è un bersaglio 
 test("la X di una pastiglia del filtro è un bersaglio da pollice, e la pastiglia si vede", async ({
   page,
 }) => {
-  // Stesso motivo del cursore: una pastiglia troppo piccola o senza fondo la vede
+  // Stesso motivo del test sulle tacche della dispensa, qui sopra: una pastiglia
+  // troppo piccola o senza fondo la vede
   // solo un browser. Questo filtro si usa in piedi in corsia, con il pollice, e
   // togliere un ingrediente è il gesto con cui si esce da un elenco vuoto — se la
   // X si manca, l'unica via d'uscita dal filtro è ricaricare la pagina.
