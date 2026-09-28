@@ -1,3 +1,4 @@
+import { Chip } from "./Chip";
 import { EXPIRY_TONE, formatExpiry } from "../../features/pantry/expiryLabels";
 import type { ExpiryState } from "../../domain/types";
 
@@ -12,9 +13,5 @@ export function ExpiryChip({
   expiry: ExpiryState | null;
 }) {
   const tono = expiry ? EXPIRY_TONE[expiry] : "bg-page text-ink-soft";
-  return (
-    <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${tono}`}>
-      {formatExpiry(expiresOn, expiry)}
-    </span>
-  );
+  return <Chip tone={tono}>{formatExpiry(expiresOn, expiry)}</Chip>;
 }

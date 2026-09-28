@@ -1,3 +1,4 @@
+import { Chip } from "./Chip";
 import { STATUS_LABELS, STATUS_TONE } from "../../features/pantry/statusLabels";
 import type { PantryStatus } from "../../domain/types";
 
@@ -7,11 +8,5 @@ import type { PantryStatus } from "../../domain/types";
 // adesso» e non «questa è la situazione». In dispensa si decide col FillSlider, e
 // questa pastiglia accanto dice soltanto com'è andata.
 export function StatusChip({ status }: { status: PantryStatus }) {
-  return (
-    <span
-      className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_TONE[status].tint}`}
-    >
-      {STATUS_LABELS[status]}
-    </span>
-  );
+  return <Chip tone={STATUS_TONE[status].tint}>{STATUS_LABELS[status]}</Chip>;
 }
