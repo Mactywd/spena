@@ -277,4 +277,72 @@ describe("PantryScreen", () => {
     expect(await screen.findByText("Già in lista")).toBeDefined();
     expect(screen.queryByRole("button", { name: "In lista" })).toBeNull();
   });
+
+  // CLAUDE.md, lezione 1: `PantryRow.test.tsx` prova solo l'argomento passato a un
+  // `onExpiry` finto. Qui si prova la mutazione `expiry` vera di questo schermo: la
+  // PATCH reale, per la voce giusta, col corpo giusto — compresa la cancellazione,
+  // che deve restare `{ expires_on: null }` e mai `{}` (il backend rifiuta un corpo
+  // vuoto con 400).
+  it("scrivere una scadenza manda una PATCH alla voce giusta, col corpo giusto", async () => {
+    const fetchSpy = stubRoutedFetch((path, init) =>
+      init?.method === "PATCH"
+        ? [{ ...ITEMS[0], expires_on: "2026-10-05" }, 200]
+        : path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]
+    );
+    renderScreen();
+
+    const row = (await screen.findByText("Total 0%")).closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: /scadenza/i }));
+    const field = within(row).getByLabelText(/scadenza/i);
+    fireEvent.change(field, { target: { value: "2026-10-05" } });
+    fireEvent.blur(field);
+
+    await waitFor(() => {
+      const patch = fetchSpy.mock.calls.find(([, init]) => init?.method === "PATCH");
+      // ITEMS[0] ha id "p1": senza questa riga nessuna asserzione distinguerebbe
+      // una PATCH mandata per la voce sbagliata
+      expect(String(patch?.[0])).toContain("/pantry/p1");
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ expires_on: "2026-10-05" });
+    });
+  });
+
+  it("svuotare il campo manda null, non un corpo vuoto", async () => {
+    const fetchSpy = stubRoutedFetch((path, init) =>
+      init?.method === "PATCH"
+        ? [{ ...ITEMS[2], expires_on: null, expiry: null }, 200]
+        : path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]
+    );
+    renderScreen();
+
+    const row = (await screen.findByText("mela")).closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: /scadenza/i }));
+    const field = within(row).getByLabelText(/scadenza/i);
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.blur(field);
+
+    await waitFor(() => {
+      const patch = fetchSpy.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(String(patch?.[0])).toContain("/pantry/p3");
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ expires_on: null });
+    });
+  });
+
+  it("una scrittura della scadenza rifiutata lo dice accanto alla voce giusta", async () => {
+    stubRoutedFetch((path, init) =>
+      init?.method === "PATCH"
+        ? [{ detail: "no" }, 500]
+        : path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]
+    );
+    renderScreen();
+
+    const row = (await screen.findByText("Total 0%")).closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: /scadenza/i }));
+    const field = within(row).getByLabelText(/scadenza/i);
+    fireEvent.change(field, { target: { value: "2026-10-05" } });
+    fireEvent.blur(field);
+
+    expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
+    const other = screen.getByText("Pesca").closest("li")!;
+    expect(within(other).queryByRole("alert")).toBeNull();
+  });
 });
