@@ -1,6 +1,8 @@
 # Spena — prossimi passi
 
-Aggiornato il 2026-09-27, cinque volte. La quinta: **S9 è fatta** — l'hamburger apre
+Aggiornato il 2026-09-28: **R10 è fatta** — una ricetta salvata si modifica e si elimina,
+con la lapide; non ancora in produzione. Prima, il 2026-09-27, cinque volte. La quinta:
+**S9 è fatta** — l'hamburger apre
 «Anagrafica» (T1 chiusa) e l'annullamento della coda non chiede più conferma. La
 quarta: **il giro di T3 è fatto** — un
 sottoagente ha girato il sito su una copia dei dati di produzione e ha annotato 99
@@ -1530,20 +1532,51 @@ costo, 0 sparite dalla fonte). La verifica a mano sul telefono — che il grigio
 gradini spenti si veda alla luce del giorno e non si confonda col nero — è dichiarata
 fatta; `e2e/style.spec.ts` misura i due colori, non come li legge un occhio in corsia.
 
-## R10. Una ricetta salvata non si corregge né si cancella **[D — spec scritta il 2026-09-27: `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`]**
-Una ricetta scritta a mano o dalla bozza AI resta per sempre com'è: un refuso nel
+## R10. Una ricetta salvata non si corregge né si cancella **[FATTO 2026-09-28 — spec: `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`, piano: `docs/superpowers/plans/2026-09-28-modifica-ricette.md`; non ancora in produzione]**
+Una ricetta scritta a mano o dalla bozza AI restava per sempre com'era: un refuso nel
 titolo, un ingrediente dimenticato, una ricetta di prova. È lo stesso principio di S9,
-applicato alle ricette. Non esiste una `DELETE`, e la `PATCH /recipes/{id}` cambia solo
+applicato alle ricette. Non c'era una `DELETE`, e la `PATCH /recipes/{id}` cambiava solo
 `cost`.
 
-**Cosa fare.** Serve una decisione prima del codice:
-- una ricetta già cucinata ha `cooking_events` che la nominano;
-- una ricetta importata si rilegge dalla fonte, e una modifica a mano verrebbe
-  sovrascritta.
+**Com'è fatto.** Ogni ricetta si modifica, anche importata, con lo stesso modulo di
+«Scrivi una ricetta» (`RecipeForm`, in `frontend/src/features/recipe-form/`), da
+«Modifica» in fondo al dettaglio, con `PUT /recipes/{id}`. «Elimina» archivia
+(`recipes.archived_at`, migrazione `0012`) e torna al ricettario con la lapide e
+«Annulla» per sei secondi; una ricetta eliminata aperta da un collegamento vecchio dice
+«Questa ricetta è stata eliminata» e offre «Ripristina». Il primo salvataggio di una
+modifica, o l'eliminazione, passa la pagina d'import ad `adopted` nella stessa
+transazione, e non torna indietro: l'annullamento di una decisione la lascia e la conta
+(«1 ricetta tua non è stata toccata»), la materializzazione e la risincronizzazione non
+la vedono, una fusione ne sposta le righe in loco, `reread_costs` la salta. Ogni elenco
+di ricette — ricerca testuale e semantica, sfoglio con i suoi filtri, categorie,
+`reindex` — esclude le eliminate dentro la query che ha il limite. Il modulo chiude anche
+tre note del giro di T3: descrizione e categoria (scelta fra quelle del ricettario), il
+ruolo su ogni riga, la ✕ al posto della spunta.
 
-La proposta: «Modifica» riapre lo stesso modulo di «Scrivi una ricetta», precompilato,
-solo per le ricette scritte qui. «Elimina» archivia, con la lapide, invece di
-cancellare.
+**Le deviazioni dalla spec** sono quattordici, scritte in testa al piano con il loro
+perché. Quelle che si vedono: la categoria si sceglie anche creando, e il backend
+rifiuta con 422 un nome che il ricettario non ha; il dettaglio manda `owned_by_import`,
+perché l'avviso «salvando diventa tua» sia vero solo quando lo è; l'anagrafica continua
+a contare le ricette eliminate, perché una ricetta ripristinata non torni con una riga
+non alimentare, e nel rifiuto le segna «(eliminata)»; la coda conta le pagine prese in
+carico fra quelle «già dentro»; la migrazione è la `0012`, perché la `0011` è di S9
+(`created_ingredient`), su cui l'annullamento legge se l'ingrediente l'aveva creato la
+decisione.
+
+**Resta aperto:**
+- `POST /recipes/{id}/cook` non rifiuta una ricetta eliminata: il dettaglio non offre
+  «Cucina», ma una PWA con la cache vecchia potrebbe ancora mandarla.
+- La scansione iterativa di HNSW (`hnsw.iterative_scan`, che tiene le eliminate fuori
+  senza perdere le vive) si accende solo se l'estensione `vector` è almeno alla 0.8.0.
+  Sul database di sviluppo è alla 0.8.6; in produzione non si è potuto guardare, e un
+  database creato con un'immagine più vecchia resta alla sua versione finché qualcuno non
+  fa `ALTER EXTENSION vector UPDATE`. Oggi non conta — in produzione gli embedding non ci
+  sono — ma va controllato il giorno in cui si accendono.
+- Una ricetta eliminata (archiviata) su una pagina presa in carico continua a contare
+  in «N ricette tue non toccate»: si può ripristinare, e le sue righe tengono davvero
+  l'ingrediente.
+- Il modulo di modifica è stato verificato a mano a 375px sul telefono.
+- La distribuzione, con la migrazione `0012` all'avvio, la decide Mattia.
 
 ## R11. Le decisioni prese a mano nella coda non si annullano dall'app **[FATTO 2026-09-27]**
 In «Ingredienti da abbinare», una decisione dell'AI ha il suo «Annulla» sotto «Deciso
@@ -1957,11 +1990,11 @@ Queste restano per il telefono.
 
 **Scrivi una ricetta**
 - **Il ruolo delle righe proposte dall'AI non si cambia**, mentre quello delle righe a
-  mano sì. Eppure è il ruolo che decide se la ricetta è cucinabile.
+  mano sì. Eppure è il ruolo che decide se la ricetta è cucinabile. *(Fatto con R10.)*
 - **Mancano categoria e descrizione**, quindi una ricetta scritta non esce mai
-  filtrando per categoria.
+  filtrando per categoria. *(Fatto con R10.)*
 - **Le righe a mano si tolgono solo togliendo la spunta**, e il nome è scritto due
-  volte.
+  volte. *(Fatto con R10.)*
 - **La riga non alimentare** ripete il nome ed è scritta nello stile delle righe da
   confermare (Parte X).
 - **«Proponi» e «Salva» sono due pulsanti primari.**
@@ -2197,7 +2230,9 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   con un nome lungo (misurato: 562px con un nome di 60 caratteri). La nota ripete il nome
   in uno `span` `shrink-0` della riga `justify-between` di `AiDraftScreen.tsx`. Lo tiene
   fermo `frontend/e2e/ai-draft.spec.ts`, che lo asserisce com'è oggi; lo rovescia R10
-  (`RecipeForm`) quando sistema la riga: vedi Parte IX, c.
+  (`RecipeForm`) quando sistema la riga: vedi Parte IX, c. *(Fatto con R10: la nota sta
+  su una riga sua e non ripete il nome, e `frontend/e2e/ai-draft.spec.ts` ora asserisce la
+  pagina dentro i 375px e il nome su al più due righe.)*
 - **Un 404 viene ritentato e poi offre «Riprova».** `lib/queryRetry.ts` ritenta ogni
   errore tranne il 401, 404 compreso. Così una ricetta che non c'è più risponde dopo
   qualche secondo con «Non sono riuscito a caricare questa ricetta. Riprova.», e

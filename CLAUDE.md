@@ -127,9 +127,11 @@ stays accurate per brand.
 > `backend/app/domain/rules.py`. They live in the same list and the same pantry,
 > with the same three statuses. **The rule above is untouched**: recipes still
 > point at ingredients only, and it is precisely that rule the funnel in
-> `create_recipe` (`backend/app/repositories/recipes.py`) defends — a recipe
-> cannot name a non-food entry. That funnel is the last line, not the only one:
-> the AI's import decisions and the human review queue refuse a non-food term
+> `write_recipe_ingredients` (`backend/app/repositories/recipes.py`) defends — the
+> single writer of recipe lines, which both `create_recipe` and the recipe edit
+> (R10) go through — a recipe cannot name a non-food entry. That funnel is the
+> last line, not the only one: the AI's import decisions and the human review
+> queue refuse a non-food term
 > before it ever reaches a recipe, and the three ingredient pickers used by the
 > recipe screens ask the registry for `kind=food` only. See
 > `docs/superpowers/specs/2026-09-17-non-alimentari-design.md` for where each of
@@ -207,9 +209,18 @@ production, which is the first defect listed above.
   2026-09-28 carry `NULL` there and never delete either.
   Undo never refuses over recipes already cooked: the ids of their cooking events wait
   in the page's `payload` under `cooking_event_ids`, and `materialize_ready` puts them
-  back on the rebuilt recipe (S9 §5.2). A response
-  that cannot be verified against the real registry is never applied — the term
-  stays in the queue. Specs are
+  back on the rebuilt recipe (S9 §5.2).
+
+  **A recipe the user edits or deletes is theirs** (R10): the first save of an edit, or
+  the deletion, moves its import page to `adopted` in the same transaction, and nothing
+  in the import rebuilds it again — undo counts it and leaves it, `materialize_ready` and
+  a resync never see it, a merge moves its lines in place, `reread_costs` skips it.
+  Deleting archives (`recipes.archived_at`, restored from the tombstone or an old link),
+  and every recipe listing excludes archived recipes inside the query that carries the
+  limit. Spec: `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`.
+
+  A response that cannot be verified against the real registry is never applied — the
+  term stays in the queue. Specs are
   `docs/superpowers/specs/2026-09-12-import-ricette-design.md` and
   `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`; the second
   reverses §8.2 of the first.

@@ -11,15 +11,26 @@ database esattamente per questo (spec madre §6.1), quindi rimettere la pagina a
 qualunque chirurgia su `recipe_ingredients` — e non può sbagliare a metà.
 
 Nelle ricette cancellate ci sono due cose da preservare, e passano entrambe nel
-`payload` prima della cancellazione. Il costo, l'unico campo che l'applicazione lascia
-modificare a mano (R9). E le cotture: `cooking_events.recipe_id` è ON DELETE SET NULL,
-quindi cancellare la ricetta scollegherebbe lo storico per sempre. Fino a S9 questo
-file rifiutava con `CookedRecipesAffected` e chiedeva conferma; ora scrive gli id delle
-cotture alla chiave `cooking_event_ids` (`COOKING_EVENTS_KEY`), e `materialize_ready`
-li rimette sulla ricetta rifatta. Una pagina che resta in coda tiene gli id finché non
-torna ricetta: la cottura è senza ricetta per quel tempo, e la ritrova dopo. Il giorno
-in cui una ricetta importata potrà essere modificata in altro (R10), questo file va
-ripensato.
+`payload` prima della cancellazione. Il costo, l'unico campo che si cambia senza
+prendere in carico la ricetta (R9, R10). E le cotture: `cooking_events.recipe_id` è
+ON DELETE SET NULL, quindi cancellare la ricetta scollegherebbe lo storico per sempre.
+Fino a S9 questo file rifiutava con `CookedRecipesAffected` e chiedeva conferma; ora
+scrive gli id delle cotture alla chiave `cooking_event_ids` (`COOKING_EVENTS_KEY`), e
+`materialize_ready` li rimette sulla ricetta rifatta. Una pagina che resta in coda
+tiene gli id finché non torna ricetta: la cottura è senza ricetta per quel tempo, e la
+ritrova dopo.
+
+Ripensato con R10, quando le ricette importate sono diventate modificabili. Una ricetta
+che l'utente modifica o elimina non è più dell'import: la sua pagina passa ad `adopted`
+nella stessa transazione, e qui si selezionano solo le pagine `imported`. Una pagina
+`adopted` non si cancella e non torna in coda: rifarla dal `payload` cancellerebbe il
+lavoro di chi l'ha corretta, ed è per questo che la presa in carico esiste. Le si conta
+soltanto (`adopted_untouched`), perché la coda dica che l'annullamento non le ha
+toccate; e se l'ingrediente che la decisione aveva creato (`created_ingredient`) resta
+perché una di loro lo usa ancora — `delete_ingredient_if_unused` lo lascia — lo si dice
+(`ingredient_kept_for_adopted`).
+Le loro righe restano sull'ingrediente di prima: spostarle è una modifica della ricetta,
+o una fusione in anagrafica, che le sposta in loco.
 """
 
 import uuid
@@ -44,8 +55,9 @@ class Undone:
     # e la coda lo dice (R10 §4)
     adopted_untouched: int
     # l'ingrediente del termine non è stato cancellato e una di quelle ricette lo usa:
-    # resta per lei. Non dice se la decisione l'aveva creato — nessun fatto scritto lo
-    # distingue (vedi `_decided_action` in api/imports.py)
+    # resta per lei. Vero solo se la decisione aveva creato l'ingrediente
+    # (`created_ingredient`), non è stato cancellato, e una di quelle ricette prese in
+    # carico lo usa ancora.
     ingredient_kept_for_adopted: bool
 
 
@@ -120,9 +132,9 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
         recipe = await session.get(Recipe, page.recipe_id)
         if recipe is not None:
             payload = dict(page.payload)
-            # Il costo si sceglie anche a mano dal dettaglio (R9): è l'unica modifica
-            # che una ricetta importata può ricevere, e rifacendola da `payload` si
-            # perderebbe. Scritto nel `payload`, `materialize_ready` lo rilegge da lì.
+            # Il costo si sceglie anche dal dettaglio (R9), ed è l'unica modifica che non
+            # prende in carico la ricetta (R10): rifacendola da `payload` si perderebbe.
+            # Scritto nel `payload`, `materialize_ready` lo rilegge da lì.
             if recipe.cost != cost_in_scale(payload.get("cost")):
                 payload["cost"] = recipe.cost
             cooked = [
