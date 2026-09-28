@@ -8,7 +8,6 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorState } from "../../components/ui/ErrorState";
 import { Screen } from "../../components/ui/Screen";
 import { Section } from "../../components/ui/Section";
-import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
 import { ActionBar } from "../../components/ui/ActionBar";
 import { IconCalendarEvent, IconPlus, IconSearch, IconX } from "../../components/ui/icons";
 import { useNotice } from "../../components/ui/noticeContext";
@@ -16,6 +15,7 @@ import { PantryRow } from "./PantryRow";
 import { expiryCounts, expirySummary, groupForDisplay, hasExpiry, itemLabel, matchesQuery } from "./pantryView";
 import { addPantryItem, fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
+import { ShoppingEntryCard } from "../shopping-list/ShoppingEntryCard";
 import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
 
 export function PantryScreen() {
@@ -38,7 +38,6 @@ export function PantryScreen() {
     queryKey: ["shopping-list"],
     queryFn: () => fetchShoppingList(),
   });
-  const checkedCount = (shopping ?? []).filter((item) => item.status === "checked").length;
 
   // quali voci hanno rifiutato l'ultima modifica. Un insieme, non un solo id:
   // una PATCH di stato su una voce e un annulla fallito su un'altra sono
@@ -188,20 +187,7 @@ export function PantryScreen() {
   return (
     <Screen title="Dispensa">
       <div className="flex flex-col gap-3">
-        <SectionEntryCard
-          to="/sistema"
-          title="Sistema la spesa"
-          note={
-            isShoppingError || shopping === undefined
-              ? "Metti via quello che hai comprato"
-              : checkedCount === 0
-                ? "Niente di spuntato, per ora"
-                : checkedCount === 1
-                  ? "1 voce spuntata da mettere via"
-                  : `${checkedCount} voci spuntate da mettere via`
-          }
-          pending={checkedCount > 0}
-        />
+        <ShoppingEntryCard items={shopping} failed={isShoppingError} />
 
         <ActionBar
           inputLabel="Cerca o aggiungi in dispensa"
