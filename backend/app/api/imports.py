@@ -288,4 +288,6 @@ async def undo(
         recipes_requeued=undone.recipes_requeued,
         ingredient_deleted=undone.ingredient_deleted,
         remaining_terms=numbers.pending_terms,
+        adopted_untouched=undone.adopted_untouched,
+        ingredient_kept_for_adopted=undone.ingredient_kept_for_adopted,
     )

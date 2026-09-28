@@ -89,7 +89,10 @@ async def counts(session: AsyncSession, source: str) -> ImportCounts:
     return ImportCounts(
         fetched=sum(by_state.values()),
         pending_recipes=by_state.get(ImportState.PENDING, 0),
-        imported=by_state.get(ImportState.IMPORTED, 0),
+        # una pagina presa in carico (R10) è stata importata una volta come le altre: senza,
+        # «M sono già dentro» perderebbe le ricette rese tue e i conti per stato non
+        # tornerebbero a `fetched`
+        imported=by_state.get(ImportState.IMPORTED, 0) + by_state.get(ImportState.ADOPTED, 0),
         skipped=by_state.get(ImportState.SKIPPED, 0),
         pending_terms=waiting,
     )

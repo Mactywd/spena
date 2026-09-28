@@ -92,3 +92,6 @@ class UndoOut(BaseModel):
     recipes_requeued: int
     ingredient_deleted: bool
     remaining_terms: int
+    # R10: le ricette tue che contengono il termine, lasciate come sono
+    adopted_untouched: int = 0
+    ingredient_kept_for_adopted: bool = False

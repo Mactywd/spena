@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.recipe import CookingEvent, Recipe
+from app.db.models.recipe import CookingEvent, Recipe, RecipeIngredient
 from app.db.models.recipe_import import ImportState, ImportTerm, RecipeImport, TermDecision
 from app.domain.rules import cost_in_scale
 from app.repositories.ingredients import delete_ingredient_if_unused, forget_alias
@@ -40,12 +40,19 @@ class Undone:
     recipes_requeued: int
     ingredient_deleted: bool
     alias_forgotten: bool
+    # le ricette prese in carico che contengono il termine: l'annullamento non le tocca,
+    # e la coda lo dice (R10 §4)
+    adopted_untouched: int
+    # l'ingrediente del termine non è stato cancellato e una di quelle ricette lo usa:
+    # resta per lei. Non dice se la decisione l'aveva creato — nessun fatto scritto lo
+    # distingue (vedi `_decided_action` in api/imports.py)
+    ingredient_kept_for_adopted: bool
 
 
-async def _imported_pages_with(
-    session: AsyncSession, term: ImportTerm
+async def _pages_with(
+    session: AsyncSession, term: ImportTerm, state: ImportState
 ) -> list[RecipeImport]:
-    """Le pagine già materializzate che contengono questo termine.
+    """Le pagine in quello stato, con una ricetta, che contengono questo termine.
 
     Contenimento JSONB e non una scansione in Python: le pagine importate crescono con
     il ricettario, e caricarle tutte per leggerne una chiave sarebbe la stessa scelta
@@ -57,11 +64,14 @@ async def _imported_pages_with(
     `recipe_id IS NOT NULL` distingue una pagina da rifare da una la cui ricetta
     l'utente ha cancellato: quella resta `imported`, perché è lo stato e non la
     presenza della chiave a dire «già importata una volta» (modello `RecipeImport`).
+
+    `imported` sono quelle da rifare; `adopted` quelle prese in carico (R10), che non si
+    toccano e si contano soltanto.
     """
     rows = await session.execute(
         select(RecipeImport).where(
             RecipeImport.source == term.source,
-            RecipeImport.state == ImportState.IMPORTED,
+            RecipeImport.state == state,
             RecipeImport.recipe_id.is_not(None),
             RecipeImport.payload["ingredients"].op("@>")(
                 func.jsonb_build_array(func.jsonb_build_object("key", term.term_key))
@@ -100,7 +110,8 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     cucinate si rifanno come le altre, perché le loro cotture aspettano nel `payload`
     (vedi la docstring del modulo).
     """
-    pages = await _imported_pages_with(session, term)
+    pages = await _pages_with(session, term, ImportState.IMPORTED)
+    adopted = await _pages_with(session, term, ImportState.ADOPTED)
 
     # le ricette si rifanno da payload: cancellarle è il modo corretto, non una
     # scorciatoia
@@ -160,9 +171,29 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
             if not ingredient_deleted:
                 await _hand_over_creation(session, ingredient_id)
 
+    # Spec §4: la decisione aveva creato l'ingrediente, l'annullamento non l'ha cancellato,
+    # e lo tiene una ricetta tua. `created_ingredient` è la variabile letta sopra, prima
+    # che il termine si azzerasse; «tua» è una ricetta di una pagina `adopted`, le stesse
+    # che `adopted_untouched` conta (deviazione 5). Una ricetta scritta a mano che lo usa
+    # lo tiene in vita anche lei, ma quello non è R10 e la coda non lo dice.
+    kept_for_adopted = False
+    if created_ingredient is True and ingredient_id is not None and not ingredient_deleted and adopted:
+        kept_for_adopted = (
+            await session.scalar(
+                select(RecipeIngredient.id)
+                .where(
+                    RecipeIngredient.ingredient_id == ingredient_id,
+                    RecipeIngredient.recipe_id.in_([page.recipe_id for page in adopted]),
+                )
+                .limit(1)
+            )
+        ) is not None
+
     await session.flush()
     return Undone(
         recipes_requeued=requeued,
         ingredient_deleted=ingredient_deleted,
         alias_forgotten=alias_forgotten,
+        adopted_untouched=len(adopted),
+        ingredient_kept_for_adopted=kept_for_adopted,
     )

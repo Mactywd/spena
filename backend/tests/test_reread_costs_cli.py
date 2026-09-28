@@ -140,3 +140,23 @@ async def test_due_rifiuti_di_fila_fermano_il_giro_e_il_fatto_resta(db_session):
     assert not d.called
     await db_session.refresh(prima)
     assert prima.cost == 3
+
+
+@respx.mock
+async def test_una_ricetta_presa_in_carico_non_si_rilegge(db_session):
+    """R10: modificata o eliminata a mano, la ricetta è tua, e un costo tolto a mano
+    resta tolto."""
+    recipe = await ricetta(db_session, "Carbonara-mia")
+    riga_import = (await db_session.execute(select(RecipeImport))).scalars().one()
+    riga_import.state = ImportState.ADOPTED
+    await db_session.flush()
+    rotta = respx.get(f"{BASE}/Carbonara-mia.html").mock(
+        return_value=httpx.Response(200, text=pagina("Basso"))
+    )
+    async with build_client() as client:
+        esito = await reread_costs(db_session, client=client, sleep=Pause())
+
+    assert esito.found == 0
+    assert not rotta.called
+    await db_session.refresh(recipe)
+    assert recipe.cost is None

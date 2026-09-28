@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal
 from app.db.models.recipe import Recipe, RecipeSource
-from app.db.models.recipe_import import RecipeImport
+from app.db.models.recipe_import import ImportState, RecipeImport
 from app.services.recipe_import.giallozafferano import (
     DELAY_SECONDS,
     MAX_CONSECUTIVE_FAILURES,
@@ -58,6 +58,14 @@ async def reread_costs(
                 Recipe.cost.is_(None),
                 # le ricette del seme hanno una nota qui, non un indirizzo
                 Recipe.source_ref.like("http%"),
+                # una ricetta presa in carico è tua (R10): un costo tolto a mano resta
+                # tolto, e l'import non riscrive quel che hai toccato
+                ~select(RecipeImport.id)
+                .where(
+                    RecipeImport.recipe_id == Recipe.id,
+                    RecipeImport.state == ImportState.ADOPTED,
+                )
+                .exists(),
             )
             .order_by(Recipe.source_ref)
         )
