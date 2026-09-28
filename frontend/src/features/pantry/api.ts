@@ -21,7 +21,6 @@ export function patchPantryItem(
   body: {
     status?: PantryStatus;
     archived?: boolean;
-    fill_percent?: number;
     /** `null` cancella la data: il backend rifiuta un corpo vuoto con 400, quindi
      * la cancellazione va scritta come `{ expires_on: null }`, mai come `{}`. */
     expires_on?: string | null;

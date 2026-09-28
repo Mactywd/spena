@@ -1,122 +1,65 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { FillSlider } from "./FillSlider";
-import { fillForStatus } from "./fillZones";
-import { EXPIRY_INPUT_MAX } from "./expiryLabels";
 import { Alert } from "../../components/ui/Alert";
-import { ExpiryChip } from "../../components/ui/ExpiryChip";
-import { StatusChip } from "../../components/ui/StatusChip";
+import { Button } from "../../components/ui/Button";
+import { StockGauge } from "../../components/ui/StockGauge";
+import { IconListCheck, IconShoppingCartPlus, IconX } from "../../components/ui/icons";
+import { EXPIRY_INPUT_MAX, expiryText } from "./expiryLabels";
+import { itemLabel } from "./pantryView";
 import { ingredientPath, productPath } from "../registry/origin";
-import type { PantryItem, RestockResult } from "../../domain/types";
-
-/** Il nome con cui l'utente chiama questa voce: la marca se c'è, l'ingrediente
- * altrimenti. Entra anche nel nome accessibile della X, perché «Togli dalla
- * dispensa» ripetuto identico su trenta righe non dice quale riga si sta togliendo. */
-function itemLabel(item: PantryItem): string {
-  return item.product_name ?? item.ingredient_name;
-}
+import { revealAtTop } from "../../lib/revealAtTop";
+import type { PantryItem, PantryStatus } from "../../domain/types";
 
 /** Dove porta il nome: alla scheda del prodotto se la voce ne ha uno, a quella
- * dell'ingrediente se è sfusa (spec S9 §6.5). Nessuna terza schermata: la scheda
- * dell'elemento è la scheda del prodotto, e l'ingrediente sta lì come link. */
+ * dell'ingrediente se è sfusa (spec S9 §6.5). */
 function registryPath(item: PantryItem): string {
   return item.product_id
     ? productPath(item.product_id, "dispensa")
     : ingredientPath(item.ingredient_id, "dispensa");
 }
 
-/** Una riga della dispensa.
- *
- * `removed` è la lapide: la riga resta dov'era, con l'annulla dentro, per i secondi
- * in cui il gesto si può disfare. Sparisce da sé quando lo schermo ricarica. Se
- * `failed` è vero mentre la lapide è a video, è l'annulla stesso che ha fallito:
- * il messaggio compare dentro la lapide (non ha più senso accanto al cursore, che
- * qui non c'è), e la lapide non scade da sola — solo un altro annulla, riuscito
- * stavolta, la può togliere.
- */
+const EXPIRY_TONE_TEXT = {
+  soon: "font-medium text-expiry",
+  expired: "font-semibold text-expiry",
+} as const;
+
+/** Una riga della dispensa (spec T3 §4.1): l'ingrediente, sotto il prodotto e la
+ * scadenza, a destra le tacche e la ✕. Il nome è l'ingrediente e non il prodotto
+ * (dal giro): così un aggancio sbagliato, il parmigiano sotto «burro», si vede proprio
+ * qui, dove si corregge (S9). */
 export function PantryRow({
   item,
   busy,
-  removed,
   failed,
-  onFill,
+  listed,
+  reveal,
+  onStatus,
   onRemove,
-  onUndo,
   onRestock,
   onExpiry,
+  onRevealed,
 }: {
   item: PantryItem;
   busy: boolean;
-  removed: boolean;
   failed: boolean;
-  onFill: (percent: number) => Promise<PantryItem>;
+  listed: boolean;
+  reveal: boolean;
+  onStatus: (status: PantryStatus) => void;
   onRemove: () => void;
-  onUndo: () => void;
-  onRestock: () => Promise<RestockResult>;
-  onExpiry: (expiresOn: string | null) => Promise<PantryItem>;
+  onRestock: () => void;
+  onExpiry: (expiresOn: string | null) => Promise<unknown>;
+  onRevealed: () => void;
 }) {
-  // la domanda vive qui e non nello schermo: riguarda questa riga, e fuori di qui
-  // sarebbe un avviso in cima a una dispensa lunga, cioè fuori schermo
-  const [asking, setAsking] = useState(false);
-  const [restocked, setRestocked] = useState<RestockResult | null>(null);
-  // mai un vicolo cieco: se il rientro in lista fallisce, la domanda torna a
-  // video (non resta chiusa su un errore muto) e «Sì» è di nuovo un modo di riprovare
-  const [restockFailed, setRestockFailed] = useState(false);
-  // se il campo della scadenza è aperto. Stessa ragione di `asking`: riguarda
-  // questa riga sola, e vive qui perché uno stato in cima allo schermo
-  // aprirebbe il campo sbagliato quando due voci condividono l'ingrediente.
+  const label = itemLabel(item);
   const [editingExpiry, setEditingExpiry] = useState(false);
+  const ref = useRef<HTMLLIElement>(null);
 
-  // la riga non si smonta quando diventa una lapide (stessa chiave, stesso
-  // fiber): senza questo, la domanda risposta prima dell'archiviazione resta
-  // accesa in memoria e, al ritorno dall'annulla, si ripresenta da sola senza
-  // nessun gesto nuovo dell'utente. Il difetto è fra due rami della stessa riga,
-  // non fra due righe: si azzera qui, seguendo `removed`, in entrambe le direzioni.
-  // `editingExpiry` segue la stessa regola: un campo aperto non deve riapparire
-  // da sé dopo un annulla. Si azzera durante il disegno, non in un effetto: un
-  // effetto mostrerebbe per un disegno la domanda vecchia, e poi ridisegnerebbe.
-  const [wasRemoved, setWasRemoved] = useState(removed);
-  if (removed !== wasRemoved) {
-    setWasRemoved(removed);
-    setAsking(false);
-    setRestocked(null);
-    setRestockFailed(false);
-    setEditingExpiry(false);
-  }
-
-  async function fill(percent: number) {
-    setRestocked(null);
-    setRestockFailed(false);
-    try {
-      const updated = await onFill(percent);
-      // Quali stati chiedono lo dice il server, non una soglia ricopiata qui.
-      // Chiede anche il giallo, e non solo lo zero: «quasi finito» è il momento in
-      // cui ricomprare è ancora in tempo, mentre allo zero te ne accorgi in cucina.
-      // I due stati sono scritti per esteso invece di «diverso da disponibile»:
-      // se un giorno ne nascesse un quarto, questa riga deve smettere di compilare
-      // e non decidere da sé che anche quello vuole la domanda.
-      setAsking(updated.status === "finished" || updated.status === "low");
-    } catch {
-      // il guasto lo mostra già lo schermo, accanto a questa riga
-      setAsking(false);
+  useEffect(() => {
+    if (reveal && ref.current) {
+      revealAtTop(ref.current);
+      onRevealed();
     }
-  }
-
-  async function askRestock() {
-    // la domanda resta a video finché la richiesta è in volo (non si chiude
-    // subito, di ottimismo): è quello che permette a `busy` di disabilitare
-    // «Sì»/«No» sul serio, allo stesso modo in cui il resto del file disabilita
-    // il proprio controllo durante una mutazione, invece di farlo sparire prima
-    setRestockFailed(false);
-    try {
-      const result = await onRestock();
-      setAsking(false);
-      setRestocked(result);
-    } catch {
-      setRestocked(null);
-      setRestockFailed(true);
-    }
-  }
+  }, [reveal, onRevealed]);
 
   // Si scrive all'uscita dal campo, non a ogni battuta, e non è una preferenza.
   // Un `input[type="date"]` non fa scattare `change` una volta alla fine: lo fa a
@@ -134,209 +77,91 @@ export function PantryRow({
   // l'`Alert` qui sotto — non serve tenere il campo aperto per mostrarlo.
   async function commitExpiry(value: string) {
     setEditingExpiry(false);
-    // uscire senza aver toccato niente non è una scrittura: aprire «+ scadenza» e
-    // ripensarci manderebbe una cancellazione su una voce che data non ne ha
     if (value === (item.expires_on ?? "")) return;
     try {
       await onExpiry(value || null);
     } catch {
-      // niente qui: il guasto lo mostra già l'`Alert` della riga
+      // il guasto lo mostra già l'`Alert` della riga
     }
   }
 
-  if (removed) {
-    return (
-      <li className="flex flex-col gap-2 p-3" role="status">
-        <div className="flex min-h-11 items-center justify-between gap-3">
-          <span className="min-w-0 truncate text-ink-soft">
-            <span className="font-medium text-ink">{itemLabel(item)}</span> Tolta dalla dispensa
-          </span>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onUndo}
-            className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand disabled:opacity-40"
-          >
-            Annulla
-          </button>
-        </div>
-        {failed && <Alert>Non sono riuscito a salvare la modifica. Riprova.</Alert>}
-      </li>
-    );
-  }
+  const expiry = item.expires_on ? expiryText(item.expires_on, item.expiry) : null;
 
   return (
-    <li className="flex flex-col gap-2.5 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          {/* Il nome porta alla scheda: è lì che si corregge una voce registrata male
-              (S9). Il tocco è sul nome e non sulla riga, così il cursore sotto resta un
-              bersaglio solo suo e S13 resta chiusa.
-
-              Il bersaglio è alto 44px: `min-h-11`, cioè 10px di padding per parte
-              attorno a una riga di 24px. Il margine negativo uguale lo ritoglie dal
-              flusso, e la riga resta alta com'era. I 10px che sporgono sotto sono
-              esattamente il `gap-2.5` che separa questa riga dal cursore: il bordo
-              basso del link tocca quello alto del cursore senza coprirlo — la stessa
-              misura del «+ scadenza» qui sotto. `block` e non `flex`: in un flex lo
-              spazio fra nome e marca sparirebbe, e con lui la separazione a video. */}
+    // `scroll-mt-16`: l'intestazione fissa (h-12) più un respiro, come nel dettaglio ricetta
+    <li ref={ref} className="scroll-mt-16">
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">
           <Link
             to={registryPath(item)}
-            className="-my-2.5 block min-h-11 py-2.5 underline decoration-line underline-offset-4"
+            className="flex min-h-11 items-end pb-0.5 font-medium underline decoration-line underline-offset-4"
           >
-            {/* la marca che hai comprato è più utile del nome generico */}
-            <span className="font-medium">{itemLabel(item)}</span>
-            {/* lo spazio è scritto a mano perché `ml-2` è un margine, non del testo:
-                senza, il nome accessibile della riga si legge «Total 0%Fage» */}
-            {item.product_brand && (
-              <>
-                {" "}
-                <span className="text-sm text-ink-faint">{item.product_brand}</span>
-              </>
-            )}
+            {item.ingredient_name}
           </Link>
-        </div>
-        {/* una X, non più un link testuale. Il nome accessibile resta una frase
-            intera e nomina la voce: è anche il nome con cui si comanda a voce
-            questo bersaglio, e «Togli dalla dispensa» su trenta righe è ambiguo */}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onRemove}
-          aria-label={`Togli ${itemLabel(item)} dalla dispensa`}
-          className="-mt-1 -mr-1 flex size-11 shrink-0 items-center justify-center rounded-full text-danger disabled:opacity-40"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            className="size-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
-      </div>
-      <FillSlider
-        value={item.fill_percent ?? fillForStatus(item.status)}
-        label={itemLabel(item)}
-        disabled={busy}
-        onCommit={fill}
-      />
-      <div className="flex flex-wrap items-center gap-2">
-        {/* la verità sullo stato la dice il server, e questa pastiglia è l'unica cosa
-            nella riga a dirla: il cursore, da solo, è un'indicazione a occhio */}
-        <StatusChip status={item.status} />
-        {/* la scadenza accanto allo stato, non al posto suo: due pastiglie dicono
-            due fatti diversi (vedi ExpiryChip). Senza data non c'è vicolo cieco:
-            resta sempre un modo di scriverla, anche per chi l'ha saltata
-            all'ingresso. */}
-        {editingExpiry ? (
-          <div>
-            <label htmlFor={`expiry-${item.id}`} className="sr-only">
-              Scadenza di {itemLabel(item)}
-            </label>
-            <input
-              id={`expiry-${item.id}`}
-              type="date"
-              max={EXPIRY_INPUT_MAX}
-              disabled={busy}
-              // il campo prende fuoco appena compare: è stato chiesto con un tocco,
-              // e così l'uscita — cioè la scrittura — è a un tocco qualsiasi di
-              // distanza, invece di restare aperto e muto per chi non lo tocca più
-              autoFocus
-              defaultValue={item.expires_on ?? ""}
-              onBlur={(event) => void commitExpiry(event.target.value)}
-              // Invio salva senza dover toccare altrove. Passa dal `blur`, non da una
-              // seconda chiamata: la scrittura resta una strada sola.
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
-            />
+          <div className="flex min-h-11 flex-wrap items-start gap-x-1.5 pt-0.5 text-xs text-ink-faint">
+            <span>{item.product_name ?? "sfuso"}</span>
+            <span aria-hidden="true">·</span>
+            {editingExpiry ? (
+              <span>
+                <label htmlFor={`expiry-${item.id}`} className="sr-only">
+                  Scadenza di {label}
+                </label>
+                <input
+                  id={`expiry-${item.id}`}
+                  type="date"
+                  max={EXPIRY_INPUT_MAX}
+                  disabled={busy}
+                  autoFocus
+                  defaultValue={item.expires_on ?? ""}
+                  onBlur={(event) => void commitExpiry(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setEditingExpiry(true)}
+                aria-label={expiry ? `Scadenza di ${label}: ${expiry}` : `+ scadenza per ${label}`}
+                className={`-mt-0.5 min-h-11 pt-0.5 text-left disabled:opacity-40 ${
+                  item.expiry ? EXPIRY_TONE_TEXT[item.expiry] : ""
+                }`}
+              >
+                {expiry ?? "+ scadenza"}
+              </button>
+            )}
           </div>
-        ) : item.expires_on ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setEditingExpiry(true)}
-            // stessa tecnica del «+ scadenza» qui sotto, con la misura di questo
-            // contenuto: la pastiglia è alta 24px (12px di testo più `py-1`), quindi
-            // bastano 10px di padding per parte a portare il riquadro a 44px, e il
-            // margine negativo uguale lo ritoglie dal flusso — la riga resta alta
-            // quanto lo StatusChip che le sta accanto. La sporgenza di 10px è
-            // esattamente il `gap-2.5` che separa questa riga dal cursore: il
-            // bersaglio cresce fin dove c'è vuoto e non si mangia quello del vicino.
-            // Non è un dettaglio di eleganza: è il tocco con cui si corregge una data
-            // sbagliata, cioè l'unica uscita dal vicolo cieco (spec §6).
-            //
-            // `flex` non è decorazione: la pastiglia è un `inline-block`, e in un
-            // pulsante di blocco il suo riquadro di riga si porta dietro lo spazio
-            // del discendente — 26px invece di 24, misurati, cioè un bersaglio da
-            // 46px e la riga più alta di due. Da elemento flex la pastiglia è alta
-            // quanto è, e la riga resta identica al pixel.
-            className="-my-2.5 flex py-2.5"
-          >
-            <ExpiryChip expiresOn={item.expires_on} expiry={item.expiry} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setEditingExpiry(true)}
-            // il disegno resta minuscolo (12px, tinta smorta: su venti righe dev'essere
-            // una colonnina grigia, non una fila di bottoni), il bersaglio no. Il
-            // conto: il testo è alto 16px (`text-xs`), 14px di padding per parte
-            // portano il riquadro a 44px, e il margine negativo uguale lo ritoglie dal
-            // flusso — la riga della pastiglia resta alta quanto lo StatusChip (24px) e
-            // la dispensa non si allunga di un pixel. Il testo sta centrato in quei
-            // 24px, quindi 4 dei 14px di padding cadono dentro la riga e ne escono 10
-            // per parte: esattamente il `gap-2.5` che separa questa riga dal cursore.
-            // Il bersaglio cresce fin dove c'è vuoto e non si mangia quello del
-            // vicino: misurato in Chromium, il bordo alto del pulsante coincide al
-            // pixel con quello basso del cursore. Il conto regge finché lo StatusChip
-            // è alto 24px: una pastiglia più bassa farebbe sporgere questo bersaglio
-            // sul cursore.
-            className="-my-3.5 py-3.5 text-xs font-medium text-ink-faint"
-          >
-            + scadenza
-          </button>
-        )}
+        </div>
+        <StockGauge status={item.status} itemName={label} disabled={busy} onChange={onStatus} />
+        <Button
+          variant="ghost"
+          icon={IconX}
+          label={`Togli ${label} dalla dispensa`}
+          onClick={onRemove}
+          disabled={busy}
+          className="text-ink-faint"
+        />
       </div>
-      {failed && <Alert>Non sono riuscito a salvare la modifica. Riprova.</Alert>}
-
-      {asking && (
-        <div className="flex items-center justify-between gap-2 rounded-card bg-page px-3 py-2">
-          <span className="text-sm text-ink-soft">Lo rimetto in lista?</span>
-          <span className="flex shrink-0 gap-1">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={askRestock}
-              className="min-h-11 rounded-full px-3 text-sm font-medium text-brand disabled:opacity-40"
-            >
-              Sì
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setAsking(false)}
-              className="min-h-11 rounded-full px-3 text-sm font-medium text-ink-soft disabled:opacity-40"
-            >
-              No
-            </button>
-          </span>
+      {item.status === "finished" && (
+        // «Lo rimetto in lista? Sì / No» aveva bersagli da 35px e non tornava più se
+        // ignorato: ora è un pulsante che resta finché serve, e ignorarlo è il «No»
+        <div className="flex items-center justify-between gap-2 pb-2">
+          <span className="text-sm font-medium text-finished">Finito</span>
+          {listed ? (
+            <span className="flex items-center gap-1 text-sm text-ink-soft">
+              <IconListCheck aria-hidden="true" className="size-4" stroke={1.8} />
+              Già in lista
+            </span>
+          ) : (
+            <Button icon={IconShoppingCartPlus} onClick={onRestock} disabled={busy}>
+              In lista
+            </Button>
+          )}
         </div>
       )}
-
-      {restockFailed && <Alert>Non sono riuscito a rimettere la voce in lista. Riprova.</Alert>}
-
-      {restocked && (
-        <p role="status" className="text-sm text-ink-soft">
-          {restocked.added ? "Rimesso in lista." : "Era già in lista."}
-        </p>
-      )}
+      {failed && <Alert className="pb-2">Non sono riuscito a salvare la modifica. Riprova.</Alert>}
     </li>
   );
 }

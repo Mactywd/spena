@@ -53,8 +53,9 @@ export interface PantryItem {
   product_name: string | null;
   product_brand: string | null;
   status: PantryStatus;
-  /** Dove sta il cursore, 0–100. `null` per chi non l'ha mai mosso: è una posizione
-   * a occhio, non una quantità, e non esiste finché nessuno l'ha indicata. */
+  /** La posizione del cursore di prima di T3. Dalla Consegna 1 nessun client la
+   * scrive più — le tacche mandano `status`, e `set_status` la azzera — ma la
+   * colonna resta, annullabile. */
   fill_percent: number | null;
   note: string | null;
   added_at: string;

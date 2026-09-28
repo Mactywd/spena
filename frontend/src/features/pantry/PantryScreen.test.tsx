@@ -3,8 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import { PantryScreen } from "./PantryScreen";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 
 const ITEMS = [
   { id: "p1", ingredient_id: "i1", product_id: "pr1", ingredient_name: "yogurt greco",
@@ -35,53 +35,22 @@ function stubRoutedFetch(route: (path: string, init?: RequestInit) => [unknown, 
   return spy;
 }
 
+// senza `NoticeProvider` l'avviso di conferma (la X, il rientro in lista) non
+// avrebbe dove comparire: `useNotice()` restituirebbe il no-op del contesto vuoto
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <PantryScreen />
-      </MemoryRouter>
-    </QueryClientProvider>
-  );
-}
-
-/** Come `renderScreen`, ma col predicato di retry vero (prima lezione di CLAUDE.md:
- * un client che ritenta all'infinito non è quello che gira in produzione). Solo per i
- * due test del link del nome (Task 21, sotto): il resto di questo file resta com'era,
- * `retry: false`, per non riscrivere prove che non c'entrano con S9. */
-function renderScreenConRetryVero() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <PantryScreen />
+        <NoticeProvider>
+          <PantryScreen />
+        </NoticeProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
 }
 
 describe("PantryScreen", () => {
-  it("mostra marca e nome del prodotto quando li conosce", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(ITEMS), { status: 200 })
-    ));
-    renderScreen();
-    expect(await screen.findByText("Total 0%")).toBeDefined();
-    expect(screen.getByText("Fage")).toBeDefined();
-  });
-
-  it("nome e marca restano due parole anche per chi legge con la voce", async () => {
-    // `ml-2` spaziava solo in orizzontale: il nome accessibile della riga si
-    // leggeva «Total 0%Fage», cioè una parola inventata
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(ITEMS), { status: 200 })
-    ));
-    renderScreen();
-    const row = (await screen.findByText("Total 0%")).closest("li")!;
-    expect(row.textContent).toContain("Total 0% Fage");
-  });
-
   it("per gli sfusi mostra il nome dell'ingrediente", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify(ITEMS), { status: 200 })
@@ -99,42 +68,6 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Pesca")).toBeDefined();
   });
 
-  it("spostare il cursore manda la posizione, non lo stato", async () => {
-    // lo stato lo ricava il backend: mandarlo da qui vorrebbe dire avere due
-    // opinioni su cosa sia «quasi finito»
-    const fetchMock = stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "low", fill_percent: 15 }, 200];
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    // In questo file il cursore si muove dalla tastiera (`change`, poi il tasto
-    // che si alza): è una delle due strade vere per scrivere, e qui conta quello
-    // che succede dopo la scrittura. Il tocco — l'altra strada, e il suo rifiuto
-    // di ogni trascinamento — lo prova FillSlider.test.tsx, che ha la geometria.
-    fireEvent.change(cursore, { target: { value: "15" } });
-    fireEvent.keyUp(cursore);
-
-    await waitFor(() => {
-      const patch = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "PATCH");
-      // ITEMS[2] (mela) ha id "p3": senza questa riga il ramo PATCH dello stub
-      // sarebbe decorativo, perché nessuna asserzione lo distinguerebbe da una
-      // PATCH mandata per la voce sbagliata
-      expect(String(patch![0])).toContain("/pantry/p3");
-      expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ fill_percent: 15 });
-    });
-  });
-
-  it("una voce che non ha mai visto il cursore parte dalla zona del suo stato", async () => {
-    // `fill_percent` resta null: non si inventa una misura per riempire un buco
-    stubRoutedFetch(() => [ITEMS, 200]);
-    renderScreen();
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di Pesca" });
-    // ITEMS[1] è `low`: metà della zona gialla
-    expect((cursore as HTMLInputElement).value).toBe("15");
-  });
-
   it("una modifica rifiutata lo dice, accanto alla voce giusta", async () => {
     const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
       init?.method === "PATCH"
@@ -145,35 +78,16 @@ describe("PantryScreen", () => {
 
     renderScreen();
     const row = (await screen.findByText("Total 0%")).closest("li")!;
-    const cursore = within(row).getByRole("slider");
-    fireEvent.change(cursore, { target: { value: "10" } });
-    fireEvent.keyUp(cursore);
+    fireEvent.click(within(row).getByRole("radio", { name: "Quasi finito" }));
 
     expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     const other = screen.getByText("Pesca").closest("li")!;
     expect(within(other).queryByRole("alert")).toBeNull();
   });
 
-  it("si può togliere una voce dalla dispensa", async () => {
-    const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
-      init?.method === "PATCH"
-        ? Promise.resolve(new Response(JSON.stringify(ITEMS[0]), { status: 200 }))
-        : Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }))
-    );
-    vi.stubGlobal("fetch", spy);
-
-    renderScreen();
-    const row = (await screen.findByText("Total 0%")).closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" }));
-
-    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(patch?.[0]).toContain("/pantry/p1");
-    expect(JSON.parse(patch?.[1].body)).toEqual({ archived: true });
-  });
-
   it("mentre una modifica è in volo i controlli di quella voce sono bloccati", async () => {
-    // due PATCH sulla stessa voce arrivano in ordine ignoto e l'ultima a rispondere
-    // vince: la seconda non deve nemmeno poter partire
+    // due tocchi sulla stessa voce arrivano in ordine ignoto e l'ultimo a rispondere
+    // vince: il secondo non deve nemmeno poter partire
     const spy = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
       init?.method === "PATCH"
         ? new Promise<Response>(() => {})
@@ -183,20 +97,17 @@ describe("PantryScreen", () => {
 
     renderScreen();
     const row = (await screen.findByText("Total 0%")).closest("li")!;
-    const cursore = within(row).getByRole("slider");
-    fireEvent.change(cursore, { target: { value: "10" } });
-    fireEvent.keyUp(cursore);
+    fireEvent.click(within(row).getByRole("radio", { name: "Quasi finito" }));
 
-    await waitFor(() => expect(within(row).getByRole("slider")).toBeDisabled());
+    await waitFor(() => expect(within(row).getByRole("radio", { name: "Disponibile" })).toBeDisabled());
     expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
     const other = screen.getByText("Pesca").closest("li")!;
-    expect(within(other).getByRole("slider")).not.toBeDisabled();
+    expect(within(other).getByRole("radio", { name: "Disponibile" })).not.toBeDisabled();
   });
 
-  // M2, spec §8.3: l'ingresso diretto. Senza, per mettere in dispensa una cosa
-  // comprata e non scritta in lista bisognava inventare una voce di lista,
-  // spuntarla e sistemarla — e lo schermo prometteva «aggiungi qualcosa a mano»
-  // da quando esisteva.
+  // M2, spec §4 e §8.3: l'ingresso diretto. Senza, per mettere in dispensa una cosa
+  // comprata e non scritta in lista bisognava inventare una voce di lista, spuntarla e
+  // sistemarla — e lo schermo prometteva «aggiungi qualcosa a mano» da quando esisteva.
   it("si può aggiungere in dispensa qualcosa che non era in lista", async () => {
     const spy = stubRoutedFetch((path, init) => {
       if (path.includes("/ingredients/search")) return [[MELA], 200];
@@ -278,726 +189,92 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Metti via quello che hai comprato")).toBeDefined();
   });
 
-  it("la X toglie la voce dalla dispensa e lascia un annulla al suo posto", async () => {
-    const fetchMock = stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], id: "p3" }, 200];
-      return [ITEMS, 200];
-    });
+  it("toccare una tacca manda lo stato, non la posizione", async () => {
+    const fetchSpy = stubRoutedFetch((path, init) =>
+      init?.method === "PATCH" ? [{ ...ITEMS[0], status: "low" }, 200] : path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]
+    );
     renderScreen();
-
-    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
-
-    const patch = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "PATCH");
-    expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ archived: true });
-    expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Annulla" })).toBeDefined();
-  });
-
-  it("annullare la rimette in dispensa con una PATCH che disarchivia", async () => {
-    // il difetto che questo test difende: un annulla che si limita a nascondere la
-    // lapide lascerebbe la voce archiviata sul server, e l'utente scoprirebbe di
-    // averla persa solo al ricaricamento
-    const fetchMock = stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [ITEMS[2], 200];
-      return [ITEMS, 200];
+    const gauge = await screen.findByRole("radiogroup", { name: "Quanto resta di Total 0%" });
+    fireEvent.click(within(gauge).getByRole("radio", { name: "Quasi finito" }));
+    await waitFor(() => {
+      const patch = fetchSpy.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ status: "low" });
     });
+  });
+
+  it("la ✕ toglie la voce e l'avviso offre «Annulla», che la disarchivia", async () => {
+    const fetchSpy = stubRoutedFetch((path, init) =>
+      init?.method === "PATCH" ? [ITEMS[0], 200] : path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]
+    );
     renderScreen();
-
-    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
-
-    const corpi = fetchMock.mock.calls
-      .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
-      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
-    expect(corpi).toEqual([{ archived: true }, { archived: false }]);
-    await waitFor(() => expect(screen.queryByText("Tolta dalla dispensa")).toBeNull());
-  });
-
-  it("passati i secondi dell'annulla la riga se ne va", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const utente = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    try {
-      // la prima lettura deve avere la mela (altrimenti non c'è nulla da toccare);
-      // solo dopo la PATCH il server smette di mandarla, come nella riga vera
-      let archived = false;
-      stubRoutedFetch((_path, init) => {
-        if (init?.method === "PATCH") {
-          archived = true;
-          return [ITEMS[2], 200];
-        }
-        // dopo l'archiviazione il server non manda più la mela
-        return [archived ? ITEMS.filter((item) => item.id !== "p3") : ITEMS, 200];
-      });
-      renderScreen();
-      // la prima lettura è quella con la mela: la si aspetta prima di sostituirla
-      await utente.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
-      expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
-
-      await vi.advanceTimersByTimeAsync(6000);
-
-      await waitFor(() => expect(screen.queryByText("Tolta dalla dispensa")).toBeNull());
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("una X che fallisce lo dice accanto alla voce, e la voce resta", async () => {
-    stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ detail: "no" }, 500];
-      return [ITEMS, 200];
+    fireEvent.click(await screen.findByRole("button", { name: "Togli Total 0% dalla dispensa" }));
+    expect(await screen.findByText("Tolto dalla dispensa: Total 0%")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    await waitFor(() => {
+      const bodies = fetchSpy.mock.calls
+        .filter(([, init]) => init?.method === "PATCH")
+        .map(([, init]) => JSON.parse(String(init?.body)));
+      expect(bodies).toEqual([{ archived: true }, { archived: false }]);
     });
-    renderScreen();
-
-    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
-
-    expect(await screen.findByText("Non sono riuscito a salvare la modifica. Riprova.")).toBeDefined();
-    expect(screen.getByText("mela")).toBeDefined();
   });
 
-  // Rilievo di revisione (a) sul Task 5: un annulla che fallisce archiviava
-  // comunque la voce sul server. Invalidare a quel punto la faceva sparire dalla
-  // lista senza lasciare né un messaggio né un modo di riprovare — un vicolo
-  // cieco. La lapide deve restare, con l'errore dentro, e «Annulla» ripremibile.
-  it("l'annulla che fallisce lascia una lapide con l'errore, e si può riprovare", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const utente = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    try {
-      const fetchMock = stubRoutedFetch((_path, init) => {
-        if (init?.method === "PATCH") {
-          const body = JSON.parse(String(init!.body));
-          if (body.archived === false) return [{ detail: "no" }, 500];
-          return [{ ...ITEMS[2] }, 200];
-        }
-        return [ITEMS, 200];
-      });
-      renderScreen();
-
-      await utente.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
-      expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
-
-      await utente.click(screen.getByRole("button", { name: "Annulla" }));
-
-      expect(await screen.findByText("Non sono riuscito a salvare la modifica. Riprova.")).toBeDefined();
-      // la lapide non è sparita: senza di lei l'annulla non avrebbe più un bersaglio
-      expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
-      expect(screen.getByRole("button", { name: "Annulla" })).toBeDefined();
-
-      // il timer si è spento con l'errore: farlo scorrere non deve far sparire la
-      // lapide mentre mostra l'errore, altrimenti sarebbe di nuovo un vicolo cieco
-      await vi.advanceTimersByTimeAsync(6000);
-      expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
-
-      const corpi = fetchMock.mock.calls
-        .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
-        .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
-      expect(corpi).toEqual([{ archived: true }, { archived: false }]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  // Rilievo di revisione (b) sul Task 5: `removedId` era un solo id. Togliere una
-  // seconda voce prima che scadesse la lapide della prima spegneva il timer della
-  // prima (cleanup dello useEffect sulla dipendenza) e la faceva tornare viva
-  // nell'interfaccia pur essendo già archiviata sul server — una riga fantasma.
-  it("un ricaricamento fallito non si porta via la lapide, e l'annulla resta", async () => {
-    // il ramo lasciato aperto dalla correzione della lapide: l'elenco tornava dal
-    // server, quindi l'errore del server nascondeva l'elenco e con lui l'unico
-    // annulla che esista. La voce è già archiviata davvero: senza quel tasto non
-    // c'è nessun percorso nell'interfaccia per riportarla indietro.
-    const archived = new Set<string>();
-    let getFallisce = false;
+  it("un annulla che fallisce lo dice nell'avviso e offre di riprovare", async () => {
+    let patches = 0;
     stubRoutedFetch((path, init) => {
       if (init?.method === "PATCH") {
-        const id = path.split("/").pop()!;
-        const corpo = JSON.parse(String(init.body));
-        if (corpo.archived === true) archived.add(id);
-        else if (corpo.archived === false) archived.delete(id);
-        // muovere il cursore invalida l'elenco: è la mutazione altrui che porta
-        // lo schermo al ramo dell'errore mentre la lapide è a video
-        else getFallisce = true;
-        return [ITEMS.find((item) => item.id === id)!, 200];
+        patches += 1;
+        return patches === 2 ? [{ detail: "no" }, 500] : [ITEMS[0], 200];
       }
-      if (getFallisce) return [{ detail: "boom" }, 500];
-      return [ITEMS.filter((item) => !archived.has(item.id)), 200];
+      return path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200];
     });
     renderScreen();
-
-    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
-    expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
-
-    const cursore = screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" });
-    fireEvent.change(cursore, { target: { value: "15" } });
-    fireEvent.keyUp(cursore);
-
-    expect(await screen.findByText(/Non sono riuscito a caricare la dispensa/)).toBeDefined();
-    expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Annulla" })).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli Total 0% dalla dispensa" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+    expect(await screen.findByText("Non sono riuscito a rimettere Total 0% in dispensa.")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
+    await waitFor(() => expect(patches).toBe(3));
   });
 
-  it("due rimozioni vicine non si calpestano: ognuna ha la sua lapide", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const utente = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    try {
-      // il server vero non manda le voci archiviate (`list_pantry` filtra
-      // `archived_at IS NULL`). Uno stub che le manda comunque finge che
-      // archiviare non tolga la riga dalla GET, e nasconde il difetto: la lapide
-      // viveva solo finché il server rimandava la sua riga, quindi la prima
-      // invalidazione altrui la faceva svanire senza dire niente.
-      const archived = new Set<string>();
-      const fetchMock = stubRoutedFetch((path, init) => {
-        if (init?.method === "PATCH") {
-          const id = path.split("/").pop()!;
-          // solo `archived` decide: il server vero non disarchivia per una PATCH
-          // che parla d'altro (il cursore), e uno stub che lo facesse mentirebbe
-          // al primo test che qui muovesse un cursore
-          const corpo = JSON.parse(String(init.body));
-          if (corpo.archived === true) archived.add(id);
-          else if (corpo.archived === false) archived.delete(id);
-          return [ITEMS.find((item) => item.id === id)!, 200];
-        }
-        return [ITEMS.filter((item) => !archived.has(item.id)), 200];
-      });
-      renderScreen();
-
-      // A: la mela
-      await utente.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
-      expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
-
-      // B, prima che scadano i sei secondi della mela
-      await utente.click(await screen.findByRole("button", { name: "Togli Total 0% dalla dispensa" }));
-
-      // le due lapidi convivono, ognuna con il suo annulla
-      expect(screen.getAllByText("Tolta dalla dispensa")).toHaveLength(2);
-      expect(screen.getAllByRole("button", { name: "Annulla" })).toHaveLength(2);
-
-      // annullare la mela la riporta, senza toccare Total 0%
-      const melaTomba = screen.getByText("mela").closest("li")!;
-      await utente.click(within(melaTomba).getByRole("button", { name: "Annulla" }));
-
-      await waitFor(() => expect(screen.getAllByText("Tolta dalla dispensa")).toHaveLength(1));
-      const rimasta = screen.getByText("Tolta dalla dispensa").closest("li")!;
-      expect(within(rimasta).getByText("Total 0%")).toBeDefined();
-
-      const corpi = fetchMock.mock.calls
-        .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
-        .map(([url, init]) => ({
-          url: String(url),
-          body: JSON.parse(String((init as RequestInit).body)),
-        }));
-      expect(corpi).toEqual([
-        { url: expect.stringContaining("/p3"), body: { archived: true } },
-        { url: expect.stringContaining("/p1"), body: { archived: true } },
-        { url: expect.stringContaining("/p3"), body: { archived: false } },
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  // Rilievo della revisione finale: la lapide era resa dalla riga che arrivava dal
-  // server, e il server non manda le voci archiviate. L'archiviazione non invalida
-  // apposta, ma ogni ALTRA mutazione dello schermo sì: bastava muovere il cursore
-  // di un'altra riga e la lapide svaniva muta a metà dei sei secondi, portandosi
-  // via l'unico modo che l'interfaccia ha di disarchiviare.
-  it("la lapide sopravvive a una mutazione su un'altra riga, e l'annulla funziona ancora", async () => {
-    const archived = new Set<string>();
-    const fetchMock = stubRoutedFetch((path, init) => {
-      if (init?.method === "PATCH") {
-        const id = path.split("/").pop()!;
-        const body = JSON.parse(String(init.body));
-        if (body.archived !== undefined) {
-          if (body.archived) archived.add(id);
-          else archived.delete(id);
-        }
-        return [ITEMS.find((item) => item.id === id)!, 200];
-      }
-      return [ITEMS.filter((item) => !archived.has(item.id)), 200];
-    });
-    renderScreen();
-
-    await userEvent.click(await screen.findByRole("button", { name: "Togli mela dalla dispensa" }));
-    expect(await screen.findByText("Tolta dalla dispensa")).toBeDefined();
-
-    // il cursore di un'altra riga: la sua PATCH invalida l'elenco, e la risposta
-    // nuova non contiene più la mela
-    const altra = screen.getByText("Total 0%").closest("li")!;
-    const cursore = within(altra).getByRole("slider");
-    fireEvent.change(cursore, { target: { value: "50" } });
-    fireEvent.keyUp(cursore);
-
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.filter(
-          ([, init]) => (init as RequestInit)?.method === undefined
-        ).length
-      ).toBeGreaterThan(2)
+  it("una ✕ che fallisce lo dice accanto alla voce, e la voce resta", async () => {
+    stubRoutedFetch((path, init) =>
+      init?.method === "PATCH" ? [{ detail: "no" }, 500] : path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]
     );
-
-    // la lapide è ancora lì, con il suo annulla
-    expect(screen.getByText("Tolta dalla dispensa")).toBeDefined();
-    const tomba = screen.getByText("mela").closest("li")!;
-    await userEvent.click(within(tomba).getByRole("button", { name: "Annulla" }));
-
-    await waitFor(() => expect(screen.queryByText("Tolta dalla dispensa")).toBeNull());
-    const corpi = fetchMock.mock.calls
-      .filter(([, init]) => (init as RequestInit)?.method === "PATCH")
-      .map(([url, init]) => ({ url: String(url), body: JSON.parse(String((init as RequestInit).body)) }));
-    expect(corpi).toContainEqual({
-      url: expect.stringContaining("/p3"),
-      body: { archived: false },
-    });
-    // e la mela è tornata viva nell'elenco
-    expect(await screen.findByText("mela")).toBeDefined();
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli Total 0% dalla dispensa" }));
+    expect(await screen.findByRole("alert")).toBeDefined();
+    // i due barattoli di yogurt greco sono ancora lì tutti e due
+    expect(screen.getAllByRole("link", { name: "yogurt greco" })).toHaveLength(2);
   });
 
-  it("portato a zero il cursore chiede se rimettere la voce in lista", async () => {
-    stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
-      return [ITEMS, 200];
-    });
+  it("«In lista» su una voce finita la rimette in lista e lo dice", async () => {
+    const finished = [{ ...ITEMS[2], status: "finished" }];
+    const fetchSpy = stubRoutedFetch((path) =>
+      path.includes("/restock") ? [{ added: true }, 200] : path.includes("/shopping-list") ? [[], 200] : [finished, 200]
+    );
     renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.keyUp(cursore);
-
-    expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Sì" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "No" })).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
+    expect(await screen.findByText("Rimesso in lista: mela")).toBeDefined();
+    expect(fetchSpy.mock.calls.some(([url, init]) => String(url).includes("/pantry/p3/restock") && init?.method === "POST")).toBe(true);
   });
 
-  it("anche il giallo chiede se rimettere la voce in lista, non solo lo zero", async () => {
-    // «quasi finito» è il momento buono per ricomprare: aspettare lo zero vuol dire
-    // accorgersene in cucina invece che in corsia. Lo stato lo dice il server, come
-    // per «finito» — la soglia delle tre zone non si ricopia qui.
-    stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "low", fill_percent: 20 }, 200];
-      return [ITEMS, 200];
-    });
+  it("se era già in lista, l'avviso lo dice", async () => {
+    const finished = [{ ...ITEMS[2], status: "finished" }];
+    stubRoutedFetch((path) =>
+      path.includes("/restock") ? [{ added: false }, 200] : path.includes("/shopping-list") ? [[], 200] : [finished, 200]
+    );
     renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursore, { target: { value: "20" } });
-    fireEvent.keyUp(cursore);
-
-    expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Sì" })).toBeDefined();
-  });
-
-  it("finire una voce non scrive in lista da sé: solo il sì lo fa", async () => {
-    // è il punto della decisione: nessuna sezione ne modifica un'altra in silenzio
-    const fetchMock = stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
-      if (init?.method === "POST") return [{ added: true }, 200];
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.keyUp(cursore);
-    await screen.findByText("Lo rimetto in lista?");
-    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit)?.method === "POST")).toBe(false);
-
-    await userEvent.click(screen.getByRole("button", { name: "Sì" }));
-
-    const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
-    expect(String(post![0])).toContain("/pantry/p3/restock");
-    expect(await screen.findByText("Rimesso in lista.")).toBeDefined();
-  });
-
-  it("se era già in lista lo dice, invece di far credere di aver aggiunto qualcosa", async () => {
-    stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
-      if (init?.method === "POST") return [{ added: false }, 200];
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.keyUp(cursore);
-    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
-
+    fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
     expect(await screen.findByText("Era già in lista.")).toBeDefined();
   });
 
-  it("il no chiude la domanda e non scrive niente", async () => {
-    const fetchMock = stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
-      return [ITEMS, 200];
-    });
+  it("una voce finita che ha già una voce aperta in lista non offre «In lista»", async () => {
+    const finished = [{ ...ITEMS[2], status: "finished" }];
+    const list = [{ id: "s1", raw_text: "mela", ingredient_id: "i2", ingredient_name: "mela",
+      ingredient_category: "frutta", ingredient_kind: "food", status: "pending", reason: "manual",
+      created_at: "2026-09-11T10:00:00Z" }];
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [list, 200] : [finished, 200]));
     renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.keyUp(cursore);
-    await userEvent.click(await screen.findByRole("button", { name: "No" }));
-
-    await waitFor(() => expect(screen.queryByText("Lo rimetto in lista?")).toBeNull());
-    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit)?.method === "POST")).toBe(false);
-  });
-
-  // «Mai un vicolo cieco»: un rientro in lista che fallisce deve dirlo accanto
-  // alla voce e lasciare una strada per riprovare, non sparire in silenzio.
-  it("un rientro in lista che fallisce lo dice accanto alla voce, e si può riprovare", async () => {
-    let tentativi = 0;
-    stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
-      if (init?.method === "POST") {
-        tentativi += 1;
-        return tentativi === 1 ? [{ detail: "no" }, 500] : [{ added: true }, 200];
-      }
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.keyUp(cursore);
-    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito a rimettere/i);
-    // la domanda torna, e il secondo tentativo va a buon fine
-    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
-    expect(await screen.findByText("Rimesso in lista.")).toBeDefined();
-  });
-
-  // due voci portate a zero in sequenza: la domanda è uno stato per riga, e non
-  // deve calpestarsi come faceva `removedId` (un solo id) prima della revisione
-  // del Task 5. Qui le voci sono due ingredienti diversi (mela e Total 0%): ogni
-  // riga tiene la sua domanda, e rispondere sull'una non deve toccare l'altra.
-  it("due voci portate a zero in sequenza non si calpestano: ognuna ha la sua domanda", async () => {
-    const fetchMock = stubRoutedFetch((path, init) => {
-      if (init?.method === "PATCH") {
-        if (path.includes("/p3")) return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
-        if (path.includes("/p1")) return [{ ...ITEMS[0], status: "finished", fill_percent: 0 }, 200];
-      }
-      if (init?.method === "POST") return [{ added: true }, 200];
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    // A: la mela a zero
-    const cursoreMela = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursoreMela, { target: { value: "0" } });
-    fireEvent.keyUp(cursoreMela);
-    await screen.findByText("Lo rimetto in lista?");
-
-    // B: Total 0% a zero, prima di aver risposto per la mela
-    const cursoreTotal = await screen.findByRole("slider", { name: "Quanto ne resta di Total 0%" });
-    fireEvent.change(cursoreTotal, { target: { value: "0" } });
-    fireEvent.keyUp(cursoreTotal);
-
-    // le due domande convivono
-    await waitFor(() => expect(screen.getAllByText("Lo rimetto in lista?")).toHaveLength(2));
-
-    // rispondere no per la mela non tocca la domanda di Total 0%
-    const melaRow = screen.getByText("mela").closest("li")!;
-    await userEvent.click(within(melaRow).getByRole("button", { name: "No" }));
-
-    await waitFor(() => expect(screen.getAllByText("Lo rimetto in lista?")).toHaveLength(1));
-    const totalRow = screen.getByText("Total 0%").closest("li")!;
-    expect(within(totalRow).getByText("Lo rimetto in lista?")).toBeDefined();
-
-    // e rispondere sì per Total 0% scrive solo per quella voce
-    await userEvent.click(within(totalRow).getByRole("button", { name: "Sì" }));
-    const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
-    expect(String(post![0])).toContain("/pantry/p1/restock");
-  });
-
-  // Rilievo 1 di revisione sul Task 11: `PantryRow` non si smonta quando `removed`
-  // diventa vero (stessa chiave, stesso fiber), quindi lo stato locale `asking`
-  // sopravvive sotto la lapide. Il difetto non è fra due righe diverse — è fra due
-  // rami della stessa riga: archiviare mentre la domanda è a video, e poi annullare,
-  // deve non far ricomparire la domanda da sola.
-  it("annullare un'archiviazione non fa ricomparire da sola la domanda del rientro in lista", async () => {
-    let finished = false;
-    let archived = false;
-    stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") {
-        const body = JSON.parse(String(init!.body));
-        if ("fill_percent" in body) {
-          finished = true;
-          return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
-        }
-        archived = body.archived;
-        return [{ ...ITEMS[2], status: "finished", fill_percent: 0 }, 200];
-      }
-      const list = ITEMS.map((item) =>
-        item.id === "p3" && finished ? { ...item, status: "finished", fill_percent: 0 } : item
-      );
-      return [archived ? list.filter((item) => item.id !== "p3") : list, 200];
-    });
-    renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.keyUp(cursore);
-    await screen.findByText("Lo rimetto in lista?");
-
-    // la domanda resta a video, ma «Togli dalla dispensa» resta cliccabile: non è
-    // disabilitato dalla domanda, ed è proprio questo il percorso del rilievo
-    await userEvent.click(screen.getByRole("button", { name: "Togli mela dalla dispensa" }));
-    await screen.findByText("Tolta dalla dispensa");
-
-    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
-
-    await waitFor(() => expect(screen.queryByText("Tolta dalla dispensa")).toBeNull());
-    // la riga è tornata normale: la domanda non deve essere tornata da sola
-    expect(screen.queryByText("Lo rimetto in lista?")).toBeNull();
-  });
-
-  // Rilievo 2 di revisione sul Task 11: `change`, `archive` e `undo` passano
-  // tutte da `busyId` e disabilitano il loro controllo mentre sono in volo; il
-  // restock no, e la domanda si chiudeva da sé appena cliccato «Sì», prima
-  // ancora che la richiesta partisse davvero — cioè non c'era mai un istante in
-  // cui un secondo clic potesse trovare un bottone disabilitato. Ora la domanda
-  // resta a video mentre `restock` è in volo, e «Sì»/«No» sono `disabled`
-  // esattamente come lo sono il cursore e la X per le altre mutazioni della riga.
-  it("mentre il rientro in lista è in volo la domanda resta a video con «Sì» e «No» disabilitati", async () => {
-    const spy = vi.fn((_url: unknown, init?: RequestInit) => {
-      if (init?.method === "PATCH") {
-        return Promise.resolve(
-          new Response(JSON.stringify({ ...ITEMS[2], status: "finished", fill_percent: 0 }), { status: 200 })
-        );
-      }
-      if (init?.method === "POST") return new Promise<Response>(() => {}); // mai risolta: si resta "in volo"
-      return Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }));
-    });
-    vi.stubGlobal("fetch", spy);
-    renderScreen();
-
-    const cursore = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(cursore, { target: { value: "0" } });
-    fireEvent.keyUp(cursore);
-    await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
-
-    // la richiesta non risponde mai: la domanda deve restare a video (non sparire
-    // in anticipo sull'esito) e i suoi bottoni devono restare bloccati per tutto
-    // il tempo in cui quel tentativo è ancora in volo
-    expect(await screen.findByText("Lo rimetto in lista?")).toBeDefined();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Sì" })).toBeDisabled());
-    expect(screen.getByRole("button", { name: "No" })).toBeDisabled();
-  });
-
-  // Rilievo della revisione finale: `busyId` era un valore solo per tutto lo
-  // schermo, scelto per priorità fra le mutazioni. Con la PATCH del cursore
-  // della riga A in volo vinceva sempre A, e il «Sì» della riga B restava
-  // premibile anche mentre il suo POST di restock era in corso — POST che non è
-  // idempotente e che `shopping_list_items`, senza vincolo unico, non rimedia.
-  it("una mutazione su un'altra riga non sblocca il «Sì» di questa", async () => {
-    const spy = vi.fn((url: unknown, init?: RequestInit) => {
-      const path = String(url);
-      // il cursore della mela risponde: serve solo a far comparire la domanda
-      if (init?.method === "PATCH" && path.includes("/p3")) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ ...ITEMS[2], status: "finished", fill_percent: 0 }), { status: 200 })
-        );
-      }
-      // il cursore di Total 0% resta in volo per sempre: è l'altra riga occupata
-      if (init?.method === "PATCH") return new Promise<Response>(() => {});
-      if (init?.method === "POST") return new Promise<Response>(() => {});
-      return Promise.resolve(new Response(JSON.stringify(ITEMS), { status: 200 }));
-    });
-    vi.stubGlobal("fetch", spy);
-    renderScreen();
-
-    const mela = await screen.findByRole("slider", { name: "Quanto ne resta di mela" });
-    fireEvent.change(mela, { target: { value: "0" } });
-    fireEvent.keyUp(mela);
-    await screen.findByText("Lo rimetto in lista?");
-
-    // riga A: una PATCH che non risponde mai
-    const altra = screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" });
-    fireEvent.change(altra, { target: { value: "50" } });
-    fireEvent.keyUp(altra);
-    await waitFor(() =>
-      expect(screen.getByRole("slider", { name: "Quanto ne resta di Total 0%" })).toBeDisabled()
-    );
-
-    // riga B: il «Sì» parte, e da quel momento non deve più essere premibile
-    const si = screen.getByRole("button", { name: "Sì" });
-    await userEvent.click(si);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Sì" })).toBeDisabled());
-    await userEvent.click(screen.getByRole("button", { name: "Sì" }));
-
-    const posts = spy.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "POST");
-    expect(posts).toHaveLength(1);
-  });
-
-  it("una voce con la scadenza la mostra sulla riga", async () => {
-    stubRoutedFetch(() => [ITEMS, 200]);
-    renderScreen();
-
-    const riga = (await screen.findByText("mela")).closest("li")!;
-    expect(within(riga).getByText("Scade il 28/09/2026")).toBeDefined();
-  });
-
-  it("una voce senza scadenza offre di scriverla", async () => {
-    // il vuoto non deve costare niente, ma da qualche parte la strada deve esserci:
-    // senza questo, chi ha saltato il momento dell'ingresso non può più scriverla —
-    // ed è il vicolo cieco che la scelta del campo facoltativo voleva evitare
-    stubRoutedFetch(() => [ITEMS, 200]);
-    renderScreen();
-
-    const riga = (await screen.findByText("Total 0%")).closest("li")!;
-    expect(within(riga).getByRole("button", { name: /scadenza/i })).toBeDefined();
-  });
-
-  it("scrivere una data la manda al server, per la voce giusta, e solo all'uscita dal campo", async () => {
-    // Un `input[type="date"]` fa scattare `change` a ogni segmento toccato, non una
-    // volta alla fine: battendo «2026» sull'anno il campo passa per 0002, 0020, 0202.
-    // Legata al `change`, la scrittura partiva sul primo di quei valori e chiudeva il
-    // campo sotto le dita — una data dell'anno 2 salvata e la correzione impossibile
-    // da portare a termine con la tastiera. Le battute qui sotto sono quella sequenza:
-    // nessuna di loro deve scrivere niente.
-    const fetchMock = stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[0], expires_on: "2026-10-05" }, 200];
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    const riga = (await screen.findByText("Total 0%")).closest("li")!;
-    fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
-    const campo = within(riga).getByLabelText(/scadenza/i);
-    for (const battuta of ["0002-10-05", "0020-10-05", "0202-10-05", "2026-10-05"]) {
-      fireEvent.change(campo, { target: { value: battuta } });
-    }
-
-    // il campo è ancora lì, e non è partito niente: si può continuare a correggere
-    expect(within(riga).getByLabelText(/scadenza/i)).toBeDefined();
-    expect(
-      fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "PATCH")
-    ).toHaveLength(0);
-
-    fireEvent.blur(campo);
-
-    await waitFor(() => {
-      const patch = fetchMock.mock.calls.filter(
-        ([, init]) => (init as RequestInit)?.method === "PATCH"
-      );
-      // una sola scrittura, e del valore finito: non quattro, non dell'anno 2
-      expect(patch).toHaveLength(1);
-      // ITEMS[0] ha id "p1": senza questa riga nessuna asserzione distinguerebbe
-      // una PATCH mandata per la voce sbagliata
-      expect(String(patch[0][0])).toContain("/pantry/p1");
-      expect(JSON.parse(String((patch[0][1] as RequestInit).body))).toEqual({
-        expires_on: "2026-10-05",
-      });
-    });
-  });
-
-  it("l'Invio salva senza dover toccare altrove", async () => {
-    // mai un vicolo cieco: chi scrive la data con la tastiera deve avere un modo di
-    // dire «ho finito» che non sia indovinare dove toccare per uscire dal campo
-    const fetchMock = stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[0], expires_on: "2026-10-05" }, 200];
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    const riga = (await screen.findByText("Total 0%")).closest("li")!;
-    fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
-    const campo = within(riga).getByLabelText(/scadenza/i);
-    fireEvent.change(campo, { target: { value: "2026-10-05" } });
-    fireEvent.keyDown(campo, { key: "Enter" });
-
-    await waitFor(() => {
-      const patch = fetchMock.mock.calls.find(
-        ([, init]) => (init as RequestInit)?.method === "PATCH"
-      );
-      expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({
-        expires_on: "2026-10-05",
-      });
-    });
-  });
-
-  it("uscire dal campo senza aver cambiato niente non scrive", async () => {
-    // toccare «+ scadenza» e ripensarci manderebbe una cancellazione su una voce che
-    // data non ne ha: una richiesta che non chiede niente, e un guasto suo da mostrare
-    const fetchMock = stubRoutedFetch(() => [ITEMS, 200]);
-    renderScreen();
-
-    const riga = (await screen.findByText("Total 0%")).closest("li")!;
-    fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
-    fireEvent.blur(within(riga).getByLabelText(/scadenza/i));
-
-    // il campo si richiude (si torna al «+ scadenza»), e niente è partito
-    await waitFor(() =>
-      expect(within(riga).getByRole("button", { name: /scadenza/i })).toBeDefined()
-    );
-    expect(
-      fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "PATCH")
-    ).toHaveLength(0);
-  });
-
-  it("svuotare il campo manda null, che vuol dire cancellala", async () => {
-    // e non `{}`: un corpo vuoto il backend lo rifiuta con 400 «niente da modificare»,
-    // cioè la cancellazione fallirebbe dicendo che non c'era niente da fare
-    const fetchMock = stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ ...ITEMS[2], expires_on: null, expiry: null }, 200];
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    const riga = (await screen.findByText("mela")).closest("li")!;
-    fireEvent.click(within(riga).getByText("Scade il 28/09/2026"));
-    const campo = within(riga).getByLabelText(/scadenza/i);
-    fireEvent.change(campo, { target: { value: "" } });
-    fireEvent.blur(campo);
-
-    await waitFor(() => {
-      const patch = fetchMock.mock.calls.find(
-        ([, init]) => (init as RequestInit)?.method === "PATCH"
-      );
-      expect(JSON.parse(String((patch![1] as RequestInit).body))).toEqual({ expires_on: null });
-    });
-  });
-
-  it("una scrittura rifiutata lo dice, accanto alla voce giusta", async () => {
-    // stesso principio del cursore: senza, la data torna da sé al valore del server e
-    // l'utente resta convinto di averla scritta
-    stubRoutedFetch((_path, init) => {
-      if (init?.method === "PATCH") return [{ detail: "no" }, 500];
-      return [ITEMS, 200];
-    });
-    renderScreen();
-
-    const riga = (await screen.findByText("Total 0%")).closest("li")!;
-    fireEvent.click(within(riga).getByRole("button", { name: /scadenza/i }));
-    const campo = within(riga).getByLabelText(/scadenza/i);
-    fireEvent.change(campo, { target: { value: "2026-10-05" } });
-    fireEvent.blur(campo);
-
-    expect(await within(riga).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
-    const altra = screen.getByText("Pesca").closest("li")!;
-    expect(within(altra).queryByRole("alert")).toBeNull();
-  });
-
-  it("il nome porta alla scheda: del prodotto se c'è, dell'ingrediente se è sfuso", async () => {
-    // S9 §6.5: nessuna terza schermata. La scheda dell'elemento è quella del prodotto,
-    // e `?da=dispensa` dice al tasto indietro dove tornare
-    stubRoutedFetch(() => [ITEMS, 200]);
-    renderScreenConRetryVero();
-
-    expect(await screen.findByRole("link", { name: /Total 0%/ })).toHaveAttribute(
-      "href", "/anagrafica/prodotto/pr1?da=dispensa"
-    );
-    expect(screen.getByRole("link", { name: "mela" })).toHaveAttribute(
-      "href", "/anagrafica/ingrediente/i2?da=dispensa"
-    );
-  });
-
-  it("il tocco è sul nome e non sulla riga: il cursore non sta dentro il link", async () => {
-    // il cursore resta un bersaglio solo suo, e S13 resta chiusa
-    stubRoutedFetch(() => [ITEMS, 200]);
-    renderScreenConRetryVero();
-
-    const nome = await screen.findByRole("link", { name: "mela" });
-    const cursore = screen.getByRole("slider", { name: "Quanto ne resta di mela" });
-    expect(nome.contains(cursore)).toBe(false);
-    expect(nome.querySelector("button")).toBeNull();
+    expect(await screen.findByText("Già in lista")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "In lista" })).toBeNull();
   });
 });

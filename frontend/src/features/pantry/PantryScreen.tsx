@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
@@ -6,23 +6,12 @@ import { Card } from "../../components/ui/Card";
 import { Screen } from "../../components/ui/Screen";
 import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
 import { SectionHeading } from "../../components/ui/SectionHeading";
+import { useNotice } from "../../components/ui/noticeContext";
 import { PantryRow } from "./PantryRow";
+import { itemLabel } from "./pantryView";
 import { addPantryItem, fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
-import type { Ingredient, PantryItem } from "../../domain/types";
-import { UNDO_MS } from "../../lib/undo";
-
-/** L'elenco da mostrare: quello del server più le istantanee delle voci appena
- * tolte che il server non manda più. Le lapidi vivono qui e non nella risposta,
- * perché la risposta le esclude e perché ogni invalidazione le cancellerebbe —
- * e con loro l'unico annulla che l'interfaccia offre. Una voce tolta ma ancora
- * presente nella risposta (l'archiviazione non invalida) resta al suo posto: la
- * chiave `id` evita il doppione. */
-function withRemoved(items: PantryItem[], removed: Map<string, PantryItem>): PantryItem[] {
-  if (removed.size === 0) return items;
-  const present = new Set(items.map((item) => item.id));
-  return [...items, ...[...removed.values()].filter((item) => !present.has(item.id))];
-}
+import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
 
 function groupByCategory(items: PantryItem[]): [string, PantryItem[]][] {
   const groups = new Map<string, PantryItem[]>();
@@ -67,13 +56,11 @@ export function PantryScreen() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["pantry"] });
 
-  const change = useMutation({
-    mutationFn: ({ id, fill }: { id: string; fill: number }) =>
-      patchPantryItem(id, { fill_percent: fill }),
+  const status = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: PantryStatus }) =>
+      patchPantryItem(id, { status }),
     onMutate: ({ id }) => clearFailed(id),
     onSuccess: invalidate,
-    // senza questo una PATCH fallita non dice niente: il cursore torna da sé al
-    // valore del server e l'utente resta convinto di averlo spostato
     onError: (_error, { id }) => markFailed(id),
   });
 
@@ -88,93 +75,35 @@ export function PantryScreen() {
     onError: (_error, { id }) => markFailed(id),
   });
 
-  // le voci appena tolte, finché il loro annulla è possibile. Una mappa, non un
-  // solo id: togliere una seconda voce prima che scada la lapide della prima non
-  // deve spegnere quella della prima. E si tiene la VOCE, non solo il suo id,
-  // perché il server non manda più le voci archiviate (`list_pantry` filtra
-  // `archived_at IS NULL`): l'archiviazione di suo non invalida, ma ogni altra
-  // mutazione dello schermo sì, e una lapide che dipendesse dalla riga del
-  // server svanirebbe muta al primo cursore mosso altrove — con essa l'unico
-  // modo di disarchiviare che l'interfaccia abbia. L'istantanea qui dentro è
-  // quella che tiene in piedi la lapide, e `withRemoved` la unisce all'elenco.
-  const [removed, setRemoved] = useState<Map<string, PantryItem>>(new Map());
-  const addRemoved = (item: PantryItem) =>
-    setRemoved((prev) => new Map(prev).set(item.id, item));
-  const clearRemoved = (id: string) =>
-    setRemoved((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
+  const notice = useNotice();
 
-  // un timer per lapide, non uno per lo schermo: altrimenti il cleanup dello
-  // useEffect sulla lapide precedente la spegnerebbe quando ne parte una nuova
-  const undoTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const stopUndoTimer = (id: string) => {
-    const timer = undoTimers.current.get(id);
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      undoTimers.current.delete(id);
-    }
-  };
-  const startUndoTimer = (id: string) => {
-    stopUndoTimer(id);
-    undoTimers.current.set(
-      id,
-      setTimeout(() => {
-        undoTimers.current.delete(id);
-        clearRemoved(id);
-        invalidate();
-      }, UNDO_MS)
+  // L'annulla vive nell'avviso, che è dell'app e non di questo schermo: si può
+  // toccare anche dopo essere passati a un'altra scheda. Per questo non è una
+  // useMutation (legata al componente) ma una chiamata col queryClient dell'app.
+  // Se fallisce, un nuovo avviso lo dice e offre di riprovare: la voce è archiviata
+  // davvero, e perderla qui sarebbe il vicolo cieco.
+  function undoRemove(item: PantryItem) {
+    patchPantryItem(item.id, { archived: false }).then(
+      () => queryClient.invalidateQueries({ queryKey: ["pantry"] }),
+      () =>
+        notice({
+          text: `Non sono riuscito a rimettere ${itemLabel(item)} in dispensa.`,
+          action: { label: "Riprova", onClick: () => undoRemove(item) },
+        })
     );
-  };
-  // niente lapide sopravvive allo schermo: senza questo, uno unmount a metà dei
-  // sei secondi (i test lo fanno a ogni riga) lascerebbe un timer acceso che
-  // invalida una query di un componente non più a video
-  // (la mappa si prende una volta, all'inizio: è sempre la stessa, ma la regola
-  // degli hook non può saperlo e avvisa per un `.current` letto nella pulizia)
-  useEffect(() => {
-    const timers = undoTimers.current;
-    return () => {
-      timers.forEach(clearTimeout);
-      timers.clear();
-    };
-  }, []);
+  }
 
-  // Archiviare è l'unico modo di togliere qualcosa dalla dispensa: il backend
-  // esclude le voci finite dalla disponibilità ma non dall'elenco, quindi senza
-  // questo controllo lo schermo può soltanto crescere. Prende la voce intera e
-  // non il suo id: quello che entra in `removed` è l'istantanea della riga che
-  // l'utente aveva davanti, l'unica copia che resterà quando il server smetterà
-  // di mandarla.
   const archive = useMutation({
     mutationFn: (item: PantryItem) => patchPantryItem(item.id, { archived: true }),
     onMutate: (item) => clearFailed(item.id),
     onSuccess: (_data, item) => {
-      addRemoved(item);
-      startUndoTimer(item.id);
+      invalidate();
+      notice({
+        text: `Tolto dalla dispensa: ${itemLabel(item)}`,
+        action: { label: "Annulla", onClick: () => undoRemove(item) },
+      });
     },
     onError: (_error, item) => markFailed(item.id),
-  });
-
-  // l'annulla di una lapide. Se fallisce, la lapide RESTA — l'istantanea non si
-  // toglie da `removed` — perché la voce è archiviata davvero sul server e
-  // perderla qui lascerebbe l'utente senza messaggio e senza modo di riprovare:
-  // esattamente il vicolo cieco che «mai un vicolo cieco» vieta. Il timer si
-  // spegne appena si tenta l'annulla, per non far scadere una lapide che sta
-  // mostrando un errore.
-  const undo = useMutation({
-    mutationFn: (id: string) => patchPantryItem(id, { archived: false }),
-    onMutate: (id) => {
-      stopUndoTimer(id);
-      clearFailed(id);
-    },
-    onSuccess: (_data, id) => {
-      clearRemoved(id);
-      invalidate();
-    },
-    onError: (_error, id) => markFailed(id),
   });
 
   // Spec §4 e §8.3: l'ingresso diretto, cioè senza passare dalla lista. Serve a chi
@@ -193,38 +122,33 @@ export function PantryScreen() {
   // il rientro in lista tocca la lista, non la dispensa: si invalida quella chiave,
   // altrimenti tornando in Lista il numero della scheda d'ingresso resta vecchio
   const restock = useMutation({
-    mutationFn: (id: string) => restockPantryItem(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping-list"] }),
+    mutationFn: (item: PantryItem) => restockPantryItem(item.id),
+    onMutate: (item) => clearFailed(item.id),
+    onSuccess: (result, item) => {
+      queryClient.invalidateQueries({ queryKey: ["shopping-list"] });
+      notice({ text: result.added ? `Rimesso in lista: ${item.ingredient_name}` : "Era già in lista." });
+    },
+    onError: (_error, item) => markFailed(item.id),
   });
 
-  // quali voci hanno una richiesta in volo. Un insieme, come gli altri due, e
-  // per la stessa ragione: un solo id per tutto lo schermo faceva vincere una
-  // mutazione sull'altra, e con la PATCH del cursore della riga A in volo i
-  // «Sì»/«No» della riga B restavano premibili anche mentre il POST di B era in
-  // corso — proprio quello che questa guardia dichiara di impedire.
-  // `busy` disabilita anche «Annulla» e «Sì»/«No» del rientro in lista: un
-  // doppio clic non deve mandare due PATCH di annulla (innocuo perché la PATCH
-  // è idempotente, ma inutile) né due POST di restock (quello non è idempotente,
-  // e `shopping_list_items` non ha un vincolo unico che lo rimedi a valle).
-  // Quel che l'insieme NON copre: `variables` tiene solo l'ultima invocazione di
-  // ciascuna mutazione, quindi due righe che lanciano la STESSA mutazione insieme
-  // lasciano sbloccata la prima. Servirebbe un conteggio per id (useMutationState);
-  // oggi non lo facciamo perché richiede due gesti in righe diverse entro la
-  // durata di una richiesta, ma il caso esiste e questa riga esiste per non
-  // lasciar credere il contrario.
+  // gli ingredienti con una voce aperta in lista: per loro «In lista» non serve
+  // (dal giro: «la domanda del rientro compare anche per ciò che è già in lista»)
+  const listedIngredients = new Set(
+    (shopping ?? [])
+      .filter((entry) => entry.status === "pending" || entry.status === "checked")
+      .map((entry) => entry.ingredient_id)
+  );
+
+  // quali voci hanno una richiesta in volo. Un insieme, come prima, e per la
+  // stessa ragione: un solo id per tutto lo schermo faceva vincere una
+  // mutazione sull'altra.
   const busyIds = new Set<string>();
-  if (change.isPending) busyIds.add(change.variables.id);
+  if (status.isPending) busyIds.add(status.variables.id);
   if (archive.isPending) busyIds.add(archive.variables.id);
-  if (undo.isPending) busyIds.add(undo.variables);
-  if (restock.isPending) busyIds.add(restock.variables);
+  if (restock.isPending) busyIds.add(restock.variables.id);
   if (expiry.isPending) busyIds.add(expiry.variables.id);
 
-  // l'elenco a video: risposta del server più le lapidi che il server non manda
-  // più (vedi `withRemoved`). Se il caricamento fallisce la risposta del server
-  // sparisce — sarebbe quella di prima, e nessuno saprebbe che è vecchia — ma le
-  // lapidi no: non vengono dal server, e senza di loro una voce appena tolta
-  // resta archiviata davvero senza più nessun tasto per riportarla indietro
-  const rows = withRemoved(isError ? [] : items, removed);
+  const rows = isError ? [] : items;
 
   return (
     <Screen title="Dispensa">
@@ -283,19 +207,20 @@ export function PantryScreen() {
           <section key={category}>
             <SectionHeading>{category}</SectionHeading>
             <Card pad={false}>
-              <ul className="divide-y divide-line">
+              <ul>
                 {group.map((item) => (
                   <PantryRow
                     key={item.id}
                     item={item}
                     busy={busyIds.has(item.id)}
-                    removed={removed.has(item.id)}
                     failed={failedIds.has(item.id)}
-                    onFill={(percent) => change.mutateAsync({ id: item.id, fill: percent })}
+                    listed={listedIngredients.has(item.ingredient_id)}
+                    reveal={false}
+                    onStatus={(next) => status.mutate({ id: item.id, status: next })}
                     onRemove={() => archive.mutate(item)}
-                    onUndo={() => undo.mutate(item.id)}
-                    onRestock={() => restock.mutateAsync(item.id)}
+                    onRestock={() => restock.mutate(item)}
                     onExpiry={(expiresOn) => expiry.mutateAsync({ id: item.id, expiresOn })}
+                    onRevealed={() => {}}
                   />
                 ))}
               </ul>
