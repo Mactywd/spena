@@ -203,10 +203,13 @@ production, which is the first defect listed above.
   carries a `decided_by` — `"ai"` from the LLM, `"human"` for R11's manual
   decisions and for a term a merge re-decides on the winner — and has an undo
   that puts the term, the alias and the materialized recipes back. The undo
-  removes the ingredient only when the decision recorded creating it
-  (`import_terms.created_ingredient`) and nothing else uses it: a `map` onto an
-  ingredient that already existed never deletes it, and decisions from before
-  2026-09-28 carry `NULL` there and never delete either.
+  removes the ingredient only when the term owns its deletion
+  (`import_terms.created_ingredient`) and nothing else uses it. The decision that
+  created the ingredient owns it; when its undo cannot delete because other terms
+  still map there, ownership passes to one of them (`_hand_over_creation`), so the
+  last undo removes it. A `map` onto an ingredient that already existed never
+  deletes it, and decisions from before 2026-09-28 carry `NULL` there and never
+  delete either.
   Undo never refuses over recipes already cooked: the ids of their cooking events wait
   in the page's `payload` under `cooking_event_ids`, and `materialize_ready` puts them
   back on the rebuilt recipe (S9 §5.2).
