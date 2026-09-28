@@ -167,7 +167,7 @@ test("le tacche della dispensa sono bersagli da pollice", async ({ page }) => {
   // «Disponibile» sono accese tutte e tre, quindi si scende a «Finito» e si misura
   // quella di «Disponibile». Si aspetta che la scrittura sia finita — mentre è in
   // volo le tacche sono attenuate, e il numero sarebbe di un altro stato
-  const finito = riga.getByRole("radio", { name: "Finito" });
+  const finito = riga.getByRole("radio", { name: "Finito", exact: true });
   await finito.click();
   await expect(finito).toHaveAttribute("aria-checked", "true");
   await expect(finito).not.toHaveAttribute("aria-disabled", "true");
