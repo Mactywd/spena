@@ -733,3 +733,18 @@ test("il carattere è Inter, servito dall'app", async ({ page }) => {
   ).toBe(true);
   await expect(page.locator("body")).toHaveCSS("font-family", /Inter Variable/);
 });
+
+// Inter è servito dall'app perché la PWA funzioni senza rete (spec T3 §2), e il test qui
+// sopra non lo prova: con la rete il carattere arriva comunque. La prima stesura non lo
+// metteva nel precaricamento, e nessun test lo vedeva. Qui si legge il `sw.js` che Nginx
+// serve davvero; `vite.config.test.ts` prova gli schemi, questo il file costruito.
+test("il service worker mette da parte Inter latino, e non gli altri alfabeti", async ({ page }) => {
+  const risposta = await page.request.get("/sw.js");
+  expect(risposta.ok()).toBe(true);
+  const sw = await risposta.text();
+  // il service worker vero, non l'index.html che Nginx dà per un indirizzo che non c'è
+  expect(sw).toContain("precacheAndRoute");
+  expect(sw).toMatch(/assets\/inter-latin-wght-normal-[\w-]+\.woff2/);
+  expect(sw).toMatch(/assets\/inter-latin-ext-wght-normal-[\w-]+\.woff2/);
+  expect(sw).not.toMatch(/inter-(cyrillic|greek|vietnamese)/);
+});

@@ -5,6 +5,19 @@ import tailwindcss from "@tailwindcss/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Cosa il service worker mette da parte alla prima visita. I primi sono gli schemi di
+// default di Workbox, che assegnare `globPatterns` sostituisce: senza, la pagina e il
+// codice non si precaricherebbero più. Poi Inter, che l'app serve da sé proprio per
+// funzionare offline (spec T3 §2): solo latino e latino esteso, le lettere
+// dell'italiano (~133 KB). Gli altri alfabeti li chiede il browser per `unicode-range`
+// solo se una pagina li contiene, e precaricarli sarebbe peso scaricato per niente.
+// Icone e manifesto li aggiunge il plugin da sé. Lo prova vite.config.test.ts.
+export const PRECACHE_GLOB_PATTERNS = [
+  "**/*.{js,css,html}",
+  "assets/inter-latin-wght-normal-*.woff2",
+  "assets/inter-latin-ext-wght-normal-*.woff2",
+];
+
 export default defineConfig({
   // HTTPS serve anche in sviluppo: la fotocamera non parte su http da telefono
   plugins: [
@@ -13,6 +26,7 @@ export default defineConfig({
     basicSsl(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: { globPatterns: PRECACHE_GLOB_PATTERNS },
       manifest: {
         name: "Spena",
         short_name: "Spena",
