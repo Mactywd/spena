@@ -166,6 +166,55 @@ describe("PantryRow", () => {
     expect(onExpiry).toHaveBeenCalledWith("2026-10-05");
   });
 
+  it("Esc chiude il campo senza scrivere, e il fuoco torna al pulsante", () => {
+    const { onExpiry } = renderRow({ expires_on: "2026-10-05", expiry: null });
+    fireEvent.click(screen.getByRole("button", { name: /Scadenza di Total 0%/ }));
+    const field = screen.getByLabelText("Scadenza di Total 0%");
+    fireEvent.change(field, { target: { value: "2027-01-01" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+    // il blur che il browser può mandare quando il campo sparisce non deve salvare
+    fireEvent.blur(field);
+
+    const button = screen.getByRole("button", { name: /Scadenza di Total 0%/ });
+    expect(onExpiry).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("dopo un Esc, il campo riaperto salva di nuovo all'uscita", () => {
+    const { onExpiry } = renderRow();
+    fireEvent.click(screen.getByRole("button", { name: "+ scadenza per Total 0%" }));
+    fireEvent.keyDown(screen.getByLabelText("Scadenza di Total 0%"), { key: "Escape" });
+
+    fireEvent.click(screen.getByRole("button", { name: "+ scadenza per Total 0%" }));
+    const field = screen.getByLabelText("Scadenza di Total 0%");
+    fireEvent.change(field, { target: { value: "2026-10-05" } });
+    fireEvent.blur(field);
+    expect(onExpiry).toHaveBeenCalledWith("2026-10-05");
+  });
+
+  it("dopo l'Invio il fuoco torna al pulsante della scadenza, non si perde nella pagina", () => {
+    renderRow();
+    fireEvent.click(screen.getByRole("button", { name: "+ scadenza per Total 0%" }));
+    const field = screen.getByLabelText("Scadenza di Total 0%");
+    field.focus();
+    fireEvent.change(field, { target: { value: "2026-10-05" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "+ scadenza per Total 0%" }));
+  });
+
+  it("il prodotto e la scadenza stanno su due righe loro, senza il punto fra loro", () => {
+    // Con il «·» sulla stessa riga, un nome di prodotto vero («Coca Cola Bottiglia
+    // 330ml») andava a capo e lasciava il punto da solo all'inizio o alla fine di una
+    // riga: su 49 voci della dispensa vera, a 375px, 39 righe spezzate così.
+    renderRow({ expires_on: "2026-10-05", expiry: "soon" });
+    const row = screen.getByRole("listitem");
+    expect(row.textContent).not.toContain("·");
+    const product = screen.getByText("Total 0%");
+    const expiry = screen.getByRole("button", { name: /Scadenza di Total 0%/ });
+    expect(product.contains(expiry)).toBe(false);
+    expect(product.parentElement!.contains(expiry)).toBe(false);
+  });
+
   it("uscire dal campo senza aver cambiato niente non scrive", () => {
     const { onExpiry } = renderRow();
     fireEvent.click(screen.getByRole("button", { name: "+ scadenza per Total 0%" }));

@@ -23,8 +23,8 @@ const EXPIRY_TONE_TEXT = {
   expired: "font-semibold text-expiry",
 } as const;
 
-/** Una riga della dispensa (spec T3 §4.1): l'ingrediente, sotto il prodotto e la
- * scadenza, a destra le tacche e la ✕. Il nome è l'ingrediente e non il prodotto
+/** Una riga della dispensa (spec T3 §4.1): l'ingrediente, sotto il prodotto, a
+ * destra le tacche e la ✕; sotto ancora, su una riga sua, la scadenza. Il nome è l'ingrediente e non il prodotto
  * (dal giro): così un aggancio sbagliato, il parmigiano sotto «burro», si vede proprio
  * qui, dove si corregge (S9). */
 export function PantryRow({
@@ -53,6 +53,21 @@ export function PantryRow({
   const label = itemLabel(item);
   const [editingExpiry, setEditingExpiry] = useState(false);
   const ref = useRef<HTMLLIElement>(null);
+  const expiryButton = useRef<HTMLButtonElement>(null);
+  // Esc chiude il campo senza scrivere: il blur che può seguire (il campo sparisce
+  // mentre ha il fuoco) trova questo segno e non salva. Si azzera a ogni apertura.
+  const expiryCancelled = useRef(false);
+  // Invio ed Esc chiudono il campo dalla tastiera: il fuoco torna al pulsante della
+  // scadenza invece di cadere sul `body`. Un tocco altrove no — lì il fuoco va dove
+  // si è toccato, e riprenderselo sarebbe un furto.
+  const refocusExpiry = useRef(false);
+
+  useEffect(() => {
+    if (!editingExpiry && refocusExpiry.current) {
+      refocusExpiry.current = false;
+      expiryButton.current?.focus();
+    }
+  }, [editingExpiry]);
 
   useEffect(() => {
     if (reveal && ref.current) {
@@ -77,6 +92,7 @@ export function PantryRow({
   // l'`Alert` qui sotto — non serve tenere il campo aperto per mostrarlo.
   async function commitExpiry(value: string) {
     setEditingExpiry(false);
+    if (expiryCancelled.current) return;
     if (value === (item.expires_on ?? "")) return;
     try {
       await onExpiry(value || null);
@@ -91,6 +107,11 @@ export function PantryRow({
     // `scroll-mt-16`: l'intestazione fissa (h-12) più un respiro, come nel dettaglio ricetta
     <li ref={ref} className="scroll-mt-16">
       <div className="flex items-center gap-1">
+        {/* Il prodotto sta su una riga sola, tagliato coi puntini: accanto alle tacche
+            restano 135px a 375px di larghezza, e i nomi veri («Deodorante per Ambienti
+            Vaniglia e Gelsomino») andavano a capo fino a tre righe, con la scadenza
+            spinta sotto e il «·» rimasto solo. Il nome intero è nella scheda del
+            prodotto, dove porta il link. */}
         <div className="min-w-0 flex-1">
           <Link
             to={registryPath(item)}
@@ -98,41 +119,7 @@ export function PantryRow({
           >
             {item.ingredient_name}
           </Link>
-          <div className="flex min-h-11 flex-wrap items-start gap-x-1.5 pt-0.5 text-xs text-ink-faint">
-            <span>{item.product_name ?? "sfuso"}</span>
-            <span aria-hidden="true">·</span>
-            {editingExpiry ? (
-              <span>
-                <label htmlFor={`expiry-${item.id}`} className="sr-only">
-                  Scadenza di {label}
-                </label>
-                <input
-                  id={`expiry-${item.id}`}
-                  type="date"
-                  max={EXPIRY_INPUT_MAX}
-                  disabled={busy}
-                  autoFocus
-                  defaultValue={item.expires_on ?? ""}
-                  onBlur={(event) => void commitExpiry(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
-                  }}
-                />
-              </span>
-            ) : (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setEditingExpiry(true)}
-                aria-label={expiry ? `Scadenza di ${label}: ${expiry}` : `+ scadenza per ${label}`}
-                className={`-mt-0.5 flex min-h-11 items-start pt-0.5 text-left disabled:opacity-40 ${
-                  item.expiry ? EXPIRY_TONE_TEXT[item.expiry] : ""
-                }`}
-              >
-                {expiry ?? "+ scadenza"}
-              </button>
-            )}
-          </div>
+          <p className="truncate pt-0.5 text-xs text-ink-faint">{item.product_name ?? "sfuso"}</p>
         </div>
         <StockGauge status={item.status} itemName={label} disabled={busy} onChange={onStatus} />
         <Button
@@ -142,6 +129,53 @@ export function PantryRow({
           onClick={onRemove}
           disabled={busy}
         />
+      </div>
+      {/* La scadenza ha la sua riga, larga quanto la voce: sempre allo stesso posto, e
+          il campo data ha lo spazio che accanto alle tacche non avrebbe. */}
+      <div className="flex min-h-11 items-start text-xs text-ink-faint">
+        {editingExpiry ? (
+          <span className="pt-0.5">
+            <label htmlFor={`expiry-${item.id}`} className="sr-only">
+              Scadenza di {label}
+            </label>
+            <input
+              id={`expiry-${item.id}`}
+              type="date"
+              max={EXPIRY_INPUT_MAX}
+              disabled={busy}
+              autoFocus
+              defaultValue={item.expires_on ?? ""}
+              onBlur={(event) => void commitExpiry(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  refocusExpiry.current = true;
+                  event.currentTarget.blur();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  expiryCancelled.current = true;
+                  refocusExpiry.current = true;
+                  setEditingExpiry(false);
+                }
+              }}
+            />
+          </span>
+        ) : (
+          <button
+            ref={expiryButton}
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              expiryCancelled.current = false;
+              setEditingExpiry(true);
+            }}
+            aria-label={expiry ? `Scadenza di ${label}: ${expiry}` : `+ scadenza per ${label}`}
+            className={`flex min-h-11 items-start pt-0.5 text-left disabled:opacity-40 ${
+              item.expiry ? EXPIRY_TONE_TEXT[item.expiry] : ""
+            }`}
+          >
+            {expiry ?? "+ scadenza"}
+          </button>
+        )}
       </div>
       {item.status === "finished" && (
         // «Lo rimetto in lista? Sì / No» aveva bersagli da 35px e non tornava più se

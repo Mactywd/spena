@@ -94,7 +94,10 @@ test("l'intestazione è sempre visibile, anche scorrendo, e la pagina non scorre
 
 test("le tacche della dispensa sono bersagli da pollice", async ({ page }) => {
   // jsdom non calcola il CSS: che le tacche esistano, si vedano e si possano
-  // toccare non lo può dire nessun test in memoria (quarta lezione di CLAUDE.md)
+  // toccare non lo può dire nessun test in memoria (quarta lezione di CLAUDE.md).
+  // A 375px, la larghezza del telefono: al viewport di default (1280) la colonna del
+  // testo era larga abbastanza da non mostrare mai che a 375 ne restavano 135px.
+  await page.setViewportSize({ width: 375, height: 812 });
   await page.getByRole("link", { name: "Dispensa" }).click();
 
   // il seme non popola la dispensa: senza una voce non c'è niente da provare.
@@ -147,18 +150,39 @@ test("le tacche della dispensa sono bersagli da pollice", async ({ page }) => {
     boxScadenza!.y
   );
 
-  // la scadenza sta sulla riga del prodotto, non centrata nel bersaglio da 44px del
-  // pulsante: un <button> nativo centra il contenuto in verticale, quindi il TOP del
-  // suo box (misurato sopra, per il bersaglio) parte più in alto del testo che
-  // contiene. Qui si misura il TOP del TESTO con un Range, non del box — «sfuso»
+  // la scadenza sta sulla riga sua, subito sotto il prodotto: non accanto, dove un
+  // nome di prodotto vero la spingeva a capo e lasciava il «·» da solo, e non
+  // centrata nel bersaglio da 44px del pulsante — un <button> nativo centra il
+  // contenuto in verticale, quindi il TOP del suo box parte più in alto del testo.
+  // Qui si misura il TOP del TESTO con un Range, non del box: la distanza fra le due
+  // cime è una riga di testo piccolo (16px) più il respiro (2px), non di più. «sfuso»
   // perché l'ingresso diretto non lega un prodotto.
-  const prodotto = riga.locator("span", { hasText: "sfuso" });
+  const prodotto = riga.getByText("sfuso", { exact: true });
   const cimaProdotto = await cimaDelTesto(prodotto);
   const cimaScadenza = await cimaDelTesto(scadenza);
+  expect(cimaScadenza - cimaProdotto, "la scadenza non sta sulla riga sotto il prodotto").toBeGreaterThanOrEqual(14);
+  expect(cimaScadenza - cimaProdotto, "la scadenza è staccata dal prodotto").toBeLessThanOrEqual(22);
+  await expect(riga).not.toContainText("·");
+
+  // un nome di prodotto vero e lungo resta su una riga, tagliato coi puntini, e la
+  // riga non cresce. Il seme non mette prodotti in dispensa, quindi il testo si
+  // sostituisce nella pagina: quel che si misura è il CSS della riga, non i dati. Il
+  // nome è uno della dispensa vera che a 375px andava su tre righe.
+  const altezzaRiga = (await riga.boundingBox())!.height;
+  const nodoProdotto = (await prodotto.elementHandle())!;
+  const altezzaUnaRiga = (await nodoProdotto.boundingBox())!.height;
+  await nodoProdotto.evaluate((el) => {
+    el.textContent = "Deodorante per Ambienti Vaniglia e Gelsomino";
+  });
+  expect((await nodoProdotto.boundingBox())!.height, "il nome lungo va a capo").toBe(altezzaUnaRiga);
   expect(
-    Math.abs(cimaScadenza - cimaProdotto),
-    "il testo della scadenza non è allineato in alto con quello del prodotto"
-  ).toBeLessThanOrEqual(2);
+    await nodoProdotto.evaluate((el) => el.scrollWidth > el.clientWidth),
+    "il nome lungo non è tagliato: la prova non ha misurato niente"
+  ).toBe(true);
+  expect((await riga.boundingBox())!.height, "la riga è cresciuta col nome lungo").toBe(altezzaRiga);
+  await nodoProdotto.evaluate((el) => {
+    el.textContent = "sfuso";
+  });
 
   // la tacca accesa (l'ingresso diretto entra sempre «Disponibile») è un segno, non
   // un testo: la soglia WCAG 1.4.11 è 3:1 e non 4,5:1, misurata sul fondo `card`
