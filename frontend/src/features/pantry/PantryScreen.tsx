@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
@@ -216,6 +217,18 @@ export function PantryScreen() {
                   initialTerm={adding}
                   autoFocus
                   failureNote="Riprova, oppure scrivilo in lista e sistemalo da lì."
+                  // la dispensa non crea ingredienti: quel che l'anagrafica non ha passa
+                  // dalla lista, che prende anche il testo libero — la stessa via
+                  // d'uscita di `failureNote`, con la strada a portata di dito
+                  emptyNote={
+                    <>
+                      Non è in anagrafica: scrivilo in{" "}
+                      <Link to="/lista" className="inline-flex min-h-11 items-center font-medium text-brand">
+                        lista
+                      </Link>{" "}
+                      e sistemalo da lì.
+                    </>
+                  }
                   onPick={(ingredient) => add.mutate(ingredient)}
                   disabled={add.isPending}
                 />

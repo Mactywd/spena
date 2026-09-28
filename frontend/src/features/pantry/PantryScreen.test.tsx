@@ -124,6 +124,9 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Niente in dispensa per «sale»")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi «sale»" }));
     expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toHaveProperty("value", "sale");
+    // l'anagrafica non ha «sale»: il pannello non resta muto, dice dove andare
+    expect(await screen.findByText(/Non è in anagrafica/)).toBeDefined();
+    expect(screen.getByRole("link", { name: "lista" }).getAttribute("href")).toBe("/lista");
   });
 
   it("il + apre l'aggiunta con il testo della barra, e scegliere mette in dispensa", async () => {

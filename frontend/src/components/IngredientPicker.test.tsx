@@ -148,6 +148,46 @@ describe("IngredientPicker", () => {
     expect(screen.queryByRole("button", { name: /Aggiungi/ })).toBeNull();
   });
 
+  // Senza `onCreate` una ricerca vuota non deve restare muta: chi usa il selettore
+  // nomina la sua via d'uscita (la Dispensa: la lista), e la nota compare dove
+  // comparirebbe l'offerta di creare — a ricerca finita e vuota, per il testo cercato.
+  it("senza onCreate, a ricerca finita e vuota mostra la nota di chi lo usa", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderWithClient(
+      <IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} emptyNote="Scrivilo in lista." />
+    );
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "zz tre" } });
+    // mentre si scrive, prima che la ricerca sia finita, niente nota
+    expect(screen.queryByText("Scrivilo in lista.")).toBeNull();
+    expect(await screen.findByText("Scrivilo in lista.")).toBeDefined();
+  });
+
+  it("la nota del vuoto non compare se la ricerca trova qualcosa", async () => {
+    stubRoutedFetch(() => [[LATTE], 200]);
+    renderWithClient(
+      <IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} emptyNote="Scrivilo in lista." />
+    );
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "lat" } });
+    await screen.findByRole("option", { name: "Latte" });
+    expect(screen.queryByText("Scrivilo in lista.")).toBeNull();
+  });
+
+  it("con onCreate la nota del vuoto lascia il posto all'offerta di creare", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderWithClient(
+      <IngredientPicker
+        label="Ingrediente"
+        failureNote="x"
+        onPick={() => {}}
+        onCreate={() => {}}
+        emptyNote="Scrivilo in lista."
+      />
+    );
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "zz tre" } });
+    await screen.findByRole("button", { name: "Aggiungi «zz tre»" });
+    expect(screen.queryByText("Scrivilo in lista.")).toBeNull();
+  });
+
   it("parte dal testo che gli si passa, e cerca subito quello", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(
       new Response(JSON.stringify([{ id: "i1", name: "sale", display_name: "Sale", category: "condimenti", kind: "food" }]), { status: 200 })

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchIngredients } from "../features/shopping-list/api";
 import { useDebounced } from "../hooks/useDebounced";
@@ -29,6 +29,7 @@ export function IngredientPicker({
   disabled = false,
   kind,
   onCreate,
+  emptyNote,
   initialTerm = "",
   autoFocus = false,
 }: {
@@ -50,6 +51,11 @@ export function IngredientPicker({
   /** Chi sa creare un ingrediente nuovo lo offre quando la ricerca non trova niente
    * (R12). Senza, la ricerca vuota non propone niente, come prima. */
   onCreate?: (name: string) => void;
+  /** Chi non sa creare un ingrediente dice qui dove andare quando la ricerca non
+   * trova niente: senza, il pannello resterebbe muto sotto un campo pieno, ed è un
+   * vicolo cieco. Compare alle stesse condizioni dell'offerta di creare, che quando
+   * c'è ha la precedenza. */
+  emptyNote?: ReactNode;
   /** Il testo con cui il campo nasce: la Dispensa apre l'aggiunta con quel che era
    * scritto nella barra. Vale solo alla nascita — chi vuole ripartire da un altro
    * testo cambia la `key`. */
@@ -76,6 +82,7 @@ export function IngredientPicker({
   const showOptions = term.trim().length >= 2;
   // la risposta in mano è di quel che c'è scritto adesso, e non di un testo di prima
   const searchedIsTyped = ready && debounced === term.trim();
+  const emptySearch = searchedIsTyped && isSuccess && found.length === 0;
 
   return (
     <div className="flex flex-col gap-2">
@@ -109,7 +116,7 @@ export function IngredientPicker({
           per il testo che quella ricerca ha cercato: corretto «lattr» in «latte», la
           risposta vuota in mano resta quella di «lattr» per tutta l'attesa, e offrire
           «latte» lì ne creerebbe un doppione */}
-      {onCreate && searchedIsTyped && isSuccess && found.length === 0 && (
+      {onCreate && emptySearch && (
         <Button
           icon={IconPlus}
           onClick={() => {
@@ -121,6 +128,8 @@ export function IngredientPicker({
           {`Aggiungi «${debounced}»`}
         </Button>
       )}
+
+      {!onCreate && emptyNote && emptySearch && <p className="text-sm text-ink-soft">{emptyNote}</p>}
 
       {/* la ricerca è un aiuto, non un pedaggio: il guasto va detto insieme a
           quello che resta possibile. L'ambra è il colore che nell'app vuol dire
