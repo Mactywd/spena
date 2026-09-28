@@ -34,15 +34,24 @@ class RecipeIngredientIn(BaseModel):
         return self
 
 
-class RecipeCreate(BaseModel):
+class RecipeFields(BaseModel):
+    """Quel che si scrive di una ricetta, alla creazione e alla modifica (R10 §5)."""
+
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
+    # Una delle categorie già nel ricettario, o nessuna. Il modulo la sceglie da
+    # `GET /recipes/categories` e la rotta rifiuta un nome che non c'è: con il testo
+    # libero «Primi» e «primi» diventerebbero due voci del filtro.
+    category: str | None = Field(default=None, max_length=60)
     instructions: str = Field(min_length=1)
     servings: int | None = Field(default=None, ge=1, le=50)
-    source: RecipeSource
-    source_ref: str | None = Field(default=None, max_length=500)
     ingredients: list[RecipeIngredientIn] = Field(default_factory=list)
     cost: int | None = Field(default=None, ge=COST_MIN, le=COST_MAX)
+
+
+class RecipeCreate(RecipeFields):
+    source: RecipeSource
+    source_ref: str | None = Field(default=None, max_length=500)
 
 
 class RecipeUpdate(BaseModel):
