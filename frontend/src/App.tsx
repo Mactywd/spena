@@ -11,6 +11,7 @@ import { LoginScreen } from "./features/auth/LoginScreen";
 import { RecipeDetailScreen } from "./features/cooking/RecipeDetailScreen";
 import { PantryScreen } from "./features/pantry/PantryScreen";
 import { ImportQueueScreen } from "./features/recipe-import/ImportQueueScreen";
+import { RecipeEditScreen } from "./features/recipe-form/RecipeEditScreen";
 import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
 import { IngredientScreen } from "./features/registry/IngredientScreen";
 import { ProductScreen } from "./features/registry/ProductScreen";
@@ -73,6 +74,7 @@ export default function App() {
                 deve mai essere letto come un id di ricetta. */}
             <Route path="/ricette/importa" element={<ImportQueueScreen />} />
             <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+            <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
             <Route path="/anagrafica" element={<RegistryScreen />} />
             <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
             <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
