@@ -1586,8 +1586,14 @@ decisione».
 - Una ricetta eliminata (archiviata) su una pagina presa in carico continua a contare
   in «N ricette tue non toccate»: si può ripristinare, e le sue righe tengono davvero
   l'ingrediente.
-- Manca la prova a mano sul telefono del modulo di modifica a 375 px: l'e2e lo misura
-  a quella larghezza, ma solo il telefono dice se si usa bene col pollice.
+- ~~Manca la prova a mano sul telefono del modulo di modifica a 375 px.~~ *Fatta da
+  Mattia in produzione il 2026-09-28, tutto passato: scrivere, modificare (anche il
+  costo cambiato col −/+ prima di aprire il modulo), l'avviso su un'importata,
+  eliminare con la lapide in vista e «Annulla», la ricetta sparita da ricerca e
+  categoria, «Ripristina» da un indirizzo vecchio, il rifiuto del non alimentare che la
+  segna «(eliminata)»; e le note di S9: il ☰ che blocca lo scorrimento, la fusione che
+  lascia una voce sola in lista, «Vai alla coda» che apre il termine in cima. La prova
+  ha trovato R12, qui sotto.*
 
 **Verificato il 2026-09-28 sul ramo `r10-ricette`:** backend 933, vitest 473, e2e 20/20, lint,
 typecheck e build puliti. **In produzione dal 2026-09-28**, con il via di Mattia
@@ -1617,6 +1623,21 @@ il backend già non guardava l'autore, e un test ora fa il giro intero dalle rot
 decisione a mano che crea l'ingrediente, elenco `human`, annulla, ingrediente
 cancellato. Le due note del giro su questa schermata restano aperte, sotto T3: nessuna
 delle due si chiudeva dentro la schermata.
+
+## R12. Scrivendo una ricetta a mano non si aggiunge un ingrediente che non c'è **[D — trovato da Mattia il 2026-09-28]**
+Nel modulo della ricetta (`RecipeForm`, sotto «Scrivi con l'AI» e «Modifica»), il
+campo «Aggiungi un ingrediente» è un `IngredientPicker`: sceglie solo fra gli
+ingredienti già in anagrafica. Si scrive «zz tre», non compare niente, e la riga non
+si aggiunge. La nota «Non è in anagrafica: lo creo io salvando.» c'è solo sulle righe
+proposte dalla bozza AI (`proposedCategory`), non su quelle scritte a mano. Per
+aggiungere un ingrediente nuovo a una ricetta oggi bisogna passare da «Sistema la
+spesa» o da «Proponi»: è un vicolo cieco, contro la quinta lezione di `CLAUDE.md`.
+
+**Cosa fare.** Quando la ricerca non trova niente, il campo offre «Aggiungi «zz tre»»,
+che mette la riga come quelle dell'AI non agganciate: nota «lo creo io salvando» e
+scelta del reparto, e l'ingrediente nasce al salvataggio con lo stesso percorso di
+`create_recipe`. Da decidere con T3, perché tocca un componente che il ridisegno
+rifarà.
 
 ---
 
