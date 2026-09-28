@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
 import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
@@ -106,6 +106,46 @@ describe("le azioni del dettaglio (R10 §6.1)", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent("Pasta al pomodoro eliminata");
     expect(patchMandate(spy)).toEqual([["/api/v1/recipes/r1", { archived: true }]]);
+  });
+
+  it("dopo «Elimina», «indietro» non riporta alla ricetta eliminata", async () => {
+    stubFetch((_path, init) =>
+      init?.method === "PATCH" ? [{ ...DETAIL, archived_at: "2026-09-28T10:00:00Z" }, 200] : undefined
+    );
+    function Cronologia() {
+      const navigate = useNavigate();
+      const location = useLocation();
+      return (
+        <>
+          <p data-testid="posizione">{location.pathname}</p>
+          <button type="button" onClick={() => navigate(-1)}>
+            torna indietro
+          </button>
+        </>
+      );
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/ricette", "/ricette/r1"]} initialIndex={1}>
+          <Routes>
+            <Route path="/ricette" element={<RecipeBookScreen />} />
+            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+          </Routes>
+          <Cronologia />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Elimina" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Pasta al pomodoro eliminata");
+
+    await userEvent.click(screen.getByRole("button", { name: "torna indietro" }));
+
+    expect(screen.getByTestId("posizione")).toHaveTextContent(/^\/ricette$/);
+    expect(screen.queryByText("Questa ricetta è stata eliminata.")).toBeNull();
   });
 
   it("un'eliminazione che fallisce lo dice, e la ricetta resta lì", async () => {

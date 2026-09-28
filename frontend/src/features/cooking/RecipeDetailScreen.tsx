@@ -65,12 +65,16 @@ export function RecipeDetailScreen() {
     ]);
 
   // «Elimina» archivia subito, senza chiedere: la conferma è la lapide con «Annulla»
-  // nel ricettario, dove si torna (R10 §6.1)
+  // nel ricettario, dove si torna (R10 §6.1). `replace`: la ricetta eliminata lascia il
+  // posto al ricettario, e «indietro» non ci riporta sopra.
   const archive = useMutation({
     mutationFn: () => setRecipeArchived(id, true),
     onSuccess: (archived) => {
       void refreshAfterArchive();
-      navigate("/ricette", { state: { deletedRecipe: { id, title: archived.title } } });
+      navigate("/ricette", {
+        replace: true,
+        state: { deletedRecipe: { id, title: archived.title } },
+      });
     },
   });
 

@@ -38,7 +38,9 @@ function EditForm({ recipe }: { recipe: RecipeDetail }) {
           void queryClient.invalidateQueries({ queryKey: ["recipe", recipe.id] });
           void queryClient.invalidateQueries({ queryKey: ["recipes"] });
           void queryClient.invalidateQueries({ queryKey: ["recipe-categories"] });
-          navigate(`/ricette/${recipe.id}`, { state: { saved: true } });
+          // `replace`: il modulo lascia il posto al dettaglio, e «indietro» (quello di
+          // Android per primo) non riapre un modulo già salvato
+          navigate(`/ricette/${recipe.id}`, { replace: true, state: { saved: true } });
         }}
         submitLabel="Salva le modifiche"
       />

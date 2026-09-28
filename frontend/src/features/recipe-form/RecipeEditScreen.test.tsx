@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { RecipeEditScreen } from "./RecipeEditScreen";
 import { RecipeDetailScreen } from "../cooking/RecipeDetailScreen";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
@@ -54,6 +54,20 @@ function renderEdit(start = "/ricette/r1/modifica", prime?: (client: QueryClient
   );
 }
 
+/** L'indietro del browser (o di Android), e dove si è arrivati. */
+function Cronologia() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  return (
+    <>
+      <p data-testid="posizione">{location.pathname}</p>
+      <button type="button" onClick={() => navigate(-1)}>
+        torna indietro
+      </button>
+    </>
+  );
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -98,6 +112,33 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     expect(corpo.ingredients).toEqual([{ ingredient_id: "i1", role: "primary", quantity_text: "180 g" }]);
     // la provenienza non si manda: non si cambia
     expect(corpo.source).toBeUndefined();
+  });
+
+  it("dopo il salvataggio, «indietro» non riporta al modulo", async () => {
+    stubFetch();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/ricette/r1", "/ricette/r1/modifica"]} initialIndex={1}>
+          <Routes>
+            <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
+            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+          </Routes>
+          <Cronologia />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await screen.findByDisplayValue("Pasta al pomodoro");
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Salvata.");
+
+    await userEvent.click(screen.getByRole("button", { name: "torna indietro" }));
+
+    expect(screen.getByTestId("posizione")).toHaveTextContent(/^\/ricette\/r1$/);
+    expect(screen.queryByRole("button", { name: "Salva le modifiche" })).toBeNull();
   });
 
   it("«Salvata» sta sopra la ricetta salvata, anche mentre il dettaglio rilegge", async () => {
