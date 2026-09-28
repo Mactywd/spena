@@ -20,6 +20,7 @@ import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen"
 import { StockingScreen } from "./features/stocking/StockingScreen";
 import { AppHeader } from "./components/AppHeader";
 import { TabBar } from "./components/TabBar";
+import { NoticeProvider } from "./components/ui/NoticeProvider";
 import { UnauthorizedError } from "./api/client";
 import { defaultQueryRetryPredicate } from "./lib/queryRetry";
 
@@ -52,36 +53,38 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppHeader />
-        {/* max-w-md: l'app è pensata per un telefono, e su uno schermo largo una
-            lista che attraversa 1400px non si legge. pb-24 tiene l'ultima riga
-            sopra la barra delle schede, che è fissa e coprirebbe un bersaglio.
-            L'altezza minima toglie i 3rem dell'intestazione: con `min-h-dvh`
-            pieno la pagina sarebbe sempre più alta dello schermo di quei 3rem,
-            e ogni schermata avrebbe una barra di scorrimento che non serve. */}
-        <main className="mx-auto min-h-[calc(100dvh-3rem)] max-w-md pb-24">
-          <Routes>
-            <Route path="/" element={<Navigate to="/lista" replace />} />
-            <Route path="/lista" element={<ShoppingListScreen />} />
-            <Route path="/sistema" element={<StockingScreen />} />
-            <Route path="/dispensa" element={<PantryScreen />} />
-            <Route path="/ricette" element={<RecipeBookScreen />} />
-            {/* dichiarata SOPRA /ricette/:id: "nuova-ai" non deve mai essere
-                letto come un id di ricetta. */}
-            <Route path="/ricette/nuova-ai" element={<AiDraftScreen />} />
-            {/* dichiarata SOPRA /ricette/:id, per lo stesso motivo: "importa" non
-                deve mai essere letto come un id di ricetta. */}
-            <Route path="/ricette/importa" element={<ImportQueueScreen />} />
-            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
-            <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
-            <Route path="/anagrafica" element={<RegistryScreen />} />
-            <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
-            <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
-          </Routes>
-        </main>
-        <TabBar />
-      </BrowserRouter>
+      <NoticeProvider>
+        <BrowserRouter>
+          <AppHeader />
+          {/* max-w-md: l'app è pensata per un telefono, e su uno schermo largo una
+              lista che attraversa 1400px non si legge. pb-24 tiene l'ultima riga
+              sopra la barra delle schede, che è fissa e coprirebbe un bersaglio.
+              L'altezza minima toglie i 3rem dell'intestazione: con `min-h-dvh`
+              pieno la pagina sarebbe sempre più alta dello schermo di quei 3rem,
+              e ogni schermata avrebbe una barra di scorrimento che non serve. */}
+          <main className="mx-auto min-h-[calc(100dvh-3rem)] max-w-md pb-24">
+            <Routes>
+              <Route path="/" element={<Navigate to="/lista" replace />} />
+              <Route path="/lista" element={<ShoppingListScreen />} />
+              <Route path="/sistema" element={<StockingScreen />} />
+              <Route path="/dispensa" element={<PantryScreen />} />
+              <Route path="/ricette" element={<RecipeBookScreen />} />
+              {/* dichiarata SOPRA /ricette/:id: "nuova-ai" non deve mai essere
+                  letto come un id di ricetta. */}
+              <Route path="/ricette/nuova-ai" element={<AiDraftScreen />} />
+              {/* dichiarata SOPRA /ricette/:id, per lo stesso motivo: "importa" non
+                  deve mai essere letto come un id di ricetta. */}
+              <Route path="/ricette/importa" element={<ImportQueueScreen />} />
+              <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+              <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
+              <Route path="/anagrafica" element={<RegistryScreen />} />
+              <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
+              <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
+            </Routes>
+          </main>
+          <TabBar />
+        </BrowserRouter>
+      </NoticeProvider>
     </QueryClientProvider>
   );
 }

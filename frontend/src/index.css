@@ -222,3 +222,27 @@
     background-color: var(--color-card);
   }
 }
+
+/* La barra dell'avviso di conferma che si accorcia (NoticeProvider). Chi ha chiesto al
+   sistema meno movimento la vede ferma: la durata resta la stessa, cambia solo che non
+   la si vede scorrere. */
+@keyframes notice-shrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.notice-timer {
+  animation-name: notice-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice-timer {
+    animation: none;
+  }
+}
