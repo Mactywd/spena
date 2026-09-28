@@ -31,9 +31,8 @@ export function PantryScreen() {
   const items = data ?? [];
 
   // la stessa chiave dello schermo Lista: la cache è una sola, e aprire la dispensa
-  // dopo la lista non ricarica niente. Se non risponde non si mostra un conteggio
-  // sbagliato — la scheda resta, con una nota che non promette nulla: l'ingresso
-  // alla sottosezione non deve dipendere da una seconda chiamata
+  // dopo la lista non ricarica niente. Passiamo i dati e l'errore a ShoppingEntryCard,
+  // che decide la nota e conta quel che è nel carrello.
   const { data: shopping, isError: isShoppingError } = useQuery({
     queryKey: ["shopping-list"],
     queryFn: () => fetchShoppingList(),
