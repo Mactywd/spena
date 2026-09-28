@@ -389,3 +389,33 @@ async def test_se_il_vincitore_ha_in_lista_solo_la_storia_la_voce_del_perdente_s
         ("pomodori", "pomodoro", ShoppingStatus.PENDING),
         ("pomodoro tolto", "pomodoro", ShoppingStatus.ARCHIVED),
     ]
+
+
+async def test_la_voce_che_resta_tiene_lo_stato_piu_avanti(db_session, mondo):
+    """Il perdente è già nel carrello, il vincitore ancora da comprare: la voce del
+    vincitore resta, ma nel carrello — togliere quella spuntata e lasciare l'altra da
+    comprare farebbe ricomprare quel che è già in mano."""
+    pomodoro, pomodori = mondo["pomodoro"], mondo["pomodori"]
+    voce = (
+        await db_session.execute(
+            select(ShoppingListItem).where(ShoppingListItem.ingredient_id == pomodori.id)
+        )
+    ).scalar_one()
+    voce.status = ShoppingStatus.CHECKED
+    voce.checked_at = datetime.now(UTC)
+    db_session.add(_voce_di_lista(pomodoro, ShoppingStatus.PENDING, "pomodoro"))
+    await db_session.flush()
+
+    conti = await merge_ingredients(db_session, pomodori.id, pomodoro.id)
+
+    assert conti.shopping_items_dropped == 1
+    assert await _lista(db_session) == [
+        ("pomodori", "pomodoro", ShoppingStatus.ARCHIVED),
+        ("pomodoro", "pomodoro", ShoppingStatus.CHECKED),
+    ]
+    rimasta = (
+        await db_session.execute(
+            select(ShoppingListItem).where(ShoppingListItem.raw_text == "pomodoro")
+        )
+    ).scalar_one()
+    assert rimasta.checked_at is not None

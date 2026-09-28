@@ -7,6 +7,7 @@ import { buttonClasses } from "../../components/ui/buttonClasses";
 import { FOOD_CATEGORIES, NON_FOOD_CATEGORIES } from "../../domain/categories";
 import type { IngredientDetail } from "../../domain/types";
 import { patchIngredient, refreshAfterCorrection, registryRefusal } from "./api";
+import { queuePath } from "./origin";
 
 /** «Cambia reparto» (spec §6.3). Tutti i reparti, i non alimentari compresi: in
  * anagrafica si corregge anche il detersivo creato in «latticini». Il rifiuto per le
@@ -90,20 +91,29 @@ export function CategoryForm({
             <p className="text-ink-soft">e altre {refusal.recipe_count - refusal.recipes.length}.</p>
           )}
           {/* Le ricette dell'import in attesa non hanno ancora una pagina da aprire: il
-              passo è la decisione che le lega qui, e quei termini sono gli alias
-              «Deciso nella coda» di questa scheda, ciascuno col suo link. */}
-          {refusal.pending_import_count > 0 && (
+              passo è la decisione che le lega qui. Un link per termine, dritto a lui in
+              coda (`?termine=`): un termine deciso da sé non ha alias su questa scheda
+              e non sta fra le decisioni recenti, e senza il link non si troverebbe. */}
+          {refusal.pending_terms.length > 0 && (
             <>
-              <p className="text-ink-soft">
-                I termini dell'import decisi qui sono fra gli alias qui sotto, segnati «Deciso
-                nella coda».
-              </p>
-              <Link
-                to="/ricette/importa"
-                className="inline-flex min-h-11 items-center font-medium text-brand"
-              >
-                Vai a «Ingredienti da abbinare»
-              </Link>
+              <p className="text-ink-soft">Si correggono nella coda, dai termini dell'import:</p>
+              <ul>
+                {refusal.pending_terms.map((term) => (
+                  <li key={term.id}>
+                    <Link
+                      to={queuePath(term.id)}
+                      className="inline-flex min-h-11 items-center font-medium text-brand"
+                    >
+                      {term.display_name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {refusal.pending_term_count > refusal.pending_terms.length && (
+                <p className="text-ink-soft">
+                  e altri {refusal.pending_term_count - refusal.pending_terms.length}.
+                </p>
+              )}
             </>
           )}
         </div>

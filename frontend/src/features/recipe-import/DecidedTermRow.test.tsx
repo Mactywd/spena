@@ -26,6 +26,28 @@ describe("DecidedTermRow", () => {
     expect(screen.getByText(/pasta/)).toBeInTheDocument();
   });
 
+  it("dice «creato» quando la decisione ha creato l'ingrediente, «collegato» altrimenti", () => {
+    const { rerender } = render(
+      <DecidedTermRow
+        term={term({ display_name: "Speck", decided_name: "speck", created_ingredient: true })}
+        pending={false}
+        onUndo={vi.fn()}
+      />
+    );
+    expect(screen.getByText("creato: speck")).toBeInTheDocument();
+
+    rerender(
+      <DecidedTermRow term={term({ created_ingredient: false })} pending={false} onUndo={vi.fn()} />
+    );
+    expect(screen.getByText("collegato a pasta")).toBeInTheDocument();
+
+    // le decisioni di prima non lo sanno: la frase non promette niente in più
+    rerender(
+      <DecidedTermRow term={term({ created_ingredient: null })} pending={false} onUndo={vi.fn()} />
+    );
+    expect(screen.getByText("collegato a pasta")).toBeInTheDocument();
+  });
+
   it("dice quando è stato ignorato, senza nominare un ingrediente", () => {
     render(
       <DecidedTermRow

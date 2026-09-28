@@ -28,6 +28,11 @@ def refusal_response(exc: RegistryRefusal) -> JSONResponse:
     elif isinstance(obstacle, RecipesInUse):
         content["recipe_count"] = obstacle.count
         content["pending_import_count"] = obstacle.pending_imports
+        content["pending_terms"] = [
+            {"id": str(term.id), "display_name": term.display_name}
+            for term in obstacle.pending_terms
+        ]
+        content["pending_term_count"] = obstacle.pending_term_count
         content["recipes"] = [
             {"id": str(recipe.id), "title": recipe.title} for recipe in obstacle.recipes
         ]

@@ -126,6 +126,7 @@ async def _decided_out(session: AsyncSession, term: ImportTerm) -> TermOut:
         suggestion=None, waiting_titles=[], decided_by=term.decided_by,
         decided_action=_decided_action(term),
         decided_name=await _ingredient_name(session, term.ingredient_id),
+        created_ingredient=term.created_ingredient,
         decided_at=term.decided_at,
     )
 
@@ -154,27 +155,18 @@ async def _pending_out(
 
 
 def _decided_action(term: ImportTerm) -> str | None:
-    """«map» o «creato» non si distinguono, e non è una lacuna che si può colmare qui.
+    """«map» per ogni decisione che punta a un ingrediente, «ignored» per chi non lo
+    tiene in dispensa. Se il «map» ha creato l'ingrediente non lo dice questa etichetta
+    ma `created_ingredient`, accanto a lei in `TermOut`.
 
-    `import_terms` non registra se la decisione ha creato l'ingrediente o ne ha usato
-    uno già in anagrafica: quel fatto esiste solo nell'istante di `decide_terms`
-    (o della decisione umana) e non è mai scritto da nessuna parte. Distinguerlo
-    vorrebbe una colonna, e questo piano vieta ogni migrazione — quindi la
-    distinzione non si calcola, si rinuncia a promettere di poterla fare.
-
-    Non è nemmeno vero che si possa dedurre da un fatto già scritto. Sembra che si
-    possa: «un ingrediente il cui unico alias dell'import è il nome di questo
-    termine è nato con questa decisione». Non regge. «Rigatoni» che diventa un `map`
-    su «pasta», ingrediente esistente da prima, scrive comunque l'alias `rigatoni`
-    con `source="import"` (vedi `decide_terms`): se quello è l'unico alias «import»
-    di pasta, la deduzione chiamerebbe «creato» un ingrediente che esisteva già.
-    L'alias non distingue le due storie, perché entrambe lo scrivono allo stesso
-    modo.
-
-    Il valore che segue, quindi, è "map" per ogni decisione che punta a un
-    ingrediente — creato o già esistente che sia — e "ignored" per chi non tiene
-    l'ingrediente in dispensa. Chi deve sapere se un annullamento cancellerà un
-    ingrediente lo scopre da cosa fa `undo_decision`, non da questa etichetta.
+    Quel fatto si scrive alla decisione dal 2026-09-28 (`import_terms.created_ingredient`,
+    migrazione 0011): prima esisteva solo nell'istante di `decide_terms` o della
+    decisione a mano, e per le decisioni di allora resta NULL. Non si ricava dopo.
+    Sembrerebbe: «un ingrediente il cui unico alias dell'import è il nome di questo
+    termine è nato con questa decisione». Non regge: «Rigatoni» agganciato a «pasta»,
+    che c'era da prima, scrive comunque l'alias `rigatoni` con `source="import"`, e le
+    due storie lasciano lo stesso segno. Per questo il NULL resta un «non si sa», e
+    `undo_decision` su NULL non cancella niente.
     """
     if term.decision == TermDecision.IGNORED:
         return "ignored"

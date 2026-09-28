@@ -206,9 +206,33 @@ async def test_il_non_alimentare_vede_le_pagine_dellimport_in_attesa(db_session,
     assert rifiuto.value.code == RefusalCode.NON_FOOD_IN_RECIPES
     assert rifiuto.value.obstacle.count == 0
     assert rifiuto.value.obstacle.pending_imports == 2
+    # i termini che le legano qui, perché lo schermo porti a ciascuno nella coda: un
+    # termine deciso da sé (`auto`) non ha alias e non sta fra le decisioni recenti
+    assert [t.display_name for t in rifiuto.value.obstacle.pending_terms] == [
+        "k-burro", "k-burro-fuso",
+    ]
+    assert rifiuto.value.obstacle.pending_term_count == 2
     assert "2 ricette dell'import ancora in attesa" in rifiuto.value.message
     assert "Ingredienti da abbinare" in rifiuto.value.message
     assert burro.category == "latticini"
+
+
+async def test_il_non_alimentare_porta_al_piu_dieci_termini_e_il_conto(db_session, anagrafica):
+    burro = anagrafica["burro"]
+    chiavi = [f"k-burro-{n:02d}" for n in range(12)]
+    db_session.add_all([_termine(key, burro) for key in chiavi])
+    db_session.add_all([
+        _termine("k-aperto", None, TermDecision.PENDING),
+        _pagina("tutte", [*chiavi, "k-aperto"]),
+    ])
+    await db_session.flush()
+
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await recategorize_ingredient(db_session, burro.id, "casa")
+
+    ostacolo = rifiuto.value.obstacle
+    assert (ostacolo.pending_imports, ostacolo.pending_term_count) == (1, 12)
+    assert [t.display_name for t in ostacolo.pending_terms] == chiavi[:10]
 
 
 async def test_il_non_alimentare_con_ricette_e_pagine_in_attesa_dice_entrambe(

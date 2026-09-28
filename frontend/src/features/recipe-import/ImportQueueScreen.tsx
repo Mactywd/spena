@@ -325,10 +325,28 @@ export function ImportQueueScreen() {
         </section>
       )}
 
+      {/* «non c'è» solo quando il server l'ha detto: un guasto dopo i tentativi non
+          è un'assenza, e lì il passo è riprovare */}
       {focusId !== null && focus.isError && (
-        <p className="pt-2 text-sm text-ink-soft">
-          Non trovo quel termine. La coda e le decisioni recenti sono qui sotto.
-        </p>
+        focus.error instanceof ApiError && focus.error.status === 404 ? (
+          <p className="pt-2 text-sm text-ink-soft">
+            Non trovo quel termine. La coda e le decisioni recenti sono qui sotto.
+          </p>
+        ) : (
+          <div role="alert" className="flex flex-wrap items-center gap-2 pt-2 text-sm">
+            <span className="text-danger">
+              Non sono riuscito a leggere quel termine. La coda è qui sotto.
+            </span>
+            <button
+              type="button"
+              disabled={focus.isFetching}
+              onClick={() => void focus.refetch()}
+              className={buttonClasses("secondary")}
+            >
+              Riprova
+            </button>
+          </div>
+        )
       )}
 
       {isLoading && <p className="pt-4 text-ink-soft">Carico la coda…</p>}

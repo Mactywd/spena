@@ -153,6 +153,7 @@ async def test_il_non_alimentare_con_ricette_e_un_409_che_le_elenca(logged_clien
     assert corpo["recipe_count"] == 1
     assert corpo["recipes"] == [{"id": str(anagrafica["risotto"]), "title": "Risotto al burro"}]
     assert corpo["pending_import_count"] == 0
+    assert (corpo["pending_terms"], corpo["pending_term_count"]) == ([], 0)
     assert (await logged_client.get(f"{BASE}/{anagrafica['burro']}")).json()["category"] == "latticini"
 
 
@@ -182,6 +183,10 @@ async def test_il_non_alimentare_con_pagine_in_attesa_e_un_409_che_le_conta(
     corpo = risposta.json()
     assert corpo["code"] == "non_food_in_recipes"
     assert (corpo["recipe_count"], corpo["recipes"], corpo["pending_import_count"]) == (0, [], 1)
+    assert corpo["pending_terms"] == [
+        {"id": str(anagrafica["term"]), "display_name": "Pomodori pelati"}
+    ]
+    assert corpo["pending_term_count"] == 1
     assert "1 ricetta dell'import ancora in attesa" in corpo["detail"]
 
 

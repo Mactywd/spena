@@ -194,6 +194,9 @@ export interface ImportTerm {
   // per il perché, compreso perché la deduzione che sembra ovvia è sbagliata.
   decided_action: "map" | "ignored" | null;
   decided_name: string | null;
+  /** Se il "map" ha creato l'ingrediente (`true`) o l'ha agganciato (`false`).
+   * `null` o assente: non si sa (decisioni prima del 2026-09-28, o non deciso). */
+  created_ingredient?: boolean | null;
   /** Quando è stata presa, in ISO 8601. Ordina l'elenco delle decisioni recenti,
    * dove quelle dell'AI e quelle a mano stanno insieme (R11). */
   decided_at: string | null;
@@ -290,6 +293,9 @@ export type RegistryRefusal =
       recipes: { id: string; title: string }[];
       /** Le pagine dell'import in attesa che, materializzate, lo userebbero. */
       pending_import_count: number;
+      /** I termini che le legano qui, al più dieci per nome; il conto dice il resto. */
+      pending_terms: { id: string; display_name: string }[];
+      pending_term_count: number;
     }
   | {
       code: "import_alias" | "decision_refused";

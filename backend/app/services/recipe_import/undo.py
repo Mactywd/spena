@@ -71,6 +71,27 @@ async def _imported_pages_with(
     return list(rows.scalars())
 
 
+async def _hand_over_creation(session: AsyncSession, ingredient_id: uuid.UUID) -> None:
+    """Il creatore se ne va, l'ingrediente resta perché altri termini lo indicano: il
+    fatto «nato dall'import» passa a uno di loro, il primo deciso. Senza, annullati
+    anche quelli (tutti `False`) l'ingrediente resterebbe orfano in anagrafica. Se lo
+    tiene in piedi altro (dispensa, lista, una ricetta), nessun termine lo riceve.
+    """
+    heir = (
+        await session.execute(
+            select(ImportTerm)
+            .where(
+                ImportTerm.ingredient_id == ingredient_id,
+                ImportTerm.decision == TermDecision.MAPPED,
+            )
+            .order_by(ImportTerm.decided_at.asc().nullslast(), ImportTerm.id)
+            .limit(1)
+        )
+    ).scalars().first()
+    if heir is not None:
+        heir.created_ingredient = True
+
+
 async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     """Rimette il mondo come era prima che quella decisione fosse presa.
 
@@ -136,6 +157,8 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
         # da solo non distingue le due storie, e nel dubbio non si cancella.
         if created_ingredient is True:
             ingredient_deleted = await delete_ingredient_if_unused(session, ingredient_id)
+            if not ingredient_deleted:
+                await _hand_over_creation(session, ingredient_id)
 
     await session.flush()
     return Undone(

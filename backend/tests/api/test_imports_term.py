@@ -39,6 +39,26 @@ async def test_un_termine_deciso_torna_nella_forma_delle_decisioni(logged_client
     assert (voce["decided_action"], voce["decided_name"], voce["decided_by"]) == (
         "map", "pasta", "auto",
     )
+    # decisa prima che il fatto si scrivesse: non si sa se l'ha creata
+    assert voce["created_ingredient"] is None
+
+
+async def test_un_termine_deciso_dice_se_ha_creato_lingrediente(logged_client, db_session):
+    speck = await create_ingredient(
+        db_session, name="speck", display_name="Speck", category=IngredientCategory.CARNE
+    )
+    term = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-speck", display_name="Speck", occurrences=1,
+        decision=TermDecision.MAPPED, ingredient_id=speck.id, decided_by="ai",
+        created_ingredient=True,
+    )
+    db_session.add(term)
+    await db_session.flush()
+
+    voce = (await logged_client.get(f"/api/v1/imports/terms/{term.id}")).json()
+    assert voce["created_ingredient"] is True
+    elenco = (await logged_client.get("/api/v1/imports/terms?decided_by=ai")).json()
+    assert [v["created_ingredient"] for v in elenco] == [True]
 
 
 async def test_un_termine_in_attesa_torna_nella_forma_della_coda(logged_client, db_session):
