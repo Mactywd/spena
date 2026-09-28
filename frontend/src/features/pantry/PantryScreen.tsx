@@ -20,10 +20,15 @@ import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
 
 export function PantryScreen() {
   const queryClient = useQueryClient();
-  const { data: items = [], isLoading, isError, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["pantry"],
     queryFn: fetchPantry,
   });
+  // un caricamento fallito non è una dispensa vuota; ma se un caricamento era già
+  // riuscito, React Query ne tiene i dati anche quando il successivo fallisce, e quelli
+  // restano a video sotto l'errore. `loaded` distingue i due casi
+  const loaded = data !== undefined;
+  const items = data ?? [];
 
   // la stessa chiave dello schermo Lista: la cache è una sola, e aprire la dispensa
   // dopo la lista non ricarica niente. Se non risponde non si mostra un conteggio
@@ -162,7 +167,7 @@ export function PantryScreen() {
   if (restock.isPending) busyIds.add(restock.variables.id);
   if (expiry.isPending) busyIds.add(expiry.variables.id);
 
-  const summary = isError ? null : expirySummary(expiryCounts(items));
+  const summary = expirySummary(expiryCounts(items));
   // un riepilogo che sparisce (l'ultima voce in scadenza tolta o finita) si porta via
   // il filtro: una dispensa vuota per un filtro invisibile sarebbe una bugia, e quando
   // il riepilogo torna deve tornare non premuto. Si spegne qui, durante il disegno, e
@@ -171,7 +176,7 @@ export function PantryScreen() {
   if (summary === null && expiringOnly) setExpiringOnly(false);
   // il filtro guarda la data, non il conteggio: una voce finita non conta nel
   // riepilogo ma resta in vista, col suo «In lista» (hasExpiry)
-  const visible = (isError ? [] : items)
+  const visible = items
     .filter((item) => matchesQuery(item, query))
     .filter((item) => !expiringOnly || hasExpiry(item));
 
@@ -212,8 +217,7 @@ export function PantryScreen() {
               <div className="min-w-0 flex-1">
                 <IngredientPicker
                   key={adding}
-                  label="Quale ingrediente?"
-                  accessibleLabel="Ingrediente da mettere in dispensa"
+                  label="Ingrediente da mettere in dispensa"
                   initialTerm={adding}
                   autoFocus
                   failureNote="Riprova, oppure scrivilo in lista e sistemalo da lì."
@@ -273,13 +277,17 @@ export function PantryScreen() {
 
         {isError && (
           <ErrorState
-            message="Non sono riuscito a caricare la dispensa."
+            message={
+              loaded
+                ? "Non sono riuscito ad aggiornare la dispensa. Quella qui sotto è dell'ultimo caricamento."
+                : "Non sono riuscito a caricare la dispensa."
+            }
             onRetry={() => void refetch()}
             retrying={isFetching}
           />
         )}
 
-        {!isLoading && !isError && visible.length === 0 && query.trim() === "" && (
+        {loaded && visible.length === 0 && query.trim() === "" && (
           <EmptyState
             title="Dispensa vuota"
             body="Sistema la spesa, oppure scrivi qui sopra quello che hai in casa e tocca +."
@@ -289,7 +297,7 @@ export function PantryScreen() {
         {/* col riepilogo premuto il vuoto è del filtro, non della dispensa: dirlo
             «niente in dispensa» sarebbe falso, e «Aggiungi» ne farebbe un doppione.
             La via d'uscita è spegnere il filtro */}
-        {!isLoading && !isError && visible.length === 0 && query.trim() !== "" && expiringOnly && (
+        {loaded && visible.length === 0 && query.trim() !== "" && expiringOnly && (
           <EmptyState
             title={`Niente in scadenza per «${query.trim()}»`}
             action={<Button onClick={() => setExpiringOnly(false)}>Mostra tutto</Button>}
@@ -297,7 +305,7 @@ export function PantryScreen() {
         )}
 
         {/* con l'aggiunta già aperta l'offerta sarebbe un doppione del pannello qui sopra */}
-        {!isLoading && !isError && visible.length === 0 && query.trim() !== "" && !expiringOnly && (
+        {loaded && visible.length === 0 && query.trim() !== "" && !expiringOnly && (
           <EmptyState
             title={`Niente in dispensa per «${query.trim()}»`}
             action={
@@ -316,7 +324,7 @@ export function PantryScreen() {
           />
         )}
 
-        {!isLoading &&
+        {loaded &&
           groupForDisplay(visible).map(([category, rows]) => (
             <Section key={category} category={category} count={rows.length}>
               <ul>

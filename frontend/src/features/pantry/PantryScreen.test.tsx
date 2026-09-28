@@ -209,6 +209,17 @@ describe("PantryScreen", () => {
     expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toBeDefined();
   });
 
+  it("il nome del campo dell'aggiunta è quello che si legge (WCAG 2.5.3)", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    // chi usa la voce dice quel che vede: la scritta e il nome accessibile coincidono
+    expect(screen.getByText("Ingrediente da mettere in dispensa")).toBeDefined();
+    expect(screen.queryByText("Quale ingrediente?")).toBeNull();
+  });
+
   it("la ✕ dell'aggiunta la chiude", async () => {
     stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
     renderScreen();
@@ -344,8 +355,37 @@ describe("PantryScreen", () => {
     renderScreen();
     expect(await screen.findByText("Non sono riuscito a caricare la dispensa.")).toBeDefined();
     expect(screen.queryByRole("heading", { name: "Dispensa vuota" })).toBeNull();
+    // senza un caricamento riuscito prima non c'è niente da mostrare sotto l'errore
+    expect(screen.queryByText(/ultimo caricamento/)).toBeNull();
+    expect(screen.queryByRole("region")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
     expect(await screen.findByText("Total 0%")).toBeDefined();
+  });
+
+  it("un aggiornamento fallito lo dice, e lascia la dispensa dell'ultimo caricamento", async () => {
+    // React Query tiene i dati di prima quando un nuovo caricamento fallisce: nasconderli
+    // toglierebbe la dispensa proprio quando la rete è incerta, cioè in corsia
+    let patched = false;
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (init?.method === "PATCH") {
+        patched = true;
+        return [{ ...ITEMS[0], status: "low" }, 200];
+      }
+      return patched ? [{ detail: "giù" }, 500] : [ITEMS, 200];
+    });
+    renderScreen();
+    const gauge = await screen.findByRole("radiogroup", { name: "Quanto resta di Total 0%" });
+    fireEvent.click(within(gauge).getByRole("radio", { name: "Quasi finito" }));
+    expect(
+      await screen.findByText(
+        "Non sono riuscito ad aggiornare la dispensa. Quella qui sotto è dell'ultimo caricamento."
+      )
+    ).toBeDefined();
+    expect(screen.queryByText("Non sono riuscito a caricare la dispensa.")).toBeNull();
+    expect(screen.getByText("Total 0%")).toBeDefined();
+    expect(screen.getByRole("link", { name: "mela" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Riprova" })).toBeDefined();
   });
 
   // D3/CLAUDE.md, «mai un vicolo cieco»: un conteggio che non arriva toglie la
