@@ -347,7 +347,8 @@ Tutti i colori, il raggio delle schede e il tipo di carattere stanno in un blocc
 diventa `bg-brand`, `text-brand`, `border-brand`), e nessun file di schermata nomina
 un colore grezzo: cercare `emerald` o `neutral-400` in `src/` non trova niente, ed è
 così che va tenuto. Cambiare il verde dell'app è un lavoro da una riga, e il tema
-scuro — che non c'è — sarebbe un lavoro da questo solo file.
+scuro sta nello stesso file: ridefinisce le stesse variabili sotto
+`@media (prefers-color-scheme: dark)`, e segue il telefono senza un interruttore.
 
 I valori non sono scelti a occhio. Ogni colore che porta testo bianco sopra di sé sta
 sopra 4.5:1 di contrasto, e `ink-faint` è il più chiaro che regge 4.5:1 sul fondo

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { RecipeDraft } from "../src/domain/types.ts";
 
 /**
@@ -297,6 +297,62 @@ function tokenDelTema(nome: string): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+/** Lo stesso token, dal blocco `@media (prefers-color-scheme: dark)` di `index.css`. */
+function tokenDelTemaScuro(nome: string): string {
+  const css = readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8");
+  const scuro = css.match(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([\s\S]*?)\}\s*\}/)?.[1] ?? "";
+  const esadecimale = scuro.match(new RegExp(`--color-${nome}:\\s*#([0-9a-fA-F]{6})\\s*;`))?.[1];
+  expect(esadecimale, `--color-${nome} non è nel blocco scuro di index.css`).toBeDefined();
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(esadecimale!.slice(i, i + 2), 16));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** Ogni testo visibile della pagina, col suo contrasto contro il primo fondo dipinto
+ * dietro di lui. Salta ciò che è nascosto, i controlli spenti (WCAG li esenta) e il
+ * testo dentro un `aria-hidden`. Torna solo i casi sotto 4,5:1, descritti.
+ *
+ * Gira da `body` e non da `page.evaluate`, per il motivo di `contrastoAVideo` più
+ * sotto: questo file non ha la libreria DOM, e `document` o `getComputedStyle` come
+ * globali non compilerebbero. Passando dal documento dell'elemento sì. */
+async function testiIlleggibili(page: Page): Promise<string[]> {
+  return page.locator("body").evaluate((body) => {
+    const doc = body.ownerDocument;
+    const view = doc.defaultView;
+    const canali = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+    const lum = (c: string) => {
+      const [r, g, b] = canali(c).map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const cattivi: string[] = [];
+    // 4 è NodeFilter.SHOW_TEXT: la costante sta nella libreria DOM, che qui non c'è
+    const walker = doc.createTreeWalker(body, 4);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const testo = n.textContent?.trim();
+      const el = n.parentElement;
+      if (!testo || !el) continue;
+      if (el.closest("[aria-hidden=true], [disabled], [aria-disabled=true], .sr-only")) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      let fondo: string | null = null;
+      let opacita = 1;
+      for (let nodo = el; nodo; nodo = nodo.parentElement) {
+        const s = view.getComputedStyle(nodo);
+        opacita *= Number(s.opacity);
+        if (fondo === null && (canali(s.backgroundColor)[3] ?? 1) > 0) fondo = s.backgroundColor;
+      }
+      if (opacita < 1) continue;
+      const a = lum(view.getComputedStyle(el).color);
+      const b = lum(fondo ?? "rgb(255, 255, 255)");
+      const rapporto = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      if (rapporto < 4.5) cattivi.push(`«${testo.slice(0, 40)}» ${rapporto.toFixed(2)}:1 su ${fondo}`);
+    }
+    return cattivi;
+  });
+}
+
 /** Il contrasto di un testo com'è a video, misurato dal browser.
  *
  * Colore del testo e fondo si leggono da `getComputedStyle`; il fondo è quello del primo
@@ -529,7 +585,8 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
     .click();
   await expect(page.getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
   await page.getByRole("button", { name: "Ho cucinato", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText(
+  // per il testo, come in `cooking.spec.ts`: l'avviso unico tiene sempre la sua regione
+  await expect(page.getByRole("status").filter({ hasText: /^Segnato\./ })).toHaveText(
     "Segnato. Una cosa è tornata in lista della spesa."
   );
 
@@ -582,4 +639,97 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
   await page.goto("/dispensa");
   await page.getByRole("button", { name: "Togli mascarpone dalla dispensa" }).click();
   await expect(page.getByText("Tolta dalla dispensa")).toBeVisible();
+});
+
+// T3, Consegna 0: il tema scuro. `theme.test.ts` fa l'aritmetica sui valori scritti in
+// `index.css`; qui si misura quel che arriva a video, su ogni testo di ogni schermata
+// che il seme `--con-ricette` raggiunge senza scrivere niente. Una coppia che nessuno
+// ha messo in PAIRS — un `text-brand` finito su `bg-low-tint`, un `/60` di opacità —
+// l'aritmetica non la vede; il browser sì.
+const SCHERMATE = ["/lista", "/sistema", "/dispensa", "/ricette", "/ricette/importa", "/anagrafica", "/non-esiste"];
+
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`tema ${tema === "light" ? "chiaro" : "scuro"}`, () => {
+    test.use({ colorScheme: tema });
+
+    // Il `beforeEach` in cima al file preme «Entra» e non aspetta la risposta: un
+    // `page.goto` subito dopo interrompe l'accesso, e ogni schermata qui sotto diventa
+    // la schermata d'accesso — misurata sette volte, con un verde che non dice niente
+    // delle altre. Si aspetta la barra delle schede, che c'è solo da dentro.
+    test.beforeEach(async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+    });
+
+    test("il fondo della pagina è il token del tema", async ({ page }) => {
+      const atteso = tema === "light" ? tokenDelTema("page") : tokenDelTemaScuro("page");
+      await expect(page.locator("body")).toHaveCSS("background-color", atteso);
+    });
+
+    test("su ogni schermata ogni testo sta sopra 4,5:1", async ({ page }) => {
+      const tutti: string[] = [];
+      for (const indirizzo of SCHERMATE) {
+        await page.goto(indirizzo);
+        await page.waitForLoadState("networkidle");
+        // la schermata vera, non l'accesso: vedi il `beforeEach` qui sopra
+        await expect(page.getByLabel("Password")).toHaveCount(0);
+        tutti.push(...(await testiIlleggibili(page)).map((t) => `${indirizzo}: ${t}`));
+      }
+      // anche il dettaglio di una ricetta: la prima scheda del ricettario. Una scheda è un
+      // link dentro una voce della lista (RecipeCard), senza titoli `h2`/`h3`
+      await page.goto("/ricette");
+      await page.getByRole("listitem").getByRole("link").first().click();
+      await expect(page.getByRole("button", { name: "Cucina", exact: true })).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      tutti.push(...(await testiIlleggibili(page)).map((t) => `dettaglio: ${t}`));
+      // il ☰ aperto: il pannello sta in un portale suo, con un fondo suo
+      await page.goto("/lista");
+      await page.getByRole("button", { name: "Apri il menu" }).click();
+      await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
+      tutti.push(...(await testiIlleggibili(page)).map((t) => `☰: ${t}`));
+      // e l'accesso, l'unica schermata che si vede da fuori: senza il cookie, il primo
+      // 401 la fa comparire
+      await page.context().clearCookies();
+      await page.goto("/");
+      await expect(page.getByLabel("Password")).toBeVisible();
+      tutti.push(...(await testiIlleggibili(page)).map((t) => `accesso: ${t}`));
+      expect(tutti).toEqual([]);
+    });
+
+    test("ogni pulsante ha un nome, anche quelli di sola icona", async ({ page }) => {
+      const muti: string[] = [];
+      for (const indirizzo of SCHERMATE) {
+        await page.goto(indirizzo);
+        await page.waitForLoadState("networkidle");
+        await expect(page.getByLabel("Password")).toHaveCount(0);
+        // da `body`, per il motivo di `testiIlleggibili`
+        const qui = await page.locator("body").evaluate((body) =>
+          [...body.querySelectorAll("button")]
+            .filter(
+              (b) =>
+                !(b.getAttribute("aria-label") || b.textContent?.trim() || b.getAttribute("aria-labelledby"))
+            )
+            .map((b) => b.outerHTML.slice(0, 80) as string)
+        );
+        muti.push(...qui.map((b) => `${indirizzo}: ${b}`));
+      }
+      expect(muti).toEqual([]);
+    });
+  });
+}
+
+test("il carattere è Inter, servito dall'app", async ({ page }) => {
+  await page.waitForLoadState("networkidle");
+  // `fonts.check` da solo non basta: torna vero anche per una famiglia che nessun
+  // `@font-face` dichiara, perché «non c'è niente da caricare». Quindi prima si chiede
+  // che la faccia di Inter esista nel documento e sia caricata davvero.
+  const inter = await page.locator("body").evaluate((body) =>
+    [...body.ownerDocument.fonts]
+      .filter((f) => f.family.replace(/["']/g, "") === "Inter Variable")
+      .map((f) => f.status as string)
+  );
+  expect(inter).toContain("loaded");
+  expect(
+    await page.locator("body").evaluate((body) => body.ownerDocument.fonts.check('16px "Inter Variable"') as boolean)
+  ).toBe(true);
+  await expect(page.locator("body")).toHaveCSS("font-family", /Inter Variable/);
 });

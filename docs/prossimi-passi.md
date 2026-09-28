@@ -1815,6 +1815,27 @@ davvero.
 ↳ H1 ora è sbloccata: da oggi lo storico si può dividere.
 
 ## T3. Revisione di UI e UX, a partire da un giro del sito fatto da un sottoagente **[D, chiesto da Mattia il 2026-09-27 — giro fatto; spec del 2026-09-28: `docs/superpowers/specs/2026-09-28-ridisegno-design.md`]**
+
+**Consegna 0 (fondamenta) fatta il 2026-09-28**, sul ramo `t3-fondamenta`, non ancora in
+produzione: token chiari e scuri, Inter, icone Tabler, il cesto nell'intestazione, la
+barra delle schede con le icone e «Lista» accesa su `/sistema`, la pagina «Non trovata»,
+e le primitive (`Button`, `IconToolbar`, `ActionBar`, `Section`, `StockGauge`,
+`StatusDot`, `Chip`, l'avviso unico, `ErrorState`, `EmptyState`, `IngredientPicker` con
+«Aggiungi»). Le schermate le adottano dalla Consegna 1. Da provare sul telefono: il tema
+scuro vero, la barra di stato nei due temi, l'icona dell'app reinstallata.
+Suite alla fine: 592 test in jsdom (48 file), typecheck, lint e build puliti; 27 e2e
+verdi, di cui 7 nuovi in `e2e/style.spec.ts` (fondo della pagina, contrasto di ogni
+testo e nome di ogni pulsante su sette schermate, il dettaglio, il ☰ e l'accesso, in
+chiaro e in scuro; Inter caricato davvero). Il primo giro dell'e2e ha trovato due cose:
+i cinque € spenti del costo nel dettaglio, che sono un segno e non testo (il nome sta
+nell'`aria-label`) e ora sono `aria-hidden` come in `CostMeter`; e due prove che
+cercavano «la» regione `status`, diventate ambigue perché l'avviso unico ne tiene
+sempre una sua nella pagina. Nessun token è cambiato. Dal giro a occhio a 375 px, da
+decidere con la Consegna 1 e non difetti di contrasto: in scuro un pulsante primario
+spento (`opacity`) diventa un verde torbido con la scritta scura, poco leggibile anche
+se WCAG esenta i controlli spenti; le tre zone del cursore della dispensa, fatte con le
+tinte, restano tenui come in chiaro; il velo del ☰ scurisce poco una pagina già scura,
+e il pannello si stacca solo per il fondo `card`.
 Oltre alle voci puntuali di S8–S15 serve una revisione dell'interfaccia. L'esempio di
 Mattia: **pulsanti con icone al posto di testo cliccabile**, a cominciare dalla
 scansione del codice a barre. Prima di progettarla, però, serve sapere tutto quel che

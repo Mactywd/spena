@@ -182,12 +182,17 @@ production, which is the first defect listed above.
 - **Missing nutrients stay missing.** Never default an unknown nutrient to zero:
   zero is a claim, absence is the truth.
 - **All colour lives in one `@theme` block** in `frontend/src/index.css`, as design
-  tokens Tailwind turns into classes (`--color-brand` → `bg-brand`). No screen names
-  a raw colour: grepping `src/` for `emerald` or `neutral-` must keep returning
-  nothing. Shared primitives are in `frontend/src/components/ui/`; look there before
-  writing a fourth button variant. Contrast is a constraint, not a preference —
-  anything carrying white text is above 4.5:1, because this app is read in a
-  supermarket aisle in daylight.
+  tokens Tailwind turns into classes (`--color-brand` → `bg-brand`). The dark theme
+  redefines the same variables under `@media (prefers-color-scheme: dark)` in the
+  same file, so no screen knows which theme it is in. Text on a solid fill uses the
+  matching `on-*` token (`text-on-brand`), never `text-white`: in the dark theme the
+  fills get lighter. `src/theme.test.ts` checks every text/background pair in both
+  themes; `e2e/style.spec.ts` measures every visible text on every screen. No
+  screen names a raw colour: grepping `src/` for `emerald` or `neutral-` must keep
+  returning nothing. Shared primitives are in `frontend/src/components/ui/`; look
+  there before writing a fourth button variant. Contrast is a constraint, not a
+  preference — every text on its background is above 4.5:1, because this app is
+  read in a supermarket aisle in daylight.
 - Specs and plans are written in Italian, code and identifiers in English.
 - **Import brings in recipes, not random new ingredients.** The source catalogue
   is finer than the ingredient registry: `Rigatoni` becomes an alias of `pasta`,
