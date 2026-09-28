@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { RecipeDraft } from "../src/domain/types.ts";
+import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
 
 /**
  * Lo stile è l'unica parte dell'app che i test in jsdom non possono vedere: Tailwind
@@ -747,4 +748,25 @@ test("il service worker mette da parte Inter latino, e non gli altri alfabeti", 
   expect(sw).toMatch(/assets\/inter-latin-wght-normal-[\w-]+\.woff2/);
   expect(sw).toMatch(/assets\/inter-latin-ext-wght-normal-[\w-]+\.woff2/);
   expect(sw).not.toMatch(/inter-(cyrillic|greek|vietnamese)/);
+});
+
+// Il + di ActionBar (forma `square`). jsdom legge le classi ma non le calcola, e il
+// difetto che questo prova stava proprio nel calcolo: `rounded-[10px]` accodato a un
+// `rounded-full`, e nel CSS compilato vinceva il cerchio. ActionBar non sta ancora in
+// nessuna schermata (le Consegne 1–6 la adottano), quindi il pulsante si mette nella
+// pagina a mano, con le classi che `Button` gli darebbe e il CSS che Nginx serve.
+test("il pulsante quadrato ha gli angoli dei pulsanti, non il cerchio", async ({ page }) => {
+  await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+  const misura = await page.locator("body").evaluate((body, classi) => {
+    const doc = body.ownerDocument;
+    const bottone = doc.createElement("button");
+    bottone.className = classi;
+    bottone.textContent = "+";
+    body.appendChild(bottone);
+    const stile = doc.defaultView.getComputedStyle(bottone);
+    const esito = { raggio: stile.borderTopLeftRadius as string, lato: stile.width as string };
+    bottone.remove();
+    return esito;
+  }, buttonClasses("primary", "square"));
+  expect(misura).toEqual({ raggio: "10px", lato: "44px" });
 });

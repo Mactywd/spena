@@ -37,4 +37,18 @@ describe("ActionBar", () => {
     render(<Harness onAdd={() => {}} />);
     expect(screen.getByLabelText("Cerca o aggiungi in dispensa").className).toContain("text-base");
   });
+
+  // jsdom non calcola il CSS, quindi qui si legge l'elenco delle classi e non il raggio
+  // a video. Due utilità di raggio sullo stesso elemento non le decide l'ordine in cui
+  // sono scritte ma quello del CSS compilato: la prima stesura aggiungeva
+  // `rounded-[10px]` a un `rounded-full`, e vinceva il cerchio. Il raggio vero lo misura
+  // il browser in `style.spec.ts`.
+  it("il + è un quadrato dagli angoli morbidi, con un raggio solo", () => {
+    render(<Harness onAdd={() => {}} />);
+    const radii = screen
+      .getByRole("button", { name: "Aggiungi in dispensa" })
+      .className.split(/\s+/)
+      .filter((c) => c.startsWith("rounded"));
+    expect(radii).toEqual(["rounded-[10px]"]);
+  });
 });

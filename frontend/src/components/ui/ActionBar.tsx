@@ -47,7 +47,7 @@ export function ActionBar({
           className={`text-base ${Leading ? "pl-10" : ""}`}
         />
       </div>
-      <Button type="submit" variant="primary" icon={IconPlus} label={addLabel} className="rounded-[10px]" />
+      <Button type="submit" variant="primary" shape="square" icon={IconPlus} label={addLabel} />
     </form>
   );
 }

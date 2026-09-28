@@ -1,5 +1,5 @@
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "warn";
-export type ButtonShape = "pill" | "block" | "icon";
+export type ButtonShape = "pill" | "block" | "icon" | "square";
 
 // Le classi dei bottoni, non un componente: servono anche a dei `<Link>` (il «Sistema
 // la spesa» della lista è una navigazione, non un'azione) e un componente polimorfo
@@ -26,6 +26,11 @@ const SHAPES: Record<ButtonShape, string> = {
   block: "w-full rounded-card px-4 py-3 text-base",
   // di sola icona (spec T3 §2): un quadrato da 44px, il bersaglio minimo di casa
   icon: "size-11 shrink-0 rounded-full",
+  // lo stesso bersaglio con gli angoli dei pulsanti (spec T3 §3.2, 10–12 px): il + della
+  // barra in cima, che sta accanto a un campo e ne riprende la forma. Una forma sua e
+  // non un `rounded-[10px]` aggiunto a `icon`: fra due raggi sullo stesso elemento
+  // decide l'ordine del CSS compilato, e vinceva il cerchio
+  square: "size-11 shrink-0 rounded-[10px]",
 };
 
 export function buttonClasses(variant: ButtonVariant = "secondary", shape: ButtonShape = "pill"): string {
