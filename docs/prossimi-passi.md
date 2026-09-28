@@ -1579,6 +1579,9 @@ decisione.
   a quella larghezza, ma solo il telefono dice se si usa bene col pollice.
 - La distribuzione, con la migrazione `0012` all'avvio, la decide Mattia.
 
+**Verificato il 2026-09-28 sul ramo `r10-ricette`:** backend 931, vitest 464, e2e 20/20, lint,
+typecheck e build puliti. Non ancora distribuito.
+
 ## R11. Le decisioni prese a mano nella coda non si annullano dall'app **[FATTO 2026-09-27]**
 In «Ingredienti da abbinare», una decisione dell'AI ha il suo «Annulla» sotto «Deciso
 dall'AI». Una decisione presa a mano sparisce dalla schermata, eppure si sbaglia
