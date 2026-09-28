@@ -123,6 +123,23 @@ async def test_annullare_il_termine_lascia_intatta_la_ricetta_tua_e_la_conta(
     assert (await _pagina(db_session, AMATRICIANA)).state == ImportState.PENDING
 
 
+async def test_un_aggancio_annullato_non_dice_di_tenere_un_ingrediente_che_non_aveva_creato(
+    logged_client, db_session, mondo
+):
+    """«Spaghetti» agganciato alla pasta che c'era già: la ricetta tua usa la pasta, ma
+    l'annullamento non l'avrebbe cancellata comunque, e dire «resta per una ricetta tua»
+    sarebbe falso. La guardia è `created_ingredient`: senza, questo test diventa rosso."""
+    await _adotta(logged_client, db_session, CARBONARA, "La mia carbonara")
+
+    risposta = await logged_client.post(f"/api/v1/imports/terms/{mondo['spaghetti'].id}/undo")
+
+    assert risposta.status_code == 200, risposta.text
+    esito = risposta.json()
+    assert esito["adopted_untouched"] == 1  # la carbonara contiene il termine, ed è tua
+    assert esito["ingredient_deleted"] is False
+    assert esito["ingredient_kept_for_adopted"] is False
+
+
 async def test_rideciso_il_termine_l_import_rifa_solo_la_sua(logged_client, db_session, mondo):
     mia = await _adotta(logged_client, db_session, CARBONARA, "La mia carbonara")
     termine = mondo["t-guanciale"]
