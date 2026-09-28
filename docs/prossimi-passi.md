@@ -1575,7 +1575,8 @@ decisione.
 - Una ricetta eliminata (archiviata) su una pagina presa in carico continua a contare
   in «N ricette tue non toccate»: si può ripristinare, e le sue righe tengono davvero
   l'ingrediente.
-- Il modulo di modifica è stato verificato a mano a 375px sul telefono.
+- Manca la prova a mano sul telefono del modulo di modifica a 375 px: l'e2e lo misura
+  a quella larghezza, ma solo il telefono dice se si usa bene col pollice.
 - La distribuzione, con la migrazione `0012` all'avvio, la decide Mattia.
 
 ## R11. Le decisioni prese a mano nella coda non si annullano dall'app **[FATTO 2026-09-27]**
