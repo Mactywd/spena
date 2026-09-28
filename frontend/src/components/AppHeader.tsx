@@ -1,64 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
-
-// Il segno dell'app, disegnato qui come le tre icone della TabBar e per lo stesso
-// motivo: una libreria di icone peserebbe sul primo avvio di una PWA più di quanto
-// valga, e di marchi ce n'è uno. Una pentola con il vapore: solo tratti, nessun
-// riempimento, `currentColor` così eredita il verde del nome accanto.
-function Mark() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className="size-6"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3.5 10.5h17v4.5a4.5 4.5 0 0 1-4.5 4.5H8a4.5 4.5 0 0 1-4.5-4.5z" />
-      <path d="M20.5 12h1a1.8 1.8 0 0 1 0 3.6h-1" />
-      <path d="M9.5 7.5c0-1.2 1-1.6 1-2.8M14 7.5c0-1.2 1-1.6 1-2.8" />
-    </svg>
-  );
-}
-
-// Le tre righe del menu e la croce, disegnate a mano come il segno e per lo stesso
-// motivo: una libreria di icone per due segni peserebbe sul primo avvio più di quanto
-// valga.
-function MenuIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className="size-6"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-    >
-      <path d="M4 7h16M4 12h16M4 17h16" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className="size-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-    >
-      <path d="M6 6l12 12M18 6L6 18" />
-    </svg>
-  );
-}
+import { BrandMark } from "./ui/BrandMark";
+import { IconMenu2, IconX } from "./ui/icons";
 
 // L'indice completo (D3, T1): le sezioni che la barra in basso non porta. Pasti,
 // Spese, Profilo e Connettori si aggiungeranno qui quando esisteranno.
@@ -162,7 +106,7 @@ export function AppHeader() {
           to="/"
           className="flex min-h-11 items-center gap-2 font-semibold tracking-tight text-brand"
         >
-          <Mark />
+          <BrandMark className="size-7" />
           Spena
         </Link>
         <button
@@ -174,7 +118,7 @@ export function AppHeader() {
           onClick={() => setOpen(true)}
           className="-mr-2 flex size-11 items-center justify-center rounded-full text-ink-soft"
         >
-          <MenuIcon />
+          <IconMenu2 aria-hidden="true" className="size-6" stroke={1.8} />
         </button>
       </div>
 
@@ -210,7 +154,7 @@ export function AppHeader() {
                   onClick={close}
                   className="-mr-2 flex size-11 items-center justify-center rounded-full text-ink-soft"
                 >
-                  <CloseIcon />
+                  <IconX aria-hidden="true" className="size-5" stroke={2} />
                 </button>
               </div>
               <nav aria-label="Indice">

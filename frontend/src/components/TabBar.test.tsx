@@ -33,4 +33,14 @@ describe("la barra delle schede sopra l'indicatore home", () => {
     const nav = screen.getByRole("navigation");
     expect(nav.style.paddingBottom).toBe("var(--safe-bottom)");
   });
+
+  it("su /sistema segna «Lista»: sistemare la spesa è una parte della lista", () => {
+    render(
+      <MemoryRouter initialEntries={["/sistema"]}>
+        <TabBar />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("link", { name: "Lista" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Dispensa" })).not.toHaveAttribute("aria-current");
+  });
 });

@@ -44,6 +44,11 @@ describe("AppHeader", () => {
     expect(screen.getByRole("banner")).toBeDefined();
   });
 
+  it("porta il cesto, lo stesso segno dell'icona sul telefono", () => {
+    renderHeader(); // l'aiutante che il file usa già per montare l'intestazione
+    expect(screen.getByRole("banner").querySelector("svg[data-mark='cesto']")).not.toBeNull();
+  });
+
   it("il segno non ha un nome suo: il link si chiama «Spena», una volta sola", () => {
     // stessa regola delle icone della TabBar: senza `aria-hidden` chi legge con la
     // voce sentirebbe due volte la stessa cosa

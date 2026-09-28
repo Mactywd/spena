@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { apiFetch, UnauthorizedError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
+import { BrandMark } from "../../components/ui/BrandMark";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 
 export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
@@ -40,14 +41,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
         <div className="pb-6 text-center">
           {/* lo stesso cesto dell'icona sul telefono: chi apre l'app installata
               deve ritrovare qui il segno che ha toccato sulla schermata iniziale */}
-          <svg viewBox="0 0 512 512" aria-hidden="true" className="inline-block size-16">
-            <rect width="512" height="512" rx="112" fill="var(--color-brand)" />
-            <g fill="none" stroke="#fff" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M148 218h216l-42 142H190z" strokeWidth="26" />
-              <path d="M194 218a62 62 0 0 1 124 0" strokeWidth="26" />
-              <path d="M219 254l9 76M293 254l-9 76" strokeWidth="22" />
-            </g>
-          </svg>
+          <BrandMark className="inline-block size-16" />
           <h1 className="pt-3 text-2xl font-semibold tracking-tight">Spena</h1>
         </div>
         <div className="flex flex-col gap-4 rounded-card bg-card p-5">
