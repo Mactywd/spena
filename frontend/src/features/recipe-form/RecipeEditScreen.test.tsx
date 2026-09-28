@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -37,13 +37,14 @@ function stubFetch(route: Rotta = () => undefined) {
   return spy;
 }
 
-function renderEdit() {
+function renderEdit(start = "/ricette/r1/modifica", prime?: (client: QueryClient) => void) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
   });
+  prime?.(client);
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/ricette/r1/modifica"]}>
+      <MemoryRouter initialEntries={[start]}>
         <Routes>
           <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
           <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
@@ -98,6 +99,54 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     // la provenienza non si manda: non si cambia
     expect(corpo.source).toBeUndefined();
   });
+
+  it("dopo porzioni e costo cambiati nel dettaglio, il modulo parte dal costo salvato", async () => {
+    // Il dettaglio a 3 porzioni ha la chiave ["recipe", id, 3]: cambiare il costo
+    // invalida il prefisso, ma rilegge solo le chiavi attive, e quella a 1× — da cui la
+    // modifica partiva — restava col costo vecchio. La PUT rimpiazza la ricetta intera:
+    // mandare il costo vecchio era una perdita silenziosa del costo nuovo.
+    let cost = 2;
+    const spy = stubFetch((path, init) => {
+      if (path.includes("/pantry")) return undefined;
+      if (init?.method === "PATCH") cost = JSON.parse(String(init.body)).cost;
+      if (init?.method === "PUT") return [{ ...DETAIL, ...JSON.parse(String(init.body)), ingredients: DETAIL.ingredients }, 200];
+      return [{ ...DETAIL, cost }, 200];
+    });
+    renderEdit("/ricette/r1");
+
+    await screen.findByRole("heading", { name: "Pasta al pomodoro" });
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+    await waitFor(() =>
+      expect(spy.mock.calls.some(([url]) => String(url).includes("servings=3"))).toBe(true)
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Costo 4 su 5" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Costo 4 su 5" })).toHaveAttribute("aria-pressed", "true")
+    );
+
+    await userEvent.click(screen.getByRole("link", { name: "Modifica" }));
+    await screen.findByDisplayValue("Pasta al pomodoro");
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+
+    await screen.findByRole("status");
+    const put = spy.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    expect(JSON.parse(String(put[1]!.body)).cost).toBe(4);
+  });
+
+  it("con una copia in cache e la rilettura fallita, dice l'errore e non costruisce il modulo sulla copia", async () => {
+    stubFetch((path) => (path.includes("/recipes/r1") ? [{ detail: "boom" }, 500] : undefined));
+    renderEdit("/ricette/r1/modifica", (client) =>
+      client.setQueryData(["recipe", "r1", null], { ...DETAIL, cost: 2 })
+    );
+
+    // mentre rilegge, il modulo non c'è ancora
+    expect(screen.getByText("Carico…")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Non sono riuscito a caricare questa ricetta/, {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Salva le modifiche" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Riprova" })).toBeInTheDocument();
+  }, 10000);
 
   it("una ricetta eliminata non si modifica: dice dove ripristinarla", async () => {
     stubFetch(() => [{ ...DETAIL, archived_at: "2026-09-28T10:00:00Z" }, 200]);

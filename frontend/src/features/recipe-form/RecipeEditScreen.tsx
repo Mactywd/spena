@@ -42,17 +42,26 @@ function EditForm({ recipe }: { recipe: RecipeDetail }) {
 }
 
 /** `/ricette/:id/modifica`: `RecipeForm` riempito dalla ricetta, salvato con la PUT
- * (R10 §6.2). La chiave della query è quella del dettaglio a 1×, quindi arrivando da lì
- * la ricetta è già in cache. */
+ * (R10 §6.2). La chiave della query è quella del dettaglio a 1×.
+ *
+ * Il modulo nasce solo da una risposta letta dopo l'apertura, mai dalla cache: la PUT
+ * rimpiazza la ricetta intera, e un modulo costruito su una copia vecchia rimanderebbe
+ * al server i valori vecchi. Succedeva davvero: dal dettaglio riporzionato la chiave
+ * attiva è `["recipe", id, 3]`, e cambiare il costo lì rilegge solo quella — la copia a
+ * 1× restava col costo di prima, e «Salva le modifiche» lo rimetteva zitto. Un giro in
+ * più ad ogni apertura della modifica è il prezzo di non perdere niente. */
 export function RecipeEditScreen() {
   const { id = "" } = useParams();
   const back = { to: `/ricette/${id}`, label: "Ricetta" };
-  const { data: recipe, isLoading, isError, refetch } = useQuery({
+  const { data: recipe, isError, isFetchedAfterMount, refetch } = useQuery({
     queryKey: ["recipe", id, null],
     queryFn: () => fetchRecipe(id),
+    refetchOnMount: "always",
   });
 
-  if (isLoading) {
+  // anche con la ricetta in cache: finché la lettura fatta all'apertura non è tornata
+  // (con la ricetta o con un errore), non c'è un modulo da costruire
+  if (!isFetchedAfterMount) {
     return (
       <Screen title={TITLE} back={back}>
         <p className="text-ink-soft">Carico…</p>
