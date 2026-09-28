@@ -97,10 +97,14 @@ describe("PantryRow", () => {
   });
 
   it("mentre una scrittura è in volo i controlli sono spenti", () => {
-    renderRow({ status: "finished" }, { busy: true });
+    const { onStatus } = renderRow({ status: "finished" }, { busy: true });
+    // le tacche con `aria-disabled` e non `disabled`: così il fuoco resta dove le
+    // frecce l'hanno portato (StockGauge), e un tocco non manda comunque niente
     for (const name of ["Disponibile", "Quasi finito", "Finito"]) {
-      expect(screen.getByRole("radio", { name }).hasAttribute("disabled")).toBe(true);
+      expect(screen.getByRole("radio", { name })).toHaveAttribute("aria-disabled", "true");
     }
+    fireEvent.click(screen.getByRole("radio", { name: "Disponibile" }));
+    expect(onStatus).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "In lista" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Togli Total 0% dalla dispensa" }).hasAttribute("disabled")).toBe(true);
   });

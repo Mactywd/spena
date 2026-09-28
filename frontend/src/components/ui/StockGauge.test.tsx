@@ -48,6 +48,34 @@ describe("StockGauge", () => {
     expect(onChange).toHaveBeenLastCalledWith("finished");
   });
 
+  // Spec §4.4: le frecce passano da una tacca all'altra. La prima freccia manda lo
+  // stato, la riga diventa occupata, e con l'attributo `disabled` il browser toglieva
+  // il fuoco alla tacca: la seconda freccia non andava più da nessuna parte.
+  it("spenta, una freccia non manda niente e il fuoco resta sulla tacca", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<StockGauge status="low" onChange={onChange} itemName="Latte" />);
+    fireEvent.keyDown(screen.getByRole("radio", { name: "Quasi finito" }), { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const next = screen.getByRole("radio", { name: "Disponibile" });
+    expect(next).toHaveFocus();
+
+    // la scrittura è in volo
+    rerender(<StockGauge status="low" onChange={onChange} itemName="Latte" disabled />);
+    expect(next).toHaveFocus();
+    expect(next).toHaveAttribute("aria-disabled", "true");
+    expect(next).not.toHaveAttribute("disabled");
+    fireEvent.keyDown(next, { key: "ArrowLeft" });
+    expect(next).toHaveFocus();
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("spenta, un tocco non manda niente", () => {
+    const onChange = vi.fn();
+    render(<StockGauge status="low" onChange={onChange} itemName="Latte" disabled />);
+    fireEvent.click(screen.getByRole("radio", { name: "Finito" }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("ogni tacca è un bersaglio da 44px", () => {
     render(<StockGauge status="low" onChange={() => {}} itemName="Latte" />);
     for (const radio of screen.getAllByRole("radio")) expect(radio.className).toContain("size-11");

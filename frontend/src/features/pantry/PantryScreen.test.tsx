@@ -98,10 +98,16 @@ describe("PantryScreen", () => {
     const row = (await screen.findByText("Total 0%")).closest("li")!;
     fireEvent.click(within(row).getByRole("radio", { name: "Quasi finito" }));
 
-    await waitFor(() => expect(within(row).getByRole("radio", { name: "Disponibile" })).toBeDisabled());
+    // le tacche sono spente con `aria-disabled`, che tiene il fuoco (StockGauge)
+    await waitFor(() =>
+      expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-disabled", "true")
+    );
     expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
+    // e un secondo tocco durante il volo non parte
+    fireEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     const other = screen.getByText("Pesca").closest("li")!;
-    expect(within(other).getByRole("radio", { name: "Disponibile" })).not.toBeDisabled();
+    expect(within(other).getByRole("radio", { name: "Disponibile" })).not.toHaveAttribute("aria-disabled");
   });
 
   it("scrivere nella barra filtra le righe, anche per prodotto e marca", async () => {

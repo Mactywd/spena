@@ -30,14 +30,19 @@ export function StockGauge({
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const level = ORDER.indexOf(status);
 
+  // Spenta (una scrittura in volo) con `aria-disabled` e non con `disabled`: il
+  // browser toglie il fuoco a un pulsante che diventa `disabled`, e la prima freccia
+  // — che manda lo stato e accende l'attesa — lasciava la seconda senza una tacca su
+  // cui agire (spec §4.4). Così il fuoco resta, e tocchi e frecce si ignorano qui.
   function choose(next: PantryStatus) {
-    if (next !== status) onChange(next);
+    if (!disabled && next !== status) onChange(next);
   }
 
   function onKeyDown(event: KeyboardEvent) {
     const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key];
     if (step === undefined) return;
     event.preventDefault();
+    if (disabled) return;
     const index = Math.min(ORDER.length - 1, Math.max(0, level + step));
     choose(ORDER[index]);
     refs.current[index]?.focus();
@@ -58,11 +63,11 @@ export function StockGauge({
             aria-checked={option === status}
             aria-label={STATUS_LABELS[option]}
             tabIndex={option === status ? 0 : -1}
-            disabled={disabled}
+            aria-disabled={disabled || undefined}
             data-lit={lit}
             onClick={() => choose(option)}
             onKeyDown={onKeyDown}
-            className="flex size-11 items-center justify-center disabled:opacity-40"
+            className="flex size-11 items-center justify-center aria-disabled:opacity-40"
           >
             <span className={`h-1.5 w-4 rounded-full ${lit ? LIT[status] : "bg-notch-off"}`} />
           </button>
