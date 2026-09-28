@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { Ingredient } from "../../domain/types";
 
 // L'elenco dei suggerimenti dell'anagrafica. Ne esistevano due copie identiche — nel
@@ -12,25 +13,35 @@ export function OptionList({
   onPick: (ingredient: Ingredient) => void;
   disabled?: boolean;
 }) {
+  const baseId = useId();
   return (
-    <ul role="listbox" className="divide-y divide-line overflow-hidden rounded-card bg-card">
-      {options.map((ingredient) => (
-        <li key={ingredient.id}>
+    // un listbox contiene opzioni e basta: niente `<ul>/<li>` in mezzo, che uno screen
+    // reader leggerebbe come un elenco di voci e non come una scelta (dal giro di T3)
+    <div role="listbox" className="flex flex-col overflow-hidden rounded-card bg-card">
+      {options.map((ingredient) => {
+        const categoryId = `${baseId}-${ingredient.id}`;
+        return (
           <button
+            key={ingredient.id}
             type="button"
             role="option"
             aria-selected={false}
+            aria-label={ingredient.display_name}
+            aria-describedby={categoryId}
             disabled={disabled}
             onClick={() => onPick(ingredient)}
             className="flex min-h-12 w-full items-baseline gap-3 px-3 py-2.5 text-left text-sm disabled:opacity-50"
           >
             <span className="truncate">{ingredient.display_name}</span>
             {/* la categoria serve a distinguere due omonimi, non a essere letta
-                sempre: in fondo alla riga, dove l'occhio passa solo se cerca */}
-            <span className="ml-auto shrink-0 text-xs text-ink-faint">{ingredient.category}</span>
+                sempre: in fondo alla riga, e per chi ascolta è una descrizione, non
+                un pezzo del nome */}
+            <span id={categoryId} className="ml-auto shrink-0 text-xs text-ink-faint">
+              {ingredient.category}
+            </span>
           </button>
-        </li>
-      ))}
-    </ul>
+        );
+      })}
+    </div>
   );
 }

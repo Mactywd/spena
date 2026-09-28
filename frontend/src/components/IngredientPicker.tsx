@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { searchIngredients } from "../features/shopping-list/api";
 import { useDebounced } from "../hooks/useDebounced";
 import { OptionList } from "./ui/OptionList";
+import { Button } from "./ui/Button";
+import { IconPlus } from "./ui/icons";
 import type { Ingredient } from "../domain/types";
 
 const DEBOUNCE_MS = 180;
@@ -26,6 +28,7 @@ export function IngredientPicker({
   onPick,
   disabled = false,
   kind,
+  onCreate,
 }: {
   /** Etichetta visibile: dice a cosa serve *qui*. */
   label: string;
@@ -42,13 +45,16 @@ export function IngredientPicker({
   /** Restringe i suggerimenti al cibo. Lo passano i tre selettori del mondo
    * ricette, dove una voce non alimentare verrebbe rifiutata al salvataggio. */
   kind?: "food";
+  /** Chi sa creare un ingrediente nuovo lo offre quando la ricerca non trova niente
+   * (R12). Senza, la ricerca vuota non propone niente, come prima. */
+  onCreate?: (name: string) => void;
 }) {
   const [term, setTerm] = useState("");
   const debounced = useDebounced(term, DEBOUNCE_MS).trim();
   // sotto 2 caratteri non vale la pena interrogare il backend, come in AddItemField
   const ready = debounced.length >= 2;
 
-  const { data: found = [], isError } = useQuery({
+  const { data: found = [], isError, isSuccess } = useQuery({
     // il kind sta nella chiave: senza, la risposta filtrata e quella non filtrata
     // si sovrascriverebbero a vicenda sulla stessa parola cercata, e la dispensa
     // smetterebbe di vedere il detersivo perché il ricettario ha cercato prima
@@ -84,6 +90,21 @@ export function IngredientPicker({
             setTerm("");
           }}
         />
+      )}
+
+      {/* solo a ricerca finita e vuota: mentre la risposta arriva, offrire di creare
+          «latt» accanto al latte che sta per comparire sarebbe l'errore di S18 */}
+      {onCreate && showOptions && isSuccess && found.length === 0 && (
+        <Button
+          icon={IconPlus}
+          onClick={() => {
+            onCreate(term.trim());
+            setTerm("");
+          }}
+          disabled={disabled}
+        >
+          {`Aggiungi «${term.trim()}»`}
+        </Button>
       )}
 
       {/* la ricerca è un aiuto, non un pedaggio: il guasto va detto insieme a

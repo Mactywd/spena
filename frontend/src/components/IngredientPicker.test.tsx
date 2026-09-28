@@ -29,6 +29,8 @@ const DETERSIVO: Ingredient = {
   kind: "non_food",
 };
 
+const LATTE: Ingredient = { id: "i1", name: "latte", display_name: "Latte", category: "latticini", kind: "food" };
+
 describe("IngredientPicker", () => {
   it("chiede al server solo il cibo quando glielo si dice, e lo mette nella chiave", async () => {
     // due montaggi nello stesso QueryClient, stessa parola cercata: senza il kind
@@ -84,5 +86,36 @@ describe("IngredientPicker", () => {
     // sovrascrive la voce condivisa in cache, e la dispensa la perde con lei —
     // esattamente la frase del brief e di CLAUDE.md, resa visibile
     expect(within(dispensa).getByText("Detersivo per i piatti")).toBeDefined();
+  });
+
+  it("ogni suggerimento è un'opzione della lista, senza voci d'elenco in mezzo", async () => {
+    stubRoutedFetch(() => [[LATTE], 200]);
+    renderWithClient(<IngredientPicker label="Contiene ingredienti" failureNote="x" onPick={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Contiene ingredienti"), { target: { value: "lat" } });
+    const listbox = await screen.findByRole("listbox");
+    // ARIA: i figli di un listbox sono opzioni, non `listitem` (dal giro di T3)
+    expect(within(listbox).queryAllByRole("listitem")).toHaveLength(0);
+    // il nome è l'ingrediente e basta, il reparto è una descrizione: prima si leggeva
+    // «Lattelatticini»
+    expect(within(listbox).getByRole("option", { name: "Latte" })).toHaveAccessibleDescription("latticini");
+  });
+
+  it("quando non trova niente offre di aggiungerlo, se chi lo usa sa crearlo", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    const onCreate = vi.fn();
+    renderWithClient(
+      <IngredientPicker label="Aggiungi un ingrediente" failureNote="x" onPick={() => {}} onCreate={onCreate} />
+    );
+    fireEvent.change(screen.getByLabelText("Aggiungi un ingrediente"), { target: { value: "zz tre" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Aggiungi «zz tre»" }));
+    expect(onCreate).toHaveBeenCalledWith("zz tre");
+  });
+
+  it("senza onCreate, a ricerca vuota non offre niente: resta com'era", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderWithClient(<IngredientPicker label="Contiene ingredienti" failureNote="x" onPick={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Contiene ingredienti"), { target: { value: "zz tre" } });
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(screen.queryByRole("button", { name: /Aggiungi/ })).toBeNull();
   });
 });
