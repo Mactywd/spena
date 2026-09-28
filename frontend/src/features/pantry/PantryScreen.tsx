@@ -1,29 +1,25 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
-import { Card } from "../../components/ui/Card";
+import { Button } from "../../components/ui/Button";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { ErrorState } from "../../components/ui/ErrorState";
 import { Screen } from "../../components/ui/Screen";
+import { Section } from "../../components/ui/Section";
 import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
-import { SectionHeading } from "../../components/ui/SectionHeading";
+import { ActionBar } from "../../components/ui/ActionBar";
+import { IconCalendarEvent, IconPlus, IconSearch, IconX } from "../../components/ui/icons";
 import { useNotice } from "../../components/ui/noticeContext";
 import { PantryRow } from "./PantryRow";
-import { itemLabel } from "./pantryView";
+import { expiryCounts, expirySummary, groupForDisplay, isExpiring, itemLabel, matchesQuery } from "./pantryView";
 import { addPantryItem, fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
 
-function groupByCategory(items: PantryItem[]): [string, PantryItem[]][] {
-  const groups = new Map<string, PantryItem[]>();
-  for (const item of items) {
-    groups.set(item.ingredient_category, [...(groups.get(item.ingredient_category) ?? []), item]);
-  }
-  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-}
-
 export function PantryScreen() {
   const queryClient = useQueryClient();
-  const { data: items = [], isLoading, isError } = useQuery({
+  const { data: items = [], isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["pantry"],
     queryFn: fetchPantry,
   });
@@ -112,10 +108,27 @@ export function PantryScreen() {
   // sistemarla. Entra `available` e sfusa: lo stato si corregge col controllo qui
   // accanto, la marca si aggancia dove c'è un codice da leggere.
   const [addFailed, setAddFailed] = useState(false);
+
+  const [query, setQuery] = useState("");
+  const [expiringOnly, setExpiringOnly] = useState(false);
+  // il testo con cui si è aperta l'aggiunta; `null` quando è chiusa
+  const [adding, setAdding] = useState<string | null>(null);
+  // la voce appena aggiunta, da portare in vista quando arriva nell'elenco
+  const [revealId, setRevealId] = useState<string | null>(null);
+  const clearReveal = useCallback(() => setRevealId(null), []);
+
   const add = useMutation({
     mutationFn: (ingredient: Ingredient) => addPantryItem(ingredient.id),
     onMutate: () => setAddFailed(false),
-    onSuccess: invalidate,
+    onSuccess: (created, ingredient) => {
+      invalidate();
+      setAdding(null);
+      // la barra torna vuota e il riepilogo si spegne: la riga nuova deve potersi vedere
+      setQuery("");
+      setExpiringOnly(false);
+      setRevealId(created.id);
+      notice({ text: `In dispensa: ${ingredient.display_name}` });
+    },
     onError: () => setAddFailed(true),
   });
 
@@ -148,85 +161,141 @@ export function PantryScreen() {
   if (restock.isPending) busyIds.add(restock.variables.id);
   if (expiry.isPending) busyIds.add(expiry.variables.id);
 
-  const rows = isError ? [] : items;
+  const summary = isError ? null : expirySummary(expiryCounts(items));
+  // premuto su un riepilogo che non c'è più (l'ultima voce in scadenza è stata tolta)
+  // non filtra: una dispensa vuota per un filtro invisibile sarebbe una bugia
+  const showExpiring = expiringOnly && summary !== null;
+  const visible = (isError ? [] : items)
+    .filter((item) => matchesQuery(item, query))
+    .filter((item) => !showExpiring || isExpiring(item));
 
   return (
     <Screen title="Dispensa">
-      <SectionEntryCard
-        to="/sistema"
-        title="Sistema la spesa"
-        note={
-          isShoppingError || shopping === undefined
-            ? "Metti via quello che hai comprato"
-            : checkedCount === 0
-              ? "Niente di spuntato, per ora"
-              : checkedCount === 1
-                ? "1 voce spuntata da mettere via"
-                : `${checkedCount} voci spuntate da mettere via`
-        }
-        pending={checkedCount > 0}
-      />
-
-      <Card>
-        <IngredientPicker
-          label="Aggiungi in dispensa"
-          failureNote="Riprova, oppure scrivilo in lista e sistemalo da lì."
-          onPick={(ingredient) => add.mutate(ingredient)}
-          disabled={add.isPending}
+      <div className="flex flex-col gap-3">
+        <SectionEntryCard
+          to="/sistema"
+          title="Sistema la spesa"
+          note={
+            isShoppingError || shopping === undefined
+              ? "Metti via quello che hai comprato"
+              : checkedCount === 0
+                ? "Niente di spuntato, per ora"
+                : checkedCount === 1
+                  ? "1 voce spuntata da mettere via"
+                  : `${checkedCount} voci spuntate da mettere via`
+          }
+          pending={checkedCount > 0}
         />
-        <p className="pt-2 text-xs text-ink-faint">
-          Entra come disponibile e senza marca. Lo stato si cambia qui sotto.
-        </p>
-        {/* accanto al controllo che ha fallito, e la scelta non si perde: si
-            rifà toccando di nuovo l'ingrediente */}
-        {addFailed && (
-          <Alert className="pt-2">
-            Non sono riuscito ad aggiungere la voce in dispensa. Riprova.
-          </Alert>
+
+        <ActionBar
+          inputLabel="Cerca o aggiungi in dispensa"
+          placeholder="Cerca o aggiungi"
+          addLabel="Aggiungi in dispensa"
+          leadingIcon={IconSearch}
+          value={query}
+          onChange={setQuery}
+          onAdd={(text) => setAdding(text)}
+        />
+
+        {adding !== null && (
+          <div className="flex flex-col gap-2 rounded-2xl bg-card p-3">
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <IngredientPicker
+                  key={adding}
+                  label="Quale ingrediente?"
+                  accessibleLabel="Ingrediente da mettere in dispensa"
+                  initialTerm={adding}
+                  autoFocus
+                  failureNote="Riprova, oppure scrivilo in lista e sistemalo da lì."
+                  onPick={(ingredient) => add.mutate(ingredient)}
+                  disabled={add.isPending}
+                />
+              </div>
+              <Button
+                variant="ghost"
+                icon={IconX}
+                label="Chiudi l'aggiunta"
+                onClick={() => setAdding(null)}
+              />
+            </div>
+            <p className="text-xs text-ink-faint">Entra come disponibile e senza marca.</p>
+            {/* accanto al controllo che ha fallito, e la scelta non si perde: si
+                rifà toccando di nuovo l'ingrediente */}
+            {addFailed && (
+              <Alert>Non sono riuscito ad aggiungere la voce in dispensa. Riprova.</Alert>
+            )}
+          </div>
         )}
-      </Card>
 
-      {isLoading && <p className="pt-4 text-ink-soft">Carico…</p>}
+        {summary !== null && (
+          <button
+            type="button"
+            aria-pressed={expiringOnly}
+            onClick={() => setExpiringOnly((prev) => !prev)}
+            className={`flex min-h-11 w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm font-medium ${
+              expiringOnly ? "bg-expiry text-on-expiry" : "bg-expiry-tint text-expiry"
+            }`}
+          >
+            <IconCalendarEvent aria-hidden="true" className="size-5 shrink-0" stroke={1.8} />
+            <span className="flex-1 text-left">{summary}</span>
+            {expiringOnly && (
+              <IconX aria-hidden="true" className="size-5 shrink-0" stroke={1.8} />
+            )}
+          </button>
+        )}
 
-      {/* un caricamento fallito non è una dispensa vuota: dirlo sarebbe una bugia
-          su quello che c'è da mangiare */}
-      {isError && (
-        <Alert className="pt-4">
-          Non sono riuscito a caricare la dispensa. Riprova più tardi.
-        </Alert>
-      )}
+        {isLoading && <p className="text-ink-soft">Carico…</p>}
 
-      {!isLoading && !isError && rows.length === 0 && (
-        <p className="pt-4 text-ink-soft">
-          Dispensa vuota. Sistema la spesa, oppure aggiungi qui sopra quello che hai in casa.
-        </p>
-      )}
+        {isError && (
+          <ErrorState
+            message="Non sono riuscito a caricare la dispensa."
+            onRetry={() => void refetch()}
+            retrying={isFetching}
+          />
+        )}
 
-      {!isLoading && rows.length > 0 &&
-        groupByCategory(rows).map(([category, group]) => (
-          <section key={category}>
-            <SectionHeading>{category}</SectionHeading>
-            <Card pad={false}>
+        {!isLoading && !isError && visible.length === 0 && query.trim() === "" && (
+          <EmptyState
+            title="Dispensa vuota"
+            body="Sistema la spesa, oppure scrivi qui sopra quello che hai in casa e tocca +."
+          />
+        )}
+
+        {!isLoading && !isError && visible.length === 0 && query.trim() !== "" && (
+          <EmptyState
+            title={`Niente in dispensa per «${query.trim()}»`}
+            action={
+              <Button icon={IconPlus} onClick={() => setAdding(query.trim())}>
+                {`Aggiungi «${query.trim()}»`}
+              </Button>
+            }
+          />
+        )}
+
+        {!isLoading &&
+          groupForDisplay(visible).map(([category, rows]) => (
+            <Section key={category} category={category} count={rows.length}>
               <ul>
-                {group.map((item) => (
+                {rows.map((item) => (
                   <PantryRow
                     key={item.id}
                     item={item}
                     busy={busyIds.has(item.id)}
                     failed={failedIds.has(item.id)}
                     listed={listedIngredients.has(item.ingredient_id)}
-                    reveal={false}
+                    reveal={item.id === revealId}
                     onStatus={(next) => status.mutate({ id: item.id, status: next })}
                     onRemove={() => archive.mutate(item)}
                     onRestock={() => restock.mutate(item)}
                     onExpiry={(expiresOn) => expiry.mutateAsync({ id: item.id, expiresOn })}
-                    onRevealed={() => {}}
+                    onRevealed={clearReveal}
                   />
                 ))}
               </ul>
-            </Card>
-          </section>
-        ))}
+            </Section>
+          ))}
+      </div>
     </Screen>
   );
 }

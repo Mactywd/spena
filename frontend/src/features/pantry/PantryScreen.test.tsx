@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
@@ -105,73 +104,132 @@ describe("PantryScreen", () => {
     expect(within(other).getByRole("radio", { name: "Disponibile" })).not.toBeDisabled();
   });
 
-  // M2, spec §4 e §8.3: l'ingresso diretto. Senza, per mettere in dispensa una cosa
-  // comprata e non scritta in lista bisognava inventare una voce di lista, spuntarla e
-  // sistemarla — e lo schermo prometteva «aggiungi qualcosa a mano» da quando esisteva.
-  it("si può aggiungere in dispensa qualcosa che non era in lista", async () => {
-    const spy = stubRoutedFetch((path, init) => {
-      if (path.includes("/ingredients/search")) return [[MELA], 200];
-      if (init?.method === "POST") return [{ ...ITEMS[2] }, 201];
-      return [[], 200];
-    });
-
+  it("scrivere nella barra filtra le righe, anche per prodotto e marca", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
     renderScreen();
-    await userEvent.type(await screen.findByLabelText("Aggiungi in dispensa"), "mel");
-    await userEvent.click(await screen.findByRole("option", { name: /Mela/ }));
-
-    const post = spy.mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST");
-    expect(String(post?.[0])).toContain("/pantry");
-    expect(JSON.parse(String((post?.[1] as RequestInit).body))).toEqual({
-      ingredient_id: "i2",
-      status: "available",
-    });
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "fage" } });
+    expect(screen.getByText("Total 0%")).toBeDefined();
+    expect(screen.queryByText("Pesca")).toBeNull();
+    expect(screen.queryByRole("link", { name: "mela" })).toBeNull();
   });
 
-  it("un'aggiunta rifiutata lo dice accanto al campo, non in cima allo schermo", async () => {
+  it("un testo che non trova niente offre di aggiungerlo", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list") ? [[], 200] : path.includes("/ingredients") ? [[], 200] : [ITEMS, 200]
+    );
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "sale" } });
+    expect(screen.getByText("Niente in dispensa per «sale»")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi «sale»" }));
+    expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toHaveProperty("value", "sale");
+  });
+
+  it("il + apre l'aggiunta con il testo della barra, e scegliere mette in dispensa", async () => {
+    const created = { ...ITEMS[2], id: "p9" };
+    const fetchSpy = stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") return [created, 201];
+      return [ITEMS, 200];
+    });
+    Element.prototype.scrollIntoView = vi.fn();
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+    const post = fetchSpy.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ ingredient_id: "i2", status: "available" });
+    // l'aggiunta si chiude e la barra torna vuota
+    expect(screen.queryByLabelText("Ingrediente da mettere in dispensa")).toBeNull();
+    expect(screen.getByLabelText("Cerca o aggiungi in dispensa")).toHaveProperty("value", "");
+  });
+
+  it("un'aggiunta rifiutata lo dice nella scheda dell'aggiunta, che resta aperta", async () => {
     stubRoutedFetch((path, init) => {
-      if (path.includes("/ingredients/search")) return [[MELA], 200];
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
       if (init?.method === "POST") return [{ detail: "no" }, 500];
-      return [[], 200];
+      return [ITEMS, 200];
     });
-
     renderScreen();
-    await userEvent.type(await screen.findByLabelText("Aggiungi in dispensa"), "mel");
-    await userEvent.click(await screen.findByRole("option", { name: /Mela/ }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito ad aggiungere/i);
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    expect(await screen.findByText("Non sono riuscito ad aggiungere la voce in dispensa. Riprova.")).toBeDefined();
+    expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toBeDefined();
   });
 
-  it("mentre l'aggiunta è in volo il campo non accetta una seconda scelta", async () => {
-    // due POST in volo sulla stessa dispensa creano due voci per una sola cosa
-    // comprata, e la seconda non si distingue dalla prima
-    const spy = vi.fn((url: unknown, init?: RequestInit) => {
-      const path = String(url);
-      if (init?.method === "POST") return new Promise<Response>(() => {});
-      const body = path.includes("/ingredients/search") ? [MELA] : [];
-      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
-    });
-    vi.stubGlobal("fetch", spy);
-
+  it("la ✕ dell'aggiunta la chiude", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
     renderScreen();
-    await userEvent.type(await screen.findByLabelText("Aggiungi in dispensa"), "mel");
-    await userEvent.click(await screen.findByRole("option", { name: /Mela/ }));
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chiudi l'aggiunta" }));
+    expect(screen.queryByLabelText("Ingrediente da mettere in dispensa")).toBeNull();
+  });
 
-    await waitFor(() => expect(screen.getByLabelText("Aggiungi in dispensa")).toBeDisabled());
+  it("il riepilogo conta le voci in scadenza e, toccato, mostra solo quelle", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    const summary = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    expect(summary.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(summary);
+    expect(summary.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("link", { name: "mela" })).toBeDefined();
+    expect(screen.queryByText("Total 0%")).toBeNull();
+    fireEvent.click(summary);
+    expect(screen.getByText("Total 0%")).toBeDefined();
+  });
+
+  it("senza scadenze vicine il riepilogo non c'è", async () => {
+    const quiet = ITEMS.map((item) => ({ ...item, expires_on: null, expiry: null }));
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [quiet, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(screen.queryByRole("button", { name: /in scadenza/ })).toBeNull();
+  });
+
+  it("una sezione per reparto, con il conteggio, e le finite in fondo", async () => {
+    const rows = [
+      { ...ITEMS[0], status: "finished" },
+      ITEMS[1],
+      ITEMS[2],
+    ];
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [rows, 200]));
+    renderScreen();
+    const latticini = await screen.findByRole("region", { name: "Latticini" });
+    const links = within(latticini).getAllByRole("link").map((link) => link.getAttribute("href"));
+    // Pesca (pr2) prima di Total 0% (pr1), che è finito
+    expect(links[0]).toContain("pr2");
+    expect(links[1]).toContain("pr1");
+    expect(within(latticini).getByText("2")).toBeDefined();
+    expect(screen.getByRole("region", { name: "Frutta" })).toBeDefined();
   });
 
   it("dice cosa fare quando la dispensa è vuota", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [[], 200]));
     renderScreen();
-    expect(await screen.findByText(/Dispensa vuota/)).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Dispensa vuota" })).toBeDefined();
   });
 
-  it("un caricamento fallito non si traveste da dispensa vuota", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ detail: "errore" }), { status: 500 })
-    ));
+  it("un caricamento fallito non si traveste da dispensa vuota, e offre «Riprova»", async () => {
+    let calls = 0;
+    stubRoutedFetch((path) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      calls += 1;
+      return calls === 1 ? [{ detail: "no" }, 500] : [ITEMS, 200];
+    });
     renderScreen();
-    expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
-    expect(screen.queryByText(/Dispensa vuota/)).toBeNull();
+    expect(await screen.findByText("Non sono riuscito a caricare la dispensa.")).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Dispensa vuota" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
+    expect(await screen.findByText("Total 0%")).toBeDefined();
   });
 
   // D3/CLAUDE.md, «mai un vicolo cieco»: un conteggio che non arriva toglie la
