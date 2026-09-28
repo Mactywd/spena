@@ -1816,8 +1816,7 @@ davvero.
 
 ## T3. Revisione di UI e UX, a partire da un giro del sito fatto da un sottoagente **[D, chiesto da Mattia il 2026-09-27 — giro fatto; spec del 2026-09-28: `docs/superpowers/specs/2026-09-28-ridisegno-design.md`]**
 
-**Consegna 0 (fondamenta) fatta il 2026-09-28**, sul ramo `t3-fondamenta`, non ancora in
-produzione: token chiari e scuri, Inter, icone Tabler, il cesto nell'intestazione, la
+**Consegna 0 (fondamenta) in produzione dal 2026-09-28**, dopo il via di Mattia: token chiari e scuri, Inter, icone Tabler, il cesto nell'intestazione, la
 barra delle schede con le icone e «Lista» accesa su `/sistema`, la pagina «Non trovata»,
 e le primitive (`Button`, `IconToolbar`, `ActionBar`, `Section`, `StockGauge`,
 `StatusDot`, `Chip`, l'avviso unico, `ErrorState`, `EmptyState`, `IngredientPicker` con
