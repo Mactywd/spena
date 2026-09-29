@@ -1560,3 +1560,158 @@ test("dopo una ✕ fallita in lista il fuoco resta sulla ✕", async ({ page }) 
     }
   }
 });
+
+test("l'accesso a 375px: il fuoco nel campo, «Entra» non ancora col suo perché, l'Invio che non manda niente, l'occhio", async ({
+  page,
+}) => {
+  // T3 Consegna 6a. Il `beforeEach` è entrato: si esce buttando il cookie, come in
+  // `perOgniLuogo`, e la prima richiesta senza sessione riporta all'accesso. Prima si
+  // aspetta che l'accesso del `beforeEach` sia finito, o il suo cookie arriverebbe dopo
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.context().clearCookies();
+  const accessi: string[] = [];
+  page.on("request", (richiesta) => {
+    if (richiesta.url().includes("/api/v1/auth/login")) accessi.push(richiesta.method());
+  });
+  await page.goto("/");
+
+  const campo = page.getByLabel("Password", { exact: true });
+  const entra = page.getByRole("button", { name: "Entra", exact: true });
+
+  // 1. il campo prende il fuoco appena compare
+  await expect(campo).toBeFocused();
+
+  // 2. a campo vuoto «Entra» non ancora: spento senza `disabled`, col perché collegato,
+  // e un bersaglio da pollice
+  await expect(entra).toHaveAttribute("aria-disabled", "true");
+  await expect(entra).not.toHaveAttribute("disabled");
+  await expect(entra).toHaveAccessibleDescription("Scrivi la password per entrare.");
+  expect((await entra.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+  // 3. l'Invio nel campo vuoto: l'invio implicito del browser passa da un clic su
+  // «Entra», che si rifiuta
+  await campo.press("Enter");
+  // 4. «Entra» si raggiunge e tiene il fuoco, premuto da tastiera: un `disabled` non si
+  // raggiungerebbe, e spegnendosi lo butterebbe sulla pagina. Tastiera e non `click()`:
+  // Playwright non clicca un elemento `aria-disabled` (vedi le Global Constraints del piano)
+  await entra.focus();
+  await expect(entra).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Space");
+  await expect(entra).toBeFocused();
+  await expect(campo).toBeVisible();
+  // un'attesa breve e dichiarata: si prova che una richiesta *non* parte, e non c'è un
+  // evento da aspettare al suo posto
+  await page.waitForTimeout(500);
+  expect(accessi, "a campo vuoto è partito un accesso").toEqual([]);
+
+  // 5. l'occhio: un bersaglio da pollice che mostra e rinasconde la password; il nome
+  // resta fisso, `aria-pressed` dice se è premuto, e il fuoco resta lì
+  await campo.fill("prova occhio");
+  await expect(entra).not.toHaveAttribute("aria-disabled", "true");
+  const mostra = page.getByRole("button", { name: "Mostra password", exact: true });
+  const occhio = await mostra.boundingBox();
+  expect(occhio!.width).toBeGreaterThanOrEqual(44);
+  expect(occhio!.height).toBeGreaterThanOrEqual(44);
+  await expect(mostra).toHaveAttribute("aria-pressed", "false");
+  await expect(campo).toHaveAttribute("type", "password");
+  await mostra.click();
+  await expect(mostra).toHaveAttribute("aria-pressed", "true");
+  await expect(mostra).toBeFocused();
+  await expect(campo).toHaveAttribute("type", "text");
+  await mostra.click();
+  await expect(campo).toHaveAttribute("type", "password");
+
+  // 6. «Password errata» se ne va alla prima battuta
+  await campo.fill("sbagliata e2e");
+  await campo.press("Enter");
+  await expect(page.getByText("Password errata", { exact: true })).toBeVisible();
+  await campo.press("x");
+  await expect(page.getByText("Password errata", { exact: true })).toHaveCount(0);
+  expect(accessi, "è partito un accesso che non doveva").toEqual(["POST"]);
+
+  // 7. niente scorre di lato (stringhe e non funzioni: questo file non ha la libreria DOM)
+  const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+  const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+  expect(scrollWidth, "l'accesso scorre di lato").toBeLessThanOrEqual(clientWidth);
+});
+
+test("le correzioni dell'anagrafica a 375px: icone da pollice accanto al titolo, su una riga, e niente scorre di lato", async ({
+  page,
+}) => {
+  // T3 Consegna 6a. Un prodotto col codice, perché la scheda mostri anche «Togli il
+  // codice», sotto un ingrediente del seme; il nome lungo è il caso che stringe il titolo
+  // accanto alle icone. Si toglie nel `finally`.
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const trovate = (await (
+    await page.request.get("/api/v1/ingredients/search?q=farina")
+  ).json()) as { id: string; name: string }[];
+  const farina = trovate.find((voce) => voce.name === "farina");
+  expect(farina, "«farina» non è nel seme").toBeDefined();
+  const nome = `Farina di grano tenero tipo 00 macinata a pietra e2e ${Date.now()}`;
+  const creato = await page.request.post("/api/v1/products", {
+    data: { ingredient_id: farina!.id, name: nome, barcode: String(Date.now()) },
+  });
+  expect(creato.ok()).toBe(true);
+  const prodottoId = ((await creato.json()) as { id: string }).id;
+
+  try {
+    const casi = [
+      {
+        indirizzo: `/anagrafica/ingrediente/${farina!.id}`,
+        gruppo: "Correzioni dell'ingrediente",
+        nomi: ["Rinomina", "Cambia reparto", "Unisci a un altro…"],
+      },
+      {
+        indirizzo: `/anagrafica/prodotto/${prodottoId}`,
+        gruppo: "Correzioni del prodotto",
+        nomi: ["Spostalo", "Togli il codice"],
+      },
+    ];
+    for (const caso of casi) {
+      await page.goto(caso.indirizzo);
+      const gruppo = page.getByRole("toolbar", { name: caso.gruppo });
+      await expect(gruppo).toBeVisible();
+      await page.waitForLoadState("networkidle");
+
+      const scatole: { x: number; y: number; width: number; height: number }[] = [];
+      for (const nomePulsante of caso.nomi) {
+        const scatola = await gruppo.getByRole("button", { name: nomePulsante, exact: true }).boundingBox();
+        expect(scatola, `${caso.gruppo}: ${nomePulsante}`).not.toBeNull();
+        expect(scatola!.width, nomePulsante).toBeGreaterThanOrEqual(44);
+        expect(scatola!.height, nomePulsante).toBeGreaterThanOrEqual(44);
+        scatole.push(scatola!);
+      }
+      for (const scatola of scatole.slice(1)) {
+        expect(Math.abs(scatola.y - scatole[0].y), `${caso.gruppo}: le icone vanno a capo`).toBeLessThan(1);
+      }
+      // accanto al titolo: le icone cominciano nella fascia del titolo, non sotto
+      const titolo = await page.getByRole("heading", { level: 1 }).boundingBox();
+      expect(scatole[0].y, `${caso.gruppo}: le icone non stanno accanto al titolo`).toBeLessThan(
+        titolo!.y + titolo!.height
+      );
+      const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+      const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+      expect(scrollWidth, `${caso.indirizzo} scorre di lato`).toBeLessThanOrEqual(clientWidth);
+    }
+
+    // e il campo dell'Anagrafica ha il nome nuovo, che si vede
+    await page.goto("/anagrafica");
+    await expect(page.getByText("Cerca un ingrediente o un prodotto", { exact: true })).toBeVisible();
+    await page.getByLabel("Cerca un ingrediente o un prodotto", { exact: true }).fill(nome);
+    await expect(page.getByRole("link", { name: new RegExp(nome) })).toBeVisible();
+  } finally {
+    // `expect.soft`: non lancia (un `finally` che lancia nasconderebbe l'errore vero del
+    // `try`) ma segna la prova fallita, così un prodotto rimasto non passa per un successo
+    try {
+      const risposta = await page.request.delete(`/api/v1/products/${prodottoId}`);
+      expect.soft(risposta.ok(), `pulizia: il prodotto ${prodottoId} non si è eliminato`).toBe(true);
+    } catch (guasto) {
+      expect
+        .soft(false, `pulizia: non sono riuscito a eliminare il prodotto ${prodottoId} (${guasto})`)
+        .toBe(true);
+    }
+  }
+});
