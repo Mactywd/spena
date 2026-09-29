@@ -47,16 +47,20 @@ const NESSUN_IMPORT_IN_CORSO = {
   fetched: 0, pending_recipes: 0, imported: 0, skipped: 0, pending_terms: 0,
 };
 
+/** Quel che il finto server risponde a un percorso: il corpo, lo stato e, se servono,
+ * le intestazioni (il totale del ricettario sta in `X-Total-Count`). */
+type Risposta = [unknown, number, Record<string, string>?];
+
 /** Un fetch che risponde in base al percorso: lo schermo fa tre chiamate — la
  * ricerca, il modo di ricerca e lo stato dell'import — e ognuna deve ricevere una
  * Response nuova, perché il corpo di una Response si legge una volta sola. */
-function stubRoutedFetch(route: (path: string) => [unknown, number]) {
+function stubRoutedFetch(route: (path: string) => Risposta) {
   const spy = vi.fn((url: unknown) => {
     const path = String(url);
-    const [body, status] = path.includes("/imports/status")
+    const [body, status, headers]: Risposta = path.includes("/imports/status")
       ? [NESSUN_IMPORT_IN_CORSO, 200]
       : route(path);
-    return Promise.resolve(new Response(JSON.stringify(body), { status }));
+    return Promise.resolve(new Response(JSON.stringify(body), { status, headers }));
   });
   vi.stubGlobal("fetch", spy);
   return spy;
@@ -750,6 +754,35 @@ describe("RecipeBookScreen", () => {
       stubRoutedFetch(CODA_CON_CATEGORIE);
       renderScreen();
       await screen.findByText("Pasta all'aglio");
+      expect(screen.queryByRole("button", { name: "Mostra altre" })).toBeNull();
+    });
+
+    // Col totale del server (T3 Consegna 4) «Mostra altre» sa se ne mancano: prima una
+    // pagina piena che era anche l'ultima offriva un tocco che portava una pagina vuota.
+    it("col totale del server, «Mostra altre» c'è finché non sono arrivate tutte", async () => {
+      stubRoutedFetch((path) => {
+        const [body, status] = paginato(path);
+        return path.includes("/recipes/search?")
+          ? [body, status, { "X-Total-Count": "34" }]
+          : [body, status];
+      });
+      renderScreen();
+      await screen.findByText("Ricetta 29");
+
+      await userEvent.click(screen.getByRole("button", { name: "Mostra altre" }));
+
+      expect(await screen.findByText("Ricetta 33")).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Mostra altre" })).toBeNull();
+    });
+
+    it("col totale del server, una pagina piena che è anche l'ultima non la offre", async () => {
+      stubRoutedFetch((path) =>
+        path.includes("/recipes/search?")
+          ? [ricette(30), 200, { "X-Total-Count": "30" }]
+          : paginato(path)
+      );
+      renderScreen();
+      await screen.findByText("Ricetta 29");
       expect(screen.queryByRole("button", { name: "Mostra altre" })).toBeNull();
     });
 

@@ -9,7 +9,7 @@ import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 const CARBONARA = {
   id: "r-carb", title: "Carbonara", description: null, source: "manual", missing: 0,
   cookable: true, missing_names: [], image_url: null, prep_minutes: null, cook_minutes: null,
-  category: null, cost: null, archived_at: null,
+  category: null, cost: null, archived_at: null, main_department: null,
 };
 const AGLIO = { ...CARBONARA, id: "r-aglio", title: "Aglio e olio" };
 const ELIMINATA = { deletedRecipe: { id: "r-carb", title: "Carbonara" } };

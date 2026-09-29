@@ -43,7 +43,10 @@ function detailToMessage(detail: unknown, status: number): string {
   return `errore ${status}`;
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** La richiesta e i suoi errori, in un posto solo: `apiFetch` e `apiFetchWithHeaders`
+ * ne leggono poi il corpo. Due copie di questi controlli si scollerebbero proprio sul
+ * 401, che è quello che riporta all'accesso. */
+async function request(path: string, init: RequestInit): Promise<Response> {
   const response = await fetch(`${BASE}${path}`, {
     ...init,
     // il cookie di sessione è HttpOnly: va mandato dal browser, non da noi
@@ -52,11 +55,28 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   });
 
   if (response.status === 401) throw new UnauthorizedError();
-  if (response.status === 204) return null as T;
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new ApiError(detailToMessage(body?.detail, response.status), response.status, body);
   }
+  return response;
+}
+
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await request(path, init);
+  if (response.status === 204) return null as T;
   return (await response.json()) as T;
+}
+
+/** Il corpo e le intestazioni, per chi legge nella risposta più del corpo: il totale del
+ * ricettario sta in `X-Total-Count` (T3 Consegna 4), perché il corpo di
+ * `GET /recipes/search` resta una lista per i frontend vecchi in cache. */
+export async function apiFetchWithHeaders<T>(
+  path: string,
+  init: RequestInit = {}
+): Promise<{ data: T; headers: Headers }> {
+  const response = await request(path, init);
+  const data = response.status === 204 ? (null as T) : ((await response.json()) as T);
+  return { data, headers: response.headers };
 }

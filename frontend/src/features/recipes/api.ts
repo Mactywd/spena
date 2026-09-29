@@ -1,4 +1,4 @@
-import { apiFetch } from "../../api/client";
+import { apiFetch, apiFetchWithHeaders } from "../../api/client";
 import type {
   CookResult,
   RecipeBody,
@@ -12,10 +12,50 @@ import type {
  * «l'ultima pagina era piena» si confronta con quel che si è chiesto davvero. */
 export const RECIPE_PAGE_SIZE = 30;
 
+/** Una pagina del ricettario e quante ricette rispondono in tutto, contate dal server
+ * prima del limite (`X-Total-Count`, T3 Consegna 4). `total` è `null` quando il server
+ * non lo dice: meglio nessun numero che uno inventato. */
+export interface RecipePage {
+  recipes: RecipeSummary[];
+  total: number | null;
+  /** Vero solo quando la piscina dei candidati era piena (ramo con le parole,
+   * `X-Total-Count-Lower-Bound: 1`): `total` conta solo quelli guardati, non l'intero
+   * ricettario, e l'etichetta dei risultati dice «almeno N ricette» (R-B). */
+  totalIsLowerBound: boolean;
+}
+
+/** Il totale dell'intestazione, o `null` se manca o non è un intero. */
+export function totalFrom(headers: Headers): number | null {
+  const raw = headers.get("X-Total-Count");
+  if (raw === null || !/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
+/** Se il totale è solo un minimo: vero solo quando `X-Total-Count-Lower-Bound` vale
+ * esattamente `"1"` (R-B). */
+export function lowerBoundFrom(headers: Headers): boolean {
+  return headers.get("X-Total-Count-Lower-Bound") === "1";
+}
+
+/** Da dove parte la pagina dopo, o `undefined` se non ce n'è un'altra.
+ *
+ * L'offset è quante ricette sono arrivate, doppioni compresi: è il conto che il server
+ * usa. Col totale si sa se ne mancano, e una pagina piena che è anche l'ultima non
+ * offre più «Mostra altre» su una pagina vuota. Senza totale — un server di prima —
+ * vale la regola di prima: una pagina piena fa pensare che ce ne sia un'altra. Una
+ * pagina vuota chiude sempre: un totale che non torna non tiene aperto un «Mostra
+ * altre» che non porta niente. */
+export function nextPageOffset(lastPage: RecipePage, allPages: RecipePage[]): number | undefined {
+  if (lastPage.recipes.length === 0) return undefined;
+  const loaded = allPages.reduce((count, page) => count + page.recipes.length, 0);
+  if (lastPage.total !== null) return loaded < lastPage.total ? loaded : undefined;
+  return lastPage.recipes.length === RECIPE_PAGE_SIZE ? loaded : undefined;
+}
+
 /** I filtri del ricettario, per nome e non per posizione: con quattro argomenti di
  * cui due stringhe, scambiare «categoria» e «parole cercate» è un difetto che il
  * compilatore non può vedere. */
-export function searchRecipes({
+export async function searchRecipes({
   query = "",
   maxMissing = null,
   category = "",
@@ -31,7 +71,7 @@ export function searchRecipes({
   ingredientIds?: string[];
   /** Da quale ricetta ripartire: «Mostra altre» (R4). */
   offset?: number;
-} = {}) {
+} = {}): Promise<RecipePage> {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
   // `!== null` e non la verità: `0` è la soglia più stretta, non la sua assenza
@@ -43,7 +83,10 @@ export function searchRecipes({
   for (const id of ingredientIds) params.append("ingredient_id", id);
   params.set("limit", String(RECIPE_PAGE_SIZE));
   if (offset > 0) params.set("offset", String(offset));
-  return apiFetch<RecipeSummary[]>(`/recipes/search?${params.toString()}`);
+  const { data, headers } = await apiFetchWithHeaders<RecipeSummary[]>(
+    `/recipes/search?${params.toString()}`
+  );
+  return { recipes: data, total: totalFrom(headers), totalIsLowerBound: lowerBoundFrom(headers) };
 }
 
 export function fetchCategories() {

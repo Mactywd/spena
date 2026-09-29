@@ -13,7 +13,7 @@ import type { RecipeBody, RecipeDetail } from "../../domain/types";
 const DETAIL: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null,
-  cook_minutes: null, category: "Primi piatti", cost: null, archived_at: null,
+  cook_minutes: null, category: "Primi piatti", cost: null, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 2, source_ref: null, scaled_to: null,
   unscalable_lines: 0, dose_lines: 1, owned_by_import: false,
   ingredients: [

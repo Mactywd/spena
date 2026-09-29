@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { apiFetch, UnauthorizedError } from "./client";
+import { apiFetch, apiFetchWithHeaders, UnauthorizedError } from "./client";
 
 describe("apiFetch", () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -107,5 +107,35 @@ describe("apiFetch", () => {
   it("gestisce una risposta 204 senza corpo", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     await expect(apiFetch("/auth/logout", { method: "POST" })).resolves.toBeNull();
+  });
+});
+
+describe("apiFetchWithHeaders", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("porta il corpo e le intestazioni della risposta", async () => {
+    // il totale del ricettario viaggia in un'intestazione (T3 Consegna 4)
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([{ id: "r1" }]), {
+        status: 200,
+        headers: { "X-Total-Count": "42" },
+      })
+    ));
+    const { data, headers } = await apiFetchWithHeaders<{ id: string }[]>("/recipes/search");
+    expect(data).toEqual([{ id: "r1" }]);
+    expect(headers.get("X-Total-Count")).toBe("42");
+  });
+
+  it("gli errori sono quelli di apiFetch", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
+    await expect(apiFetchWithHeaders("/recipes/search")).rejects.toBeInstanceOf(UnauthorizedError);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "giù" }), { status: 500 })
+    ));
+    await expect(apiFetchWithHeaders("/recipes/search")).rejects.toMatchObject({
+      status: 500,
+      message: "giù",
+    });
   });
 });

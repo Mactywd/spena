@@ -103,6 +103,10 @@ export interface RecipeSummary {
   category: string | null;
   /** Il costo, da 1 a 5 (R9). `null` è «non indicato», non «economica». */
   cost: number | null;
+  /** Il reparto più frequente fra le righe principali, deciso dal server
+   * (`main_department` in `backend/app/domain/rules.py`): la miniatura del ricettario ne
+   * mostra l'icona quando la foto manca (T3 Consegna 4). `null` senza righe principali. */
+  main_department: string | null;
   /** Quando è stata eliminata, in ISO 8601 (R10). Negli elenchi è sempre `null`: il
    * server esclude le eliminate. Il dettaglio la manda, perché un collegamento vecchio
    * porti a «Ripristina» e non a un errore. */

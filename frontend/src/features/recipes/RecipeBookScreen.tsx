@@ -5,9 +5,9 @@ import { RecipeCard } from "./RecipeCard";
 import { MissingBudgetFilter } from "./MissingBudgetFilter";
 import { MAX_BUDGET } from "./missingBudget";
 import {
-  RECIPE_PAGE_SIZE,
   fetchCategories,
   fetchSearchMode,
+  nextPageOffset,
   searchRecipes,
   setRecipeArchived,
 } from "./api";
@@ -228,16 +228,12 @@ export function RecipeBookScreen() {
         ingredientIds,
         offset: pageParam,
       }),
-    // la pagina dopo parte da quante ne sono arrivate, doppioni compresi: è il conto
-    // che il server usa per l'offset
-    getNextPageParam: (lastPage, allPages) =>
-      lastPage.length === RECIPE_PAGE_SIZE
-        ? allPages.reduce((total, page) => total + page.length, 0)
-        : undefined,
+    // da dove parte la pagina dopo, e se ce n'è una: vedi `nextPageOffset` in api.ts
+    getNextPageParam: (lastPage, allPages) => nextPageOffset(lastPage, allPages),
   });
   // Un inserimento sopra la pagina (l'import che gira) sposta tutto in giù di uno:
   // l'offset fa vedere un doppione, mai un buco, e il doppione si scarta qui.
-  const recipes = uniqueById(data?.pages.flat() ?? []);
+  const recipes = uniqueById(data?.pages.flatMap((page) => page.recipes) ?? []);
   // una risposta arrivata prima dell'eliminazione la manda ancora: sotto la sua lapide
   // non deve comparire
   const visible = tombstone ? recipes.filter((recipe) => recipe.id !== tombstone.id) : recipes;
