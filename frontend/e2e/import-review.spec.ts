@@ -78,7 +78,7 @@ test("le decisioni dell'AI si rivedono a 375px, e annullarne una dice cosa ha di
     const { long, created } = JSON.parse(aiutante("seed", String(Date.now()))) as Seminati;
 
     await page.goto("/");
-    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByRole("button", { name: "Entra", exact: true }).click();
     await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
     await page.goto("/ricette/importa");

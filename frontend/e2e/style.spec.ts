@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   // l'app parte presumendo una sessione valida: è il primo 401 a far comparire
   // l'accesso, quindi il campo si aspetta invece di darlo per già presente
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Entra", exact: true }).click();
 });
 
@@ -996,7 +996,7 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
       await page.goto(indirizzo);
       await page.waitForLoadState("networkidle");
       // la schermata vera, non l'accesso: vedi il `beforeEach` del tema qui sotto
-      await expect(page.getByLabel("Password")).toHaveCount(0);
+      await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
       await misuraFermo(indirizzo);
     }
   } finally {
@@ -1112,7 +1112,7 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
   // la fa comparire
   await page.context().clearCookies();
   await page.goto("/");
-  await expect(page.getByLabel("Password")).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   await misuraFermo("accesso");
 }
 

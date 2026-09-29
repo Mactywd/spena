@@ -26,7 +26,7 @@ test("un indirizzo interno aperto di colpo carica l'app, non un 404 di Nginx", a
 
   // da qui in poi è l'app a lavorare: il primo 401 porta all'accesso, e dopo
   // l'accesso il percorso chiesto è ancora quello
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Entra", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Dispensa" })).toBeVisible();
 });

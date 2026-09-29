@@ -41,7 +41,7 @@ test("una ricetta si modifica e diventa cucinabile, si elimina e torna; a 375px 
   // sotto, così «Elimina» finisce in fondo al dettaglio quanto ci finisce davvero.
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Entra", exact: true }).click();
   await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
 

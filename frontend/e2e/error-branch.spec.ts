@@ -38,7 +38,7 @@ test("un errore del server diventa un messaggio leggibile, non un «Carico…» 
   page,
 }) => {
   await page.goto("/");
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Entra", exact: true }).click();
   // l'accesso deve essere andato a buon fine prima di rompere la lista: altrimenti
   // si proverebbe il ramo sbagliato, cioè la schermata di accesso

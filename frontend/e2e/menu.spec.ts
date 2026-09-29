@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/lista");
   // l'app parte presumendo una sessione valida: è il primo 401 a far comparire
   // l'accesso, quindi il campo si aspetta invece di darlo per già presente
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Entra", exact: true }).click();
   await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
 });

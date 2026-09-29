@@ -37,7 +37,7 @@ test("il parmigiano sotto «burro» si sposta dalla dispensa, e a 375px niente s
   page,
 }) => {
   await page.goto("/");
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Entra", exact: true }).click();
   await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
 

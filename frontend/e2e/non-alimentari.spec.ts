@@ -9,7 +9,7 @@ const PASSWORD = process.env.E2E_PASSWORD ?? "test";
 
 test("un detersivo fa il giro: lista, dispensa, e ritorno in lista", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Entra", exact: true }).click();
 
   // 1. lo scelgo dall'autocomplete: c'è perché il seme lo porta

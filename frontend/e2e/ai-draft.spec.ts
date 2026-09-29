@@ -33,7 +33,7 @@ test("a 375px la riga «da creare salvando» con un nome lungo sta nello schermo
   page,
 }) => {
   await page.goto("/");
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Entra", exact: true }).click();
   await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
 

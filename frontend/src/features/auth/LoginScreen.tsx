@@ -3,15 +3,21 @@ import type { FormEvent } from "react";
 import { apiFetch, UnauthorizedError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
 import { BrandMark } from "../../components/ui/BrandMark";
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { Button } from "../../components/ui/Button";
+import { IconEye, IconEyeOff } from "../../components/ui/icons";
 
 export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // «Mostra password» (spec T3 §4.7): sul telefono un tasto sbagliato non si vede
+  const [shown, setShown] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // `Button` rifiuta già tocco e Invio quando «Entra» è in volo o non ancora pronto:
+    // la guardia resta qui perché un invio arrivato per un'altra strada non parta a vuoto
+    if (busy || password.length === 0) return;
     setBusy(true);
     setError(null);
     try {
@@ -48,22 +54,49 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
           <label htmlFor="password" className="text-sm font-medium text-ink-soft">
             Password
           </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="-mt-2"
-            autoComplete="current-password"
-          />
+          <div className="-mt-2 flex items-center gap-2">
+            <input
+              id="password"
+              type={shown ? "text" : "password"}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                // l'errore parlava della password di prima: riscrivendola non vale più
+                setError(null);
+              }}
+              // l'unica cosa da fare qui: il campo prende il fuoco appena si apre
+              autoFocus
+              // mostrata, resta una password: niente maiuscola d'ufficio né correttore
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="current-password"
+              className="min-w-0 flex-1"
+            />
+            {/* un interruttore di sola icona (Consegna 6a): il nome resta fisso,
+                `aria-pressed` dice se la password è in vista, l'icona lo mostra */}
+            <Button
+              variant="ghost"
+              icon={shown ? IconEyeOff : IconEye}
+              label="Mostra password"
+              aria-pressed={shown}
+              onClick={() => setShown((visible) => !visible)}
+            />
+          </div>
           {error && <Alert>{error}</Alert>}
-          <button
-            type="submit"
-            disabled={busy || password.length === 0}
-            className={buttonClasses("primary", "block")}
-          >
-            Entra
-          </button>
+          {/* in un contenitore suo: il perché che Button scrive sotto «Entra» gli sta
+              attaccato, e non a 16 px come le righe di questa colonna */}
+          <div>
+            <Button
+              type="submit"
+              variant="primary"
+              shape="block"
+              busy={busy}
+              unavailableReason={password.length === 0 ? "Scrivi la password per entrare." : undefined}
+            >
+              Entra
+            </Button>
+          </div>
         </div>
       </form>
     </div>
