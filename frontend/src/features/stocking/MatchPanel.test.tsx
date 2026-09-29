@@ -125,6 +125,31 @@ describe("MatchPanel", () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
+  // «Annulla» durante la creazione in volo: l'ingrediente può nascere lo stesso sul
+  // server, ma la voce non ci si abbina — l'utente ha tolto quella scelta
+  it("«Annulla» mentre la creazione è in volo non abbina l'ingrediente", async () => {
+    let answer: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: unknown, init?: RequestInit) =>
+        init?.method === "POST"
+          ? new Promise<Response>((resolve) => {
+              answer = resolve;
+            })
+          : Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+      )
+    );
+    const { onMatched } = renderPanel();
+    await userEvent.click(await screen.findByRole("button", OFFER));
+    await userEvent.click(screen.getByRole("button", { name: "Crea l'ingrediente" }));
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(screen.getByRole("textbox", FIELD)).toBeDefined();
+    answer(new Response(JSON.stringify(CERA), { status: 201 }));
+    // lascia al POST il tempo di arrivare in fondo, onSuccess compreso
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onMatched).not.toHaveBeenCalled();
+  });
+
   it("una ricerca che non risponde lo dice, e lascia crearlo lo stesso (S6)", async () => {
     stubRoutedFetch(() => [{ detail: "giù" }, 500]);
     renderPanel();

@@ -57,10 +57,6 @@ export function MatchPanel({
         throw error;
       }
     },
-    // solo l'ingrediente: `useMutation` passerebbe a `onSuccess` anche `variables` e
-    // `context`, e chi riceve `onMatched` (qui i test, e il Task 7) si aspetta un
-    // unico argomento
-    onSuccess: (ingredient) => onMatched(ingredient),
   });
 
   return (
@@ -90,7 +86,14 @@ export function MatchPanel({
           <NewIngredientFields
             initialName={creating}
             busy={create.isPending}
-            onSubmit={(fields) => create.mutate(fields)}
+            // `onSuccess` passato a `mutate` e non alle opzioni di `useMutation`: queste
+            // girano dalla Mutation stessa anche dopo `reset()`, e «Annulla» durante la
+            // creazione in volo abbinerebbe la voce all'ingrediente scartato; quelle di
+            // `mutate` si fermano quando `reset()` stacca l'osservatore. Solo
+            // l'ingrediente: la schermata di sistemazione si aspetta un unico argomento
+            onSubmit={(fields) =>
+              create.mutate(fields, { onSuccess: (ingredient) => onMatched(ingredient) })
+            }
             onCancel={() => {
               create.reset();
               setCreating(null);
