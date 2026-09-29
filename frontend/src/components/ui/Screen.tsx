@@ -27,7 +27,7 @@ export function Screen({
       {back && <BackLink to={back.to} label={back.label} />}
       <div className="flex items-start justify-between gap-3 pb-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight break-words">{title}</h1>
           {subtitle && <p className="pt-0.5 text-sm text-ink-soft">{subtitle}</p>}
         </div>
         {action}

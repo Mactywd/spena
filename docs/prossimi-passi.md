@@ -2049,8 +2049,9 @@ sotto di sé in un `<p>` collegato con `aria-describedby`. `Button` ha imparato 
 `accessibleName`, per un pulsante con testo che deve dire di più («Abbina» si sente
 «Abbina: X»; il testo in vista resta l'inizio del nome), e passa `aria-expanded` e
 `aria-pressed`. Il JSDoc di `busy` e `unavailableReason` dice che il clic risale agli
-antenati. Cosa è cambiato a video: in «Sistema la spesa» nessun pulsante è più scritto a
-mano («Metti in dispensa», «Cerca», «Crea l'ingrediente», «Abbina», «Riprova»); «Aggiungi
+antenati. Cosa è cambiato a video: in «Sistema la spesa» nessun pulsante che si spegne è
+più scritto a mano, tranne «Salva prodotto» (voce in `next-steps.md`) («Metti in
+dispensa», «Cerca», «Crea l'ingrediente», «Abbina», «Riprova»); «Aggiungi
 «…»» del selettore tiene il fuoco in volo, e il suo campo dice «Cerca un ingrediente»;
 l'accesso dà il fuoco al campo, toglie «Password errata» alla prima battuta, ha «Mostra
 password» con l'occhio e «Entra» che a campo vuoto dice «Scrivi la password per

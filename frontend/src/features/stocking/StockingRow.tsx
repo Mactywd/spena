@@ -264,7 +264,11 @@ export function StockingRow({
           className="flex min-h-11 items-center gap-1 text-xs font-medium text-ink-faint"
         >
           <IconCalendarPlus aria-hidden="true" className="size-4" stroke={1.8} />
-          {/* lo spazio fuori dallo `sr-only`, come sopra */}
+          {/* qui lo `sr-only` resta: «+ scadenza» da solo non dice di quale voce, e il
+              nome per {name} serve solo a chi ascolta. Lo spazio prima sta fuori dallo
+              `sr-only`, non dentro: dentro, Chromium lo mangia insieme al resto del testo
+              nascosto e «+ scadenza per X» arriva allo screen reader come «+ scadenzaper
+              X», appiccicati */}
           + scadenza <span className="sr-only">per {name}</span>
         </button>
       )}
