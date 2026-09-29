@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-09-29 (fase giorno)_
+_Ultimo aggiornamento: 2026-09-29 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -16,7 +16,6 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 Da eseguire in quest'ordine, ciascuno sul suo ramo dal `master`. Toccano tutti e due `frontend/e2e/style.spec.ts`, `docs/prossimi-passi.md` e `next-steps.md`: i conflitti si risolvono di giorno, al merge.
 
-- [pronto] P1 · T3 Consegna 3, Sistema la spesa: una riga per voce con le icone, un pannello alla volta sotto la sua voce con le altre nascoste (S10 e i suoi tre dettagli), sezioni per reparto, «Abbina» col selettore unico e «Come si chiama in generale?», «È di un altro ingrediente: X» non rosso, «Metti in dispensa N» con l'avviso in Dispensa (T4) → `docs/superpowers/plans/2026-09-29-ridisegno-sistema-la-spesa.md`, ramo `night/sistema-la-spesa` [T3, S10, T4]
 - [pronto] P2 · Pulizie dopo la Lista: 409 del server sul doppione dell'«Annulla», `Button` con `busy`, altezza massima dei suggerimenti, vecchie pulizie e2e con `expect.soft`, via `set_fill`, il 404 non ritentato con «Questa ricetta non c'è più.», `occurrences` ricontato dopo l'annulla → `docs/superpowers/plans/2026-09-29-pulizie-dopo-la-lista.md`, ramo `night/pulizie-dopo-la-lista` [T3 Consegna 2, Parte X, D1]
 
 ## Da approfondire (giorno)
@@ -49,6 +48,9 @@ Da eseguire in quest'ordine, ciascuno sul suo ramo dal `master`. Toccano tutti e
 - [tbd] P3 · «Rimetti in lista» nel foglio della cottura è pre-spuntata solo per «finito», in dispensa la domanda arriva anche nel giallo — TBD: decidere una volta [Parte X]
 
 ### Idee
+- [idea] P3 · `NewIngredientFields` copia il `<select>` del reparto di `registry/CategoryForm.tsx`: unirli con R12 (Consegna 6) [T3]
+- [idea] P3 · `Button` non sa dare un nome accessibile insieme a figli visibili, quindi «Abbina» e «Riprova» in `StockingRow.tsx` ricodificano il suo markup: aggiungere un override [T3]
+- [idea] P3 · «Riprova» di `ErrorState` è `disabled` durante il ritento e perde il fuoco (il piano gemello pulizie-dopo-la-lista lo sistema con `Button busy`) [T3 Consegna 2]
 - [idea] P3 · «Ingrediente» invece di «voce» in `AddItemField.tsx` e `StockingScreen.tsx` (forse dentro le Consegne 3 e 6) [Parte X]
 - [idea] P3 · Nella bozza AI, «non in anagrafica» è la formula sbagliata per una riga non alimentare [Parte X]
 - [idea] P3 · `skipped_reason` non affiora da nessuna rotta né schermata [Parte X]
@@ -68,6 +70,7 @@ Da eseguire in quest'ordine, ciascuno sul suo ramo dal `master`. Toccano tutti e
 - [bloccato] P3 · M1, motore di suggerimento — attende: pasti, nutrienti e sostituti (P2, S4, R5)
 
 ## Da fare a mano (solo Mattia)
+- [tbd] P1 · Prove sul telefono di Sistema la spesa (Consegna 3): un pannello aperto su una voce in fondo, lo scanner con la fotocamera vera e negata, il codice a mano con «Cerca», il campo data e la sua ✕, l'avviso in Dispensa
 - [tbd] P1 · Prove sul telefono della Lista (Consegna 2): la barra resta sotto l'intestazione scorrendo, con i suggerimenti che si aprono sotto; spuntare camminando senza le linee fra le righe; «Annulla» dopo la ✕ su una voce nel carrello
 - [tbd] P1 · Prove sul telefono della Dispensa (Consegna 1): le tacche col pollice, il selettore data nativo, le righe «Finito»
 - [tbd] P2 · Prove sul telefono del tema scuro (Consegna 0): tema vero, barra di stato nei due temi, icona reinstallata, Inter senza rete, schermata d'avvio (probabile lampo chiaro)
@@ -77,6 +80,7 @@ Da eseguire in quest'ordine, ciascuno sul suo ramo dal `master`. Toccano tutti e
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-09-29 · T3 Consegna 3, Sistema la spesa: una riga per voce, un pannello alla volta sotto la sua voce (S10), «Abbina» col selettore unico, «Metti in dispensa N» con l'avviso in Dispensa (T4) → branch night/sistema-la-spesa (da revisionare)
 - [fatto] 2026-09-29 · Tema scuro: l'avviso rovesciato (chiaro sullo scuro) va bene, deciso da Mattia; spec §3.5 aggiornata
 - [fatto] 2026-09-28 · T3 Consegna 2, Lista → `master` c614e80, in produzione
 - [fatto] 2026-09-28 · T3 Consegna 1, Dispensa, con la riga a 375 px e l'Esc sulla data → in produzione

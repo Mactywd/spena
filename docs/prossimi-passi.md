@@ -979,7 +979,7 @@ al primo di loro, così l'ultimo annullamento lo cancella in qualunque ordine. L
 non cancellano mai: un ingrediente nato da una di quelle e poi annullata resta in
 anagrafica, da unire a mano.
 
-## S10. «Sistema la spesa»: lo scanner e il modulo si aprono in fondo, fuori vista **[D]**
+## S10. «Sistema la spesa»: lo scanner e il modulo si aprono in fondo, fuori vista **[FATTO 2026-09-29 — T3 Consegna 3, non ancora in produzione]**
 Con molte voci, ognuna con le sue tre opzioni, premere «scansiona» su una voce in alto
 apre lo scanner **in fondo alla pagina**, dove non si vede. Lo stesso succede al
 pannello del catalogo e a `CustomProductForm`: in `StockingScreen.tsx` sono tutti
@@ -999,6 +999,13 @@ pannello.
   lettere;
 - **senza fotocamera il pannello promette «Puoi inserire il prodotto a mano»** e non
   offre quella strada: c'è solo il campo del codice, con «Annulla» in mezzo.
+
+**Fatto** con la Consegna 3 di T3: un pannello alla volta, dentro la voce e sotto la sua
+riga; mentre è aperto le altre voci, i reparti e «Metti in dispensa» non si vedono, e la
+voce va in cima con `revealAtTop`. I tre dettagli: il titolo del pannello del codice
+nomina la voce; il campo ha `inputMode="numeric"` e «Cerca»; senza fotocamera c'è «Crea il
+prodotto a mano», che apre il modulo per quella voce. Misurato a 375×812 in
+`e2e/style.spec.ts`; il telefono vero resta da provare.
 
 ## S11. Cercare in dispensa **[FATTO 2026-09-28 — T3 Consegna 1]**
 Per sapere se c'è il sale oggi bisogna scorrere tutta la dispensa. Serve un campo che
@@ -1960,6 +1967,54 @@ più vecchia di `style.spec.ts` (la prova su prodotto e dispensa, intorno alle r
 985-1072) si limita ad avvisare in console se la pulizia fallisce: non fa fallire la
 prova, a differenza di quella più recente per la barra della lista.
 
+**Consegna 3 (Sistema la spesa) fatta il 2026-09-29, sul ramo `night/sistema-la-spesa`,
+non ancora in produzione.** Cosa è cambiato: una riga per voce, col nome sopra e sotto a
+cosa si è risolta («Sfuso», o il prodotto con la marca), le tre icone codice / catalogo /
+sfuso a destra e «Cambia» come icona; le voci in sezioni per reparto, nell'ordine della
+Lista; un pannello alla volta, sotto la voce che l'ha chiesto, e mentre è aperto restano a
+video solo la voce e il pannello (S10, richiesta di Mattia) — chiudendolo torna tutto, con
+le scelte fatte e il fuoco sul pulsante che l'aveva aperto; il pannello del codice nomina
+la voce, ha «Cerca» e la tastiera dei numeri, e senza fotocamera offre «Crea il prodotto a
+mano»; la voce non abbinata è chiusa, con «Abbina», che apre il selettore unico
+(`IngredientPicker`, che per questo ha imparato `createWhen="always"`: la creazione resta
+raggiungibile anche quando la ricerca trova qualcosa, S6); l'ingrediente nuovo chiede
+«Come si chiama in generale?» (`NewIngredientFields`, pronto per R12); «È di un altro
+ingrediente» dice quale, in tono neutro, col nome mandato dal server (`ProductOut` porta
+`ingredient_name`); il catalogo dà un messaggio per stato, e l'esempio «yogurt greco» solo
+a campo vuoto; «+ scadenza» apre un campo con l'etichetta visibile e una ✕; «Metti in
+dispensa N» conta le voci che partono, e in Dispensa l'avviso dice «N in dispensa · M
+restano in lista» (T4); niente da sistemare è un `EmptyState` con «Vai alla Lista».
+`StockingScreen.tsx` è passato da 916 a 555 righe: la riga (`StockingRow`) e i
+pannelli (`ScannerPanel`, `MatchPanel`, `OffSuggestionQuestion`) stanno in file loro, e le
+guardie di S8, S19 e S20 in un posto solo ciascuna.
+
+**Le scelte del piano che Mattia può voler rivedere:** «1 resta in lista» al singolare;
+«Metti in dispensa» senza numero e spento, con sotto «Scegli come entra almeno una voce»,
+quando non c'è niente di scelto; il nome del passo di creazione che parte dal testo
+cercato (il testo della voce, finché non si riscrive la ricerca); anche l'elenco del
+catalogo diventato un `listbox` valido; «Annulla» dello scanner spostato in fondo al
+pannello; aprendo un pannello il fuoco resta sul pulsante che l'ha aperto, e una scelta
+fatta lo porta a «Cambia».
+
+**I titoli dei pannelli sono `h2`, non `h3`**: nascono direttamente sotto l'`h1` della
+pagina, perché in modalità pannello le altre voci e le intestazioni di reparto non sono a
+video. Dopo un «Abbina» riuscito il fuoco segue la riga nella sua sezione di reparto, non
+resta sul posto vecchio. Il giro nel browser vero (non solo jsdom) ha trovato due difetti
+che i test in jsdom non potevano vedere, corretti prima del commit finale: Chromium
+calcolava il nome accessibile di «Abbina» come «Abbina : X», perché lo `span` `sr-only`
+posizionato lo rendeva un blocco e Chromium ci metteva uno spazio davanti — ora è un
+`aria-label` scritto a mano; e il campo della scadenza aveva `autoFocus`, che rubava il
+fuoco a ogni rinascita della riga (un pannello che si apre o chiude fa rinascere tutte le
+righe), tolto il fuoco al pannello del catalogo aperto su un'altra voce — ora l'`autoFocus`
+è sostituito da un fuoco che scatta solo dopo un tocco su «+ scadenza». Suite finale: 32
+e2e verdi, 747 test vitest verdi, 935 test backend verdi.
+
+**Da provare sul telefono:** un pannello aperto su una voce in fondo alla lista (la voce
+deve arrivare in cima, sotto l'intestazione), e la lista che torna chiudendolo; lo scanner
+con la fotocamera vera e con la fotocamera negata; il codice scritto a mano con la
+tastiera dei numeri e «Cerca»; il campo data nativo del «+ scadenza» e la sua ✕;
+l'avviso in Dispensa dopo «Metti in dispensa».
+
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
 chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
 spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
@@ -2159,22 +2214,22 @@ una voce è il prezzo di avere la stessa forma sempre.
 
 **Sistema la spesa** (oltre a S10, S19 e S20)
 - **Una voce risolta si riconosce solo dal colore verde.** Non dice «sfuso» né quale
-  prodotto, e «Cambia» pesa quanto le azioni principali.
-- **Il blocco «non abbinata» è sempre aperto** e occupa una schermata e mezza per voce.
+  prodotto, e «Cambia» pesa quanto le azioni principali. *(T3 Consegna 3)*
+- **Il blocco «non abbinata» è sempre aperto** e occupa una schermata e mezza per voce. *(T3 Consegna 3)*
 - **Il nome dell'ingrediente creato è tutto il testo della voce** («zucchine tonde di
-  Nizza della signora Pina»). Niente invita a scrivere il nome generico.
+  Nizza della signora Pina»). Niente invita a scrivere il nome generico. *(T3 Consegna 3)*
 - **«È di un altro ingrediente» non dice quale**, ed è in rosso anche se non è un
-  guasto.
+  guasto. *(T3 Consegna 3)*
 - **Il catalogo dà due messaggi che si contraddicono**: «altri 2 prodotti, di un altro
   ingrediente» e «nessun prodotto». L'esempio «yogurt greco» compare anche cercando
-  uova.
+  uova. *(T3 Consegna 3)*
 - **«+ scadenza» apre un campo data** senza un'etichetta visibile e senza modo di
-  richiuderlo.
+  richiuderlo. *(T3 Consegna 3)*
 - **«Metti in dispensa» non dice quante voci entrano, né che le altre restano in
-  lista.**
-- **L'ordine delle voci non è quello per reparto della lista.**
+  lista.** *(T3 Consegna 3)*
+- **L'ordine delle voci non è quello per reparto della lista.** *(T3 Consegna 3)*
 - **Con niente da sistemare**, il pulsante disabilitato non serve, e «lista» potrebbe
-  essere un collegamento.
+  essere un collegamento. *(T3 Consegna 3)*
 
 **Dispensa** (oltre a S11, S12, S14, S15)
 - **Le righe sono alte circa 150 px**, e ci stanno 5 righe per schermo. Metà della riga
@@ -2292,8 +2347,10 @@ JavaScript. I test in jsdom controllano a chi si chiede di venire in vista e dov
 finisce il fuoco; che arrivi davvero sotto l'header si guarda in un browser vero.
 **«Aggiungi in dispensa» è fatto** (T3 Consegna 1, 2026-09-28): l'avviso «In
 dispensa: …» compare in un punto fisso, e la riga nuova è portata in vista con
-`revealAtTop`. **Restano aperti** «Metti in dispensa» (Consegna 3) e «Salva nel
-ricettario», con lo stesso avviso che li servirebbe.
+`revealAtTop`. **«Metti in dispensa» è fatto** (T3 Consegna 3, 2026-09-29): il pulsante
+dice quante voci entrano, e in Dispensa l'avviso dice «4 in dispensa · 3 restano in
+lista» — contando solo le voci nel carrello che non sono entrate. **Resta aperto** «Salva
+nel ricettario», con lo stesso avviso che lo servirebbe.
 
 ---
 
