@@ -12,9 +12,16 @@ describe("ErrorState", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
-  it("mentre riprova il pulsante non si ripete", () => {
-    render(<ErrorState message="x" onRetry={() => {}} retrying />);
-    expect(screen.getByRole("button", { name: "Riprovo…" })).toBeDisabled();
+  it("mentre riprova il pulsante non si ripete, e tiene il fuoco", () => {
+    const onRetry = vi.fn();
+    render(<ErrorState message="x" onRetry={onRetry} retrying />);
+    const button = screen.getByRole("button", { name: "Riprovo…" });
+    // `aria-disabled` e non `disabled` (Button, `busy`): chi ha premuto «Riprova» da
+    // tastiera non deve ritrovarsi il fuoco sulla pagina
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(button);
+    expect(onRetry).not.toHaveBeenCalled();
   });
 });
 

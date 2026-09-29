@@ -71,9 +71,19 @@ describe("ListRow", () => {
     expect(onToggle).not.toHaveBeenCalled();
     expect(box).not.toBeChecked();
     const remove = screen.getByRole("button", { name: "Togli Total 0% dalla lista" });
-    expect(remove.hasAttribute("disabled")).toBe(true);
+    expect(remove.hasAttribute("disabled")).toBe(false);
+    expect(remove).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(remove);
     expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it("in volo anche la ✕ resta raggiungibile dal fuoco (T3 Consegna 2)", () => {
+    // con `disabled` il browser toglieva il fuoco alla ✕ appena partiva la PATCH, e dopo
+    // una ✕ fallita chi usa la tastiera lo ritrovava sulla pagina
+    renderRow({}, { busy: true });
+    const remove = screen.getByRole("button", { name: "Togli Total 0% dalla lista" });
+    remove.focus();
+    expect(remove).toHaveFocus();
   });
 
   it("una scrittura fallita lo dice nella riga", () => {

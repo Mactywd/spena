@@ -37,6 +37,58 @@ describe("Button", () => {
     // @ts-expect-error icona sola senza `label` non deve compilare
     render(<Button icon={IconTrash} />);
   });
+
+  // `busy` (T3 Consegna 2, «Restano aperti»): una richiesta partita da qui è in volo. Il
+  // browser toglie il fuoco a un pulsante che diventa `disabled`, e chi usa la tastiera
+  // lo ritrovava sul `body` dopo una ✕ fallita. jsdom non toglie il fuoco a un pulsante
+  // che si spegne, ma rifiuta di darlo a uno già `disabled`: è questo che i test sotto
+  // misurano. Il fuoco perso vero lo misura l'e2e (`style.spec.ts`).
+  it("in volo è spento con aria-disabled, non con disabled, e un tocco non fa niente", () => {
+    const onClick = vi.fn();
+    render(<Button icon={IconTrash} label="Elimina" onClick={onClick} busy />);
+    const button = screen.getByRole("button", { name: "Elimina" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("in volo resta raggiungibile dal fuoco", () => {
+    render(<Button busy>Riprova</Button>);
+    const button = screen.getByRole("button", { name: "Riprova" });
+    button.focus();
+    expect(button).toHaveFocus();
+  });
+
+  it("finito il volo torna a rispondere, e il fuoco non si è mosso", () => {
+    const onClick = vi.fn();
+    const { rerender } = render(<Button onClick={onClick} busy>Riprova</Button>);
+    const button = screen.getByRole("button", { name: "Riprova" });
+    button.focus();
+    rerender(<Button onClick={onClick}>Riprova</Button>);
+    expect(button).toHaveFocus();
+    expect(button).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it("un submit in volo non invia il modulo", () => {
+    const onSubmit = vi.fn((event: { preventDefault: () => void }) => event.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <Button type="submit" busy>
+          Salva
+        </Button>
+      </form>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Salva" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("disabled resta, per un'azione che adesso non si può proprio fare", () => {
+    render(<Button disabled>Salva</Button>);
+    expect(screen.getByRole("button", { name: "Salva" })).toBeDisabled();
+  });
 });
 
 describe("buttonClasses", () => {
@@ -58,6 +110,14 @@ describe("buttonClasses", () => {
     const classes = buttonClasses("primary", "square").split(/\s+/);
     expect(classes).toContain("size-11");
     expect(classes).toContain("rounded-[10px]");
+  });
+
+  it("lo spento in volo si vede come lo spento vero, in ogni variante", () => {
+    for (const variant of variants) {
+      const classes = buttonClasses(variant).split(/\s+/);
+      expect(classes, variant).toContain("disabled:opacity-40");
+      expect(classes, variant).toContain("aria-disabled:opacity-40");
+    }
   });
 });
 

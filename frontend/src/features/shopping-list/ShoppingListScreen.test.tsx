@@ -216,8 +216,10 @@ describe("ShoppingListScreen", () => {
     // deve restare bloccata
     const box = screen.getByRole("checkbox", { name: "pomodoro" });
     expect(box).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByRole("button", { name: "Togli pomodoro dalla lista" })).toBeDisabled();
+    const remove = screen.getByRole("button", { name: "Togli pomodoro dalla lista" });
+    expect(remove).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(box);
+    fireEvent.click(remove);
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     releaseGet(new Response(JSON.stringify(ITEMS.filter((i) => i.id !== "s1")), { status: 200 }));
     await waitFor(() => expect(screen.queryByText("pomodoro")).toBeNull());
@@ -245,7 +247,9 @@ describe("ShoppingListScreen", () => {
     fireEvent.click(box);
     await waitFor(() => expect(box).toHaveAttribute("aria-disabled", "true"));
     fireEvent.click(box);
-    expect(screen.getByRole("button", { name: "Togli pomodoro dalla lista" })).toBeDisabled();
+    const remove = screen.getByRole("button", { name: "Togli pomodoro dalla lista" });
+    expect(remove).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(remove);
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     release(new Response(JSON.stringify({ ...ITEMS[1], status: "checked" }), { status: 200 }));
   });

@@ -129,7 +129,7 @@ export function PantryRow({
           icon={IconX}
           label={`Togli ${label} dalla dispensa`}
           onClick={onRemove}
-          disabled={busy}
+          busy={busy}
         />
       </div>
       {/* La scadenza ha la sua riga, larga quanto la voce: sempre allo stesso posto, e
@@ -197,7 +197,7 @@ export function PantryRow({
               Già in lista
             </span>
           ) : (
-            <Button icon={IconShoppingCartPlus} onClick={onRestock} disabled={busy}>
+            <Button icon={IconShoppingCartPlus} onClick={onRestock} busy={busy}>
               In lista
             </Button>
           )}

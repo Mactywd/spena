@@ -102,7 +102,7 @@ describe("PantryScreen", () => {
     await waitFor(() =>
       expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-disabled", "true")
     );
-    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toHaveAttribute("aria-disabled", "true");
     // e un secondo tocco durante il volo non parte
     fireEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
@@ -466,7 +466,7 @@ describe("PantryScreen", () => {
     // deve restare bloccata
     const row = screen.getByText("Total 0%").closest("li")!;
     expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-disabled", "true");
-    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     releaseGet(new Response(JSON.stringify(ITEMS.filter((i) => i.id !== "p1")), { status: 200 }));
@@ -521,7 +521,9 @@ describe("PantryScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
     const row = screen.getByRole("link", { name: "mela" }).closest("li")!;
     expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
-    expect(within(row).getByRole("button", { name: "In lista" })).not.toBeDisabled();
+    // `not.toBeDisabled` passerebbe sempre, ora che il pulsante si spegne con
+    // `aria-disabled`: si guarda l'attributo che conta
+    expect(within(row).getByRole("button", { name: "In lista" })).not.toHaveAttribute("aria-disabled");
   });
 
   it("se era già in lista, l'avviso lo dice", async () => {

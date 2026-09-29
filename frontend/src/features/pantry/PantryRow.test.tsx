@@ -106,7 +106,7 @@ describe("PantryRow", () => {
   });
 
   it("mentre una scrittura è in volo i controlli sono spenti", () => {
-    const { onStatus } = renderRow({ status: "finished" }, { busy: true });
+    const { onStatus, onRestock, onRemove } = renderRow({ status: "finished" }, { busy: true });
     // le tacche con `aria-disabled` e non `disabled`: così il fuoco resta dove le
     // frecce l'hanno portato (StockGauge), e un tocco non manda comunque niente
     for (const name of ["Disponibile", "Quasi finito", "Finito"]) {
@@ -114,8 +114,16 @@ describe("PantryRow", () => {
     }
     fireEvent.click(screen.getByRole("radio", { name: "Disponibile" }));
     expect(onStatus).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "In lista" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("button", { name: "Togli Total 0% dalla dispensa" }).hasAttribute("disabled")).toBe(true);
+    // ✕ e «In lista» come le tacche: `aria-disabled` (Button, `busy`), e il tocco non parte
+    for (const name of ["In lista", "Togli Total 0% dalla dispensa"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.hasAttribute("disabled")).toBe(false);
+      expect(button).toHaveAttribute("aria-disabled", "true");
+    }
+    fireEvent.click(screen.getByRole("button", { name: "In lista" }));
+    expect(onRestock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Togli Total 0% dalla dispensa" }));
+    expect(onRemove).not.toHaveBeenCalled();
     // la scadenza come le tacche: dopo un Invio il fuoco torna qui mentre il
     // salvataggio è in volo, e un `disabled` lo buttava sul `body` (lo misura l'e2e)
     const expiry = screen.getByRole("button", { name: "+ scadenza per Total 0%" });
