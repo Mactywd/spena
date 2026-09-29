@@ -203,4 +203,37 @@ describe("IngredientPicker", () => {
     renderWithClient(<IngredientPicker label="Quale ingrediente?" failureNote="Riprova." onPick={() => {}} autoFocus={true} />);
     expect(document.activeElement).toBe(screen.getByLabelText("Quale ingrediente?"));
   });
+
+  // S6: in «Sistema la spesa» la creazione non può dipendere dal vuoto — «cera per
+  // pavimenti» pescava sette suggerimenti, `Pera` in testa, e la porta spariva
+  it("con createWhen «always» offre di aggiungere anche accanto ai suggerimenti", async () => {
+    stubRoutedFetch(() => [[LATTE], 200]);
+    const onCreate = vi.fn();
+    renderWithClient(
+      <IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} onCreate={onCreate} createWhen="always" />
+    );
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "latte di capra" } });
+    await screen.findByRole("option", { name: "Latte" });
+    fireEvent.click(await screen.findByRole("button", { name: "Aggiungi «latte di capra»" }));
+    expect(onCreate).toHaveBeenCalledWith("latte di capra");
+  });
+
+  it("con createWhen «always» offre di aggiungere anche se la ricerca non risponde", async () => {
+    stubRoutedFetch(() => [{ detail: "giù" }, 500]);
+    renderWithClient(
+      <IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} onCreate={() => {}} createWhen="always" />
+    );
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "cera" } });
+    expect(await screen.findByRole("button", { name: "Aggiungi «cera»" })).toBeDefined();
+  });
+
+  it("di norma accanto ai suggerimenti non offre di aggiungere: resta com'era", async () => {
+    stubRoutedFetch(() => [[LATTE], 200]);
+    renderWithClient(
+      <IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} onCreate={() => {}} />
+    );
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "lat" } });
+    await screen.findByRole("option", { name: "Latte" });
+    expect(screen.queryByRole("button", { name: /Aggiungi/ })).toBeNull();
+  });
 });

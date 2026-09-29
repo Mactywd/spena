@@ -29,6 +29,7 @@ export function IngredientPicker({
   disabled = false,
   kind,
   onCreate,
+  createWhen = "empty",
   emptyNote,
   initialTerm = "",
   autoFocus = false,
@@ -51,6 +52,12 @@ export function IngredientPicker({
   /** Chi sa creare un ingrediente nuovo lo offre quando la ricerca non trova niente
    * (R12). Senza, la ricerca vuota non propone niente, come prima. */
   onCreate?: (name: string) => void;
+  /** Quando offrire «Aggiungi «…»»: di norma solo a ricerca finita e vuota. Con
+   * `"always"` anche accanto ai suggerimenti, e anche se la ricerca non risponde —
+   * appena la ricerca del testo scritto ha detto la sua. Lo chiede «Sistema la
+   * spesa» (S6): lì una voce spaiata deve poter diventare un ingrediente anche se il
+   * suo nome pesca «Pera» per «cera per pavimenti». */
+  createWhen?: "empty" | "always";
   /** Chi non sa creare un ingrediente dice qui dove andare quando la ricerca non
    * trova niente: senza, il pannello resterebbe muto sotto un campo pieno, ed è un
    * vicolo cieco. Compare alle stesse condizioni dell'offerta di creare, che quando
@@ -83,6 +90,9 @@ export function IngredientPicker({
   // la risposta in mano è di quel che c'è scritto adesso, e non di un testo di prima
   const searchedIsTyped = ready && debounced === term.trim();
   const emptySearch = searchedIsTyped && isSuccess && found.length === 0;
+  // l'offerta vale per il testo che la ricerca ha cercato, mai per uno di prima (S18)
+  const offerCreate =
+    createWhen === "always" ? searchedIsTyped && (isSuccess || isError) : emptySearch;
 
   return (
     <div className="flex flex-col gap-2">
@@ -116,7 +126,7 @@ export function IngredientPicker({
           per il testo che quella ricerca ha cercato: corretto «lattr» in «latte», la
           risposta vuota in mano resta quella di «lattr» per tutta l'attesa, e offrire
           «latte» lì ne creerebbe un doppione */}
-      {onCreate && emptySearch && (
+      {onCreate && offerCreate && (
         <Button
           icon={IconPlus}
           onClick={() => {
