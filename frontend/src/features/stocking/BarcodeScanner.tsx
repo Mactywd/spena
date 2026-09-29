@@ -1,13 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 
 export function BarcodeScanner({
   onDetected,
   onCancel,
+  onUnavailable,
+  children,
 }: {
   onDetected: (code: string) => void;
   onCancel: () => void;
+  /** La fotocamera non c'è, o è stata negata. Chi ospita lo scanner offre allora la
+   * strada a mano (S10: il pannello la prometteva senza darla). Deve essere stabile,
+   * come `onDetected`: l'effetto della fotocamera ne dipende, e un'identità nuova a
+   * ogni disegno la spegnerebbe e riaccenderebbe. */
+  onUnavailable?: () => void;
+  /** Quel che sta fra la fotocamera e «Annulla»: il codice scritto a mano, e ciò che
+   * ne segue. Così «Annulla» chiude il pannello in fondo invece di stare in mezzo
+   * (S10). */
+  children?: ReactNode;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,13 +103,16 @@ export function BarcodeScanner({
         // quel che era già stato acquisito si spegne
         const wasReleased = stopped;
         release();
-        if (!wasReleased) setError("Fotocamera non disponibile. Puoi inserire il prodotto a mano.");
+        if (!wasReleased) {
+          setError("Fotocamera non disponibile. Puoi inserire il prodotto a mano.");
+          onUnavailable?.();
+        }
       }
     }
 
     start();
     return release;
-  }, [onDetected]);
+  }, [onDetected, onUnavailable]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -107,6 +121,7 @@ export function BarcodeScanner({
       ) : (
         <video ref={videoRef} className="w-full rounded-card bg-black" muted playsInline />
       )}
+      {children}
       <button
         type="button"
         onClick={() => {

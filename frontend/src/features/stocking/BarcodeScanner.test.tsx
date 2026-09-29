@@ -181,4 +181,28 @@ describe("BarcodeScanner", () => {
     await vi.waitFor(() => expect(first.stop).toHaveBeenCalled());
     expect(second.stop).not.toHaveBeenCalled();
   });
+
+  it("senza fotocamera lo dice anche a chi lo ospita, che offre la strada a mano (S10)", async () => {
+    vi.stubGlobal("navigator", {
+      mediaDevices: { getUserMedia: vi.fn().mockRejectedValue(new Error("NotFoundError")) },
+    });
+    const onUnavailable = vi.fn();
+    render(<BarcodeScanner onDetected={vi.fn()} onCancel={vi.fn()} onUnavailable={onUnavailable} />);
+    await vi.waitFor(() => expect(onUnavailable).toHaveBeenCalledTimes(1));
+  });
+
+  it("quel che gli si mette dentro sta prima di «Annulla», che chiude in fondo (S10)", () => {
+    // un permesso che non arriva mai: qui conta solo l'ordine
+    vi.stubGlobal("navigator", {
+      mediaDevices: { getUserMedia: vi.fn(() => new Promise(() => {})) },
+    });
+    render(
+      <BarcodeScanner onDetected={vi.fn()} onCancel={vi.fn()}>
+        <p>il campo del codice</p>
+      </BarcodeScanner>
+    );
+    const campo = screen.getByText("il campo del codice");
+    const annulla = screen.getByRole("button", { name: "Annulla" });
+    expect(campo.compareDocumentPosition(annulla) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
