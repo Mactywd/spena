@@ -6,6 +6,12 @@ from app.services import recipe_search
 from app.services.recipe_search import reciprocal_rank_fusion
 
 
+async def _risultati(session, *args, **kwargs):
+    """Le ricette della pagina, senza il totale: i test di ordine, filtri e pagine
+    guardano quelle. Chiama `search_recipes` vera; il totale ha i suoi test in fondo."""
+    return (await recipe_search.search_recipes(session, *args, **kwargs)).results
+
+
 class _SessioneFinta:
     """Restituisce l'`extversion` scelta dal test, senza toccare il database: la
     tabella `pg_extension` non si può popolare con versioni a piacere, e qui non
@@ -71,7 +77,7 @@ async def test_solo_cucinabili_vede_oltre_la_piscina_dei_candidati(db_session):
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.db.models.pantry import PantryItem
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import CANDIDATE_POOL, search_recipes
+    from app.services.recipe_search import CANDIDATE_POOL
 
     ho = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
     non_ho = Ingredient(
@@ -105,7 +111,7 @@ async def test_solo_cucinabili_vede_oltre_la_piscina_dei_candidati(db_session):
         bottarga.created_at = adesso + timedelta(seconds=numero)
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, max_missing=0)
+    risultati = await _risultati(db_session, max_missing=0)
 
     assert [r.recipe.title for r in risultati] == ["Pasta in bianco"]
 
@@ -126,7 +132,7 @@ async def test_una_soglia_oltre_lo_zero_vede_oltre_la_piscina(db_session):
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.db.models.pantry import PantryItem
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import CANDIDATE_POOL, search_recipes
+    from app.services.recipe_search import CANDIDATE_POOL
 
     ho = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
     non_ho = Ingredient(
@@ -163,7 +169,7 @@ async def test_una_soglia_oltre_lo_zero_vede_oltre_la_piscina(db_session):
         scarto.created_at = adesso + timedelta(seconds=numero)
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, max_missing=1)
+    risultati = await _risultati(db_session, max_missing=1)
 
     assert [r.recipe.title for r in risultati] == ["Pasta con la bottarga"]
 
@@ -180,7 +186,6 @@ async def test_max_missing_filtra_anche_sul_ramo_con_parole_cercate(db_session):
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.db.models.pantry import PantryItem
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import search_recipes
 
     pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
     pomodoro = Ingredient(
@@ -208,7 +213,7 @@ async def test_max_missing_filtra_anche_sul_ramo_con_parole_cercate(db_session):
     )
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, query="pasta rustica", max_missing=1)
+    risultati = await _risultati(db_session, query="pasta rustica", max_missing=1)
 
     assert [r.recipe.title for r in risultati] == ["Pasta rustica al pomodoro"]
 
@@ -217,7 +222,7 @@ async def test_il_filtro_per_categoria_sceglie_in_sql(db_session):
     """Filtrare dopo il limite significherebbe filtrare dentro un campione."""
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import CANDIDATE_POOL, search_recipes
+    from app.services.recipe_search import CANDIDATE_POOL
 
     ingrediente = Ingredient(
         name="zucchero", display_name="Zucchero", category=IngredientCategory.DOLCI
@@ -240,7 +245,7 @@ async def test_il_filtro_per_categoria_sceglie_in_sql(db_session):
         primo.category = "Primi piatti"
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, category="Dolci e Desserts")
+    risultati = await _risultati(db_session, category="Dolci e Desserts")
 
     assert [r.recipe.title for r in risultati] == ["Tiramisù"]
 
@@ -260,7 +265,6 @@ async def test_senza_parole_l_ordine_a_parita_e_deciso_dall_id(db_session):
     """
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import search_recipes
 
     ingrediente = Ingredient(
         name="farina", display_name="Farina", category=IngredientCategory.CEREALI
@@ -279,8 +283,8 @@ async def test_senza_parole_l_ordine_a_parita_e_deciso_dall_id(db_session):
     await db_session.flush()
     attesi = sorted(recipe.id for recipe in creati)
 
-    prima = await search_recipes(db_session, limit=30)
-    seconda = await search_recipes(db_session, limit=30, offset=30)
+    prima = await _risultati(db_session, limit=30)
+    seconda = await _risultati(db_session, limit=30, offset=30)
 
     assert [r.recipe.id for r in prima + seconda] == attesi
 
@@ -294,7 +298,7 @@ async def test_il_filtro_per_ingrediente_sceglie_in_sql(db_session):
     """
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import CANDIDATE_POOL, search_recipes
+    from app.services.recipe_search import CANDIDATE_POOL
 
     pomodoro = Ingredient(
         name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
@@ -319,7 +323,7 @@ async def test_il_filtro_per_ingrediente_sceglie_in_sql(db_session):
         )
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, ingredient_ids=[pomodoro.id])
+    risultati = await _risultati(db_session, ingredient_ids=[pomodoro.id])
 
     assert [r.recipe.title for r in risultati] == ["Pomodori al riso"]
 
@@ -340,7 +344,6 @@ async def test_un_ingrediente_secondario_fa_trovare_la_ricetta(db_session):
     """
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import search_recipes
 
     sale = Ingredient(name="sale", display_name="Sale", category=IngredientCategory.CONDIMENTI)
     pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
@@ -355,11 +358,11 @@ async def test_un_ingrediente_secondario_fa_trovare_la_ricetta(db_session):
     )
     await db_session.flush()
 
-    assert [r.recipe.title for r in await search_recipes(db_session, ingredient_ids=[sale.id])] == [
+    assert [r.recipe.title for r in await _risultati(db_session, ingredient_ids=[sale.id])] == [
         "Pasta in bianco"
     ]
     assert [
-        r.recipe.title for r in await search_recipes(db_session, ingredient_ids=[pasta.id])
+        r.recipe.title for r in await _risultati(db_session, ingredient_ids=[pasta.id])
     ] == ["Pasta in bianco"]
 
 
@@ -373,7 +376,6 @@ async def test_piu_ingredienti_devono_esserci_tutti(db_session):
     """
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import search_recipes
 
     pomodoro = Ingredient(
         name="pomodoro", display_name="Pomodoro", category=IngredientCategory.VERDURA
@@ -409,7 +411,7 @@ async def test_piu_ingredienti_devono_esserci_tutti(db_session):
     )
     await db_session.flush()
 
-    risultati = await search_recipes(db_session, ingredient_ids=[pomodoro.id, basilico.id])
+    risultati = await _risultati(db_session, ingredient_ids=[pomodoro.id, basilico.id])
 
     assert [r.recipe.title for r in risultati] == ["Pasta al pomodoro e basilico"]
 
@@ -426,7 +428,6 @@ async def test_i_mancanti_si_chiamano_per_nome_e_in_ordine(db_session):
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.db.models.pantry import PantryItem
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import search_recipes
 
     pasta = Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
     aglio = Ingredient(name="aglio", display_name="Aglio", category=IngredientCategory.VERDURA)
@@ -457,7 +458,7 @@ async def test_i_mancanti_si_chiamano_per_nome_e_in_ordine(db_session):
     )
     await db_session.flush()
 
-    risultati = await search_recipes(db_session)
+    risultati = await _risultati(db_session)
 
     assert len(risultati) == 1
     assert risultati[0].missing == 2
@@ -484,7 +485,6 @@ async def test_la_soglia_in_sql_coincide_con_la_regola(db_session):
         availability_of,
         is_satisfied,
     )
-    from app.services.recipe_search import search_recipes
 
     # (stati attivi, stati archiviati): un elemento archiviato non conta
     dispense = {
@@ -523,7 +523,7 @@ async def test_la_soglia_in_sql_coincide_con_la_regola(db_session):
             attese[titolo] = is_satisfied(ruolo, disponibilita)
     await db_session.flush()
 
-    cucinabili = await search_recipes(db_session, max_missing=0, limit=100)
+    cucinabili = await _risultati(db_session, max_missing=0, limit=100)
 
     assert {r.recipe.title for r in cucinabili} == {t for t, ok in attese.items() if ok}
     assert all(r.missing == 0 and r.cookable for r in cucinabili)
@@ -533,7 +533,6 @@ async def test_senza_parole_il_ricettario_si_sfoglia_tutto(db_session):
     """Prima il ramo senza ricerca guardava le 100 più recenti: dopo la centesima
     non c'era più niente. Ora ogni ricetta si raggiunge, una volta sola."""
     from app.db.models.recipe import Recipe
-    from app.services.recipe_search import search_recipes
 
     for numero in range(130):
         db_session.add(Recipe(title=f"Ricetta {numero:03d}", instructions="x", source="manual"))
@@ -541,7 +540,7 @@ async def test_senza_parole_il_ricettario_si_sfoglia_tutto(db_session):
 
     visti: list[str] = []
     for offset in range(0, 150, 30):
-        pagina = await search_recipes(db_session, limit=30, offset=offset)
+        pagina = await _risultati(db_session, limit=30, offset=offset)
         visti += [r.recipe.title for r in pagina]
 
     assert len(visti) == 130
@@ -557,7 +556,6 @@ async def test_senza_parole_prima_le_cucinabili_su_tutte_le_pagine(db_session):
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.db.models.pantry import PantryItem
     from app.db.models.recipe import Recipe, RecipeIngredient
-    from app.services.recipe_search import search_recipes
 
     ho = Ingredient(name="ho", display_name="Ho", category=IngredientCategory.VERDURA)
     manca = Ingredient(name="manca", display_name="Manca", category=IngredientCategory.VERDURA)
@@ -573,8 +571,8 @@ async def test_senza_parole_prima_le_cucinabili_su_tutte_le_pagine(db_session):
         )
     await db_session.flush()
 
-    prima = await search_recipes(db_session, limit=1)
-    seconda = await search_recipes(db_session, limit=1, offset=1)
+    prima = await _risultati(db_session, limit=1)
+    seconda = await _risultati(db_session, limit=1, offset=1)
 
     assert [r.recipe.title for r in prima] == ["Z cucinabile"]
     assert [r.recipe.title for r in seconda] == ["A manca"]
@@ -583,14 +581,13 @@ async def test_senza_parole_prima_le_cucinabili_su_tutte_le_pagine(db_session):
 
 async def test_con_parole_l_offset_scorre_i_candidati(db_session):
     from app.db.models.recipe import Recipe
-    from app.services.recipe_search import search_recipes
 
     for numero in range(5):
         db_session.add(Recipe(title=f"Zuppa {numero}", instructions="x", source="manual"))
     await db_session.flush()
 
-    prima = await search_recipes(db_session, "zuppa", limit=3)
-    dopo = await search_recipes(db_session, "zuppa", limit=3, offset=3)
+    prima = await _risultati(db_session, "zuppa", limit=3)
+    dopo = await _risultati(db_session, "zuppa", limit=3, offset=3)
 
     assert len(prima) == 3
     assert len(dopo) == 2
@@ -602,7 +599,6 @@ async def test_il_reparto_principale_arriva_coi_risultati(db_session):
     query in più, e la regola è quella del dominio."""
     from app.db.models.ingredient import Ingredient, IngredientCategory
     from app.repositories.recipes import create_recipe
-    from app.services.recipe_search import search_recipes
 
     zucchina = Ingredient(
         name="zucchina", display_name="Zucchina", category=IngredientCategory.VERDURA
@@ -632,9 +628,123 @@ async def test_il_reparto_principale_arriva_coi_risultati(db_session):
     )
     await db_session.flush()
 
-    risultati = await search_recipes(db_session)
+    risultati = await _risultati(db_session)
 
     assert {r.recipe.title: r.main_department for r in risultati} == {
         "Verdure e pesce": "verdura",
         "Solo sale": None,
     }
+
+
+# --- Il totale prima del limite (T3 Consegna 4) ---
+# Il pannello «Filtri» dice quante ricette rispondono. Contato dopo il limite sarebbe al
+# più la misura della pagina: la sesta lezione di CLAUDE.md, sul conteggio.
+
+
+async def test_senza_parole_il_totale_conta_oltre_la_pagina(db_session):
+    from app.db.models.recipe import Recipe
+
+    for numero in range(35):
+        db_session.add(Recipe(title=f"Minestra {numero:02d}", instructions="x", source="manual"))
+    await db_session.flush()
+
+    prima = await recipe_search.search_recipes(db_session, limit=30)
+    seconda = await recipe_search.search_recipes(db_session, limit=30, offset=30)
+
+    assert (len(prima.results), prima.total) == (30, 35)
+    assert (len(seconda.results), seconda.total) == (5, 35)
+    # ramo senza parole: il COUNT è esatto, non è mai un minimo (R-A)
+    assert prima.total_is_lower_bound is False
+    assert seconda.total_is_lower_bound is False
+
+
+async def test_il_totale_vede_gli_stessi_filtri_della_pagina(db_session):
+    """Categoria, soglia e ingredienti stringono il totale come stringono la pagina: un
+    totale su tutto il ricettario, sotto un filtro acceso, direbbe «36 ricette» di un
+    elenco che ne ha 32."""
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.db.models.pantry import PantryItem
+    from app.repositories.recipes import create_recipe
+
+    ho = Ingredient(name="riso", display_name="Riso", category=IngredientCategory.CEREALI)
+    non_ho = Ingredient(
+        name="zafferano", display_name="Zafferano", category=IngredientCategory.SPEZIE
+    )
+    db_session.add_all([ho, non_ho])
+    await db_session.flush()
+    db_session.add(PantryItem(ingredient_id=ho.id, status="available"))
+    await db_session.flush()
+
+    async def ricetta(titolo, ingrediente, categoria):
+        creata = await create_recipe(
+            db_session, title=titolo, description=None, instructions="Cuoci.",
+            servings=2, source="manual", source_ref=None,
+            ingredients=[(ingrediente.id, "primary", None, None)], embedding=None,
+        )
+        creata.category = categoria
+
+    for numero in range(32):
+        await ricetta(f"Riso {numero:02d}", ho, "Primi")
+    for numero in range(3):
+        await ricetta(f"Risotto {numero}", non_ho, "Primi")
+    await ricetta("Budino di riso", ho, "Dolci")
+    await db_session.flush()
+
+    assert (await recipe_search.search_recipes(db_session, limit=30)).total == 36
+    assert (await recipe_search.search_recipes(db_session, category="Primi", limit=30)).total == 35
+    cucinabili = await recipe_search.search_recipes(
+        db_session, category="Primi", max_missing=0, limit=30
+    )
+    assert (len(cucinabili.results), cucinabili.total) == (30, 32)
+    # ramo senza parole: mai un minimo, qualunque sia il filtro acceso (R-A)
+    assert cucinabili.total_is_lower_bound is False
+    per_ingrediente = await recipe_search.search_recipes(
+        db_session, ingredient_ids=[non_ho.id], limit=30
+    )
+    assert per_ingrediente.total == 3
+
+
+async def test_con_parole_il_totale_conta_i_candidati_prima_della_pagina(db_session):
+    """Sul ramo con le parole il totale è la risposta a quelle parole — i candidati che
+    passano i filtri — contata prima del taglio della pagina."""
+    from app.db.models.recipe import Recipe
+
+    for numero in range(5):
+        db_session.add(Recipe(
+            title=f"Zuppa {numero}", instructions="x", source="manual",
+            category="Primi" if numero < 2 else None,
+        ))
+    db_session.add(Recipe(title="Arrosto", instructions="x", source="manual"))
+    await db_session.flush()
+
+    prima = await recipe_search.search_recipes(db_session, "zuppa", limit=3)
+    dopo = await recipe_search.search_recipes(db_session, "zuppa", limit=3, offset=3)
+    primi = await recipe_search.search_recipes(db_session, "zuppa", category="Primi", limit=1)
+
+    assert (len(prima.results), prima.total) == (3, 5)
+    assert (len(dopo.results), dopo.total) == (2, 5)
+    assert (len(primi.results), primi.total) == (1, 2)
+    # la piscina non era piena (5 candidati, ben sotto CANDIDATE_POOL): il totale è
+    # esatto, non un minimo (R-A)
+    assert prima.total_is_lower_bound is False
+    assert dopo.total_is_lower_bound is False
+    assert primi.total_is_lower_bound is False
+
+
+async def test_con_parole_la_piscina_piena_rende_il_totale_un_minimo(db_session, monkeypatch):
+    """Con la piscina piena, altre ricette potrebbero rispondere alle parole cercate e
+    non sono state guardate: il totale contato sui soli candidati sarebbe presentato
+    come un fatto mentre è solo quanto si è visto. `total_is_lower_bound` lo dice
+    (R-A, sesta lezione di CLAUDE.md sul conteggio). Il confronto con `CANDIDATE_POOL`
+    è letto a runtime dal modulo, cosicché questo `monkeypatch` lo abbassi davvero."""
+    from app.db.models.recipe import Recipe
+
+    monkeypatch.setattr(recipe_search, "CANDIDATE_POOL", 2)
+
+    for numero in range(3):
+        db_session.add(Recipe(title=f"Zuppa {numero}", instructions="x", source="manual"))
+    await db_session.flush()
+
+    pagina = await recipe_search.search_recipes(db_session, "zuppa", limit=10)
+
+    assert pagina.total_is_lower_bound is True

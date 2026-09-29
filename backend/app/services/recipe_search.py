@@ -151,6 +151,24 @@ class RecipeSearchResult:
     score: float
 
 
+@dataclass
+class RecipeSearchPage:
+    """Una pagina del ricettario e quante ricette rispondono in tutto (T3 Consegna 4).
+
+    `total` si conta prima del limite, con gli stessi filtri della pagina: il numero
+    che il pannello «Filtri» mostra è quello della domanda, non di quel che è arrivato
+    finora — la sesta lezione di CLAUDE.md, applicata al conteggio.
+    """
+
+    results: list[RecipeSearchResult]
+    total: int
+    # Vero solo sul ramo con le parole cercate, e solo quando la piscina dei
+    # candidati era piena: altre ricette potrebbero rispondere e non sono state
+    # guardate, quindi `total` è un minimo, non un fatto (R-A, decisione del
+    # controllore della notte sulla sesta lezione di CLAUDE.md).
+    total_is_lower_bound: bool = False
+
+
 def _pairs(
     requirements: Iterable[RecipeRequirement],
 ) -> list[tuple[IngredientRole, Availability]]:
@@ -422,7 +440,7 @@ async def _browse(
     ingredient_ids: list[uuid.UUID] | None,
     limit: int,
     offset: int,
-) -> list[uuid.UUID]:
+) -> tuple[list[uuid.UUID], int]:
     """Il ricettario intero senza parole cercate: filtrato, ordinato e paginato in SQL.
 
     Sostituisce la piscina delle cento più recenti. Con 8.500 ricette la passata in
@@ -431,6 +449,8 @@ async def _browse(
     L'ordine è quello che la pagina mostrava già — prima ciò che puoi cucinare, poi
     il titolo — ma adesso vale su tutto il ricettario, non su un campione, e ogni
     pagina continua dove finisce la precedente.
+
+    Torna anche quante ricette passano i filtri, contate prima della pagina.
     """
     availability = await availability_map(session)
     # Un alias, non la tabella: il filtro per ingredienti (`_containing_all`) è un
@@ -452,10 +472,14 @@ async def _browse(
         statement = _containing_all(statement, ingredient_ids)
     if max_missing is not None:
         statement = statement.having(missing <= max_missing)
+    # Il totale sugli stessi filtri, prima di ordine e pagina (T3 Consegna 4): contato
+    # dopo `limit` sarebbe al più la misura della pagina, cioè la sesta lezione di
+    # CLAUDE.md sul conteggio. Una query in più, solo su questo ramo.
+    total = await session.scalar(select(func.count()).select_from(statement.subquery()))
     statement = (
         statement.order_by(missing, Recipe.title, Recipe.id).offset(offset).limit(limit)
     )
-    return [row.id for row in (await session.execute(statement)).all()]
+    return [row.id for row in (await session.execute(statement)).all()], total or 0
 
 
 async def search_recipes(
@@ -466,22 +490,34 @@ async def search_recipes(
     category: str | None = None,
     ingredient_ids: list[uuid.UUID] | None = None,
     offset: int = 0,
-) -> list[RecipeSearchResult]:
-    """`max_missing` è quante cose si è disposti a comprare; `None` è «tutte»."""
+) -> RecipeSearchPage:
+    """`max_missing` è quante cose si è disposti a comprare; `None` è «tutte».
+
+    Torna la pagina e quante ricette rispondono in tutto (`RecipeSearchPage`)."""
+    # sul ramo con le parole il totale si conta in fondo, sui risultati filtrati
+    browse_total = 0
+    # Vero solo se una graduatoria che riempie `fused` ha reso esattamente
+    # CANDIDATE_POOL candidati: la piscina era piena, altre ricette potrebbero
+    # rispondere e non sono state guardate (R-A). Letto dal modulo qui sotto, non
+    # catturato in una variabile prima, così un test può abbassarlo con monkeypatch.
+    lower_bound = False
     if query and query.strip():
         semantic = await _semantic_ranking(session, query)
         textual = await _textual_ranking(session, query)
+        lower_bound = len(semantic) == CANDIDATE_POOL or len(textual) == CANDIDATE_POOL
         fused = reciprocal_rank_fusion([semantic, textual])
         candidate_ids = list(fused)
     else:
-        candidate_ids = await _browse(
+        candidate_ids, browse_total = await _browse(
             session, max_missing=max_missing, category=category,
             ingredient_ids=ingredient_ids, limit=limit, offset=offset,
         )
         fused = {recipe_id: 0.0 for recipe_id in candidate_ids}
 
     if not candidate_ids:
-        return []
+        # senza parole la pagina può essere vuota con un totale che non lo è (un
+        # offset oltre la fine); con le parole, nessun candidato è nessuna ricetta
+        return RecipeSearchPage([], browse_total, lower_bound)
 
     requirements = await _requirements_by_recipe(session, candidate_ids)
     recipe_statement = select(Recipe).where(Recipe.id.in_(candidate_ids))
@@ -545,9 +581,14 @@ async def search_recipes(
     if query and query.strip():
         # prima ciò che puoi davvero cucinare, poi la pertinenza
         results.sort(key=lambda r: (r.missing, -r.score, r.recipe.title))
-        return results[offset : offset + limit]
+        # Il totale prima della pagina: i candidati che hanno passato categoria,
+        # ingredienti e soglia. Non è il ricettario intero — i candidati sono al più
+        # CANDIDATE_POOL per graduatoria, il limite detto sopra `recipe_statement` — ma
+        # è tutta la risposta a queste parole, cioè quel che la pagina sfoglia.
+        return RecipeSearchPage(results[offset : offset + limit], len(results), lower_bound)
     # Senza parole ordine e pagina li ha già decisi `_browse`, in SQL, e `results`
     # segue quell'ordine. Il filtro sulla soglia qui sopra è una conferma, non un
     # secondo taglio: SQL e `missing_count` contano lo stesso numero, e
-    # `test_la_soglia_in_sql_coincide_con_la_regola` lo difende.
-    return results
+    # `test_la_soglia_in_sql_coincide_con_la_regola` lo difende. Per la stessa ragione
+    # il totale di `_browse` vale anche per questi risultati.
+    return RecipeSearchPage(results, browse_total, lower_bound)

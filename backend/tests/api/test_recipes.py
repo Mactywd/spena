@@ -487,3 +487,42 @@ async def test_il_reparto_principale_arriva_nella_scheda_e_nel_dettaglio(logged_
 
     dettaglio = (await logged_client.get(f"/api/v1/recipes/{solo_aglio['id']}")).json()
     assert dettaglio["main_department"] is None
+
+
+async def test_la_ricerca_dice_quante_ricette_ci_sono_prima_del_limite(logged_client, cucina):
+    """`X-Total-Count` e non un campo nel corpo: il corpo resta una lista, e una copia
+    vecchia del frontend nella cache del service worker continua a leggerla."""
+    for titolo in ("Pasta al pomodoro", "Pasta al sugo", "Pasta in bianco"):
+        await _create_recipe(logged_client, cucina, title=titolo)
+
+    sfoglia = await logged_client.get("/api/v1/recipes/search?limit=2")
+    assert sfoglia.status_code == 200
+    assert len(sfoglia.json()) == 2
+    assert sfoglia.headers["x-total-count"] == "3"
+
+    cercata = await logged_client.get("/api/v1/recipes/search?q=pasta&limit=1")
+    assert len(cercata.json()) == 1
+    assert cercata.headers["x-total-count"] == "3"
+
+
+async def test_la_ricerca_manda_il_minimo_solo_a_piscina_piena(logged_client, monkeypatch):
+    """A piscina piena la rotta manda anche `X-Total-Count-Lower-Bound: 1`; altrimenti
+    l'intestazione non c'è (R-A). È il servizio a decidere se la piscina era piena;
+    la rotta si limita a inoltrare il segnale, quindi qui basta un servizio finto.
+    """
+    from app.api import recipes as recipes_api
+    from app.services.recipe_search import RecipeSearchPage
+
+    async def piena(*args, **kwargs):
+        return RecipeSearchPage([], 5, total_is_lower_bound=True)
+
+    async def non_piena(*args, **kwargs):
+        return RecipeSearchPage([], 5, total_is_lower_bound=False)
+
+    monkeypatch.setattr(recipes_api, "search_recipes", piena)
+    con_minimo = await logged_client.get("/api/v1/recipes/search?q=zuppa")
+    assert con_minimo.headers.get("x-total-count-lower-bound") == "1"
+
+    monkeypatch.setattr(recipes_api, "search_recipes", non_piena)
+    senza_minimo = await logged_client.get("/api/v1/recipes/search?q=zuppa")
+    assert "x-total-count-lower-bound" not in senza_minimo.headers

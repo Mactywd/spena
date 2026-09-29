@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -147,6 +147,7 @@ async def _to_out(
 
 @router.get("/search", response_model=list[RecipeSummaryOut])
 async def search(
+    response: Response,
     q: str | None = None,
     # quante cose si è disposti a comprare; assente vuol dire «tutto il ricettario»
     max_missing: int | None = Query(default=None, ge=0),
@@ -173,7 +174,7 @@ async def search(
 ) -> list[RecipeSummaryOut]:
     # esplicito batte sinonimo: se arrivano entrambi vince quello che la persona ha scelto
     budget = max_missing if max_missing is not None else (0 if only_cookable else None)
-    results = await search_recipes(
+    page = await search_recipes(
         session,
         q,
         # per nome, non per posizione: il terzo argomento posizionale era un `bool` e
@@ -185,6 +186,15 @@ async def search(
         ingredient_ids=ingredient_id,
         offset=offset,
     )
+    # Quante ricette rispondono a questa domanda, prima del limite (T3 Consegna 4). In
+    # un'intestazione e non nel corpo: il corpo resta una lista, e una copia vecchia del
+    # frontend servita dal service worker continua a leggerla com'era.
+    response.headers["X-Total-Count"] = str(page.total)
+    if page.total_is_lower_bound:
+        # La piscina dei candidati era piena: il numero qui sopra è quanto si è
+        # visto, non quante ricette rispondono davvero (R-A, sesta lezione di
+        # CLAUDE.md). Il client la legge per dire «almeno N» invece di «N».
+        response.headers["X-Total-Count-Lower-Bound"] = "1"
     return [
         RecipeSummaryOut(
             id=r.recipe.id, title=r.recipe.title, description=r.recipe.description,
@@ -196,7 +206,7 @@ async def search(
             cost=r.recipe.cost,
             archived_at=r.recipe.archived_at,
         )
-        for r in results
+        for r in page.results
     ]
 
 
