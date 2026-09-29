@@ -7,7 +7,7 @@ import { otherIngredient } from "./wording";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { buttonClasses } from "../../components/ui/buttonClasses";
-import { IconPencilPlus } from "../../components/ui/icons";
+import { IconPencilPlus, IconSearch } from "../../components/ui/icons";
 import type { Product, ShoppingItem } from "../../domain/types";
 
 /** Il pannello del codice a barre di una voce (spec T3 §4.3, S10): la fotocamera, il
@@ -159,6 +159,8 @@ export function ScannerPanel({
               onClick={search}
               className={`${buttonClasses("secondary")} shrink-0 aria-disabled:opacity-40`}
             >
+              {/* un pulsante da solo → icona e testo (spec §3.3); il nome resta «Cerca» */}
+              <IconSearch aria-hidden="true" className="size-[1.1em]" stroke={1.8} />
               Cerca
             </button>
           </div>
@@ -171,8 +173,11 @@ export function ScannerPanel({
             icone della voce sono ancora là sopra.
             La cornice `role="status"` sta nel DOM anche vuota (regola F9): uno screen
             reader annuncia il cambiamento di un nodo che era già lì, non uno appena
-            arrivato insieme al testo — è il testo che entra ed esce da dentro. */}
-        <p role="status" className="text-sm text-ink">
+            arrivato insieme al testo — è il testo che entra ed esce da dentro. Vuota
+            resta nell'albero dell'accessibilità (niente `hidden`), ma `empty:-mt-3`
+            ne ripaga lo spazio: senza, la colonna mette due distanze di 12 px dove ne
+            va una. */}
+        <p role="status" className="text-sm text-ink empty:-mt-3">
           {mismatch && (
             <>
               {otherIngredient(mismatch.name, mismatch.ingredient_name)} Qui non si aggancia:

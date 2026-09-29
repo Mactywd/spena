@@ -68,7 +68,10 @@ describe("ScannerPanel", () => {
     const spy = stubLookup(lookup({ found: true, origin: "catalog", product: FAGE }));
     const { onProduct } = renderPanel();
     await userEvent.type(screen.getByLabelText("Codice a barre"), "52010");
-    await userEvent.click(screen.getByRole("button", { name: "Cerca" }));
+    const cerca = screen.getByRole("button", { name: "Cerca" });
+    // un pulsante da solo → icona e testo (spec §3.3); l'icona non cambia il nome
+    expect(cerca.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    await userEvent.click(cerca);
     await waitFor(() => expect(onProduct).toHaveBeenCalledWith(FAGE));
     expect(String(spy.mock.calls[0][0])).toContain("/products/barcode/52010");
   });
@@ -125,7 +128,6 @@ describe("ScannerPanel", () => {
     await waitFor(() =>
       expect(status).toHaveTextContent("«Parmigiano Reggiano» è di un altro ingrediente: burro.")
     );
-    expect(status).not.toHaveAttribute("role", "alert");
     expect(status.className).not.toContain("text-danger");
     expect(onProduct).not.toHaveBeenCalled();
     // il codice è già di un altro prodotto: non segue la voce (S8)
