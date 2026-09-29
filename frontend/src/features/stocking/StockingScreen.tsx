@@ -221,6 +221,9 @@ export function StockingScreen() {
    * lo prende da sé. */
   function show(next: Panel) {
     setOpen(next);
+    // chi apre un pannello ha già il fuoco altrove: l'abbinamento in attesa di
+    // rilettura non deve riprenderselo quando la vista torna intera
+    setRefocusAfterMatch(null);
     if (next.kind !== "match") setReturnFocus({ itemId: next.itemId, target: triggerOf(next) });
   }
 
@@ -416,11 +419,14 @@ export function StockingScreen() {
     );
   }
 
-  /** Dove rimettere il fuoco in questa riga, quando rinasce. La richiesta dopo
-   * l'abbinamento vale solo per la voce riletta col suo ingrediente: prima, la riga è
-   * ancora quella di «Senza reparto» che sta per sparire. */
+  /** Dove rimettere il fuoco in questa riga, quando rinasce. Una richiesta esplicita
+   * vince sempre, anche se è per un'altra voce: gli effetti delle righe girano in ordine
+   * di albero, e una voce abbinata che viene prima prenderebbe il fuoco dal `body`
+   * lasciando senza la riga che l'aveva chiesto. La richiesta dopo l'abbinamento vale
+   * solo per la voce riletta col suo ingrediente: prima, la riga è ancora quella di
+   * «Senza reparto» che sta per sparire. */
   function returnFocusFor(item: ShoppingItem): FocusTarget | null {
-    if (returnFocus?.itemId === item.id) return returnFocus.target;
+    if (returnFocus) return returnFocus.itemId === item.id ? returnFocus.target : null;
     if (refocusAfterMatch === item.id && item.ingredient_id) {
       return resolved[item.id] ? "change" : "scanner";
     }

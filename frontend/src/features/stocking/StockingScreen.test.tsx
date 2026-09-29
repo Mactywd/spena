@@ -1062,6 +1062,58 @@ describe("StockingScreen", () => {
       );
     });
 
+    it("il fuoco chiesto da un pannello chiuso su un'altra voce vince su quello dell'abbinamento in attesa", async () => {
+      // La voce abbinata aspetta la rilettura per riprendere il fuoco; intanto si apre e
+      // si chiude un pannello sulle mele. Tornata la vista intera, «cosa strana» — ora in
+      // «Altro», prima di «Frutta» — rinasce prima delle mele: se la sua richiesta
+      // vecchia scattasse, il fuoco di «Annulla» finirebbe su di lei.
+      let answerPatch: (response: Response) => void = () => {};
+      let patched = false;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: unknown, init?: RequestInit) => {
+          const path = String(url);
+          if (init?.method === "PATCH") {
+            return new Promise<Response>((resolve) => {
+              answerPatch = (response) => {
+                patched = true;
+                resolve(response);
+              };
+            });
+          }
+          if (path.includes("/ingredients/search")) return Promise.resolve(respond([STRANGE]));
+          if (path.includes("/products/search")) return Promise.resolve(respond([]));
+          return Promise.resolve(
+            respond([
+              patched
+                ? { ...UNMATCHED[0], ingredient_id: "i9", ingredient_name: "cosa strana",
+                    ingredient_category: "altro" }
+                : UNMATCHED[0],
+              CHECKED[1],
+            ])
+          );
+        })
+      );
+
+      renderScreen();
+      const field = await openMatch();
+      await userEvent.clear(field);
+      await userEvent.type(field, "strana");
+      await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
+      await userEvent.click(screen.getByRole("button", { name: "Cerca a catalogo per mele" }));
+      expect(screen.queryByText("cosa strana")).toBeNull();
+
+      await act(async () =>
+        answerPatch(respond({ ...UNMATCHED[0], ingredient_id: "i9" }))
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+
+      expect(await screen.findByRole("heading", { level: 2, name: "Altro" })).toBeDefined();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Cerca a catalogo per mele" })
+      );
+    });
+
     it("se la voce non si aggiorna lo dice accanto, e la voce si sistema lo stesso", async () => {
       stubRoutedFetch((path, init) => {
         if (path.includes("/ingredients/search")) return [[STRANGE]];
@@ -1142,7 +1194,7 @@ describe("StockingScreen", () => {
 
     it("un pannello aperto lascia a video solo la sua voce, e chiuderlo rimette tutto com'era", async () => {
       stubRoutedFetch((path) =>
-        path.includes("/products/search") ? [[]] : [[...CHECKED, ...UNMATCHED]]
+        path.includes("/search") ? [[]] : [[...CHECKED, ...UNMATCHED]]
       );
       renderScreen();
       await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*yogurt greco/i }));
@@ -1172,6 +1224,13 @@ describe("StockingScreen", () => {
       expect(screen.getByRole("button", { name: "Metti in dispensa 1" })).toBeDefined();
       expect(document.activeElement).toBe(
         screen.getByRole("button", { name: "Cerca a catalogo per mele" })
+      );
+
+      // «Abbina» il fuoco lo prende da sé, ma annullando torna al suo pulsante
+      await openMatch();
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Abbina: cosa strana" })
       );
     });
 
