@@ -933,6 +933,27 @@ const SCHERMATE = [
   "/non-esiste",
 ];
 
+// scritto a mano: questo file non ha la libreria DOM (vedi `testiIlleggibili`)
+type Animazione = { effect: { getTiming: () => { iterations?: number } } | null; finished: Promise<unknown> };
+
+/** Aspetta che le transizioni in corso finiscano, prima di una misura del contrasto.
+ * `transition-colors` sposta il colore in 150 ms: misurato appena dopo un tocco, o
+ * appena cambiato il tema, un pulsante sta a metà fra il fondo di prima e quello di
+ * dopo, e il rapporto è di un colore che nessuno vede fermo (è successo: «Finito» a
+ * 3,15:1 su un rosso a metà strada). Le animazioni infinite (una rotella che gira) non
+ * finirebbero mai, e restano fuori. Una sola, per `perOgniLuogo` e per le prove che
+ * misurano uno stato che solo loro aprono. */
+async function fermo(page: Page) {
+  await page.locator("body").evaluate((body) =>
+    Promise.all(
+      body.ownerDocument
+        .getAnimations()
+        .filter((a: Animazione) => a.effect?.getTiming().iterations !== Infinity)
+        .map((a: Animazione) => a.finished.catch(() => undefined))
+    )
+  );
+}
+
 /** Passa da ogni luogo misurato e chiama `misura` su ciascuno, già caricato.
  *
  * Prima le schermate che si aprono da un indirizzo fisso. Poi quelle che hanno bisogno
@@ -945,24 +966,10 @@ const SCHERMATE = [
  * primo ingrediente della ricetta, e si tolgono nel `finally`. Nella cottura si sceglie
  * «Finito» e poi «Annulla»: niente si registra. Per ultimi il ☰ aperto e l'accesso, che
  * butta via i cookie e quindi viene dopo la pulizia. */
-// scritto a mano: questo file non ha la libreria DOM (vedi `testiIlleggibili`)
-type Animazione = { effect: { getTiming: () => { iterations?: number } } | null; finished: Promise<unknown> };
-
 async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>) {
-  // `transition-colors` sposta il colore in 150 ms: misurato appena dopo un tocco, un
-  // pulsante appena scelto sta a metà fra il fondo di prima e quello di dopo, e il
-  // rapporto è di un colore che nessuno vede fermo (è successo: «Finito» a 3,15:1 su un
-  // rosso a metà strada). Prima di ogni misura si aspettano le transizioni in corso;
-  // quelle infinite (una rotella che gira) non finirebbero mai, e restano fuori.
+  // prima di ogni misura, le transizioni in corso finiscono: vedi `fermo`
   const misuraFermo = async (luogo: string) => {
-    await page.locator("body").evaluate((body) =>
-      Promise.all(
-        body.ownerDocument
-          .getAnimations()
-          .filter((a: Animazione) => a.effect?.getTiming().iterations !== Infinity)
-          .map((a: Animazione) => a.finished.catch(() => undefined))
-      )
-    );
+    await fermo(page);
     await misura(luogo);
   };
 
@@ -1248,6 +1255,182 @@ test("la barra della lista resta sotto l'intestazione scorrendo, e la ✕ offre 
     // del `try`, quindi ogni PATCH resta un `expect.soft` — non lancia, quindi non
     // salta le altre voci — ma segna comunque la prova fallita, così una riga
     // rimasta in lista non passa per un successo silenzioso
+    for (const id of create) {
+      try {
+        const risposta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+          data: { status: "archived" },
+        });
+        expect.soft(risposta.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+      } catch (guasto) {
+        expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
+      }
+    }
+  }
+});
+
+test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sotto la sua voce", async ({
+  page,
+}) => {
+  // T3 Consegna 3. Il seme non ha voci nel carrello, e i percorsi prima di questo lasciano
+  // in lista solo voci da comprare: le voci si creano qui con l'API, si spuntano, e si
+  // tolgono in fondo. Tre con un ingrediente del seme che nessun altro file nomina — una
+  // col nome lungo, per lo scorrimento di lato — e una a testo libero, per «Abbina».
+  //
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: senza un'attesa qui la
+  // prima `page.request` può partire prima del cookie di sessione, e tornare 401
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const lungo =
+    "fagioli cannellini lessati in barattolo di vetro formato famiglia del supermercato sotto casa";
+  const libera = "prova sistemazione senza ingrediente";
+  const voci = [
+    { nome: "bresaola", raw_text: "bresaola" },
+    { nome: "succo d'arancia", raw_text: "succo d'arancia" },
+    { nome: "fagioli cannellini", raw_text: lungo },
+  ];
+  const create: string[] = [];
+  try {
+    for (const voce of voci) {
+      const trovati = (await (
+        await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(voce.nome)}`)
+      ).json()) as { id: string; name: string }[];
+      const ingrediente = trovati.find((trovato) => trovato.name === voce.nome);
+      expect(ingrediente, `«${voce.nome}» non è nel seme`).toBeDefined();
+      const risposta = await page.request.post("/api/v1/shopping-list", {
+        data: { raw_text: voce.raw_text, ingredient_id: ingrediente!.id },
+      });
+      // 201: una voce che c'era già (S18) risponde 200 ed è di qualcun altro — la pulizia
+      // in fondo la toglierebbe a chi l'ha messa
+      expect(risposta.status(), `«${voce.nome}» era già in lista`).toBe(201);
+      create.push(((await risposta.json()) as { id: string }).id);
+    }
+    const senza = await page.request.post("/api/v1/shopping-list", {
+      data: { raw_text: libera, ingredient_id: null },
+    });
+    expect(senza.status()).toBe(201);
+    create.push(((await senza.json()) as { id: string }).id);
+    for (const id of create) {
+      const spunta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+        data: { status: "checked" },
+      });
+      expect(spunta.ok()).toBe(true);
+    }
+
+    await page.goto("/sistema");
+    await expect(page.getByText(lungo, { exact: true })).toBeVisible();
+
+    // 1. niente scorrimento di lato, nemmeno col nome lungo accanto alle tre icone.
+    // Stringhe e non funzioni: questo file non ha la libreria DOM (vedi il test
+    // dell'intestazione)
+    await page.waitForLoadState("networkidle");
+    const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+    const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+    expect(scrollWidth, "/sistema scorre di lato").toBeLessThanOrEqual(clientWidth);
+
+    // 2. le tre icone della voce lunga: bersagli da pollice, e su una riga sola
+    const scatole: { x: number; y: number; width: number; height: number }[] = [];
+    for (const nome of [
+      `Codice a barre per ${lungo}`,
+      `Cerca a catalogo per ${lungo}`,
+      `Sfuso, senza marca: ${lungo}`,
+    ]) {
+      const scatola = await page.getByRole("button", { name: nome, exact: true }).boundingBox();
+      expect(scatola, nome).not.toBeNull();
+      expect(scatola!.width, nome).toBeGreaterThanOrEqual(44);
+      expect(scatola!.height, nome).toBeGreaterThanOrEqual(44);
+      scatole.push(scatola!);
+    }
+    for (const scatola of scatole.slice(1)) {
+      expect(Math.abs(scatola.y - scatole[0].y), "le tre icone vanno a capo").toBeLessThan(1);
+    }
+
+    // 3. il contrasto delle righe vere, nei due temi: una voce risolta (con «Sfuso» sotto
+    // il nome), una col campo della scadenza aperto, una da abbinare
+    await page.getByRole("button", { name: "Sfuso, senza marca: bresaola", exact: true }).click();
+    await expect(page.getByText("Sfuso", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "+ scadenza per succo d'arancia", exact: true }).click();
+    await expect(page.getByLabel("Scadenza di succo d'arancia")).toBeVisible();
+    await expect(page.getByRole("button", { name: `Abbina: ${libera}`, exact: true })).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `righe, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // 4. il catalogo della voce lunga, nel terzo reparto: resta a video solo lei col suo
+    // pannello, e l'inizio del pannello non finisce sotto l'intestazione fissa
+    const catalogo = page.getByRole("button", { name: `Cerca a catalogo per ${lungo}`, exact: true });
+    await catalogo.click();
+    const titolo = page.getByRole("heading", { name: `Cerca a catalogo per «${lungo}»` });
+    await expect(titolo).toBeVisible();
+    await expect(page.getByText("bresaola", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(libera, { exact: true })).toHaveCount(0);
+    // le intestazioni dei reparti se ne vanno: l'unico h2 rimasto è il titolo del
+    // pannello, che è un h2 anche lui (Task 7)
+    await expect(page.getByRole("heading", { level: 2 })).toHaveText([
+      `Cerca a catalogo per «${lungo}»`,
+    ]);
+    await expect(page.getByRole("button", { name: /Metti in dispensa/ })).toHaveCount(0);
+    await expect(titolo).toBeInViewport();
+    const intestazione = await page.getByRole("banner").boundingBox();
+    await expect
+      .poll(async () => (await titolo.boundingBox())!.y, {
+        message: "il pannello finisce sotto l'intestazione",
+      })
+      .toBeGreaterThanOrEqual(intestazione!.y + intestazione!.height);
+    // e il titolo è davvero quel che si vede lì: il punto al suo centro appartiene a lui,
+    // non a qualcosa che gli passa sopra
+    const scoperto = await titolo.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const sopra = el.ownerDocument.elementFromPoint(r.left + 10, r.top + r.height / 2);
+      return !!sopra && el.contains(sopra);
+    });
+    expect(scoperto, "qualcosa copre il titolo del pannello").toBe(true);
+
+    // 5. «Annulla» rimette tutto com'era: le altre voci, la scelta fatta, e il fuoco sul
+    // pulsante che aveva aperto il pannello
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(page.getByText("bresaola", { exact: true })).toBeVisible();
+    await expect(page.getByText("Sfuso", { exact: true })).toBeVisible();
+    await expect(catalogo).toBeFocused();
+
+    // 6. il pannello del codice dice per quale voce è aperto e chiede i numeri (S10), e
+    // anche lui si legge nei due temi. Nel browser dell'e2e la fotocamera non c'è: il
+    // pannello lo dice, e offre la strada a mano
+    await page.getByRole("button", { name: `Codice a barre per ${lungo}`, exact: true }).click();
+    await expect(page.getByRole("heading", { name: `Codice a barre per «${lungo}»` })).toBeVisible();
+    await expect(page.getByLabel("Codice a barre", { exact: true })).toHaveAttribute(
+      "inputmode",
+      "numeric"
+    );
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `pannello del codice, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(page.getByText(libera, { exact: true })).toBeVisible();
+
+    // 7. un abbinamento riuscito porta la voce nel suo reparto, e il fuoco la segue sulla
+    // prima icona (decisione 18) invece di restare sulla pagina: la riga rinasce in
+    // un'altra sezione dopo la rilettura, e jsdom non vede dove il browser mette il fuoco.
+    // L'abbinamento si scrive sulla voce e basta (S19), niente alias: la pulizia qui
+    // sotto la archivia come le altre
+    await page.getByRole("button", { name: `Abbina: ${libera}`, exact: true }).click();
+    await page.getByRole("textbox", { name: `Abbina un ingrediente per ${libera}` }).fill("farina");
+    await page.getByRole("option", { name: "Farina", exact: true }).click();
+    await expect(
+      page.getByRole("region", { name: "Cereali" }).getByText(libera, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `Codice a barre per ${libera}`, exact: true })
+    ).toBeFocused();
+  } finally {
+    // pulizia in un `finally`, come la prova della barra della lista: ogni PATCH è un
+    // `expect.soft` — non lancia, quindi non salta le altre voci, ma segna la prova
+    // fallita, così una voce rimasta in lista non passa per un successo silenzioso
     for (const id of create) {
       try {
         const risposta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
