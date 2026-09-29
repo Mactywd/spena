@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-09-29 (fase giorno: i due rami della notte uniti e in produzione)_
+_Ultimo aggiornamento: 2026-09-29 (fase giorno)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -14,15 +14,16 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-_(nessuno)_
+Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano prima, così al merge non ci sono conflitti. Se un piano si blocca, i successivi aspettano.
+
+- [pronto] P1 · T3 Consegna 6a, pulsanti, Accesso e Anagrafica: `Button` impara `unavailableReason` («non ancora», col perché scritto sotto) e `accessibleName`; tutti i pulsanti che si spengono passano da `Button` (regola decisa da Mattia); Accesso col fuoco, l'errore che se ne va e «Mostra password»; le correzioni dell'Anagrafica come icone → `docs/superpowers/plans/2026-09-30-ridisegno-pulsanti-accesso-anagrafica.md`, ramo `night/c6a-pulsanti` da `master` [T3]
+- [pronto] P1 · T3 Consegna 4, Ricette: «Nuova ricetta», Filtri in linea col numero e «Azzera», «Cosa posso cucinare» visibile, filtri ricordati finché l'app è aperta (Mattia), righe compatte con miniatura e reparto principale, «Hai tutto» / «Manca: …», il totale contato dal server prima del limite, la lapide nell'avviso unico → `docs/superpowers/plans/2026-09-30-ridisegno-ricette.md`, ramo `night/c4-ricette` da `night/c6a-pulsanti` [T3]
+- [pronto] P1 · T3 Consegna 5, Dettaglio ricetta: foto col tasto indietro sopra, Modifica/Elimina come icone, costo in sola lettura, porzioni sempre visibili, Principali/Secondari col pallino e «non basta» (Mattia), «Metti in lista ciò che manca», «Cucina» sotto gli ingredienti, tacche nel foglio della cottura, «Salvata.» nell'avviso unico (T4) → `docs/superpowers/plans/2026-09-30-ridisegno-dettaglio-ricetta.md`, ramo `night/c5-dettaglio` da `night/c4-ricette` [T3, T4]
+- [pronto] P2 · T3 Consegna 6b, modulo della ricetta, coda d'import e parole: «Proponi» secondario e «Salva» col perché, caselle da 44 px, R12 con «Come si chiama in generale?», `CategorySelect` unico, la coda senza il rosso dell'AI non configurata, via «backend», «autocomplete» e «dataset», «collegato ad astice», maiuscole uniformi a video → `docs/superpowers/plans/2026-09-30-ridisegno-modulo-coda-parole.md`, ramo `night/c6b-modulo-coda-parole` da `night/c5-dettaglio` [T3, R12, Parte X]
 
 ## Da approfondire (giorno)
 
 ### Ridisegno (T3), spec `docs/superpowers/specs/2026-09-28-ridisegno-design.md`
-- [tbd] P1 · Consegna 4, Ricette: «+ Nuova», Filtri col contatore, «Cosa posso cucinare», righe compatte con «Hai tutto»/«Manca: …» — serve il piano (spec §4.5) [T3]
-- [tbd] P1 · Consegna 5, Dettaglio ricetta: «Metti in lista ciò che manca», `StatusDot` per riga, `StockGauge` nel foglio della cottura, costo in sola lettura, «Apri l'originale» a 44 px — serve il piano (spec §4.6) [T3]
-- [tbd] P2 · Consegna 6, il resto: modulo della ricetta con R12, Anagrafica, coda d'import, accesso con «Mostra password», parole a video — serve il piano (spec §4.7) [T3, R12]
-- [tbd] P2 · «Salva nel ricettario» senza avviso: l'ultimo punto aperto di T4; nessuna consegna lo nomina — TBD: va nella Consegna 5 o nella 6? [T4]
 - [tbd] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — TBD: come ridisegnarli [T3 Consegna 1]
 
 ### Code della Consegna 2 e pulizie
@@ -48,7 +49,6 @@ _(nessuno)_
 ### Idee
 - [idea] P3 · `NewIngredientFields` copia il `<select>` del reparto di `registry/CategoryForm.tsx`: unirli con R12 (Consegna 6) [T3]
 - [idea] P3 · `Button` non sa dare un nome accessibile insieme a figli visibili, quindi «Abbina» e «Riprova» in `StockingRow.tsx` ricodificano il suo markup: aggiungere un override [T3]
-- [idea] P3 · «Riprova» di `ErrorState` è `disabled` durante il ritento e perde il fuoco (il piano gemello pulizie-dopo-la-lista lo sistema con `Button busy`) [T3 Consegna 2]
 - [idea] P3 · «Ingrediente» invece di «voce» in `AddItemField.tsx` e `StockingScreen.tsx` (forse dentro le Consegne 3 e 6) [Parte X]
 - [idea] P3 · Nella bozza AI, «non in anagrafica» è la formula sbagliata per una riga non alimentare [Parte X]
 - [idea] P3 · `skipped_reason` non affiora da nessuna rotta né schermata [Parte X]
