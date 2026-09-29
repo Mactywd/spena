@@ -23,7 +23,7 @@ test("un detersivo fa il giro: lista, dispensa, e ritorno in lista", async ({ pa
   await expect(voce).toBeChecked();
   await page.getByRole("link", { name: "Sistema la spesa" }).click();
   await page.getByRole("button", { name: /Sfuso.*detersivo per i piatti/i }).click();
-  await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
+  await page.getByRole("button", { name: "Metti in dispensa 1", exact: true }).click();
 
   // 3. in dispensa sta nel suo reparto, non fra il cibo. `page.getByText("casa")`
   // farebbe corrispondenza su tutta la pagina — "casa" è una parola corta, e con

@@ -38,7 +38,13 @@ test("il ciclo si chiude: lista, dispensa, cottura, ritorno in lista", async ({ 
   await expect(listed).toBeChecked();
   await page.getByRole("link", { name: "Sistema la spesa" }).click();
   await page.getByRole("button", { name: /Sfuso.*pomodoro/i }).click();
-  await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
+  await page.getByRole("button", { name: "Metti in dispensa 1", exact: true }).click();
+  // l'avviso arriva in Dispensa (T4, spec T3 §4.3): il pomodoro era l'unica voce nel
+  // carrello, quindi della lista non si dice niente. La regione `status` si sceglie per
+  // il testo: l'avviso unico ne tiene sempre una sua nella pagina
+  await expect(page.getByRole("status").filter({ hasText: "in dispensa" })).toHaveText(
+    "1 in dispensa"
+  );
 
   // 3. la dispensa la mostra disponibile: lo stato lo dice la tacca «Disponibile»
   // scelta nel radiogroup della riga (spec T3 §4.4), non più il testo di una

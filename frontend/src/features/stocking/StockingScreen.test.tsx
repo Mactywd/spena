@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   MutationCache,
@@ -7,9 +7,10 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { StockingScreen } from "./StockingScreen";
 import { UnauthorizedError } from "../../api/client";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
 
 const CHECKED = [
   { id: "s1", raw_text: "yogurt greco", ingredient_id: "i1", ingredient_name: "yogurt greco",
@@ -40,15 +41,19 @@ const PERA = { id: "i7", name: "pera", display_name: "Pera", category: "frutta" 
 // Lo yogurt che si ricompra ogni settimana: già in catalogo con marca e nutrienti,
 // e l'unico modo di riagganciarlo era riscansionare il codice a barre.
 const FAGE = {
-  id: "p1", ingredient_id: "i1", name: "Total 0%", brand: "Fage", barcode: "52010",
+  id: "p1", ingredient_id: "i1", ingredient_name: "yogurt greco",
+  name: "Total 0%", brand: "Fage", barcode: "52010",
   source: "openfoodfacts", nutrients: { kcal: 57 }, image_url: null,
 };
 // stesso nome, ingrediente diverso: la coppia (ingrediente, prodotto) che il
 // backend respinge con 409, e che nessuna delle due strade deve poter costruire
 const OTHER_INGREDIENT_PRODUCT = {
-  ...FAGE, id: "p2", ingredient_id: "i9", name: "Total 0% magro",
+  ...FAGE, id: "p2", ingredient_id: "i9", ingredient_name: "cosa strana",
+  name: "Total 0% magro",
 };
 
+// come in App.tsx: l'avviso unico sta sopra il router, e sopravvive al passaggio in
+// Dispensa che segue «Metti in dispensa» (T4)
 function renderScreen(client?: QueryClient) {
   const queryClient =
     client ??
@@ -57,11 +62,25 @@ function renderScreen(client?: QueryClient) {
     });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <StockingScreen />
-      </MemoryRouter>
+      <NoticeProvider>
+        <MemoryRouter initialEntries={["/sistema"]}>
+          <Routes>
+            <Route path="/sistema" element={<StockingScreen />} />
+            <Route path="/dispensa" element={<h1>Dispensa</h1>} />
+          </Routes>
+        </MemoryRouter>
+      </NoticeProvider>
     </QueryClientProvider>
   );
+}
+
+/** Apre «Abbina» su una voce senza ingrediente — la riga nasce chiusa (spec T3 §4.3) — e
+ * torna il campo del selettore, che parte già dal testo della voce. Per ruolo e non per
+ * etichetta: l'elenco dei suggerimenti si chiama «Suggerimenti: Abbina un ingrediente
+ * per …», e `getByLabelText(/Abbina un ingrediente/)` troverebbe anche lui. */
+async function openMatch(rawText = "cosa strana") {
+  await userEvent.click(await screen.findByRole("button", { name: `Abbina: ${rawText}` }));
+  return screen.getByRole("textbox", { name: `Abbina un ingrediente per ${rawText}` });
 }
 
 function respond(body: unknown, status = 200) {
@@ -95,17 +114,15 @@ describe("StockingScreen", () => {
   });
 
   it("permette di confermare una voce come sfusa, senza prodotto", async () => {
-    const spy = vi.fn()
-      .mockResolvedValueOnce(respond(CHECKED))
-      .mockResolvedValue(respond({ created: 1 }, 201));
-    vi.stubGlobal("fetch", spy);
+    const spy = stubRoutedFetch((path) =>
+      path.endsWith("/shopping-list/stock") ? [{ created: 1 }, 201] : [CHECKED]
+    );
 
     renderScreen();
     await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
     await userEvent.click(screen.getByRole("button", { name: /Metti in dispensa/ }));
 
-    const post = spy.mock.calls.find(([url]) => String(url).endsWith("/shopping-list/stock"));
-    expect(JSON.parse(post?.[1].body).entries).toEqual([
+    expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
       { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null,
         barcode: null },
     ]);
@@ -185,7 +202,7 @@ describe("StockingScreen", () => {
       await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
     );
     await userEvent.click(await screen.findByRole("option", { name: /Total 0%/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
 
     expect(postBody(spy, "/stock").entries).toEqual([
       { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1", expires_on: null,
@@ -230,7 +247,9 @@ describe("StockingScreen", () => {
     expect(await screen.findByRole("option", { name: /Total 0% Fage/ })).toBeDefined();
     expect(screen.queryByRole("option", { name: /magro/ })).toBeNull();
     // e il motivo è scritto: senza, sembrerebbe che il catalogo non lo conosca
-    expect(screen.getByText(/di un altro ingrediente/)).toBeDefined();
+    const note = screen.getByText(/di un altro ingrediente/);
+    // e dice quale (spec T3 §4.3): il nome lo manda il server
+    expect(note).toHaveTextContent("è di un altro ingrediente: cosa strana");
   });
 
   // R1, l'altra metà dello stesso fatto. `GET /products/barcode/{code}` cerca per
@@ -250,11 +269,20 @@ describe("StockingScreen", () => {
 
     // non `findByRole("alert")`: in jsdom senza fotocamera lo scanner ha già il suo
     // avviso di degradazione, e i due ruoli sarebbero ambigui
-    expect(await screen.findByText(/di un altro ingrediente/)).toBeDefined();
-    // la voce non è risolta: le tre strade sono ancora tutte aperte, e il pulsante
-    // della sistemazione resta spento, cioè il 409 non è raggiungibile da qui
+    const note = await screen.findByText(/di un altro ingrediente/);
+    // dice quale, e non è un guasto: niente allarme, niente rosso (spec T3 §4.3)
+    expect(note).toHaveTextContent("«Total 0% magro» è di un altro ingrediente: cosa strana.");
+    expect(note).not.toHaveAttribute("role", "alert");
+    expect(note.className).not.toContain("text-danger");
+    // la voce non è risolta: le tre strade sono ancora tutte aperte
     expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Metti in dispensa" })).toBeDisabled();
+    // col pannello aperto «Metti in dispensa» non c'è (decisione 1), e chiuso il
+    // pannello è spento: il 409 non è raggiungibile da qui
+    expect(screen.queryByRole("button", { name: /Metti in dispensa/ })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    const stock = screen.getByRole("button", { name: "Metti in dispensa" });
+    expect(stock).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(stock);
     expect(spy.mock.calls.some(([url]) => String(url).endsWith("/shopping-list/stock"))).toBe(
       false
     );
@@ -282,7 +310,7 @@ describe("StockingScreen", () => {
 
     // la riga torna da scegliere, e quella delle mele resta confermata
     expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/i })).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
     await vi.waitFor(() =>
       expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
         { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null,
@@ -301,7 +329,7 @@ describe("StockingScreen", () => {
 
     renderScreen();
     await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
-    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
 
     const avviso = await screen.findByRole("alert");
     expect(avviso).toHaveTextContent(/non esiste più/);
@@ -345,10 +373,21 @@ describe("StockingScreen", () => {
   });
 
   it("non manda in dispensa nulla se non hai confermato niente", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(CHECKED)));
+    const spy = vi.fn().mockResolvedValue(respond(CHECKED));
+    vi.stubGlobal("fetch", spy);
     renderScreen();
     await screen.findByText("mele");
-    expect(screen.getByRole("button", { name: /Metti in dispensa/ })).toBeDisabled();
+    // `aria-disabled` e non `disabled`: mentre la sistemazione è in volo il pulsante deve
+    // tenere il fuoco. E spento dice perché (dal giro, da non riprogettare via)
+    const stock = screen.getByRole("button", { name: "Metti in dispensa" });
+    expect(stock).toHaveAttribute("aria-disabled", "true");
+    expect(
+      screen.getByText("Scegli come entra almeno una voce: codice, catalogo o sfuso.")
+    ).toBeDefined();
+    await userEvent.click(stock);
+    expect(spy.mock.calls.some(([url]) => String(url).endsWith("/shopping-list/stock"))).toBe(
+      false
+    );
   });
 
   it("una lista che non si carica non viene spacciata per una lista vuota", async () => {
@@ -422,6 +461,8 @@ describe("StockingScreen", () => {
     await userEvent.type(screen.getByLabelText("Codice a barre"), "111{Enter}");
     await screen.findByRole("heading", { name: /Nuovo prodotto/ });
 
+    // il modulo aperto lascia a video solo la sua voce (decisione 1): si chiude
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
     await userEvent.click(screen.getByRole("button", { name: /Codice.*mele/i }));
 
     expect(screen.getByLabelText("Codice a barre")).toHaveValue("");
@@ -447,6 +488,8 @@ describe("StockingScreen", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Sì" }));
     expect(await screen.findByLabelText("Nome")).toHaveValue("Passata Rustica");
 
+    // il modulo aperto lascia a video solo la sua voce (decisione 1): si chiude
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
     await userEvent.click(screen.getByRole("button", { name: /Codice.*mele/i }));
     await userEvent.type(screen.getByLabelText("Codice a barre"), "222{Enter}");
 
@@ -471,7 +514,9 @@ describe("StockingScreen", () => {
     // comparirebbero comandi che alla conferma sparirebbero in silenzio
     expect(screen.queryByRole("button", { name: /Sfuso/i })).toBeNull();
 
-    const matchField = screen.getByLabelText(/Abbina un ingrediente/i);
+    // la voce non abbinata è chiusa: «Abbina» apre il selettore (spec T3 §4.3)
+    const matchField = await openMatch();
+    await userEvent.clear(matchField);
     await userEvent.type(matchField, "strana");
 
     await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
@@ -488,7 +533,7 @@ describe("StockingScreen", () => {
     );
   });
 
-  it("se nessun ingrediente corrisponde lo dice, e lascia crearlo", async () => {
+  it("se nessun ingrediente corrisponde lo dice, e lascia crearlo col nome da correggere", async () => {
     // è il caso normale per un testo spaiato: cercare lo stesso testo che non ha
     // trovato niente non troverà niente neanche ora
     const spy = stubRoutedFetch((path, init) => {
@@ -498,17 +543,18 @@ describe("StockingScreen", () => {
     });
 
     renderScreen();
-    await screen.findByText("cosa strana");
-
-    expect(
-      await screen.findByText(
-        "Nessun ingrediente corrisponde. Puoi crearlo adesso: scegli il reparto e la voce " +
-          "diventa sistemabile."
-      )
-    ).toBeDefined();
+    await openMatch();
+    // «nessun ingrediente corrisponde» lo dice il selettore unico, offrendo di
+    // aggiungerlo (spec T3 §3.5)
+    const offer = await screen.findByRole("button", { name: "Aggiungi «cosa strana»" });
+    // e la ricerca vuota non propone niente da scegliere
+    expect(screen.queryByRole("option")).toBeNull();
+    await userEvent.click(offer);
+    // il nome parte dal testo della voce, ma è un campo da correggere (dal giro)
+    expect(screen.getByLabelText("Come si chiama in generale?")).toHaveValue("cosa strana");
     // non tocca il <select>: è la prova che chi non sceglie niente ottiene
     // esattamente quel che otteneva prima, cioè "altro"
-    await userEvent.click(screen.getByRole("button", { name: /Crea l'ingrediente/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Crea l'ingrediente" }));
 
     expect(await screen.findByRole("button", { name: /Sfuso.*cosa strana/i })).toBeDefined();
     expect(postBody(spy, "/ingredients")).toEqual({
@@ -526,9 +572,10 @@ describe("StockingScreen", () => {
     });
 
     renderScreen();
-    await screen.findByText("cosa strana");
+    await openMatch();
+    await userEvent.click(await screen.findByRole("button", { name: "Aggiungi «cosa strana»" }));
 
-    const reparto = await screen.findByLabelText("Reparto");
+    const reparto = screen.getByLabelText("Reparto");
     // il non alimentare è offerto: è l'unico modo perché un detersivo entri in
     // dispensa senza passare per «altro», che è il reparto delle cose da chiarire
     expect(
@@ -536,13 +583,15 @@ describe("StockingScreen", () => {
     ).toContain("casa");
 
     await userEvent.selectOptions(reparto, "casa");
-    await userEvent.click(screen.getByRole("button", { name: /Crea l'ingrediente/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Crea l'ingrediente" }));
 
-    expect(postBody(spy, "/ingredients")).toEqual({
-      name: "cosa strana",
-      display_name: "cosa strana",
-      category: "casa",
-    });
+    await vi.waitFor(() =>
+      expect(postBody(spy, "/ingredients")).toEqual({
+        name: "cosa strana",
+        display_name: "cosa strana",
+        category: "casa",
+      })
+    );
   });
 
   it("la creazione resta raggiungibile anche quando la ricerca trova qualcosa", async () => {
@@ -557,22 +606,24 @@ describe("StockingScreen", () => {
     });
 
     renderScreen();
-    await screen.findByText("cosa strana");
+    await openMatch();
 
     // il suggerimento c'è e resta: la correzione non sta nella ricerca
     expect(await screen.findByRole("option", { name: /Pera/i })).toBeDefined();
-    // ...ma non è più lui a decidere se si può creare
-    await userEvent.selectOptions(await screen.findByLabelText("Reparto"), "casa");
-    await userEvent.click(screen.getByRole("button", { name: /Crea l'ingrediente/i }));
+    // ...ma non è più lui a decidere se si può creare: l'offerta sta accanto (S6), e
+    // una sola — quella del selettore unico, non una seconda accanto al suggerimento
+    expect(screen.getAllByRole("button", { name: /^Aggiungi «.*»$/ })).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi «cosa strana»" }));
+    await userEvent.selectOptions(screen.getByLabelText("Reparto"), "casa");
+    await userEvent.click(screen.getByRole("button", { name: "Crea l'ingrediente" }));
 
-    expect(postBody(spy, "/ingredients")).toEqual({
-      name: "cosa strana",
-      display_name: "cosa strana",
-      category: "casa",
-    });
-    // la frase del caso vuoto resta al caso vuoto: davanti a un suggerimento
-    // «nessun ingrediente corrisponde» sarebbe falso
-    expect(screen.queryByText(/Nessun ingrediente corrisponde/)).toBeNull();
+    await vi.waitFor(() =>
+      expect(postBody(spy, "/ingredients")).toEqual({
+        name: "cosa strana",
+        display_name: "cosa strana",
+        category: "casa",
+      })
+    );
   });
 
   it("il campo della scadenza non c'è finché non lo si chiede", async () => {
@@ -585,7 +636,7 @@ describe("StockingScreen", () => {
     await screen.findByText("yogurt greco");
     expect(screen.queryByLabelText(/scadenza/i)).toBeNull();
 
-    await user.click(screen.getAllByRole("button", { name: /scadenza/i })[0]);
+    await user.click(screen.getByRole("button", { name: "+ scadenza per yogurt greco" }));
     expect(screen.getByLabelText(/scadenza di yogurt greco/i)).toBeDefined();
   });
 
@@ -707,7 +758,7 @@ describe("StockingScreen", () => {
         screen.getByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
       );
       await userEvent.click(await screen.findByRole("option", { name: /Total 0%/ }));
-      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
 
       // il client lo manda e basta: se darlo al prodotto è il backend a deciderlo
       // (il prodotto non deve averne un altro, il codice non dev'essere di un altro)
@@ -725,7 +776,7 @@ describe("StockingScreen", () => {
       renderScreen();
       await readUnknownCodeThenCloseTheForm();
       await userEvent.click(screen.getByRole("button", { name: /Sfuso.*yogurt greco/i }));
-      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
 
       await vi.waitFor(() =>
         expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
@@ -755,7 +806,7 @@ describe("StockingScreen", () => {
         screen.getByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
       );
       await userEvent.click(await screen.findByRole("option", { name: /Total 0%/ }));
-      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa" }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
 
       await vi.waitFor(() =>
         expect(postBody(spy, "/shopping-list/stock").entries[0].barcode).toBeNull()
@@ -958,7 +1009,9 @@ describe("StockingScreen", () => {
       });
 
       renderScreen();
-      await userEvent.type(await screen.findByLabelText(/Abbina un ingrediente/i), "strana");
+      const field = await openMatch();
+      await userEvent.clear(field);
+      await userEvent.type(field, "strana");
       const readsBefore = listReads(spy);
       await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
 
@@ -983,7 +1036,9 @@ describe("StockingScreen", () => {
       });
 
       renderScreen();
-      await userEvent.type(await screen.findByLabelText(/Abbina un ingrediente/i), "strana");
+      const field = await openMatch();
+      await userEvent.clear(field);
+      await userEvent.type(field, "strana");
       await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
 
       expect(
@@ -1007,7 +1062,9 @@ describe("StockingScreen", () => {
       });
 
       renderScreen();
-      await userEvent.click(await screen.findByRole("button", { name: /Crea l'ingrediente/i }));
+      await openMatch();
+      await userEvent.click(await screen.findByRole("button", { name: "Aggiungi «cosa strana»" }));
+      await userEvent.click(screen.getByRole("button", { name: "Crea l'ingrediente" }));
 
       expect(await screen.findByRole("button", { name: /Sfuso.*cosa strana/i })).toBeDefined();
       expect(screen.queryByText(/Non sono riuscito a creare l'ingrediente/)).toBeNull();
@@ -1028,10 +1085,170 @@ describe("StockingScreen", () => {
       });
 
       renderScreen();
-      await userEvent.click(await screen.findByRole("button", { name: /Crea l'ingrediente/i }));
+      await openMatch();
+      await userEvent.click(await screen.findByRole("button", { name: "Aggiungi «cosa strana»" }));
+      await userEvent.click(screen.getByRole("button", { name: "Crea l'ingrediente" }));
 
       expect(await screen.findByText(/Non sono riuscito a creare l'ingrediente/)).toBeDefined();
       expect(screen.queryByRole("button", { name: /Sfuso.*cosa strana/i })).toBeNull();
+    });
+  });
+
+  describe("la vista (T3 Consegna 3)", () => {
+    it("una sezione per reparto, nell'ordine della lista; le voci senza ingrediente in fondo", async () => {
+      stubRoutedFetch(() => [[...UNMATCHED, ...CHECKED]]);
+      renderScreen();
+      await screen.findByText("mele");
+      expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+        "Frutta",
+        "Latticini",
+        "Senza reparto",
+      ]);
+    });
+
+    it("un pannello aperto lascia a video solo la sua voce, e chiuderlo rimette tutto com'era", async () => {
+      stubRoutedFetch((path) =>
+        path.includes("/products/search") ? [[]] : [[...CHECKED, ...UNMATCHED]]
+      );
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*yogurt greco/i }));
+      await userEvent.click(screen.getByRole("button", { name: "Cerca a catalogo per mele" }));
+
+      expect(screen.getByRole("heading", { name: "Cerca a catalogo per «mele»" })).toBeDefined();
+      // le altre voci, i reparti e «Metti in dispensa» non ci sono (decisione 1, Mattia)
+      expect(screen.queryByText("yogurt greco")).toBeNull();
+      expect(screen.queryByText("cosa strana")).toBeNull();
+      expect(screen.queryAllByRole("heading", { level: 2 })).toEqual([]);
+      expect(screen.queryByRole("button", { name: /Metti in dispensa/ })).toBeNull();
+      // il fuoco resta sul pulsante che l'ha aperto, non cade sulla pagina
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Cerca a catalogo per mele" })
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+      // tutto com'era, e la scelta fatta prima resta
+      const yogurt = screen.getByText("yogurt greco").closest("li")!;
+      expect(within(yogurt).getByText("Sfuso")).toBeDefined();
+      expect(screen.getByText("cosa strana")).toBeDefined();
+      expect(screen.getByRole("button", { name: "Metti in dispensa 1" })).toBeDefined();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Cerca a catalogo per mele" })
+      );
+    });
+
+    it("un pannello alla volta: aprirne un altro sulla stessa voce chiude il primo", async () => {
+      stubRoutedFetch((path) => (path.includes("/products/search") ? [[]] : [CHECKED]));
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: "Codice a barre per mele" }));
+      expect(screen.getByRole("heading", { name: "Codice a barre per «mele»" })).toBeDefined();
+      await userEvent.click(screen.getByRole("button", { name: "Cerca a catalogo per mele" }));
+      expect(screen.getByRole("heading", { name: "Cerca a catalogo per «mele»" })).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Codice a barre per «mele»" })).toBeNull();
+      expect(screen.queryByLabelText("Codice a barre")).toBeNull();
+    });
+
+    it("un codice che risponde dopo «Annulla» non sceglie niente, e non chiude il pannello di un'altra voce", async () => {
+      // react-query chiama gli `on…` di una mutazione anche a pannello smontato: il
+      // lookup partito sotto lo yogurt risponde quando davanti c'è già un'altra voce
+      let answer: (response: Response) => void = () => {};
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: unknown) => {
+          if (String(url).includes("/products/barcode/")) {
+            return new Promise<Response>((resolve) => {
+              answer = resolve;
+            });
+          }
+          if (String(url).includes("/products/search")) return Promise.resolve(respond([]));
+          return Promise.resolve(respond(CHECKED));
+        })
+      );
+      renderScreen();
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Codice a barre per yogurt greco" })
+      );
+      await userEvent.type(screen.getByLabelText("Codice a barre"), "52010{Enter}");
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+      await userEvent.click(screen.getByRole("button", { name: "Cerca a catalogo per mele" }));
+
+      await act(async () => {
+        answer(respond({ found: true, origin: "catalog", suggestion: null, product: FAGE }));
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      // il catalogo delle mele resta aperto
+      expect(screen.getByRole("heading", { name: "Cerca a catalogo per «mele»" })).toBeDefined();
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+      // e lo yogurt non ha preso il prodotto che nessuno ha più scelto
+      expect(screen.queryByText("Total 0%")).toBeNull();
+      expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: "Metti in dispensa" })).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
+    });
+
+    it("il pannello porta in cima la sua voce (S10)", async () => {
+      const targets: Element[] = [];
+      const reveal = vi
+        .spyOn(Element.prototype, "scrollIntoView")
+        .mockImplementation(function (this: Element) {
+          targets.push(this);
+        });
+      stubRoutedFetch(() => [CHECKED]);
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: "Codice a barre per mele" }));
+      expect(targets.at(-1)).toBe(screen.getByText("mele").closest("li"));
+      reveal.mockRestore();
+    });
+
+    it("niente da sistemare: lo dice, e porta alla Lista, senza pulsanti spenti", async () => {
+      stubRoutedFetch(() => [[]]);
+      renderScreen();
+      expect(await screen.findByRole("heading", { name: "Niente da sistemare" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Vai alla Lista" }).getAttribute("href")).toBe("/lista");
+      expect(screen.queryByRole("button", { name: /Metti in dispensa/ })).toBeNull();
+    });
+  });
+
+  describe("«Metti in dispensa» dice quante, e l'avviso arriva in Dispensa (T4)", () => {
+    function stubStock() {
+      return stubRoutedFetch((path) =>
+        path.endsWith("/shopping-list/stock") ? [{ created: 1 }, 201] : [[...CHECKED, ...UNMATCHED]]
+      );
+    }
+
+    it("il numero sul pulsante è quello delle voci che partono", async () => {
+      const spy = stubStock();
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
+      await vi.waitFor(() =>
+        expect(postBody(spy, "/shopping-list/stock").entries).toHaveLength(1)
+      );
+    });
+
+    it("in Dispensa, quante sono entrate e quante restano in lista", async () => {
+      stubStock();
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
+      expect(await screen.findByRole("heading", { name: "Dispensa" })).toBeDefined();
+      // le due non mandate — lo yogurt senza scelta, la voce senza ingrediente — restano
+      // spuntate in lista; le voci ancora da comprare non contano (decisione 4)
+      expect(screen.getByText("1 in dispensa · 2 restano in lista")).toBeDefined();
+    });
+
+    it("se sono entrate tutte, l'avviso non parla della lista", async () => {
+      stubRoutedFetch((path) =>
+        path.endsWith("/shopping-list/stock") ? [{ created: 2 }, 201] : [CHECKED]
+      );
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*yogurt greco/i }));
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 2" }));
+      expect(await screen.findByText("2 in dispensa")).toBeDefined();
+      expect(screen.queryByText(/in lista/)).toBeNull();
     });
   });
 });

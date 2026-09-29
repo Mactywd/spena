@@ -6,18 +6,6 @@
  * si cerca una frase che vive in due strade.
  */
 
-/** Il prodotto esiste ma appartiene a un altro ingrediente.
- *
- * La dicono le due strade che possono agganciare un prodotto a una voce di lista: il
- * filtro della ricerca a catalogo (il prodotto c'è ma non compare) e la lettura del
- * codice a barre (il codice risolve a una referenza di un altro ingrediente). È lo
- * stesso fatto, e dirlo con due frasi diverse lo farebbe sembrare due guasti diversi.
- */
-export const OTHER_INGREDIENT = {
-  one: "è di un altro ingrediente: non si può agganciare qui",
-  many: "sono di un altro ingrediente: non si possono agganciare qui",
-};
-
 /** Il prodotto letto o cercato è di un altro ingrediente, e si dice quale (spec T3
  * §4.3): «è di un altro ingrediente» e basta lasciava a chi ha la confezione in mano il
  * compito di indovinare di quale. Non è un guasto: il tono lo sceglie chi la mostra, e
