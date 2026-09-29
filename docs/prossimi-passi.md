@@ -259,8 +259,13 @@ strutturate accanto al testo:
 > fondante numero 1, ristretta alla dispensa il 2026-09-20, resta intera anche lì:
 > questa colonna c'è, e l'emendamento di `CLAUDE.md` l'ha citata apposta perché non
 > conti come precedente. Dal 2026-09-28 (T3 Consegna 1) le tacche mandano lo stato e
-> nessuno scrive più la colonna. La via `PATCH` di `fill_percent` resta nel backend
-> senza chiamanti, ed è una voce piccola da togliere quando si tocca `api/pantry.py`.
+> nessuno scrive più la colonna. Dal 2026-09-29 (ramo `night/pulizie-dopo-la-lista`)
+> non c'è più nemmeno la via `PATCH` che la accettava: `set_fill` è tolta, e un
+> `fill_percent` mandato si ignora (da solo la rotta risponde 400, «niente da
+> modificare»). La colonna resta, annullabile, col suo CHECK e in `PantryItemOut`, e
+> `set_status` la azzera; toglierla è una migrazione, e le voci toccate prima del
+> 2026-09-28 l'hanno ancora piena. `status_for_fill` resta in `app/domain/rules.py` coi
+> suoi test, senza chiamanti in produzione, perché `CLAUDE.md` la cita.
 
 **Perché non l'alternativa.** Quantità vere anche in dispensa avrebbero sbloccato
 conti più precisi, ma avrebbero reintrodotto la manutenzione giornaliera che la
@@ -1960,6 +1965,21 @@ più vecchia di `style.spec.ts` (la prova su prodotto e dispensa, intorno alle r
 985-1072) si limita ad avvisare in console se la pulizia fallisce: non fa fallire la
 prova, a differenza di quella più recente per la barra della lista.
 
+**Chiusi tutti e quattro il 2026-09-29**, sul ramo `night/pulizie-dopo-la-lista` (piano
+`docs/superpowers/plans/2026-09-29-pulizie-dopo-la-lista.md`), non ancora in produzione.
+Il doppione: la `PATCH` che riporta una voce archiviata a `pending` o `checked` risponde
+409 («l'ingrediente è già in lista») se lo stesso ingrediente è già da comprare o nel
+carrello in un'altra voce, e non cambia niente; «Annulla» su quel 409 dice «Era già in
+lista.», e la cache del client resta la via veloce. La ✕: `Button` ha `busy`, che spegne
+con `aria-disabled` e ignora il tocco dentro il primitivo; lo usano la ✕ della lista, la ✕ e
+«In lista» della dispensa e il «Riprova» di `ErrorState`, e `disabled` resta per ciò che
+non si può proprio fare. `IngredientPicker` spegne ancora campo e suggerimenti con
+`disabled` mentre la scelta è in volo: è in `next-steps.md` come idea. I suggerimenti:
+`OptionList` scorre da sé, alto al più `min(18rem, 45dvh)`, per la barra della lista e
+per `IngredientPicker`; l'e2e lo misura a 375×812 e a 375×450. La pulizia e2e vecchia di
+`style.spec.ts` usa ora `expect.soft` come la nuova. Suite finale del ramo: backend 937
+passati, frontend 680 test in 52 file (vitest), e2e 33 passati.
+
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
 chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
 spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
@@ -2253,6 +2273,12 @@ se l'ingrediente non c'è» (S3/R12).
   e importata (il conto resta 1, perché al secondo scarico la prima era già dentro),
   poi annulla: in coda «1 ricetta in attesa» con «Pasta P · Pasta Q». Il rimedio è
   ricontare le pagine in attesa del termine dentro `undo_decision`.
+  *(Fatto il 2026-09-29, ramo `night/pulizie-dopo-la-lista`: `undo_decision` riconta il
+  termine annullato con `count_pending_keys`, la stessa funzione di `sync_terms`. La prova
+  e2e di R11 (`import-review.spec.ts`) ora si aspetta «0 ricette in attesa» dopo
+  l'annullamento, non più «1»: il seme e2e non scrive pagine d'import per il termine, e il
+  conteggio corretto è quello che il nuovo `count_pending_keys` trova, non quello vecchio
+  rimasto fermo.)*
 - **Il suggerimento testuale è enorme anche quando è assurdo** («Aragosta» → «lonza di
   maiale»).
 - **Un ingrediente creato è detto «collegato a»**. Non si corregge nella riga:
@@ -2483,6 +2509,11 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   riprovare non può riuscire. Va escluso il 404 dal ritentare, con un messaggio suo
   («Questa ricetta non c'è più») e il ritorno al ricettario. Dal giro di T3, verificato
   sul codice.
+  *(Fatto il 2026-09-29, ramo `night/pulizie-dopo-la-lista`: `defaultQueryRetryPredicate`
+  non ritenta né il 401 né il 404, e dettaglio e modifica della ricetta dicono «Questa
+  ricetta non c'è più.» con «Torna al ricettario». La prova e2e del ramo d'errore
+  (`error-branch.spec.ts`) ora devia la lista su un 405, perché su un 404 non vedrebbe
+  più i ritentativi.)*
 - **«Ingrediente» invece di «voce» in due schermate.** `AddItemField.tsx` (lista)
   e `StockingScreen.tsx` (sistemazione della spesa) dicono entrambi
   «ingrediente» all'utente — «l'ingrediente si abbina dopo», «Abbina un
