@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-09-29 (fase giorno)_
+_Ultimo aggiornamento: 2026-09-30 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -16,7 +16,6 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano prima, così al merge non ci sono conflitti. Se un piano si blocca, i successivi aspettano.
 
-- [pronto] P1 · T3 Consegna 6a, pulsanti, Accesso e Anagrafica: `Button` impara `unavailableReason` («non ancora», col perché scritto sotto) e `accessibleName`; tutti i pulsanti che si spengono passano da `Button` (regola decisa da Mattia); Accesso col fuoco, l'errore che se ne va e «Mostra password»; le correzioni dell'Anagrafica come icone → `docs/superpowers/plans/2026-09-30-ridisegno-pulsanti-accesso-anagrafica.md`, ramo `night/c6a-pulsanti` da `master` [T3]
 - [pronto] P1 · T3 Consegna 4, Ricette: «Nuova ricetta», Filtri in linea col numero e «Azzera», «Cosa posso cucinare» visibile, filtri ricordati finché l'app è aperta (Mattia), righe compatte con miniatura e reparto principale, «Hai tutto» / «Manca: …», il totale contato dal server prima del limite, la lapide nell'avviso unico → `docs/superpowers/plans/2026-09-30-ridisegno-ricette.md`, ramo `night/c4-ricette` da `night/c6a-pulsanti` [T3]
 - [pronto] P1 · T3 Consegna 5, Dettaglio ricetta: foto col tasto indietro sopra, Modifica/Elimina come icone, costo in sola lettura, porzioni sempre visibili, Principali/Secondari col pallino e «non basta» (Mattia), «Metti in lista ciò che manca», «Cucina» sotto gli ingredienti, tacche nel foglio della cottura, «Salvata.» nell'avviso unico (T4) → `docs/superpowers/plans/2026-09-30-ridisegno-dettaglio-ricetta.md`, ramo `night/c5-dettaglio` da `night/c4-ricette` [T3, T4]
 - [pronto] P2 · T3 Consegna 6b, modulo della ricetta, coda d'import e parole: «Proponi» secondario e «Salva» col perché, caselle da 44 px, R12 con «Come si chiama in generale?», `CategorySelect` unico, la coda senza il rosso dell'AI non configurata, via «backend», «autocomplete» e «dataset», «collegato ad astice», maiuscole uniformi a video → `docs/superpowers/plans/2026-09-30-ridisegno-modulo-coda-parole.md`, ramo `night/c6b-modulo-coda-parole` da `night/c5-dettaglio` [T3, R12, Parte X]
@@ -48,7 +47,6 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 
 ### Idee
 - [idea] P3 · `NewIngredientFields` copia il `<select>` del reparto di `registry/CategoryForm.tsx`: unirli con R12 (Consegna 6) [T3]
-- [idea] P3 · `Button` non sa dare un nome accessibile insieme a figli visibili, quindi «Abbina» e «Riprova» in `StockingRow.tsx` ricodificano il suo markup: aggiungere un override [T3]
 - [idea] P3 · «Ingrediente» invece di «voce» in `AddItemField.tsx` e `StockingScreen.tsx` (forse dentro le Consegne 3 e 6) [Parte X]
 - [idea] P3 · Nella bozza AI, «non in anagrafica» è la formula sbagliata per una riga non alimentare [Parte X]
 - [idea] P3 · `skipped_reason` non affiora da nessuna rotta né schermata [Parte X]
@@ -60,10 +58,15 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 - [idea] P3 · Tecniche e preparazioni di base mescolate alle ricette; procedimento diviso in passi; i minuti dai dati grezzi; «N dosi su M non si riscalano» che dice quali — fuori dal ridisegno, spec §5 [T3]
 - [idea] P3 · Un layout da desktop (oggi una colonna da 448 px) [T3]
 - [idea] P3 · Una schermata per correggere i plurali di `units` (oggi `decide_units --imposta` da riga di comando basta) [Parte X]
-- [idea] P3 · `IngredientPicker` spegne campo, suggerimenti e «Aggiungi «…»» con `disabled` mentre la scelta è in volo: lo stesso fuoco perso della ✕ di Lista, in una forma diversa (tre controlli insieme) [T3 Consegna 2]
+- [idea] P3 · `IngredientPicker` spegne campo e suggerimenti con `disabled` mentre la scelta è in volo (dalla Consegna 6a «Aggiungi «…»» usa `busy`): lo stesso fuoco perso della ✕ di Lista, in una forma diversa [T3 Consegna 2]
 - [idea] P3 · L'annullamento riconta `occurrences` caricando tutte le pagine in attesa col loro JSONB intero, per contare una chiave sola, moltiplicato nel ciclo di merge dell'anagrafica: va bene finché l'annullamento è raro, ma un conteggio SQL dovrebbe restare identico a `count_pending_keys` [S9/T3]
 - [idea] P3 · La suite del backend stampa 7 `StarletteDeprecationWarning` per `HTTP_422_UNPROCESSABLE_ENTITY` (preesistente, non tracciato) [Parte X]
-- [idea] P3 · Un `Button` `busy` cliccato fa comunque risalire l'evento ai gestori `onClick` degli antenati (un pulsante `disabled` no): nessun chiamante ne risente oggi, va scritto nel JSDoc di `busy` [T3]
+- [idea] P3 · `InlineField.tsx` (nome, marca e codice del prodotto) ha ancora `<button disabled>`: dopo un salvataggio riuscito il «Salva» si spegne e il fuoco cade sulla pagina. Il motivo sotto un pulsante che sta nella riga del campo non ci sta, e «invariato» è lo stato di ogni campo a riposo — decidere la forma [T3 Consegna 6a]
+- [idea] P3 · `CustomProductForm.tsx` («Salva prodotto») spegne ancora con `disabled`: passarlo alla regola dei pulsanti (`unavailableReason` col perché) [T3 Consegna 6a]
+- [idea] P3 · Una prova e2e di `style.spec.ts` («il campo data si vede…») calcola la data con `toISOString()`, in UTC: fra mezzanotte e le 2 ora italiana manda il giorno sbagliato e fallisce («tra 4 gg» invece di «tra 5 gg»). Calcolarla nel giorno di Europe/Rome, come il backend [T3 Consegna 6a]
+- [idea] P3 · `ShoppingListScreen.test.tsx` è fallito una volta nella suite intera sotto carico, ogni volta su un'asserzione diversa, e passa da solo e nelle corse successive: un'attesa troppo corta da trovare [T3 Consegna 6a]
+- [idea] P3 · `Button` con `disabled` e `unavailableReason` insieme non è definito: il `disabled` nativo toglie il fuoco e il perché resta irraggiungibile da tastiera. Oggi nessun chiamante lo fa; far vincere `unavailableReason` o scriverlo nel JSDoc [T3 Consegna 6a]
+- [idea] P3 · In `MergePanel.tsx` «Cambia» è un `Button` dentro un `<p class="flex">`: oggi ha solo `busy`, ma se un giorno prende un `unavailableReason` il perché diventa un `<p>` dentro un `<p>`. Cambiare il contenitore in `<div>` [T3 Consegna 6a]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -72,6 +75,7 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 - [bloccato] P3 · M1, motore di suggerimento — attende: pasti, nutrienti e sostituti (P2, S4, R5)
 
 ## Da fare a mano (solo Mattia)
+- [tbd] P2 · Prove sul telefono della Consegna 6a: l'accesso (la tastiera col campo che ha il fuoco, l'occhio, la password mostrata senza maiuscola), le icone delle correzioni in Anagrafica senza testo, «Metti in dispensa» spento col perché sotto
 - [tbd] P1 · Prove sul telefono di Sistema la spesa (Consegna 3): un pannello aperto su una voce in fondo, lo scanner con la fotocamera vera e negata, il codice a mano con «Cerca», il campo data e la sua ✕, l'avviso in Dispensa
 - [tbd] P1 · Prove sul telefono della Lista (Consegna 2): la barra resta sotto l'intestazione scorrendo, con i suggerimenti che si aprono sotto; spuntare camminando senza le linee fra le righe; «Annulla» dopo la ✕ su una voce nel carrello
 - [tbd] P1 · Prove sul telefono della Dispensa (Consegna 1): le tacche col pollice, il selettore data nativo, le righe «Finito»
@@ -83,6 +87,7 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-09-30 · T3 Consegna 6a, pulsanti, accesso e anagrafica: `Button` con `unavailableReason` e `accessibleName` (una regola sola per i pulsanti spenti), «Sistema la spesa» senza pulsanti scritti a mano, l'accesso col fuoco nel campo e «Mostra password», le correzioni dell'anagrafica come icone accanto al titolo, «Cerca un ingrediente o un prodotto» → branch night/c6a-pulsanti (da revisionare)
 - [fatto] 2026-09-29 · T3 Consegna 3, Sistema la spesa: una riga per voce, un pannello alla volta sotto la sua voce (S10), «Abbina» col selettore unico, «Metti in dispensa N» con l'avviso in Dispensa (T4) → `master` 28d0cdd, in produzione dal 2026-09-29
 - [fatto] 2026-09-29 · Pulizie dopo la Lista: il 409 sull'«Annulla» che farebbe un doppione, `Button` con `busy` (la ✕ tiene il fuoco), i suggerimenti che scorrono da sé, le pulizie e2e che fanno fallire, via `set_fill`, il 404 non ritentato con «Questa ricetta non c'è più.», `occurrences` ricontato dopo l'annullamento → `master` 28d0cdd, in produzione dal 2026-09-29
 - [fatto] 2026-09-29 · Tema scuro: l'avviso rovesciato (chiaro sullo scuro) va bene, deciso da Mattia; spec §3.5 aggiornata

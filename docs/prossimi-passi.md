@@ -2037,6 +2037,47 @@ con la fotocamera vera e con la fotocamera negata; il codice scritto a mano con 
 tastiera dei numeri e «Cerca»; il campo data nativo del «+ scadenza» e la sua ✕;
 l'avviso in Dispensa dopo «Metti in dispensa».
 
+**Consegna 6a (Pulsanti, Accesso, Anagrafica) fatta il 2026-09-30, sul ramo
+`night/c6a-pulsanti`, non ancora in produzione.** È la prima metà della Consegna 6 (spec
+§4.7); la seconda, 6b (modulo della ricetta, coda d'import, parole), viene dopo Ricette e
+Dettaglio. **Una regola sola per i pulsanti spenti** (decisa da Mattia il 2026-09-29): una
+richiesta in volo → `busy`; «non si può ancora» → `unavailableReason`, col perché; `disabled`
+nativo solo dove nessuno dei due vale. Sta tutta in `Button`: `unavailableReason` spegne
+con `aria-disabled` come `busy`, ignora tocco e Invio (l'invio implicito del browser passa
+da un clic sul submit, ed è quel clic che si rifiuta), tiene il fuoco, e scrive il perché
+sotto di sé in un `<p>` collegato con `aria-describedby`. `Button` ha imparato anche
+`accessibleName`, per un pulsante con testo che deve dire di più («Abbina» si sente
+«Abbina: X»; il testo in vista resta l'inizio del nome), e passa `aria-expanded` e
+`aria-pressed`. Il JSDoc di `busy` e `unavailableReason` dice che il clic risale agli
+antenati. Cosa è cambiato a video: in «Sistema la spesa» nessun pulsante è più scritto a
+mano («Metti in dispensa», «Cerca», «Crea l'ingrediente», «Abbina», «Riprova»); «Aggiungi
+«…»» del selettore tiene il fuoco in volo, e il suo campo dice «Cerca un ingrediente»;
+l'accesso dà il fuoco al campo, toglie «Password errata» alla prima battuta, ha «Mostra
+password» con l'occhio e «Entra» che a campo vuoto dice «Scrivi la password per
+entrare.»; nell'Anagrafica le correzioni dell'ingrediente (Rinomina, Cambia reparto, Unisci)
+e del prodotto (Spostalo, Togli il codice) sono icone accanto al titolo, e il campo si chiama
+«Cerca un ingrediente o un prodotto», col nome che si vede. Suite finale: 792 test vitest in
+59 file, 940 test backend, tutti verdi; l'e2e conta 36 prove e nell'ultima corsa intera
+(00:18 del 2026-09-30) ne aveva 35 verdi, con la rossa in «il campo data si vede…» di
+`style.spec.ts` preesistente e non di questo ramo — calcola la data con `toISOString()`, in
+UTC, e fra mezzanotte e le 2 ora italiana sbaglia il giorno.
+
+**Le scelte del piano che Mattia può voler rivedere:** il perché del «non ancora» in
+`text-ink-faint` sotto il pulsante, anche in colonne dove prima era `text-ink-soft`; nelle
+correzioni dell'ingrediente anche un valore invariato è «non ancora» («È già il suo nome:
+scrivine un altro.», «È già il suo reparto: scegline un altro.»), con «Salva» e «Lascia
+com'è» in colonna; la domanda «È sotto l'ingrediente sbagliato?» della scheda prodotto se
+n'è andata col pulsante che introduceva; l'occhio dell'accesso ha il nome fisso «Mostra password» e
+porta `aria-pressed` (un nome che cambia insieme ad `aria-pressed` si leggerebbe «Nascondi
+password, premuto»); `InlineField` (il «Salva» accanto a nome, marca e codice del prodotto) è rimasto
+con `disabled`, ed è una voce in `next-steps.md`.
+
+**Da provare sul telefono:** all'accesso, se il campo col fuoco apre davvero la tastiera
+(iOS non la apre da `autoFocus` senza un tocco: il fuoco c'è lo stesso), l'occhio, e la
+password mostrata senza maiuscola né correttore; nell'Anagrafica, se le icone delle
+correzioni si capiscono senza testo; in «Sistema la spesa», «Metti in dispensa» spento col
+perché sotto.
+
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
 chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
 spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
