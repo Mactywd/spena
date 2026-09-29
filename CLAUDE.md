@@ -253,7 +253,14 @@ table exists with no consumer precisely so it has a history to build on, and
 `products.nutrients` is already populated from Open Food Facts. Details are in
 §4 of the spec.
 
-**`docs/prossimi-passi.md` is the single list of what is open** — the manual
-verification of v1 that no test can do, the small loose ends, and the phase
-ordering. Read it before starting anything new, and keep it current: everything
-in it existed only in one conversation before it was written down.
+**`next-steps.md`, at the root, is the single list of what is open** (since
+2026-09-29): one line per item with its state — `idea`, `tbd`, `pronto`,
+`in corso`, `fatto`, `bloccato` — for a day/night cycle. By day, items are
+clarified with Mattia and get a plan in `docs/superpowers/plans/`; only a plan
+with no open TBD makes an item `pronto`. By night, `pronto` plans are built
+autonomously on `night/<slug>` branches, with a report in `docs/night-reports/`:
+no merge, push or deploy without Mattia. `docs/prossimi-passi.md` stays as the
+archive of the reasoning — each line of `next-steps.md` points to its section
+there ([S3], [Parte X]). Read both before starting anything new, and keep
+`next-steps.md` current: anything noticed in passing goes in as `idea` or `tbd`
+instead of being done out of scope.

@@ -1,5 +1,11 @@
 # Spena — prossimi passi
 
+> **Dal 2026-09-29 la lista di cosa c'è da fare sta in `next-steps.md`**, nella radice, con
+> uno stato per voce (ciclo giorno/notte). Questo file resta l'archivio del ragionamento:
+> ogni voce di `next-steps.md` rimanda qui con il suo codice ([S3], [Parte X]…). Quando una
+> voce cambia stato si aggiorna `next-steps.md`; qui si scrive solo quel che serve a capire
+> il perché.
+
 Aggiornato il 2026-09-28: **R10 è fatta** — una ricetta salvata si modifica e si elimina,
 con la lapide; non ancora in produzione. Prima, il 2026-09-27, cinque volte. La quinta:
 **S9 è fatta** — l'hamburger apre
@@ -1922,8 +1928,8 @@ tastiera dopo aver cercato se la trova aperta; e la seconda riga di una voce mos
 prodotto senza la marca («Total 0%», non «Fage Total 0%»), mentre la ricerca la marca
 la trova ancora — cercando «fage» compare una riga in cui «fage» non si legge.
 
-**Consegna 2 (Lista) fatta il 2026-09-28, sul ramo `t3-lista`, non ancora in
-produzione.** Cosa è cambiato: la barra «Cosa manca?» col + al posto del campo con
+**Consegna 2 (Lista) fatta il 2026-09-28, in produzione dallo stesso giorno** (`master`
+c614e80). Cosa è cambiato: la barra «Cosa manca?» col + al posto del campo con
 «Aggiungi», appiccicata sotto l'intestazione invece che sopra (erano tutte e due `sticky
 top-0 z-10`, e scorrendo la barra la copriva); la scheda «Sistema la spesa» dice «N nel
 carrello», ed è ora un componente solo per Lista e Dispensa (`ShoppingEntryCard`), che
