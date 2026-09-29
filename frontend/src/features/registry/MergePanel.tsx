@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Ingredient, IngredientDetail } from "../../domain/types";
@@ -105,9 +106,11 @@ export function MergePanel({
           <span>
             Resta: <span className="font-medium">«{winner.display_name}»</span>
           </span>
-          <button
-            type="button"
-            disabled={busy}
+          {/* `busy` e non `disabled` (Consegna 6a): chi l'ha raggiunto da tastiera tiene
+              il fuoco mentre l'anteprima o la fusione sono in volo */}
+          <Button
+            variant="ghost"
+            busy={busy}
             onClick={() => {
               // altrimenti l'alert della fusione fallita resta in vista col vincitore
               // sbagliato sotto, e il suo «Riprova» punterebbe a un'anteprima che non
@@ -115,10 +118,9 @@ export function MergePanel({
               merge.reset();
               setWinner(null);
             }}
-            className={buttonClasses("ghost")}
           >
             Cambia
-          </button>
+          </Button>
         </p>
       )}
 
@@ -131,18 +133,19 @@ export function MergePanel({
       {counts && (
         <>
           <p className="text-sm">{mergePreviewText(counts)}</p>
-          <button
-            type="button"
+          <Button
+            variant="warn"
+            shape="block"
             // anche mentre l'anteprima si ricalcola (`preview.isFetching`), non solo
             // mentre la fusione vera è in corso: un'invalidazione può rilanciarla a
             // pannello aperto (F13, sopra), e i numeri vecchi non vanno confermabili
-            // finché quelli nuovi non sono arrivati (rilievo della revisione finale)
-            disabled={busy}
+            // finché quelli nuovi non sono arrivati (rilievo della revisione finale).
+            // `busy` e non `disabled` (Consegna 6a): il fuoco resta su «Unisci»
+            busy={busy}
             onClick={() => merge.mutate(counts.winner_id)}
-            className={buttonClasses("warn", "block")}
           >
             {merge.isPending ? "Unisco…" : "Unisci"}
-          </button>
+          </Button>
         </>
       )}
 
@@ -211,9 +214,9 @@ export function MergePanel({
         </div>
       )}
 
-      <button type="button" disabled={merge.isPending} onClick={onClose} className={buttonClasses("ghost")}>
+      <Button variant="ghost" busy={merge.isPending} onClick={onClose}>
         Lascia com'è
-      </button>
+      </Button>
     </Card>
   );
 }

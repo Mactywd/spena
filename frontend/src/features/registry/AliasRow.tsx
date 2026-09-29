@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { Button } from "../../components/ui/Button";
 import type { AliasEntry, Ingredient } from "../../domain/types";
 import { deleteAlias, moveAlias, refreshAfterCorrection, registryRefusal } from "./api";
 import { queuePath } from "./origin";
@@ -57,25 +57,26 @@ export function AliasRow({
           </Link>
         ) : (
           <span className="flex shrink-0 gap-1">
-            <button
-              type="button"
-              disabled={busy}
+            {/* `busy` e non `disabled` (Consegna 6a): chi ha tolto un alias da tastiera
+                tiene il fuoco. Il nome dice quale alias, con `accessibleName`: il testo in
+                vista ne è l'inizio */}
+            <Button
+              variant="ghost"
+              busy={busy}
               aria-expanded={moving}
-              aria-label={`Sposta l'alias «${alias.alias}»`}
+              accessibleName={`Sposta l'alias «${alias.alias}»`}
               onClick={() => setMoving((open) => !open)}
-              className={buttonClasses("ghost")}
             >
               Sposta
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              aria-label={`Togli l'alias «${alias.alias}»`}
+            </Button>
+            <Button
+              variant="danger"
+              busy={busy}
+              accessibleName={`Togli l'alias «${alias.alias}»`}
               onClick={() => remove.mutate()}
-              className={buttonClasses("danger")}
             >
               Togli
-            </button>
+            </Button>
           </span>
         )}
       </div>

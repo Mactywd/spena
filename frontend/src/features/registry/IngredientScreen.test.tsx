@@ -467,7 +467,7 @@ describe("IngredientScreen", () => {
     10000
   );
 
-  it("«Unisci», «Cambia» e «Lascia com'è» restano disabilitati mentre la fusione vera è in corso", async () => {
+  it("«Unisci», «Cambia» e «Lascia com'è» restano spenti, col fuoco, mentre la fusione vera è in corso", async () => {
     let risolviFusione: ((response: Response) => void) | null = null;
     const fusionePendente = new Promise<Response>((resolve) => {
       risolviFusione = resolve;
@@ -498,16 +498,37 @@ describe("IngredientScreen", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Unisci" }));
 
-    expect(await screen.findByRole("button", { name: "Unisco…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cambia" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Lascia com'è" })).toBeDisabled();
+    // `busy` e non `disabled` (Consegna 6a): spenti con `aria-disabled`, così chi ha
+    // premuto «Unisci» da tastiera tiene il fuoco; e un tocco non fa niente
+    const unisco = await screen.findByRole("button", { name: "Unisco…" });
+    const cambia = screen.getByRole("button", { name: "Cambia" });
+    const lascia = screen.getByRole("button", { name: "Lascia com'è" });
+    for (const button of [unisco, cambia, lascia]) {
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button.hasAttribute("disabled")).toBe(false);
+    }
+    await userEvent.click(unisco);
+    await userEvent.click(cambia);
+    await userEvent.click(lascia);
+    // nessuna seconda fusione, il vincitore resta scelto, il pannello resta aperto
+    expect(
+      spy.mock.calls.filter(
+        ([url, init]) =>
+          String(url).endsWith("/ingredients/i-pomodori/merge") &&
+          JSON.parse(String(init?.body)).dry_run === false
+      )
+    ).toHaveLength(1);
+    expect(screen.getByText(/Resta:/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Unisci «Pomodori» a un altro ingrediente" })
+    ).toBeInTheDocument();
 
     risolviFusione!(new Response(JSON.stringify({ ...ANTEPRIMA, dry_run: false }), { status: 200 }));
 
     expect(await screen.findByRole("heading", { name: "Pomodoro" })).toBeInTheDocument();
   });
 
-  it("«Unisci» resta disabilitato mentre l'anteprima si ricalcola dopo un'invalidazione", async () => {
+  it("«Unisci» resta spento mentre l'anteprima si ricalcola dopo un'invalidazione", async () => {
     // `staleTime: Infinity` non blocca un'invalidazione esplicita (F13, docstring di
     // MergePanel): uno spostamento d'alias altrove la rilancia mentre il pannello è
     // aperto, e i vecchi numeri non devono restare confermabili nel frattempo
@@ -536,19 +557,27 @@ describe("IngredientScreen", () => {
     await userEvent.type(screen.getByLabelText("Unisci a"), "pomod");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
     await screen.findByText(/Si spostano/);
-    expect(screen.getByRole("button", { name: "Unisci" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Unisci" })).not.toHaveAttribute("aria-disabled");
 
     // una correzione altrove (uno spostamento d'alias, per dire) invalida ["registry"]
     void client.invalidateQueries({ queryKey: ["registry"] });
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Unisci" })).toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Unisci" })).toHaveAttribute("aria-disabled", "true")
+    );
+    // spento, un tocco non conferma i numeri vecchi: nessuna fusione vera parte (le due
+    // chiamate sono l'anteprima e il suo ricalcolo)
+    await userEvent.click(screen.getByRole("button", { name: "Unisci" }));
+    expect(rilanci).toBe(2);
     // i vecchi numeri restano a video (nessun lampo di "Calcolo cosa si sposta…"),
     // ma non si devono poter confermare finché l'anteprima nuova non è arrivata
     expect(screen.getByText(/Si spostano/)).toBeInTheDocument();
 
     risolviSeconda!(new Response(JSON.stringify({ ...ANTEPRIMA, dry_run: true }), { status: 200 }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Unisci" })).not.toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Unisci" })).not.toHaveAttribute("aria-disabled")
+    );
   });
 
   it("tra un alimento e una voce non alimentare offre il cambio di reparto", async () => {
@@ -736,5 +765,96 @@ describe("IngredientScreen", () => {
     expect(JSON.parse(String((init as RequestInit).body))).toEqual({
       into: "i-pomodoro", dry_run: true,
     });
+  });
+
+  it("le correzioni sono un gruppo di icone accanto al titolo, coi nomi di sempre", async () => {
+    stubRoutedFetch((path) => base(path) ?? [{}, 404]);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Correzioni dell'ingrediente" });
+    // accanto al titolo: nella riga dell'intestazione (`action` di Screen)
+    expect(toolbar.parentElement).toContainElement(
+      screen.getByRole("heading", { level: 1, name: "Pomodori" })
+    );
+    const buttons = within(toolbar).getAllByRole("button");
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Rinomina",
+      "Cambia reparto",
+      "Unisci a un altro…",
+    ]);
+    for (const button of buttons) {
+      // più pulsanti in gruppo → solo icone (spec T3 §2), col nome di prima come `aria-label`
+      expect(button.textContent).toBe("");
+      expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    }
+    await userEvent.click(buttons[0]);
+    expect(screen.getByLabelText("Nuovo nome")).toBeInTheDocument();
+  });
+
+  it("«Salva il nome» dice perché non salva ancora: il nome è quello di ora, o non c'è", async () => {
+    const spy = stubRoutedFetch((path) => base(path) ?? [{}, 404]);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Rinomina" }));
+    const salva = screen.getByRole("button", { name: "Salva il nome" });
+    // `unavailableReason` (Consegna 6a): spento senza `disabled`, col perché
+    expect(salva).toHaveAttribute("aria-disabled", "true");
+    expect(salva.hasAttribute("disabled")).toBe(false);
+    expect(salva).toHaveAccessibleDescription("È già il suo nome: scrivine un altro.");
+    await userEvent.clear(screen.getByLabelText("Nuovo nome"));
+    expect(salva).toHaveAccessibleDescription("Scrivi un nome per salvarlo.");
+    await userEvent.click(salva);
+    expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(0);
+  });
+
+  it("«Salva il reparto» a reparto invariato dice perché, e non manda niente", async () => {
+    const spy = stubRoutedFetch((path) => base(path) ?? [{}, 404]);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia reparto" }));
+    const salva = screen.getByRole("button", { name: "Salva il reparto" });
+    expect(salva).toHaveAttribute("aria-disabled", "true");
+    expect(salva.hasAttribute("disabled")).toBe(false);
+    expect(salva).toHaveAccessibleDescription("È già il suo reparto: scegline un altro.");
+    await userEvent.click(salva);
+    expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(0);
+
+    await userEvent.selectOptions(screen.getByLabelText("Reparto"), "legumi");
+    expect(salva).not.toHaveAttribute("aria-disabled");
+    expect(screen.queryByText("È già il suo reparto: scegline un altro.")).toBeNull();
+  });
+
+  it("mentre l'alias si toglie, «Sposta» e «Togli» restano spenti col fuoco, e non ripartono", async () => {
+    let risolvi: ((response: Response) => void) | null = null;
+    const pendente = new Promise<Response>((resolve) => {
+      risolvi = resolve;
+    });
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      if (init?.method === "DELETE") return pendente;
+      const [body, status] = base(String(url)) ?? [{}, 404];
+      return Promise.resolve(new Response(JSON.stringify(body), { status }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    const togli = await screen.findByRole("button", { name: "Togli l'alias «pomodorini»" });
+    const sposta = screen.getByRole("button", { name: "Sposta l'alias «pomodorini»" });
+    // `accessibleName` (Consegna 6a): il testo in vista è l'inizio del nome
+    expect(togli.textContent).toBe("Togli");
+    expect(sposta.textContent).toBe("Sposta");
+    await userEvent.click(togli);
+    await waitFor(() => expect(togli).toHaveAttribute("aria-disabled", "true"));
+    for (const button of [togli, sposta]) {
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button.hasAttribute("disabled")).toBe(false);
+    }
+    expect(togli).toHaveFocus();
+    await userEvent.click(togli);
+    await userEvent.click(sposta);
+    expect(spy.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(1);
+    // «Sposta» spento non apre la scelta
+    expect(screen.queryByLabelText("Sposta «pomodorini» sotto")).toBeNull();
+
+    risolvi!(new Response(null, { status: 204 }));
   });
 });

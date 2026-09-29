@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Ingredient, IngredientDetail } from "../../domain/types";
@@ -30,8 +31,15 @@ export function RenameForm({
   const refusal = registryRefusal(save.error);
   const existing = refusal?.code === "name_taken" ? (refusal.existing ?? null) : null;
   const cleaned = name.trim();
-  // (F17) un pulsante spento e muto non si spiega da sé: il motivo va scritto sotto
-  const nameMissing = cleaned === "";
+  // (F17) un pulsante spento e muto non si spiega da sé: il perché lo scrive Button sotto
+  // di sé (`unavailableReason`, Consegna 6a). Il nome di ora è un «non ancora» anche lui:
+  // basta scriverne un altro
+  const notYet =
+    cleaned === ""
+      ? "Scrivi un nome per salvarlo."
+      : cleaned === ingredient.display_name
+        ? "È già il suo nome: scrivine un altro."
+        : undefined;
 
   return (
     <Card as="section" className="mt-2 flex flex-col gap-3">
@@ -47,23 +55,20 @@ export function RenameForm({
       <p className="text-xs text-ink-faint">
         Il nome di prima resta come alias: chi lo scrive in lista ritrova questo ingrediente.
       </p>
-      <div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={save.isPending || nameMissing || cleaned === ingredient.display_name}
-            onClick={() => save.mutate(cleaned)}
-            className={buttonClasses("primary")}
-          >
-            Salva il nome
-          </button>
-          <button type="button" onClick={onDone} className={buttonClasses("ghost")}>
-            Lascia com'è
-          </button>
-        </div>
-        {nameMissing && (
-          <p className="pt-2 text-xs text-ink-soft">Scrivi un nome per salvarlo.</p>
-        )}
+      {/* in colonna: il perché che Button scrive sotto «Salva il nome» gli sta attaccato,
+          e «Lascia com'è» non va a capo a metà riga */}
+      <div className="flex flex-col items-start gap-2">
+        <Button
+          variant="primary"
+          busy={save.isPending}
+          unavailableReason={notYet}
+          onClick={() => save.mutate(cleaned)}
+        >
+          Salva il nome
+        </Button>
+        <button type="button" onClick={onDone} className={buttonClasses("ghost")}>
+          Lascia com'è
+        </button>
       </div>
       {existing && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">

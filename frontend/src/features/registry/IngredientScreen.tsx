@@ -3,10 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import { IconToolbar } from "../../components/ui/IconToolbar";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import { IconArrowsJoin2, IconCategory, IconCursorText } from "../../components/ui/icons";
 import type { Ingredient, MergeCounts } from "../../domain/types";
 import { AliasRow } from "./AliasRow";
 import { CategoryForm } from "./CategoryForm";
@@ -101,35 +104,37 @@ function IngredientCard({ id }: { id: string }) {
       title={ingredient.display_name}
       subtitle={`${ingredient.category} · ${usageText(ingredient.usage)}`}
       back={back}
+      // le correzioni accanto al titolo (spec T3 §4.7): più pulsanti in gruppo → solo
+      // icone, coi nomi di prima come `aria-label` (spec §6). Il pannello si apre sotto
+      // l'intestazione, come prima
+      action={
+        <IconToolbar label="Correzioni dell'ingrediente">
+          <Button
+            variant="ghost"
+            icon={IconCursorText}
+            label="Rinomina"
+            onClick={() => setPanel({ kind: "rename" })}
+          />
+          <Button
+            variant="ghost"
+            icon={IconCategory}
+            label="Cambia reparto"
+            onClick={() => setPanel({ kind: "category" })}
+          />
+          <Button
+            variant="ghost"
+            icon={IconArrowsJoin2}
+            label="Unisci a un altro…"
+            onClick={() => setPanel({ kind: "merge", winner: null })}
+          />
+        </IconToolbar>
+      }
     >
       {merged && (
         <p role="status" className="pb-2 text-sm font-medium text-brand">
           {mergeDoneText(merged)}
         </p>
       )}
-      <div className="flex flex-wrap gap-2 pb-1">
-        <button
-          type="button"
-          onClick={() => setPanel({ kind: "rename" })}
-          className={buttonClasses("secondary")}
-        >
-          Rinomina
-        </button>
-        <button
-          type="button"
-          onClick={() => setPanel({ kind: "category" })}
-          className={buttonClasses("secondary")}
-        >
-          Cambia reparto
-        </button>
-        <button
-          type="button"
-          onClick={() => setPanel({ kind: "merge", winner: null })}
-          className={buttonClasses("secondary")}
-        >
-          Unisci a un altro…
-        </button>
-      </div>
       {panel?.kind === "rename" && (
         <RenameForm
           ingredient={ingredient}

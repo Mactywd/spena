@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { FOOD_CATEGORIES, NON_FOOD_CATEGORIES } from "../../domain/categories";
@@ -57,15 +58,18 @@ export function CategoryForm({
           </optgroup>
         </select>
       </label>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={save.isPending || category === ingredient.category}
+      {/* in colonna, come nella rinomina: il perché sta attaccato a «Salva il reparto» */}
+      <div className="flex flex-col items-start gap-2">
+        <Button
+          variant="primary"
+          busy={save.isPending}
+          unavailableReason={
+            category === ingredient.category ? "È già il suo reparto: scegline un altro." : undefined
+          }
           onClick={() => save.mutate(category)}
-          className={buttonClasses("primary")}
         >
           Salva il reparto
-        </button>
+        </Button>
         <button type="button" onClick={onDone} className={buttonClasses("ghost")}>
           Lascia com'è
         </button>
