@@ -8,7 +8,14 @@ from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.db.models.shopping import ShoppingListItem
 from app.repositories.pantry import ProductIngredientMismatch
-from app.repositories.shopping import StockEntry, add_item, list_items, patch_item, stock_items
+from app.repositories.shopping import (
+    AlreadyListed,
+    StockEntry,
+    add_item,
+    list_items,
+    patch_item,
+    stock_items,
+)
 from app.schemas.shopping import (
     ShoppingItemAddOut,
     ShoppingItemCreate,
@@ -83,6 +90,11 @@ async def patch(
         await session.commit()
     except KeyError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "voce inesistente") from exc
+    except AlreadyListed as exc:
+        # sollevata prima di ogni scrittura: non c'è niente da annullare. Un 409 e non un
+        # 200 con la voce che c'era (come la POST di S18): chi ha chiesto di rimettere
+        # *questa* voce deve sapere che non è tornata
+        raise HTTPException(status.HTTP_409_CONFLICT, "l'ingrediente è già in lista") from exc
     except IntegrityError as exc:
         await session.rollback()
         # solo un riferimento pendente è un "inesistente": qualunque altra
