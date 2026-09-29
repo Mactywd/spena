@@ -69,4 +69,29 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Pagina non trovata" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Torna alla lista" })).toHaveAttribute("href", "/lista");
   });
+
+  it("una ricetta che non c'è più lo dice subito, senza ritentare, e riporta al ricettario", async () => {
+    // Sul QueryClient vero dell'app, come la prova sul 500 qui sopra: gli schermi si
+    // provano con `retry: false`, e un 404 ritentato non lo vedrebbero mai. Qui sì: con
+    // i ritentativi il messaggio arriverebbe dopo le attese di 1 s e 2 s, fuori dal
+    // secondo che `findBy` aspetta
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        String(url).includes("/recipes/r-sparita")
+          ? new Response(JSON.stringify({ detail: "ricetta inesistente" }), { status: 404 })
+          : new Response("[]", { status: 200 })
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.pushState({}, "", "/ricette/r-sparita");
+
+    render(<App />);
+
+    expect(await screen.findByText("Questa ricetta non c'è più.")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("/recipes/r-sparita"))
+    ).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Torna al ricettario" })).toHaveAttribute("href", "/ricette");
+    expect(screen.queryByRole("button", { name: "Riprova" })).toBeNull();
+  });
 });

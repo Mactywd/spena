@@ -222,7 +222,8 @@ describe("IngredientScreen", () => {
   it(
     "un ingrediente che non c'è più lo dice, invece di un «riprova» che non può riuscire",
     async () => {
-      // il 404 si ritenta due volte col predicato vero (Parte X): da qui il tempo lungo
+      // il predicato vero (Parte X) non ritenta più un 404 dal 2026-09-29: il tempo
+      // lungo resta per l'attesa iniziale della schermata, non per dei ritentativi
       stubRoutedFetch(() => [{ detail: "ingrediente inesistente" }, 404]);
       renderAt("/anagrafica/ingrediente/i-sparito");
 
@@ -449,8 +450,9 @@ describe("IngredientScreen", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Unisci" }));
 
-      // la scheda del perdente, rilettura dopo rilettura (il predicato di retry vero,
-      // qui, è quello dell'ingrediente — Parte X), scopre di essere sparita
+      // la scheda del perdente, con la rilettura dopo la fusione (il predicato di retry
+      // vero, qui, è quello dell'ingrediente — Parte X, che dal 2026-09-29 non ritenta
+      // più un 404), scopre subito di essere sparita
       expect(
         await screen.findByText(/Questo ingrediente non c'è più/, undefined, { timeout: 8000 })
       ).toBeInTheDocument();

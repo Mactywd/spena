@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fetchRecipe, updateRecipe } from "../recipes/api";
+import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
 import { buttonClasses } from "../../components/ui/buttonClasses";
@@ -60,7 +61,7 @@ function EditForm({ recipe }: { recipe: RecipeDetail }) {
 export function RecipeEditScreen() {
   const { id = "" } = useParams();
   const back = { to: `/ricette/${id}`, label: "Ricetta" };
-  const { data: recipe, isError, isFetchedAfterMount, refetch } = useQuery({
+  const { data: recipe, error, isError, isFetchedAfterMount, refetch } = useQuery({
     queryKey: ["recipe", id, null],
     queryFn: () => fetchRecipe(id),
     refetchOnMount: "always",
@@ -72,6 +73,20 @@ export function RecipeEditScreen() {
     return (
       <Screen title={TITLE} back={back}>
         <p className="text-ink-soft">Carico…</p>
+      </Screen>
+    );
+  }
+
+  // una ricetta che non c'è più risponde 404: niente «Riprova», che non potrebbe
+  // riuscire, e anche il ritorno in alto porta al ricettario — tornare alla ricetta
+  // sparita sarebbe un giro a vuoto
+  if (error instanceof ApiError && error.status === 404) {
+    return (
+      <Screen title={TITLE} back={{ to: "/ricette", label: "Ricette" }}>
+        <Alert>Questa ricetta non c'è più.</Alert>
+        <Link to="/ricette" className={`${buttonClasses("secondary")} mt-3`}>
+          Torna al ricettario
+        </Link>
       </Screen>
     );
   }
