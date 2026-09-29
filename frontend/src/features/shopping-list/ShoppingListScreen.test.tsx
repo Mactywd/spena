@@ -170,6 +170,29 @@ describe("ShoppingListScreen", () => {
     expect(patchesOf(spy)).toEqual([["/shopping-list/s1", { status: "archived" }]]);
   });
 
+  it("se la cache non lo sa ma il server sì, «Annulla» dice «Era già in lista.» e non offre «Riprova»", async () => {
+    // La POST della barra e il refetch si sono incrociati: la cache non ha ancora la voce
+    // riscritta, quindi la PATCH parte, e il server risponde 409 (la difesa vera). Non è
+    // un guasto: riprovare rifallirebbe
+    let patches = 0;
+    const spy = stubRoutedFetch((_path, init) => {
+      if (init?.method !== "PATCH") return [patches === 0 ? ITEMS : ITEMS.filter((i) => i.id !== "s1"), 200];
+      patches += 1;
+      return patches === 1 ? [ITEMS[1], 200] : [{ detail: "l'ingrediente è già in lista" }, 409];
+    });
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Togli pomodoro dalla lista" }));
+    await screen.findByText("Tolto dalla lista: pomodoro");
+    fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(await screen.findByText("Era già in lista.")).toBeDefined();
+    expect(screen.queryByText("Non sono riuscito a rimettere pomodoro in lista.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Riprova" })).toBeNull();
+    expect(patchesOf(spy)).toEqual([
+      ["/shopping-list/s1", { status: "archived" }],
+      ["/shopping-list/s1", { status: "pending" }],
+    ]);
+  });
+
   it("la riga resta bloccata finché il riordino dopo la ✕ non è arrivato (regressione)", async () => {
     // la PATCH torna subito, ma il GET che `invalidate()` lancia in `onSuccess` resta
     // appeso finché non lo sblocchiamo: se `onSuccess` non ne aspetta la promise, React
