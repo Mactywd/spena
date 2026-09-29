@@ -2,7 +2,6 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { IconToolbar } from "../../components/ui/IconToolbar";
-import { buttonClasses } from "../../components/ui/buttonClasses";
 import {
   IconBarcode,
   IconCalendarPlus,
@@ -175,21 +174,19 @@ export function StockingRow({
         ) : (
           // la voce non abbinata è chiusa: una riga con «Abbina» (dal giro: il blocco
           // aperto occupava una schermata e mezza per voce). Un pulsante da solo: icona
-          // e testo. Il nome della voce nel nome accessibile, dopo i due punti. In
-          // `aria-label` e non in uno `sr-only`: lo `sr-only` è posizionato, quindi a
-          // blocco, e Chromium ci mette uno spazio davanti — il nome diventava «Abbina :
-          // X» (misurato nell'e2e; jsdom non lo vede). `Button` con del testo non accetta
-          // `label`, da cui il `<button>` a mano, come «Riprova» qui sotto
+          // e testo. Il nome della voce nel nome accessibile, dopo i due punti, con
+          // `accessibleName` (Consegna 6a). Non uno `sr-only`: è posizionato, quindi a
+          // blocco, e Chromium ci metteva uno spazio davanti — il nome diventava «Abbina :
+          // X» (misurato nell'e2e; jsdom non lo vede)
           <span data-trigger="match" className="contents">
-            <button
-              type="button"
-              aria-label={`Abbina: ${name}`}
+            <Button
+              icon={IconLink}
+              accessibleName={`Abbina: ${name}`}
               onClick={() => onOpen("match")}
-              className={`${buttonClasses("secondary")} shrink-0`}
+              className="shrink-0"
             >
-              <IconLink aria-hidden="true" className="size-[1.1em]" stroke={1.8} />
               Abbina
-            </button>
+            </Button>
           </span>
         )}
       </div>
@@ -204,21 +201,17 @@ export function StockingRow({
             Non sono riuscito a ricordare l'abbinamento in lista: la voce si sistema lo stesso,
             ma se oggi non la metti in dispensa andrà rifatto.
           </Alert>
-          <button
-            type="button"
-            aria-disabled={retryingMatch || undefined}
-            onClick={() => {
-              if (!retryingMatch) onRetryMatch();
-            }}
-            className={`${buttonClasses("secondary")} aria-disabled:opacity-40`}
+          {/* un pulsante da solo: icona e testo (regola delle icone, spec §2). Il nome
+              dice cosa riprova, con `accessibleName` (Consegna 6a); `busy` mentre la
+              scrittura è in volo, e il fuoco resta */}
+          <Button
+            icon={IconRefresh}
+            accessibleName={`Riprova ad abbinare ${name}`}
+            busy={retryingMatch}
+            onClick={onRetryMatch}
           >
-            {/* un pulsante da solo: icona e testo (regola delle icone, spec §2) */}
-            <IconRefresh aria-hidden="true" className="size-[1.1em]" stroke={1.8} />
-            {/* lo spazio fuori dallo `sr-only` (dal giro): dentro, il calcolo del nome
-                accessibile lo perde, e «Riprova» e «ad abbinare X» si univano senza
-                spazio */}
-            Riprova <span className="sr-only">ad abbinare {name}</span>
-          </button>
+            Riprova
+          </Button>
         </div>
       )}
 

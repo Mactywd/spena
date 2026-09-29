@@ -381,6 +381,12 @@ describe("StockingScreen", () => {
     // tenere il fuoco. E spento dice perché (dal giro, da non riprogettare via)
     const stock = screen.getByRole("button", { name: "Metti in dispensa" });
     expect(stock).toHaveAttribute("aria-disabled", "true");
+    expect(stock.hasAttribute("disabled")).toBe(false);
+    // il perché non è solo scritto sotto: è la descrizione del pulsante, e chi ci arriva
+    // da tastiera lo sente (`unavailableReason`, Consegna 6a)
+    expect(stock).toHaveAccessibleDescription(
+      "Scegli come entra almeno una voce: codice, catalogo o sfuso."
+    );
     expect(
       screen.getByText("Scegli come entra almeno una voce: codice, catalogo o sfuso.")
     ).toBeDefined();

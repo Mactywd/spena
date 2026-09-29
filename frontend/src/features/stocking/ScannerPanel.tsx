@@ -6,7 +6,6 @@ import { lookupBarcode } from "./api";
 import { otherIngredient } from "./wording";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
-import { buttonClasses } from "../../components/ui/buttonClasses";
 import { IconPencilPlus, IconSearch } from "../../components/ui/icons";
 import type { Product, ShoppingItem } from "../../domain/types";
 
@@ -153,16 +152,12 @@ export function ScannerPanel({
               }}
               className="min-w-0 flex-1"
             />
-            <button
-              type="button"
-              aria-disabled={lookup.isPending || undefined}
-              onClick={search}
-              className={`${buttonClasses("secondary")} shrink-0 aria-disabled:opacity-40`}
-            >
-              {/* un pulsante da solo → icona e testo (spec §3.3); il nome resta «Cerca» */}
-              <IconSearch aria-hidden="true" className="size-[1.1em]" stroke={1.8} />
+            {/* un pulsante da solo → icona e testo (spec §3.3); il nome resta «Cerca».
+                `busy` (Consegna 6a): mentre cerca tiene il fuoco. A campo vuoto non c'è
+                niente da spiegare: `search` non fa niente, come prima */}
+            <Button icon={IconSearch} busy={lookup.isPending} onClick={search} className="shrink-0">
               Cerca
-            </button>
+            </Button>
           </div>
         </div>
 

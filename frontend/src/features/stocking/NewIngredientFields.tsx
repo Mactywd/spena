@@ -1,6 +1,5 @@
 import { useId, useState, type FormEvent } from "react";
 import { Button } from "../../components/ui/Button";
-import { buttonClasses } from "../../components/ui/buttonClasses";
 import { FOOD_CATEGORIES, NON_FOOD_CATEGORIES } from "../../domain/categories";
 
 /** Il passo che crea un ingrediente nuovo: come si chiama in generale, e in che
@@ -81,19 +80,17 @@ export function NewIngredientFields({
         </select>
       </label>
       <div>
-        {/* `aria-disabled` e non `disabled`: mentre la creazione è in volo il fuoco
-            resta qui invece di cadere sul `body` */}
-        <button
+        {/* `busy` in volo, `unavailableReason` a nome vuoto (Consegna 6a): il fuoco resta
+            qui invece di cadere sul `body`, e il perché lo scrive Button sotto di sé */}
+        <Button
           type="submit"
-          aria-disabled={busy || trimmed === "" || undefined}
-          className={`${buttonClasses("primary", "block")} aria-disabled:opacity-40`}
+          variant="primary"
+          shape="block"
+          busy={busy}
+          unavailableReason={trimmed === "" ? "Scrivi il nome per crearlo." : undefined}
         >
           Crea l'ingrediente
-        </button>
-        {/* un pulsante spento e muto non si spiega da sé */}
-        {trimmed === "" && (
-          <p className="pt-2 text-xs text-ink-soft">Scrivi il nome per crearlo.</p>
-        )}
+        </Button>
       </div>
       <Button variant="ghost" onClick={onCancel} className="self-start">
         Annulla

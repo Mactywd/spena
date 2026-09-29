@@ -534,23 +534,24 @@ export function StockingScreen() {
                     )}
                   </div>
                 )}
-                {/* `aria-disabled` e non `disabled`: mentre la sistemazione è in volo il
-                    fuoco resta qui. Il numero è quello delle voci che partono davvero */}
-                <button
-                  type="button"
+                {/* `busy` in volo, `unavailableReason` a zero voci (Consegna 6a): tutti e
+                    due tengono il fuoco, e il perché — un pulsante spento e muto non si
+                    spiega da sé, dal giro — lo scrive Button sotto di sé. Il numero è
+                    quello delle voci che partono davvero */}
+                <Button
+                  variant="primary"
+                  shape="block"
+                  icon={IconPackageImport}
+                  busy={stock.isPending}
+                  unavailableReason={
+                    entries.length === 0
+                      ? "Scegli come entra almeno una voce: codice, catalogo o sfuso."
+                      : undefined
+                  }
                   onClick={submitStock}
-                  aria-disabled={entries.length === 0 || stock.isPending || undefined}
-                  className={`${buttonClasses("primary", "block")} aria-disabled:opacity-40`}
                 >
-                  <IconPackageImport aria-hidden="true" className="size-[1.1em]" stroke={1.8} />
                   {entries.length > 0 ? `Metti in dispensa ${entries.length}` : "Metti in dispensa"}
-                </button>
-                {/* un pulsante spento e muto non si spiega da sé (dal giro) */}
-                {entries.length === 0 && (
-                  <p className="text-xs text-ink-soft">
-                    Scegli come entra almeno una voce: codice, catalogo o sfuso.
-                  </p>
-                )}
+                </Button>
               </div>
             </>
           )

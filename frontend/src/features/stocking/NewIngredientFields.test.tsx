@@ -55,7 +55,15 @@ describe("NewIngredientFields", () => {
     const create = screen.getByRole("button", { name: "Crea l'ingrediente" });
     expect(create).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("Scrivi il nome per crearlo.")).toBeDefined();
+    // `unavailableReason` (Consegna 6a): il perché è anche la descrizione del pulsante
+    expect(create).toHaveAccessibleDescription("Scrivi il nome per crearlo.");
     await userEvent.click(create);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("a nome vuoto nemmeno l'Invio nel campo crea", async () => {
+    const { onSubmit } = renderFields({ initialName: "" });
+    await userEvent.type(screen.getByLabelText("Come si chiama in generale?"), "{Enter}");
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

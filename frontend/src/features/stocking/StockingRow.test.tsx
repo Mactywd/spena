@@ -83,7 +83,10 @@ describe("StockingRow", () => {
   it("una voce senza ingrediente è chiusa: solo «Abbina»", async () => {
     const { onOpen } = renderRow({ item: STRANA, ingredientId: null });
     expect(screen.queryByRole("toolbar")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Abbina: cosa strana" }));
+    const abbina = screen.getByRole("button", { name: "Abbina: cosa strana" });
+    // label-in-name: il testo in vista è l'inizio del nome
+    expect(abbina.textContent).toBe("Abbina");
+    await userEvent.click(abbina);
     expect(onOpen).toHaveBeenCalledWith("match");
   });
 
@@ -184,5 +187,14 @@ describe("StockingRow", () => {
     expect(retry).not.toBeDisabled();
     await userEvent.click(retry);
     expect(onRetryMatch).not.toHaveBeenCalled();
+  });
+
+  it("«Riprova» mostra solo la sua parola, e il nome dice cosa riprova", () => {
+    renderRow({ item: STRANA, ingredientId: "i9", matchNotSaved: true });
+    const retry = screen.getByRole("button", { name: "Riprova ad abbinare cosa strana" });
+    // prima il resto del nome stava in uno `sr-only` dentro al pulsante; ora è
+    // `accessibleName` di Button, e il testo in vista ne è l'inizio (label-in-name)
+    expect(retry.textContent).toBe("Riprova");
+    expect(retry.querySelector(".sr-only")).toBeNull();
   });
 });
