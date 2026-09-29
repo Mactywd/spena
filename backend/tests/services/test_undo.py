@@ -517,3 +517,68 @@ async def test_il_flag_passato_non_cancella_un_ingrediente_ancora_in_dispensa(db
 
     assert esito.ingredient_deleted is False
     assert await db_session.get(Ingredient, speck_id) is not None
+
+
+# --- `occurrences` dopo l'annullamento (T3, esito del giro, «1 ricetta in attesa») ---
+
+
+async def test_dopo_lannullamento_occurrences_conta_le_ricette_in_attesa(
+    db_session, deciso, dal_database
+):
+    """La riproduzione del giro: «Ics» deciso, una seconda ricetta con «Ics» scaricata e
+    importata dopo (il conto resta 1, perché al secondo scarico la prima era già
+    dentro), poi annulla — e la coda diceva «1 ricetta in attesa» sopra due titoli.
+    `occurrences` si ricalcolava solo a ogni scarico (`sync_terms`)."""
+    term, speck, _, _ = deciso
+    seconda = await create_recipe(
+        db_session, title="Pasta Q", description=None, instructions="cuoci",
+        servings=2, source=RecipeSource.DATASET, source_ref="https://esempio.invalid/2",
+        ingredients=[(speck.id, "primary", "80 g", None)], embedding=None,
+    )
+    db_session.add(RecipeImport(
+        source=GIALLOZAFFERANO, url="https://esempio.invalid/2",
+        payload={"title": "Pasta Q", "ingredients": [{"key": "k-speck", "name": "Speck"}]},
+        state=ImportState.IMPORTED, recipe_id=seconda.id,
+    ))
+    await db_session.flush()
+    assert term.occurrences == 1
+
+    esito = await undo_decision(db_session, term)
+
+    assert esito.recipes_requeued == 2
+    assert (await dal_database(ImportTerm, term.id)).occurrences == 2
+
+
+async def test_il_riconteggio_guarda_solo_le_pagine_in_attesa_che_nominano_il_termine(
+    db_session, deciso, dal_database
+):
+    """Una pagina già in attesa per un altro termine conta anche per questo; una presa
+    in carico (R10) no, e nemmeno una in attesa che il termine non lo nomina."""
+    term, _, _, _ = deciso
+    db_session.add_all([
+        RecipeImport(
+            source=GIALLOZAFFERANO, url="https://esempio.invalid/attesa",
+            payload={"title": "Speck e bottarga", "ingredients": [
+                {"key": "k-speck", "name": "Speck"},
+                {"key": "k-bottarga", "name": "Bottarga"},
+            ]},
+            state=ImportState.PENDING,
+        ),
+        RecipeImport(
+            source=GIALLOZAFFERANO, url="https://esempio.invalid/altro",
+            payload={"title": "Solo bottarga",
+                     "ingredients": [{"key": "k-bottarga", "name": "Bottarga"}]},
+            state=ImportState.PENDING,
+        ),
+        RecipeImport(
+            source=GIALLOZAFFERANO, url="https://esempio.invalid/tua",
+            payload={"title": "Speck mio", "ingredients": [{"key": "k-speck", "name": "Speck"}]},
+            state=ImportState.ADOPTED,
+        ),
+    ])
+    await db_session.flush()
+
+    await undo_decision(db_session, term)
+
+    # la pagina del fixture, rimessa in coda, più quella che aspettava già
+    assert (await dal_database(ImportTerm, term.id)).occurrences == 2

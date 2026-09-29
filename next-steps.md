@@ -14,9 +14,7 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-Da eseguire in quest'ordine, ciascuno sul suo ramo dal `master`. Toccano tutti e due `frontend/e2e/style.spec.ts`, `docs/prossimi-passi.md` e `next-steps.md`: i conflitti si risolvono di giorno, al merge.
-
-- [pronto] P2 · Pulizie dopo la Lista: 409 del server sul doppione dell'«Annulla», `Button` con `busy`, altezza massima dei suggerimenti, vecchie pulizie e2e con `expect.soft`, via `set_fill`, il 404 non ritentato con «Questa ricetta non c'è più.», `occurrences` ricontato dopo l'annulla → `docs/superpowers/plans/2026-09-29-pulizie-dopo-la-lista.md`, ramo `night/pulizie-dopo-la-lista` [T3 Consegna 2, Parte X, D1]
+_(nessuno)_
 
 ## Da approfondire (giorno)
 
@@ -62,6 +60,10 @@ Da eseguire in quest'ordine, ciascuno sul suo ramo dal `master`. Toccano tutti e
 - [idea] P3 · Tecniche e preparazioni di base mescolate alle ricette; procedimento diviso in passi; i minuti dai dati grezzi; «N dosi su M non si riscalano» che dice quali — fuori dal ridisegno, spec §5 [T3]
 - [idea] P3 · Un layout da desktop (oggi una colonna da 448 px) [T3]
 - [idea] P3 · Una schermata per correggere i plurali di `units` (oggi `decide_units --imposta` da riga di comando basta) [Parte X]
+- [idea] P3 · `IngredientPicker` spegne campo, suggerimenti e «Aggiungi «…»» con `disabled` mentre la scelta è in volo: lo stesso fuoco perso della ✕ di Lista, in una forma diversa (tre controlli insieme) [T3 Consegna 2]
+- [idea] P3 · L'annullamento riconta `occurrences` caricando tutte le pagine in attesa col loro JSONB intero, per contare una chiave sola, moltiplicato nel ciclo di merge dell'anagrafica: va bene finché l'annullamento è raro, ma un conteggio SQL dovrebbe restare identico a `count_pending_keys` [S9/T3]
+- [idea] P3 · La suite del backend stampa 7 `StarletteDeprecationWarning` per `HTTP_422_UNPROCESSABLE_ENTITY` (preesistente, non tracciato) [Parte X]
+- [idea] P3 · Un `Button` `busy` cliccato fa comunque risalire l'evento ai gestori `onClick` degli antenati (un pulsante `disabled` no): nessun chiamante ne risente oggi, va scritto nel JSDoc di `busy` [T3]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -75,12 +77,14 @@ Da eseguire in quest'ordine, ciascuno sul suo ramo dal `master`. Toccano tutti e
 - [tbd] P1 · Prove sul telefono della Dispensa (Consegna 1): le tacche col pollice, il selettore data nativo, le righe «Finito»
 - [tbd] P2 · Prove sul telefono del tema scuro (Consegna 0): tema vero, barra di stato nei due temi, icona reinstallata, Inter senza rete, schermata d'avvio (probabile lampo chiaro)
 - [tbd] P3 · Sul server: restringere `Bash(ssh hetznerserver:*)` in `.claude/settings.local.json`; togliere `ANTHROPIC_API_KEY` dal `.env`; decidere dei due file non tracciati `.env.bak` e `imposta-password.sh` [Parte X]
+- [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera aperta i suggerimenti della barra della Lista scorrono nel loro elenco, e l'ultimo si raggiunge senza scorrere la pagina
 
 ## In corso
 _(niente)_
 
 ## Fatti (recenti)
 - [fatto] 2026-09-29 · T3 Consegna 3, Sistema la spesa: una riga per voce, un pannello alla volta sotto la sua voce (S10), «Abbina» col selettore unico, «Metti in dispensa N» con l'avviso in Dispensa (T4) → branch night/sistema-la-spesa (da revisionare)
+- [fatto] 2026-09-29 · Pulizie dopo la Lista: il 409 sull'«Annulla» che farebbe un doppione, `Button` con `busy` (la ✕ tiene il fuoco), i suggerimenti che scorrono da sé, le pulizie e2e che fanno fallire, via `set_fill`, il 404 non ritentato con «Questa ricetta non c'è più.», `occurrences` ricontato dopo l'annullamento → branch night/pulizie-dopo-la-lista (da revisionare)
 - [fatto] 2026-09-29 · Tema scuro: l'avviso rovesciato (chiaro sullo scuro) va bene, deciso da Mattia; spec §3.5 aggiornata
 - [fatto] 2026-09-28 · T3 Consegna 2, Lista → `master` c614e80, in produzione
 - [fatto] 2026-09-28 · T3 Consegna 1, Dispensa, con la riga a 375 px e l'Esc sulla data → in produzione

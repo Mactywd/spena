@@ -1,5 +1,6 @@
 from datetime import date
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
@@ -479,3 +480,126 @@ async def test_il_testo_libero_non_si_confronta_col_testo_libero(logged_client, 
         )
         assert response.status_code == 201
     assert len(await _righe_in_lista(db_session)) == 2
+
+
+# --- L'«Annulla» della ✕ non rimette un doppione (T3 Consegna 2, «Restano aperti») ---
+# La ✕ archivia la voce, e «Annulla» la rimanda a `pending` o `checked` con la PATCH di
+# sempre. Nei secondi dell'avviso la stessa cosa può essere tornata in lista dalla barra:
+# il client lo guarda nella sua cache, ma fra la POST e il refetch la cache non lo sa
+# ancora. La difesa vera è qui: rimettere una voce tolta il cui ingrediente è già da
+# comprare o nel carrello in un'altra voce è un 409, e non cambia niente.
+
+
+def _voce_in_lista(
+    ingrediente: Ingredient | None, stato: ShoppingStatus, testo: str = "latte"
+) -> ShoppingListItem:
+    return ShoppingListItem(
+        raw_text=testo,
+        ingredient_id=ingrediente.id if ingrediente is not None else None,
+        status=stato,
+        reason=ShoppingReason.MANUAL,
+    )
+
+
+@pytest.mark.parametrize("gia_in_lista", [ShoppingStatus.PENDING, ShoppingStatus.CHECKED])
+@pytest.mark.parametrize("verso", ["pending", "checked"])
+async def test_rimettere_una_voce_tolta_gia_in_lista_e_409_e_non_cambia_niente(
+    logged_client, db_session, dal_database, anagrafica_s18, gia_in_lista, verso
+):
+    tolta = _voce_in_lista(anagrafica_s18["latte"], ShoppingStatus.ARCHIVED)
+    riscritta = _voce_in_lista(anagrafica_s18["latte"], gia_in_lista, testo="latte intero")
+    db_session.add_all([tolta, riscritta])
+    await db_session.flush()
+
+    risposta = await logged_client.patch(
+        f"/api/v1/shopping-list/{tolta.id}", json={"status": verso}
+    )
+
+    assert risposta.status_code == 409
+    assert risposta.json()["detail"] == "l'ingrediente è già in lista"
+    assert (await dal_database(ShoppingListItem, tolta.id)).status == "archived"
+    assert (await dal_database(ShoppingListItem, riscritta.id)).status == gia_in_lista
+
+
+async def test_l_ingrediente_mandato_insieme_conta_come_quello_della_voce(
+    logged_client, db_session, dal_database, anagrafica_s18
+):
+    """Una PATCH che abbina e rimette nello stesso colpo guarda l'ingrediente che la
+    voce avrebbe dopo, non quello che aveva: altrimenti il doppione passerebbe
+    dall'abbinamento."""
+    tolta = _voce_in_lista(None, ShoppingStatus.ARCHIVED, testo="latt")
+    db_session.add_all([tolta, _voce_in_lista(anagrafica_s18["latte"], ShoppingStatus.PENDING)])
+    await db_session.flush()
+
+    risposta = await logged_client.patch(f"/api/v1/shopping-list/{tolta.id}", json={
+        "status": "pending", "ingredient_id": str(anagrafica_s18["latte"].id),
+    })
+
+    assert risposta.status_code == 409
+    salvata = await dal_database(ShoppingListItem, tolta.id)
+    assert salvata.status == "archived"
+    assert salvata.ingredient_id is None
+
+
+async def test_rimettere_una_voce_tolta_senza_doppioni_riesce(
+    logged_client, db_session, anagrafica_s18
+):
+    """Una voce già sistemata in dispensa o un'altra tolta non sono «in lista»:
+    l'«Annulla» di sempre rimette la voce com'era."""
+    tolta = _voce_in_lista(anagrafica_s18["latte"], ShoppingStatus.ARCHIVED)
+    db_session.add_all([
+        tolta,
+        _voce_in_lista(anagrafica_s18["latte"], ShoppingStatus.DONE),
+        _voce_in_lista(anagrafica_s18["latte"], ShoppingStatus.ARCHIVED),
+    ])
+    await db_session.flush()
+
+    risposta = await logged_client.patch(
+        f"/api/v1/shopping-list/{tolta.id}", json={"status": "checked"}
+    )
+
+    assert risposta.status_code == 200
+    assert risposta.json()["status"] == "checked"
+
+
+async def test_una_voce_libera_tolta_torna_sempre(logged_client, db_session):
+    """Senza ingrediente non c'è un'identità su cui dire «è la stessa cosa» (S18): due
+    voci libere con lo stesso testo restano due, anche passando dall'«Annulla»."""
+    tolta = _voce_in_lista(None, ShoppingStatus.ARCHIVED, testo="quella cosa verde")
+    db_session.add_all([
+        tolta, _voce_in_lista(None, ShoppingStatus.PENDING, testo="quella cosa verde"),
+    ])
+    await db_session.flush()
+
+    risposta = await logged_client.patch(
+        f"/api/v1/shopping-list/{tolta.id}", json={"status": "pending"}
+    )
+
+    assert risposta.status_code == 200
+    assert risposta.json()["status"] == "pending"
+
+
+async def test_solo_il_ritorno_da_archiviata_e_controllato(
+    logged_client, db_session, anagrafica_s18
+):
+    """Spuntare, togliere la spunta e riaprire una voce sistemata restano come prima,
+    anche con due voci dello stesso ingrediente già in lista (una storia di prima di
+    S18): il controllo è dell'«Annulla», non di ogni PATCH."""
+    prima = _voce_in_lista(anagrafica_s18["latte"], ShoppingStatus.PENDING)
+    seconda = _voce_in_lista(anagrafica_s18["latte"], ShoppingStatus.PENDING, testo="latte intero")
+    sistemata = _voce_in_lista(anagrafica_s18["latte"], ShoppingStatus.DONE, testo="latte uht")
+    db_session.add_all([prima, seconda, sistemata])
+    await db_session.flush()
+
+    spunta = await logged_client.patch(
+        f"/api/v1/shopping-list/{prima.id}", json={"status": "checked"}
+    )
+    assert spunta.status_code == 200
+    togli_spunta = await logged_client.patch(
+        f"/api/v1/shopping-list/{prima.id}", json={"status": "pending"}
+    )
+    assert togli_spunta.status_code == 200
+    riapri = await logged_client.patch(
+        f"/api/v1/shopping-list/{sistemata.id}", json={"status": "pending"}
+    )
+    assert riapri.status_code == 200

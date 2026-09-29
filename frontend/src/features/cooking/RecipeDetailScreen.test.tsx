@@ -181,12 +181,35 @@ describe("RecipeDetailScreen", () => {
     );
   });
 
-  it("un fallimento nel caricare la ricetta lo dice, non resta a caricare per sempre", async () => {
+  it("un fallimento nel caricare la ricetta lo dice, non resta a caricare per sempre, e offre ancora «Riprova»", async () => {
     // Confondere "carico" con "fallito" lascerebbe lo schermo bloccato su "Carico…"
-    // in eterno: l'utente non saprebbe mai che non arriverà nulla.
+    // in eterno: l'utente non saprebbe mai che non arriverà nulla. Un errore che non è
+    // un 404 non è «la ricetta non c'è più»: «Riprova» resta, il ricettario no.
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 500 })));
     renderScreen();
-    expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Non sono riuscito a caricare questa ricetta. Riprova."
+    );
+    expect(screen.getByRole("button", { name: "Riprova" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Torna al ricettario" })).toBeNull();
+  });
+
+  it("una ricetta che non c'è più lo dice, e riporta al ricettario invece di offrire «Riprova»", async () => {
+    // un link vecchio, o una ricetta rifatta dall'import: riprovare non potrebbe riuscire
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) =>
+        Promise.resolve(
+          String(url).includes("/pantry")
+            ? new Response("[]", { status: 200 })
+            : new Response(JSON.stringify({ detail: "ricetta inesistente" }), { status: 404 })
+        )
+      )
+    );
+    renderScreen();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Questa ricetta non c'è più.");
+    expect(screen.getByRole("link", { name: "Torna al ricettario" })).toHaveAttribute("href", "/ricette");
+    expect(screen.queryByRole("button", { name: "Riprova" })).toBeNull();
   });
 
   it("un fallimento nel caricare la dispensa non apre un foglio di cottura vuoto e muto", async () => {

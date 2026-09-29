@@ -22,10 +22,16 @@ export function OptionList({
   return (
     // un listbox contiene opzioni e basta: niente `<ul>/<li>` in mezzo, che uno screen
     // reader leggerebbe come un elenco di voci e non come una scelta (dal giro di T3)
+    // L'elenco scorre da sé, alto al più 18rem o il 45% della finestra *dinamica*: sotto
+    // la barra appiccicata della lista, su uno schermo basso con la tastiera aperta, gli
+    // ultimi suggerimenti chiedevano di scorrere la pagina (T3 Consegna 2, «Restano
+    // aperti»). `dvh` segue la finestra vera, che la tastiera accorcia; `overscroll-contain`
+    // tiene lo scorrimento dentro l'elenco quando arriva in fondo. `overflow-y-auto` taglia
+    // gli angoli come faceva `overflow-hidden`
     <div
       role="listbox"
       aria-label={fieldLabel ? `Suggerimenti: ${fieldLabel}` : undefined}
-      className="flex flex-col overflow-hidden rounded-card bg-card"
+      className="flex max-h-[min(18rem,45dvh)] flex-col overflow-y-auto overscroll-contain rounded-card bg-card"
     >
       {options.map((ingredient) => {
         const categoryId = `${baseId}-${ingredient.id}`;

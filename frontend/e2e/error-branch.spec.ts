@@ -17,9 +17,12 @@ import { test, expect } from "@playwright/test";
  * guardia non può avere: il bundle di produzione (React minificato), il fetch del
  * browser con il cookie di sessione vero, e un errore che arriva davvero dalla rete
  * — attraverso il proxy /api/ di Nginx e il backend — invece di essere inventato da
- * uno stub. Per questo la richiesta viene deviata su un percorso API inesistente con
- * `continue` e non falsificata con `fulfill`: così la risposta d'errore la produce
- * il server, e la catena che la porta sullo schermo è quella intera.
+ * uno stub. Per questo la richiesta viene deviata con `continue`, non falsificata con
+ * `fulfill`: così la risposta d'errore la produce il server, e la catena che la porta
+ * sullo schermo è quella intera. La deviazione porta a `/api/v1/auth/login`, una rotta
+ * che accetta solo `POST`: un `GET` lì dà un 405 vero del server, senza bisogno di un
+ * percorso inesistente — che dal 2026-09-29 sarebbe un 404, e un 404 non si ritenta più
+ * (Parte X), quindi non proverebbe la politica dei ritentativi che questo test guarda.
  */
 
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
@@ -41,11 +44,14 @@ test("un errore del server diventa un messaggio leggibile, non un «Carico…» 
   // si proverebbe il ramo sbagliato, cioè la schermata di accesso
   await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
 
-  // Un 404 dal backend, non un 401: il 401 è una sessione scaduta e riporta
-  // all'accesso per disegno, mentre qualunque altro errore è il caso che deve
-  // diventare un messaggio. La deviazione resta attiva anche sui ritentativi.
+  // Un errore del backend che non è né un 401 né un 404. Il 401 è una sessione scaduta
+  // e riporta all'accesso per disegno; il 404 dal 2026-09-29 non si ritenta più (la
+  // cosa chiesta non c'è, e richiederla non la fa comparire), quindi con quello questa
+  // prova non vedrebbe la politica dei ritentativi. Un GET su una rotta che accetta solo
+  // POST dà un 405 dal server vero, senza bisogno della sessione. La deviazione resta
+  // attiva anche sui ritentativi.
   await page.route("**/api/v1/shopping-list?**", (route) =>
-    route.continue({ url: new URL("/api/v1/rotta-che-non-esiste", page.url()).toString() })
+    route.continue({ url: new URL("/api/v1/auth/login", page.url()).toString() })
   );
   await page.reload();
 

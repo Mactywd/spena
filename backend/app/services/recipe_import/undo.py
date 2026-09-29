@@ -42,8 +42,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.recipe import CookingEvent, Recipe, RecipeIngredient
 from app.db.models.recipe_import import ImportState, ImportTerm, RecipeImport, TermDecision
 from app.domain.rules import cost_in_scale
+from app.repositories.imports import pending_pages
 from app.repositories.ingredients import delete_ingredient_if_unused, forget_alias
 from app.services.recipe_import.materialize import COOKING_EVENTS_KEY
+from app.services.recipe_import.terms import count_pending_keys
 
 
 @dataclass(frozen=True)
@@ -125,10 +127,11 @@ async def _hand_over_creation(session: AsyncSession, ingredient_id: uuid.UUID) -
 async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     """Rimette il mondo come era prima che quella decisione fosse presa.
 
-    Quattro effetti, in quest'ordine: le pagine e le ricette, l'alias, l'ingrediente
-    (solo se il termine ne possiede la cancellazione, `created_ingredient`), il termine. Nessuno rifiuta: le ricette già
-    cucinate si rifanno come le altre, perché le loro cotture aspettano nel `payload`
-    (vedi la docstring del modulo).
+    Quattro effetti, in quest'ordine: le pagine e le ricette, il termine (col suo
+    `occurrences` ricontato), l'alias, l'ingrediente (solo se il termine ne possiede la
+    cancellazione, `created_ingredient`). Nessuno rifiuta: le ricette già cucinate si
+    rifanno come le altre, perché le loro cotture aspettano nel `payload` (vedi la
+    docstring del modulo).
     """
     pages = await _pages_with(session, term, ImportState.IMPORTED)
     adopted = await _pages_with(session, term, ImportState.ADOPTED)
@@ -179,6 +182,15 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     term.decided_at = None
     term.created_ingredient = None
     await session.flush()
+
+    # `occurrences` si ricalcolava solo a ogni scarico (`sync_terms`): le pagine appena
+    # rimesse in coda restavano fuori dal conto, e la coda diceva «1 ricetta in attesa»
+    # sopra due titoli (T3, esito del giro). Si riconta il termine annullato, e solo
+    # lui, con la funzione di `sync_terms`, dopo il `flush` che ha scritto le pagine
+    # tornate `pending`. Gli altri termini di quelle pagine si riallineano al prossimo
+    # scarico, come prima.
+    counted = count_pending_keys(await pending_pages(session, term.source))
+    term.occurrences = counted.occurrences.get(term.term_key, 0)
 
     if ingredient_id is not None:
         alias_forgotten = await forget_alias(session, ingredient_id, term.display_name)

@@ -103,6 +103,19 @@ async def add_item(
     return AddedItem(item, added=True)
 
 
+class AlreadyListed(Exception):
+    """Rimettere in lista una voce tolta farebbe un doppione: il suo ingrediente è già
+    da comprare, o nel carrello, in un'altra voce (T3 Consegna 2, l'«Annulla» della ✕).
+
+    `existing` è quella voce: la stessa che S18 restituisce alla POST con `added`
+    falso.
+    """
+
+    def __init__(self, existing: ShoppingListItem):
+        self.existing = existing
+        super().__init__(f"l'ingrediente {existing.ingredient_id} è già in lista")
+
+
 async def patch_item(
     session: AsyncSession,
     item_id: uuid.UUID,
@@ -113,6 +126,22 @@ async def patch_item(
     item = await session.get(ShoppingListItem, item_id)
     if item is None:
         raise KeyError(item_id)
+    # L'«Annulla» della ✕ riporta una voce archiviata in lista. Se nel frattempo la
+    # stessa cosa ci è tornata dalla barra, rimetterla farebbe il doppione che S18 esiste
+    # per evitare. Il controllo sta qui e non nel client, che lo guarda nella sua cache:
+    # fra la POST della barra e il refetch la cache non lo sa ancora. Conta l'ingrediente
+    # che la voce avrebbe dopo questa PATCH, e si guarda prima di scrivere niente. Una
+    # voce libera non è mai un doppione: senza ingrediente non c'è un'identità (S18).
+    # Le altre PATCH non si toccano: il controllo è del ritorno da `archived`.
+    target_ingredient = ingredient_id if ingredient_id is not None else item.ingredient_id
+    if (
+        item.status == ShoppingStatus.ARCHIVED
+        and status in (ShoppingStatus.PENDING, ShoppingStatus.CHECKED)
+        and target_ingredient is not None
+    ):
+        existing = await active_item_for(session, target_ingredient)
+        if existing is not None:
+            raise AlreadyListed(existing)
     if ingredient_id is not None:
         item.ingredient_id = ingredient_id
     if status is not None:

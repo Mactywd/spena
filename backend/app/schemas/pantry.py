@@ -32,14 +32,14 @@ class PantryItemCreate(BaseModel):
     note: str | None = Field(default=None, max_length=300)
 
 
+# Niente `fill_percent`: dal 2026-09-29 non si scrive più (D1 in docs/prossimi-passi.md).
+# Il modello non vieta i campi in più, quindi chi lo mandasse lo vedrebbe ignorato: da
+# solo la rotta risponde 400 «niente da modificare».
 class PantryItemPatch(BaseModel):
     status: PantryStatus | None = None
     # annullabile, e non `bool = False`: «non l'ho detto» e «mettilo a falso» sono
     # due richieste diverse, e la seconda è l'annulla della X rossa
     archived: bool | None = None
-    # dove il dito ha lasciato il cursore. Lo stato non si manda: lo ricava il
-    # dominio, ed è l'unico modo perché i due non possano contraddirsi
-    fill_percent: int | None = Field(default=None, ge=0, le=100)
     # `None` qui è una richiesta, non un'assenza: «cancella la scadenza». Per gli
     # altri campi l'annullabile bastava a distinguere le due cose (vedi `archived`);
     # per una data no, perché il valore nullo è esso stesso un comando. Chi legge

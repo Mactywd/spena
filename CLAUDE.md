@@ -75,7 +75,10 @@ abandoned. `pantry_items.fill_percent` (0–100, nullable) is not an exception: 
 a slider *position* — no unit, nothing to convert — and since T3's first screen
 (2026-09-28) no client writes it any more: the pantry's three notches send `status`
 directly, and `set_status` clears the column. It stays in the schema, nullable, with
-its `PATCH` path (`set_fill`) still accepted by the API and used by nobody. The
+its CHECK and its place in `PantryItemOut`; the `PATCH` path that wrote it
+(`set_fill`) was removed on 2026-09-29, so nothing writes it now, and a `PATCH`
+carrying only `fill_percent` is answered 400. `status_for_fill` stays in `rules.py`
+with its tests and no production caller. The
 three statuses stay the only truth the rest of the app reasons on. The reasoning is
 in the note under D1 of `docs/prossimi-passi.md`; read it before citing this column
 as a precedent.

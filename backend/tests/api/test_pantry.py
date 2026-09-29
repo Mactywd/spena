@@ -1,4 +1,3 @@
-import pytest
 import pytest_asyncio
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
@@ -231,38 +230,28 @@ async def test_disarchiviare_una_voce_inesistente_e_404(logged_client):
     assert risposta.status_code == 404
 
 
-@pytest.mark.parametrize(
-    "posizione, stato_atteso",
-    [(0, "finished"), (15, "low"), (30, "low"), (31, "available"), (100, "available")],
-)
-async def test_la_posizione_arriva_con_lo_stato_gia_ricavato(
-    logged_client, db_session, dispensa, posizione, stato_atteso
-):
-    """Il client manda dove ha lasciato il dito; lo stato lo decide il dominio.
-
-    È la riga che tiene la regola dalla parte giusta: se lo stato lo calcolasse il
-    frontend, due schermi potrebbero non essere d'accordo su cosa vuol dire «quasi
-    finito», e la cucinabilità delle ricette dipenderebbe da quale dei due ha
-    scritto per ultimo.
-    """
+async def test_la_posizione_non_si_scrive_piu(logged_client, db_session, dal_database, dispensa):
+    """`set_fill` è stata tolta il 2026-09-29: dalla T3 Consegna 1 le tacche mandano lo
+    stato, e una via di scrittura senza chiamanti è una porta che nessuno sorveglia (D1
+    in docs/prossimi-passi.md). `PantryItemPatch` non vieta i campi in più, quindi
+    `fill_percent` si ignora: da solo non resta niente da modificare, insieme allo stato
+    vale solo lo stato. La colonna resta, e la risposta la porta ancora."""
     item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
     db_session.add(item)
     await db_session.flush()
 
-    risposta = await logged_client.patch(
-        f"/api/v1/pantry/{item.id}", json={"fill_percent": posizione}
+    sola = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"fill_percent": 10})
+    assert sola.status_code == 400
+    assert sola.json()["detail"] == "niente da modificare"
+    assert (await dal_database(PantryItem, item.id)).status == "available"
+
+    insieme = await logged_client.patch(
+        f"/api/v1/pantry/{item.id}", json={"fill_percent": 10, "status": "low"}
     )
-    assert risposta.status_code == 200
-    assert risposta.json()["fill_percent"] == posizione
-    assert risposta.json()["status"] == stato_atteso
-
-
-async def test_una_posizione_fuori_scala_e_422(logged_client, db_session, dispensa):
-    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
-    db_session.add(item)
-    await db_session.flush()
-    risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"fill_percent": 101})
-    assert risposta.status_code == 422
+    assert insieme.status_code == 200
+    assert insieme.json()["status"] == "low"
+    assert insieme.json()["fill_percent"] is None
+    assert (await dal_database(PantryItem, item.id)).fill_percent is None
 
 
 async def test_cambiare_lo_stato_a_mano_azzera_la_posizione(
@@ -274,10 +263,12 @@ async def test_cambiare_lo_stato_a_mano_azzera_la_posizione(
     posizione restasse a 80 mentre lo stato è «finito», la dispensa mostrerebbe un
     barattolo pieno per qualcosa che non c'è più. Sconosciuta è la verità.
     """
-    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE)
+    # una voce toccata prima del 2026-09-28 ha ancora la colonna piena
+    item = PantryItem(
+        ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.AVAILABLE, fill_percent=80
+    )
     db_session.add(item)
     await db_session.flush()
-    await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"fill_percent": 80})
 
     risposta = await logged_client.patch(f"/api/v1/pantry/{item.id}", json={"status": "finished"})
     assert risposta.json()["status"] == "finished"

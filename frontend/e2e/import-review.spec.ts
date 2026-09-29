@@ -164,7 +164,10 @@ test("le decisioni dell'AI si rivedono a 375px, e annullarne una dice cosa ha di
       has: page.getByText(created.name, { exact: true }),
     });
     await expect(scheda).toBeVisible();
-    await expect(scheda.getByText("1 ricetta in attesa", { exact: true })).toBeVisible();
+    // 0 e non 1: l'annullamento riconta le ricette in attesa del termine dalle pagine in
+    // coda, e `backend/tests/e2e_import_review.py` semina il termine senza nessuna
+    // pagina d'import. È la stessa cosa che dice «Nessuna ricetta è tornata in coda»
+    await expect(scheda.getByText("0 ricette in attesa", { exact: true })).toBeVisible();
 
     // e l'ingrediente è sparito davvero, non solo dalla frase
     expect(await cerca()).not.toContain(created.name.toLowerCase());

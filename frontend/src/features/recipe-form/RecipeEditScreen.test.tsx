@@ -219,6 +219,23 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     expect(screen.getByRole("button", { name: "Riprova" })).toBeInTheDocument();
   }, 10000);
 
+  it("una ricetta che non c'è più lo dice subito, e riporta al ricettario", async () => {
+    stubFetch((path) =>
+      path.includes("/recipes/r1") ? [{ detail: "ricetta inesistente" }, 404] : undefined
+    );
+    // `renderEdit` usa il predicato vero dell'app: un 404 ritentato arriverebbe dopo 3 s,
+    // fuori dal secondo che `findBy` aspetta
+    renderEdit();
+
+    expect(await screen.findByText("Questa ricetta non c'è più.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Torna al ricettario" })).toHaveAttribute("href", "/ricette");
+    expect(screen.queryByRole("button", { name: "Riprova" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Salva le modifiche" })).toBeNull();
+    // e anche il ritorno in alto porta al ricettario, non alla ricetta che non c'è
+    expect(screen.getByRole("link", { name: "Ricette" })).toHaveAttribute("href", "/ricette");
+    expect(screen.queryByRole("link", { name: "Ricetta" })).toBeNull();
+  });
+
   it("una ricetta eliminata non si modifica: dice dove ripristinarla", async () => {
     stubFetch(() => [{ ...DETAIL, archived_at: "2026-09-28T10:00:00Z" }, 200]);
     renderEdit();

@@ -48,10 +48,11 @@ class PantryItem(UUIDMixin, Base):
         UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(20))
-    # Dove sta il cursore a tre zone, 0–100. È un'indicazione a occhio — utile in
-    # negozio, e per seguire qualcosa che si consuma senza mai finire — non una
+    # Dove stava il cursore a tre zone, 0–100. Era un'indicazione a occhio, non una
     # quantità: niente unità, niente conversioni, nessun conto la usa. Lo stato qui
-    # sopra resta la verità, e `status_for_fill` è ciò che li tiene d'accordo.
+    # sopra resta la verità. Dal 2026-09-28 le tacche mandano lo stato e `set_status`
+    # azzera la colonna; dal 2026-09-29 nessuna rotta la scrive più (D1 in
+    # docs/prossimi-passi.md). Resta per le voci toccate prima, e per `PantryItemOut`.
     # NULL per chi non l'ha mai mosso.
     fill_percent: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     note: Mapped[str | None] = mapped_column(String(300), nullable=True)

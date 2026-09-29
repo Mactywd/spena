@@ -11,12 +11,13 @@ tranne quando quel fatto punterebbe a una voce non alimentare, che `create_recip
 rifiuterebbe più tardi: lì resta comunque `PENDING`, per la coda umana.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
+from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, RecipeImport, TermDecision
 from app.domain.rules import IngredientKind
 from app.repositories.imports import pending_pages, terms_by_key
 from app.services.ingredient_match import match_name
@@ -29,18 +30,27 @@ class TermsSynced:
     pending: int
 
 
-async def sync_terms(session: AsyncSession, source: str = GIALLOZAFFERANO) -> TermsSynced:
-    """Allinea il dizionario alle pagine in attesa.
+@dataclass(frozen=True)
+class PendingKeys:
+    """Quel che le pagine in attesa dicono dei loro termini."""
 
-    `occurrences` conta le **ricette** in attesa che usano il termine, non le righe:
-    la frolla e la crema vogliono entrambe lo zucchero a velo, ma la ricetta
-    bloccata è una. Si ricalcola a ogni passaggio e non si incrementa mai: un
-    contatore incrementato divergerebbe al primo ri-scarico, e un ordinamento della
-    coda basato su un numero sbagliato è un difetto che nessuno nota.
+    # le ricette in attesa per chiave: una ricetta conta una volta, anche se nomina il
+    # termine in due righe
+    occurrences: dict[str, int]
+    # il primo nome letto per ogni chiave, già tagliato alla colonna
+    display_names: dict[str, str]
+
+
+def count_pending_keys(pages: Iterable[RecipeImport]) -> PendingKeys:
+    """`occurrences` conta le **ricette** in attesa che usano il termine, non le righe:
+    la frolla e la crema vogliono entrambe lo zucchero a velo, ma la ricetta bloccata è
+    una. Una funzione sola per `sync_terms` e per `undo_decision`: due conteggi scritti
+    due volte divergono, e la coda direbbe numeri diversi a seconda di chi l'ha
+    toccata per ultimo.
     """
     occurrences: dict[str, int] = {}
     display_names: dict[str, str] = {}
-    for page in await pending_pages(session, source):
+    for page in pages:
         keys_here = set()
         for line in page.payload.get("ingredients") or []:
             key = line.get("key")
@@ -50,6 +60,20 @@ async def sync_terms(session: AsyncSession, source: str = GIALLOZAFFERANO) -> Te
             display_names.setdefault(key, str(line.get("name") or key)[:200])
         for key in keys_here:
             occurrences[key] = occurrences.get(key, 0) + 1
+    return PendingKeys(occurrences=occurrences, display_names=display_names)
+
+
+async def sync_terms(session: AsyncSession, source: str = GIALLOZAFFERANO) -> TermsSynced:
+    """Allinea il dizionario alle pagine in attesa.
+
+    `occurrences` (vedi `count_pending_keys`) si ricalcola a ogni passaggio e non si
+    incrementa mai: un contatore incrementato divergerebbe al primo ri-scarico, e un
+    ordinamento della coda basato su un numero sbagliato è un difetto che nessuno nota.
+    L'altro posto che lo ricalcola è `undo_decision`, per il termine annullato.
+    """
+    counted = count_pending_keys(await pending_pages(session, source))
+    occurrences = counted.occurrences
+    display_names = counted.display_names
 
     existing = await terms_by_key(session, source)
 

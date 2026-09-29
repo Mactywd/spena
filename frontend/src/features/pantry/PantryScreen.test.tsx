@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
@@ -102,9 +102,15 @@ describe("PantryScreen", () => {
     await waitFor(() =>
       expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-disabled", "true")
     );
-    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
-    // e un secondo tocco durante il volo non parte
+    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toHaveAttribute("aria-disabled", "true");
+    // e un secondo tocco durante il volo non parte, né dalla tacca né dalla ✕ (Button, `busy`).
+    // `await act` dopo ogni tocco: `mutate` chiama `mutationFn` solo dopo `onMutate` (TanStack
+    // Query 5), quindi senza aspettare il microtask l'asserzione sotto passerebbe anche con
+    // la guardia disattivata — non avrebbe ancora visto la seconda `fetch`.
     fireEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    await act(async () => {});
+    fireEvent.click(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" }));
+    await act(async () => {});
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     const other = screen.getByText("Pesca").closest("li")!;
     expect(within(other).getByRole("radio", { name: "Disponibile" })).not.toHaveAttribute("aria-disabled");
@@ -466,8 +472,13 @@ describe("PantryScreen", () => {
     // deve restare bloccata
     const row = screen.getByText("Total 0%").closest("li")!;
     expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-disabled", "true");
-    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toHaveAttribute("aria-disabled", "true");
+    // e un secondo tocco sulla ✕ stessa, ancora in volo, non ne parte un altro (`await act`:
+    // vedi il commento sull'altro test di questo file)
     fireEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    await act(async () => {});
+    fireEvent.click(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" }));
+    await act(async () => {});
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     releaseGet(new Response(JSON.stringify(ITEMS.filter((i) => i.id !== "p1")), { status: 200 }));
     await waitFor(() => expect(screen.queryByText("Total 0%")).toBeNull());
@@ -521,7 +532,9 @@ describe("PantryScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
     const row = screen.getByRole("link", { name: "mela" }).closest("li")!;
     expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
-    expect(within(row).getByRole("button", { name: "In lista" })).not.toBeDisabled();
+    // `not.toBeDisabled` passerebbe sempre, ora che il pulsante si spegne con
+    // `aria-disabled`: si guarda l'attributo che conta
+    expect(within(row).getByRole("button", { name: "In lista" })).not.toHaveAttribute("aria-disabled");
   });
 
   it("se era già in lista, l'avviso lo dice", async () => {

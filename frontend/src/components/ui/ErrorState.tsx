@@ -20,7 +20,8 @@ export function ErrorState({
         <IconAlertCircle aria-hidden="true" className="mt-0.5 size-5 shrink-0" stroke={1.8} />
         {message}
       </p>
-      <Button icon={IconRefresh} onClick={onRetry} disabled={retrying}>
+      {/* `busy` e non `disabled`: chi ha premuto «Riprova» da tastiera tiene il fuoco */}
+      <Button icon={IconRefresh} onClick={onRetry} busy={retrying}>
         {retrying ? "Riprovo…" : "Riprova"}
       </Button>
     </div>

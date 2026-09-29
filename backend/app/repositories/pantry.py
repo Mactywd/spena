@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload
 
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
-from app.domain.rules import Availability, PantryStatus, availability_of, status_for_fill
+from app.domain.rules import Availability, PantryStatus, availability_of
 
 
 class ProductIngredientMismatch(Exception):
@@ -123,22 +123,6 @@ async def set_status(session: AsyncSession, item_id: uuid.UUID, status: PantrySt
     # non c'è più. Sconosciuta è la verità. Dal 2026-09-28 (T3 Consegna 1) è questa la
     # via di ogni tocco sulle tacche: una voce toccata da allora ha la colonna vuota
     item.fill_percent = None
-    item.status_changed_at = datetime.now(UTC)
-    await session.flush()
-    return item
-
-
-async def set_fill(session: AsyncSession, item_id: uuid.UUID, fill_percent: int) -> PantryItem:
-    """La posizione e lo stato cambiano insieme, o uno dei due mente.
-
-    Lo stato non arriva dal client: lo ricava `status_for_fill`, che è dove la
-    regola vive. Vedi il commento su `LOW_MAX_FILL`.
-    """
-    item = await session.get(PantryItem, item_id)
-    if item is None:
-        raise KeyError(item_id)
-    item.fill_percent = fill_percent
-    item.status = status_for_fill(fill_percent)
     item.status_changed_at = datetime.now(UTC)
     await session.flush()
     return item

@@ -5,6 +5,7 @@ import { ListRow } from "./ListRow";
 import { ShoppingEntryCard } from "./ShoppingEntryCard";
 import { groupForDisplay } from "./listView";
 import { addShoppingItem, fetchShoppingList, patchShoppingItem } from "./api";
+import { ApiError } from "../../api/client";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorState } from "../../components/ui/ErrorState";
 import { Screen } from "../../components/ui/Screen";
@@ -67,7 +68,9 @@ export function ShoppingListScreen() {
   // con la PATCH di sempre (spec §4.2).
   function undoRemove(item: ShoppingItem) {
     // nei 6 secondi dell'avviso la stessa cosa può essere stata riscritta dalla barra:
-    // rimettere anche questa farebbe il doppione che S18 esiste per evitare
+    // rimettere anche questa farebbe il doppione che S18 esiste per evitare. La cache è
+    // la via veloce, non la difesa: fra la POST della barra e il refetch non lo sa
+    // ancora, e allora risponde il server, con un 409 (sotto)
     const current = queryClient.getQueryData<ShoppingItem[]>(LIST_KEY) ?? [];
     const relisted =
       item.ingredient_id !== null &&
@@ -78,12 +81,20 @@ export function ShoppingListScreen() {
     }
     patchShoppingItem(item.id, { status: item.status }).then(
       () => queryClient.invalidateQueries({ queryKey: LIST_KEY }),
-      // la voce è archiviata davvero: perderla qui sarebbe il vicolo cieco
-      () =>
+      (error: unknown) => {
+        // la stessa notizia della barra, non un guasto: niente «Riprova», che
+        // rifallirebbe. Si rilegge la lista, così la voce che c'è si vede
+        if (error instanceof ApiError && error.status === 409) {
+          notice({ text: "Era già in lista." });
+          void queryClient.invalidateQueries({ queryKey: LIST_KEY });
+          return;
+        }
+        // la voce è archiviata davvero: perderla qui sarebbe il vicolo cieco
         notice({
           text: `Non sono riuscito a rimettere ${item.raw_text} in lista.`,
           action: { label: "Riprova", onClick: () => undoRemove(item) },
-        })
+        });
+      }
     );
   }
 

@@ -9,7 +9,11 @@ export type ButtonShape = "pill" | "block" | "icon" | "square";
 // `min-h-11` è la regola di casa sui bersagli da pollice: 44px è il minimo che si
 // tocca camminando, con una mano, senza sbagliare la riga. Vive qui una volta invece
 // che in trenta posti dove dimenticarlo è gratis.
-const BASE = "inline-flex min-h-11 items-center justify-center gap-2 font-medium transition-colors disabled:opacity-40";
+// `aria-disabled:opacity-40` accanto a `disabled:opacity-40`: un pulsante in volo
+// (`busy` in Button) si spegne con `aria-disabled` per tenere il fuoco, e deve
+// sembrare spento come uno spento davvero
+const BASE =
+  "inline-flex min-h-11 items-center justify-center gap-2 font-medium transition-colors disabled:opacity-40 aria-disabled:opacity-40";
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: "bg-brand text-on-brand",

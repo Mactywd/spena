@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import type { RecipeDraft } from "../src/domain/types.ts";
+import type { Ingredient, RecipeDraft } from "../src/domain/types.ts";
 import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
 
 /**
@@ -1002,11 +1002,20 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
   } finally {
     // prima che i cookie spariscano (in fondo a questa funzione, per la schermata
     // d'accesso): dopo, una PATCH autenticata non arriverebbe da nessuna parte e la
-    // voce resterebbe, crescendo la dispensa a ogni esecuzione su uno stack riusato
+    // voce resterebbe, crescendo la dispensa a ogni esecuzione su uno stack riusato.
+    // `expect.soft` e non un'asserzione: un `finally` che lancia nasconderebbe l'errore
+    // vero del `try`, ma la prova risulta comunque fallita, così una voce rimasta non
+    // passa per un successo silenzioso (come la pulizia della barra della lista, in
+    // fondo al file)
     try {
-      await page.request.patch(`/api/v1/pantry/${riempimentoId}`, { data: { archived: true } });
+      const risposta = await page.request.patch(`/api/v1/pantry/${riempimentoId}`, {
+        data: { archived: true },
+      });
+      expect.soft(risposta.ok(), `pulizia: la voce ${riempimentoId} non si è archiviata`).toBe(true);
     } catch (guasto) {
-      console.warn(`pulizia: non sono riuscito ad archiviare la voce ${riempimentoId}`, guasto);
+      expect
+        .soft(false, `pulizia: non sono riuscito ad archiviare la voce ${riempimentoId} (${guasto})`)
+        .toBe(true);
     }
   }
 
@@ -1068,19 +1077,29 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
     await page.waitForLoadState("networkidle");
     await misuraFermo("scheda dell'ingrediente");
   } finally {
-    // best-effort e senza asserzioni, come in `anagrafica.spec.ts`: un `finally` che
-    // solleva nasconderebbe l'errore vero del `try`. Prima la voce, poi il prodotto
+    // Un `finally` che lancia nasconderebbe l'errore vero del `try`: ogni passo resta un
+    // `expect.soft`, che non lancia e non salta il passo dopo, ma segna la prova fallita
+    // — una voce o un prodotto rimasti non passano per un successo silenzioso. Prima la
+    // voce, poi il prodotto
     if (voceId) {
       try {
-        await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+        const risposta = await page.request.patch(`/api/v1/pantry/${voceId}`, {
+          data: { archived: true },
+        });
+        expect.soft(risposta.ok(), `pulizia: la voce ${voceId} non si è archiviata`).toBe(true);
       } catch (guasto) {
-        console.warn(`pulizia: non sono riuscito ad archiviare la voce ${voceId}`, guasto);
+        expect
+          .soft(false, `pulizia: non sono riuscito ad archiviare la voce ${voceId} (${guasto})`)
+          .toBe(true);
       }
     }
     try {
-      await page.request.delete(`/api/v1/products/${prodottoId}`);
+      const risposta = await page.request.delete(`/api/v1/products/${prodottoId}`);
+      expect.soft(risposta.ok(), `pulizia: il prodotto ${prodottoId} non si è eliminato`).toBe(true);
     } catch (guasto) {
-      console.warn(`pulizia: non sono riuscito a eliminare il prodotto ${prodottoId}`, guasto);
+      expect
+        .soft(false, `pulizia: non sono riuscito a eliminare il prodotto ${prodottoId} (${guasto})`)
+        .toBe(true);
     }
   }
 
@@ -1442,6 +1461,102 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
       } catch (guasto) {
         expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
       }
+    }
+  }
+});
+
+test("i suggerimenti sotto la barra della lista scorrono nel loro elenco, dentro la finestra", async ({
+  page,
+}) => {
+  // T3 Consegna 2, «Restano aperti»: l'elenco non aveva un'altezza massima, e su uno
+  // schermo basso con la tastiera aperta gli ultimi suggerimenti chiedevano di scorrere
+  // la pagina. Dodici suggerimenti li dà `page.route`: l'anagrafica del seme non ne ha
+  // dodici che somiglino alla stessa parola, e lo schermo, il componente e il CSS sono
+  // quelli veri. Niente si scrive, quindi niente da pulire.
+  //
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: senza quest'attesa la
+  // navigazione qui sotto può partire prima che il cookie di sessione sia scritto
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  const suggerimenti = Array.from({ length: 12 }, (_, i) => ({
+    id: `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+    name: `prova suggerimento ${i + 1}`,
+    display_name: `Prova suggerimento ${i + 1}`,
+    category: "altro",
+    kind: "food" as const,
+  })) satisfies Ingredient[];
+  await page.route("**/api/v1/ingredients/search?**", (route) =>
+    route.fulfill({ json: suggerimenti })
+  );
+
+  // 375×812 è un telefono con la tastiera chiusa; 375×450 uno con la tastiera aperta,
+  // che accorcia la finestra: `45dvh` deve seguirla
+  for (const altezza of [812, 450]) {
+    await page.setViewportSize({ width: 375, height: altezza });
+    await page.goto("/lista");
+    await page.getByLabel("Aggiungi alla lista", { exact: true }).fill("prova");
+    const elenco = page.getByRole("listbox", { name: "Suggerimenti: Aggiungi alla lista" });
+    await expect(elenco.getByRole("option")).toHaveCount(12);
+
+    const scatola = await elenco.boundingBox();
+    expect(
+      scatola!.y + scatola!.height,
+      `a 375×${altezza} l'elenco dei suggerimenti esce dalla finestra`
+    ).toBeLessThanOrEqual(altezza);
+    expect(
+      await elenco.evaluate((el) => el.scrollHeight - el.clientHeight),
+      `a 375×${altezza} l'elenco non scorre da sé`
+    ).toBeGreaterThan(0);
+
+    // l'ultimo si raggiunge scorrendo l'elenco
+    await elenco.hover();
+    await page.mouse.wheel(0, 2000);
+    await expect.poll(() => elenco.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    await expect(elenco.getByRole("option", { name: "Prova suggerimento 12" })).toBeInViewport();
+  }
+});
+
+test("dopo una ✕ fallita in lista il fuoco resta sulla ✕", async ({ page }) => {
+  // T3 Consegna 2, «Restano aperti»: la ✕ si spegneva con `disabled` mentre la PATCH era
+  // in volo, e il browser toglie il fuoco a un pulsante che diventa `disabled` — chi
+  // usa la tastiera lo ritrovava sulla pagina. jsdom non lo fa, quindi lo vede solo un
+  // browser. La PATCH la fa fallire `page.route`, dopo un'attesa che lascia vedere la ✕
+  // in volo; la voce la crea l'API e la toglie il `finally` (`page.request` non passa
+  // da `page.route`).
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  const creata = await page.request.post("/api/v1/shopping-list", {
+    data: { raw_text: "prova fuoco", ingredient_id: null },
+  });
+  expect(creata.ok()).toBe(true);
+  const id = ((await creata.json()) as { id: string }).id;
+  const rotta = `**/api/v1/shopping-list/${id}`;
+  try {
+    await page.route(rotta, async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return route.fulfill({ status: 500, json: { detail: "guasto di prova" } });
+    });
+    await page.goto("/lista");
+    const togli = page.getByRole("button", { name: "Togli prova fuoco dalla lista" });
+    await togli.focus();
+    await page.keyboard.press("Enter");
+
+    // in volo: spenta, ma col fuoco
+    await expect(togli).toHaveAttribute("aria-disabled", "true");
+    await expect(togli).toBeFocused();
+    // fallita: il messaggio nella riga, la ✕ di nuovo attiva, e il fuoco ancora lì
+    const riga = page.getByRole("listitem").filter({ has: togli });
+    await expect(riga.getByRole("alert")).toBeVisible();
+    await expect(togli).not.toHaveAttribute("aria-disabled", "true");
+    await expect(togli).toBeFocused();
+  } finally {
+    await page.unroute(rotta);
+    try {
+      const risposta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+        data: { status: "archived" },
+      });
+      expect.soft(risposta.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+    } catch (guasto) {
+      expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
     }
   }
 });

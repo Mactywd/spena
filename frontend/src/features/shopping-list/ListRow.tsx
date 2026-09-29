@@ -60,12 +60,14 @@ export function ListRow({
             {hint && <span className="text-xs text-low">{hint}</span>}
           </span>
         </label>
+        {/* `busy` come la casella: con `disabled` il browser toglieva il fuoco alla ✕
+            appena partiva la PATCH, e dopo una ✕ fallita lo si ritrovava sulla pagina */}
         <Button
           variant="ghost"
           icon={IconX}
           label={`Togli ${item.raw_text} dalla lista`}
           onClick={onRemove}
-          disabled={busy}
+          busy={busy}
         />
       </div>
       {failed && (

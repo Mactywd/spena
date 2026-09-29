@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { fetchRecipe, setRecipeArchived, updateRecipeCost } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
+import { ApiError } from "../../api/client";
 import { CookSheet } from "./CookSheet";
 import { ServingsStepper } from "./ServingsStepper";
 import { Alert } from "../../components/ui/Alert";
@@ -101,6 +102,7 @@ export function RecipeDetailScreen() {
 
   const {
     data: recipe,
+    error: recipeError,
     isLoading: isRecipeLoading,
     isError: isRecipeError,
     refetch: refetchRecipe,
@@ -161,6 +163,19 @@ export function RecipeDetailScreen() {
   // un caricamento fallito non è una ricetta vuota: dirlo sarebbe una bugia su
   // cosa serve e cosa si ha
   if (isRecipeError || !recipe) {
+    // una ricetta che non c'è più — un link vecchio, o rifatta dall'import dopo un
+    // annullamento — risponde 404: «Riprova» non potrebbe mai riuscire, e l'uscita è il
+    // ricettario (come la scheda di un ingrediente unito a un altro, IngredientScreen)
+    if (recipeError instanceof ApiError && recipeError.status === 404) {
+      return (
+        <div className="flex flex-col items-start gap-3 p-4">
+          <Alert>Questa ricetta non c'è più.</Alert>
+          <Link to="/ricette" className={buttonClasses("secondary")}>
+            Torna al ricettario
+          </Link>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-start gap-3 p-4">
         <Alert>Non sono riuscito a caricare questa ricetta. Riprova.</Alert>
