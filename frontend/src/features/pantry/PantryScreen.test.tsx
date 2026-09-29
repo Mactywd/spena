@@ -103,8 +103,9 @@ describe("PantryScreen", () => {
       expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-disabled", "true")
     );
     expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toHaveAttribute("aria-disabled", "true");
-    // e un secondo tocco durante il volo non parte
+    // e un secondo tocco durante il volo non parte, né dalla tacca né dalla ✕ (Button, `busy`)
     fireEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" }));
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     const other = screen.getByText("Pesca").closest("li")!;
     expect(within(other).getByRole("radio", { name: "Disponibile" })).not.toHaveAttribute("aria-disabled");
@@ -467,7 +468,9 @@ describe("PantryScreen", () => {
     const row = screen.getByText("Total 0%").closest("li")!;
     expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-disabled", "true");
     expect(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" })).toHaveAttribute("aria-disabled", "true");
+    // e un secondo tocco sulla ✕ stessa, ancora in volo, non ne parte un altro
     fireEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Togli Total 0% dalla dispensa" }));
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     releaseGet(new Response(JSON.stringify(ITEMS.filter((i) => i.id !== "p1")), { status: 200 }));
     await waitFor(() => expect(screen.queryByText("Total 0%")).toBeNull());
