@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -218,8 +218,13 @@ describe("ShoppingListScreen", () => {
     expect(box).toHaveAttribute("aria-disabled", "true");
     const remove = screen.getByRole("button", { name: "Togli pomodoro dalla lista" });
     expect(remove).toHaveAttribute("aria-disabled", "true");
+    // `await act` dopo ogni tocco: `mutate` chiama `mutationFn` solo dopo `onMutate` (TanStack
+    // Query 5), quindi senza aspettare il microtask l'asserzione sotto passerebbe anche con
+    // la guardia disattivata — non avrebbe ancora visto la seconda `fetch`.
     fireEvent.click(box);
+    await act(async () => {});
     fireEvent.click(remove);
+    await act(async () => {});
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     releaseGet(new Response(JSON.stringify(ITEMS.filter((i) => i.id !== "s1")), { status: 200 }));
     await waitFor(() => expect(screen.queryByText("pomodoro")).toBeNull());
@@ -246,10 +251,13 @@ describe("ShoppingListScreen", () => {
     const box = await screen.findByRole("checkbox", { name: "pomodoro" });
     fireEvent.click(box);
     await waitFor(() => expect(box).toHaveAttribute("aria-disabled", "true"));
+    // `await act` dopo ogni tocco: vedi il commento sull'altro test di questo file
     fireEvent.click(box);
+    await act(async () => {});
     const remove = screen.getByRole("button", { name: "Togli pomodoro dalla lista" });
     expect(remove).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(remove);
+    await act(async () => {});
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     release(new Response(JSON.stringify({ ...ITEMS[1], status: "checked" }), { status: 200 }));
   });
