@@ -68,6 +68,13 @@ export function StockingRow({
   // la ✕ ed Esc chiudono il campo: il fuoco torna a «+ scadenza» invece di cadere sul
   // `body` insieme al campo che sparisce
   const refocusExpiry = useRef(false);
+  // «+ scadenza» porta il fuoco nel campo. Non `autoFocus`: la riga rinasce a ogni
+  // pannello aperto o chiuso (decisione 21, il campo resta aperto), e a ogni rinascita il
+  // campo si riprendeva il fuoco — quello di «Annulla» finiva nella data di un'altra voce
+  // invece che sul pulsante che aveva aperto il pannello (misurato nell'e2e). Solo il
+  // tocco lo chiede, e una riga appena nata non l'ha avuto
+  const expiryInput = useRef<HTMLInputElement>(null);
+  const focusExpiryInput = useRef(false);
   const expiryId = useId();
   const name = item.raw_text;
   const expiryOpen = expiry !== undefined;
@@ -97,6 +104,10 @@ export function StockingRow({
     if (!expiryOpen && refocusExpiry.current) {
       refocusExpiry.current = false;
       expiryButton.current?.focus();
+    }
+    if (expiryOpen && focusExpiryInput.current) {
+      focusExpiryInput.current = false;
+      expiryInput.current?.focus();
     }
   }, [expiryOpen]);
 
@@ -164,12 +175,21 @@ export function StockingRow({
         ) : (
           // la voce non abbinata è chiusa: una riga con «Abbina» (dal giro: il blocco
           // aperto occupava una schermata e mezza per voce). Un pulsante da solo: icona
-          // e testo. Il nome della voce nel nome accessibile, dopo i due punti — da solo,
-          // lo `sr-only` sarebbe un secondo testo uguale al nome della riga
+          // e testo. Il nome della voce nel nome accessibile, dopo i due punti. In
+          // `aria-label` e non in uno `sr-only`: lo `sr-only` è posizionato, quindi a
+          // blocco, e Chromium ci mette uno spazio davanti — il nome diventava «Abbina :
+          // X» (misurato nell'e2e; jsdom non lo vede). `Button` con del testo non accetta
+          // `label`, da cui il `<button>` a mano, come «Riprova» qui sotto
           <span data-trigger="match" className="contents">
-            <Button icon={IconLink} onClick={() => onOpen("match")} className="shrink-0">
-              Abbina<span className="sr-only">: {name}</span>
-            </Button>
+            <button
+              type="button"
+              aria-label={`Abbina: ${name}`}
+              onClick={() => onOpen("match")}
+              className={`${buttonClasses("secondary")} shrink-0`}
+            >
+              <IconLink aria-hidden="true" className="size-[1.1em]" stroke={1.8} />
+              Abbina
+            </button>
           </span>
         )}
       </div>
@@ -214,10 +234,10 @@ export function StockingRow({
               Scadenza <span className="sr-only">di {name}</span>
             </label>
             <input
+              ref={expiryInput}
               id={expiryId}
               type="date"
               max={EXPIRY_INPUT_MAX}
-              autoFocus
               value={expiry}
               onChange={(e) => onExpiry(e.target.value)}
               onKeyDown={(e) => {
@@ -244,7 +264,10 @@ export function StockingRow({
         <button
           ref={expiryButton}
           type="button"
-          onClick={() => onExpiry("")}
+          onClick={() => {
+            focusExpiryInput.current = true;
+            onExpiry("");
+          }}
           className="flex min-h-11 items-center gap-1 text-xs font-medium text-ink-faint"
         >
           <IconCalendarPlus aria-hidden="true" className="size-4" stroke={1.8} />

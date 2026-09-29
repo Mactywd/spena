@@ -1175,6 +1175,35 @@ describe("StockingScreen", () => {
       );
     });
 
+    it("un campo della scadenza aperto non ruba il fuoco quando la sua riga rinasce", async () => {
+      // Dall'e2e (Task 8): la riga rinasce aprendo e chiudendo un pannello, e un campo
+      // della scadenza con `autoFocus` si riprendeva il fuoco a ogni rinascita — il
+      // fuoco di «Annulla» finiva nella data di un'altra voce invece che sul pulsante
+      // che aveva aperto il pannello (decisione 1)
+      stubRoutedFetch((path) => (path.includes("/products/search") ? [[]] : [CHECKED]));
+      renderScreen();
+      await userEvent.click(
+        await screen.findByRole("button", { name: "+ scadenza per yogurt greco" })
+      );
+      // chiesto con un tocco, il campo prende il fuoco
+      expect(document.activeElement).toBe(screen.getByLabelText("Scadenza di yogurt greco"));
+
+      // su un'altra voce: chiudendo, lo yogurt torna col suo campo, e il fuoco no
+      const meleCatalogo = () => screen.getByRole("button", { name: "Cerca a catalogo per mele" });
+      await userEvent.click(meleCatalogo());
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+      expect(screen.getByLabelText("Scadenza di yogurt greco")).toBeDefined();
+      expect(document.activeElement).toBe(meleCatalogo());
+
+      // sulla stessa voce: il campo resta aperto sotto il pannello, il fuoco sul pulsante
+      const yogurtCatalogo = () =>
+        screen.getByRole("button", { name: "Cerca a catalogo per yogurt greco" });
+      await userEvent.click(yogurtCatalogo());
+      expect(document.activeElement).toBe(yogurtCatalogo());
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+      expect(document.activeElement).toBe(yogurtCatalogo());
+    });
+
     it("un pannello alla volta: aprirne un altro sulla stessa voce chiude il primo", async () => {
       stubRoutedFetch((path) => (path.includes("/products/search") ? [[]] : [CHECKED]));
       renderScreen();
