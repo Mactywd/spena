@@ -1973,7 +1973,8 @@ più vecchia di `style.spec.ts` (la prova su prodotto e dispensa, intorno alle r
 prova, a differenza di quella più recente per la barra della lista.
 
 **Chiusi tutti e quattro il 2026-09-29**, sul ramo `night/pulizie-dopo-la-lista` (piano
-`docs/superpowers/plans/2026-09-29-pulizie-dopo-la-lista.md`), non ancora in produzione.
+`docs/superpowers/plans/2026-09-29-pulizie-dopo-la-lista.md`), in produzione dallo stesso
+giorno (`master` 28d0cdd, unito con la Consegna 3).
 Il doppione: la `PATCH` che riporta una voce archiviata a `pending` o `checked` risponde
 409 («l'ingrediente è già in lista») se lo stesso ingrediente è già da comprare o nel
 carrello in un'altra voce, e non cambia niente; «Annulla» su quel 409 dice «Era già in
@@ -1987,8 +1988,9 @@ per `IngredientPicker`; l'e2e lo misura a 375×812 e a 375×450. La pulizia e2e 
 `style.spec.ts` usa ora `expect.soft` come la nuova. Suite finale del ramo: backend 937
 passati, frontend 680 test in 52 file (vitest), e2e 33 passati.
 
-**Consegna 3 (Sistema la spesa) fatta il 2026-09-29, sul ramo `night/sistema-la-spesa`,
-non ancora in produzione.** Cosa è cambiato: una riga per voce, col nome sopra e sotto a
+**Consegna 3 (Sistema la spesa) fatta il 2026-09-29, sul ramo `night/sistema-la-spesa`, in
+produzione dallo stesso giorno** (`master` 28d0cdd, unita con le pulizie: dopo il merge
+backend 940, vitest 766, e2e 34, tutti verdi; pacchetto servito `index-BhGanOHA.js`). Cosa è cambiato: una riga per voce, col nome sopra e sotto a
 cosa si è risolta («Sfuso», o il prodotto con la marca), le tre icone codice / catalogo /
 sfuso a destra e «Cambia» come icona; le voci in sezioni per reparto, nell'ordine della
 Lista; un pannello alla volta, sotto la voce che l'ha chiesto, e mentre è aperto restano a
