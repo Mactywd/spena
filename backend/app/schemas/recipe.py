@@ -110,6 +110,10 @@ class RecipeOut(BaseModel):
     # che solo la scheda riassuntiva manda renderebbe obbligatorio sul dettaglio
     # qualcosa che il dettaglio non manda, e `tsc` lo direbbe solo a `npm run build`.
     missing_names: list[str] = []
+    # il reparto più frequente fra le righe principali (`main_department` in
+    # app/domain/rules.py): la miniatura del ricettario ne mostra l'icona quando la foto
+    # manca (T3 Consegna 4). `None` senza righe principali
+    main_department: str | None = None
     # stesse quattro righe di RecipeSummaryOut: RecipeOut non eredita da lei oggi,
     # e introdurre una gerarchia per risparmiarle non sarebbe YAGNI rispettato
     image_url: str | None = None
@@ -144,6 +148,10 @@ class RecipeSummaryOut(BaseModel):
     # che solo la scheda riassuntiva manda renderebbe obbligatorio sul dettaglio
     # qualcosa che il dettaglio non manda, e `tsc` lo direbbe solo a `npm run build`.
     missing_names: list[str] = []
+    # il reparto più frequente fra le righe principali (`main_department` in
+    # app/domain/rules.py): la miniatura del ricettario ne mostra l'icona quando la foto
+    # manca (T3 Consegna 4). `None` senza righe principali
+    main_department: str | None = None
     image_url: str | None = None
     prep_minutes: int | None = None
     cook_minutes: int | None = None

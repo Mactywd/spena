@@ -16,6 +16,7 @@ from app.domain.rules import (
     IngredientRole,
     is_cookable,
     is_satisfied,
+    main_department,
     missing_count,
 )
 from app.repositories.ingredients import create_ingredient
@@ -132,6 +133,9 @@ async def _to_out(
         source_ref=recipe.source_ref, ingredients=lines,
         missing=missing_count(requirements), cookable=is_cookable(requirements),
         missing_names=sorted(missing_names),
+        main_department=main_department(
+            (IngredientRole(ri.role), ri.ingredient.category) for ri in recipe.ingredients
+        ),
         image_url=recipe.image_url, prep_minutes=recipe.prep_minutes,
         cook_minutes=recipe.cook_minutes, category=recipe.category, cost=recipe.cost,
         scaled_to=servings if factor is not None else None,
@@ -186,6 +190,7 @@ async def search(
             id=r.recipe.id, title=r.recipe.title, description=r.recipe.description,
             source=r.recipe.source, missing=r.missing, cookable=r.cookable,
             missing_names=r.missing_names,
+            main_department=r.main_department,
             image_url=r.recipe.image_url, prep_minutes=r.recipe.prep_minutes,
             cook_minutes=r.recipe.cook_minutes, category=r.recipe.category,
             cost=r.recipe.cost,

@@ -467,3 +467,23 @@ async def test_search_accetta_un_offset(logged_client, cucina):
 async def test_search_rifiuta_un_offset_negativo(logged_client):
     response = await logged_client.get("/api/v1/recipes/search?offset=-1")
     assert response.status_code == 422
+
+
+async def test_il_reparto_principale_arriva_nella_scheda_e_nel_dettaglio(logged_client, cucina):
+    """Pasta (cereali) e pomodoro (verdura) sono i due principali, uno a testa: a parità
+    vince l'ordine alfabetico. L'aglio è verdura ma secondario: se contasse, vincerebbe
+    la verdura, ed è per questo che il caso è scelto così."""
+    creata = await _create_recipe(logged_client, cucina)
+    solo_aglio = await _create_recipe(
+        logged_client, cucina, title="Aglio e basta", primary=(), secondary=("aglio",)
+    )
+    assert creata["main_department"] == "cereali"
+
+    elenco = (await logged_client.get("/api/v1/recipes/search")).json()
+    assert {r["title"]: r["main_department"] for r in elenco} == {
+        "Pasta al pomodoro": "cereali",
+        "Aglio e basta": None,
+    }
+
+    dettaglio = (await logged_client.get(f"/api/v1/recipes/{solo_aglio['id']}")).json()
+    assert dettaglio["main_department"] is None

@@ -20,6 +20,7 @@ from app.domain.rules import (
     is_cookable,
     is_satisfied,
     kind_for_category,
+    main_department,
     missing_count,
     status_for_fill,
     today_in_pantry,
@@ -303,3 +304,31 @@ def test_il_giorno_della_dispensa_non_e_quello_di_utc():
 )
 def test_il_costo_sta_nella_scala_o_non_c_e(value, expected):
     assert cost_in_scale(value) == expected
+
+
+# --- Il reparto principale di una ricetta (T3 Consegna 4) ---
+# La miniatura del ricettario, quando la foto manca o non carica, mostra l'icona del
+# reparto «principale»: il più frequente fra le righe principali, a parità il primo in
+# ordine alfabetico. I secondari non contano: sale, olio e pepe stanno in mezzo
+# ricettario, e contati farebbero di quasi ogni piatto un «condimenti».
+
+
+@pytest.mark.parametrize(
+    ("righe", "atteso"),
+    [
+        ([(PRIMARY, "verdura"), (PRIMARY, "verdura"), (PRIMARY, "pesce")], "verdura"),
+        (
+            [(PRIMARY, "pesce"), (SECONDARY, "spezie"), (SECONDARY, "spezie"),
+             (SECONDARY, "condimenti")],
+            "pesce",
+        ),
+        # a parità vince l'ordine alfabetico, qualunque sia l'ordine delle righe
+        ([(PRIMARY, "pesce"), (PRIMARY, "carne")], "carne"),
+        ([(PRIMARY, "carne"), (PRIMARY, "pesce")], "carne"),
+        # senza principali non c'è un reparto da dire
+        ([(SECONDARY, "spezie")], None),
+        ([], None),
+    ],
+)
+def test_il_reparto_principale_viene_dalle_righe_principali(righe, atteso):
+    assert main_department(righe) == atteso

@@ -24,6 +24,7 @@ from app.domain.rules import (
     IngredientRole,
     is_cookable,
     is_satisfied,
+    main_department,
     missing_count,
 )
 from app.repositories.pantry import availability_map
@@ -135,6 +136,9 @@ class RecipeRequirement:
     name: str
     role: IngredientRole
     availability: Availability
+    # il reparto dell'ingrediente: il reparto principale della ricetta
+    # (`main_department`) si decide da qui (T3 Consegna 4)
+    category: str
 
 
 @dataclass
@@ -143,6 +147,7 @@ class RecipeSearchResult:
     missing: int
     cookable: bool
     missing_names: list[str]
+    main_department: str | None
     score: float
 
 
@@ -334,6 +339,9 @@ async def _requirements_by_recipe(
             RecipeIngredient.ingredient_id,
             RecipeIngredient.role,
             Ingredient.display_name,
+            # il reparto viaggia con la riga: `main_department` si decide da qui,
+            # senza una query in più
+            Ingredient.category,
         )
         .join(Ingredient, Ingredient.id == RecipeIngredient.ingredient_id)
         .where(RecipeIngredient.recipe_id.in_(recipe_ids))
@@ -343,10 +351,10 @@ async def _requirements_by_recipe(
     # Id distinti: un id per riga, duplicati compresi, sfondava i 32.767 parametri
     # di asyncpg già intorno alle 3.300 ricette (misurato il 2026-09-24).
     availability = await availability_map(session, list({row[1] for row in rows}))
-    for recipe_id, ingredient_id, role, display_name in rows:
+    for recipe_id, ingredient_id, role, display_name, category in rows:
         have = availability.get(ingredient_id, Availability.MISSING)
         requirements[recipe_id].append(
-            RecipeRequirement(display_name, IngredientRole(role), have)
+            RecipeRequirement(display_name, IngredientRole(role), have, category)
         )
     return requirements
 
@@ -525,6 +533,7 @@ async def search_recipes(
                 missing=missing_count(pairs),
                 cookable=is_cookable(pairs),
                 missing_names=missing_names(reqs),
+                main_department=main_department((r.role, r.category) for r in reqs),
                 score=fused.get(recipe_id, 0.0),
             )
         )

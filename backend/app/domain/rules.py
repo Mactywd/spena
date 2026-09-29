@@ -5,6 +5,7 @@ finito, e il ruolo che ha nella ricetta decide se quello stato basta.
 """
 
 import re
+from collections import Counter
 from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from enum import StrEnum
@@ -86,6 +87,22 @@ def is_cookable(requirements: Iterable[tuple[IngredientRole, Availability]]) -> 
     potrebbero divergere, perché sono la stessa funzione.
     """
     return within_budget(requirements, 0)
+
+
+def main_department(lines: Iterable[tuple[IngredientRole, str]]) -> str | None:
+    """Il reparto che fa da faccia a una ricetta nel ricettario (T3 Consegna 4): la
+    miniatura ne mostra l'icona quando la foto manca o non carica.
+
+    Il più frequente fra le righe principali; a parità, il primo in ordine alfabetico,
+    così due richieste uguali danno la stessa icona. I secondari non contano: sale, olio
+    e pepe stanno in mezzo ricettario, e contati farebbero di quasi ogni piatto un
+    «condimenti». Senza righe principali non c'è un reparto da dire: `None`, e il client
+    mostra un'icona generica.
+    """
+    counts = Counter(category for role, category in lines if role == IngredientRole.PRIMARY)
+    if not counts:
+        return None
+    return min(counts, key=lambda category: (-counts[category], category))
 
 
 # La soglia di `status_for_fill`: fin qui è «quasi finito», oltre è «disponibile».

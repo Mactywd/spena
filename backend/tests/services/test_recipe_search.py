@@ -595,3 +595,46 @@ async def test_con_parole_l_offset_scorre_i_candidati(db_session):
     assert len(prima) == 3
     assert len(dopo) == 2
     assert not {r.recipe.id for r in prima} & {r.recipe.id for r in dopo}
+
+
+async def test_il_reparto_principale_arriva_coi_risultati(db_session):
+    """Il reparto viaggia con le righe che `_requirements_by_recipe` legge già: nessuna
+    query in più, e la regola è quella del dominio."""
+    from app.db.models.ingredient import Ingredient, IngredientCategory
+    from app.repositories.recipes import create_recipe
+    from app.services.recipe_search import search_recipes
+
+    zucchina = Ingredient(
+        name="zucchina", display_name="Zucchina", category=IngredientCategory.VERDURA
+    )
+    carota = Ingredient(name="carota", display_name="Carota", category=IngredientCategory.VERDURA)
+    branzino = Ingredient(
+        name="branzino", display_name="Branzino", category=IngredientCategory.PESCE
+    )
+    sale = Ingredient(name="sale", display_name="Sale", category=IngredientCategory.SPEZIE)
+    db_session.add_all([zucchina, carota, branzino, sale])
+    await db_session.flush()
+    await create_recipe(
+        db_session, title="Verdure e pesce", description=None, instructions="Cuoci.",
+        servings=2, source="manual", source_ref=None,
+        ingredients=[
+            (zucchina.id, "primary", None, None),
+            (carota.id, "primary", None, None),
+            (branzino.id, "primary", None, None),
+            (sale.id, "secondary", None, None),
+        ],
+        embedding=None,
+    )
+    await create_recipe(
+        db_session, title="Solo sale", description=None, instructions="Sala.",
+        servings=1, source="manual", source_ref=None,
+        ingredients=[(sale.id, "secondary", None, None)], embedding=None,
+    )
+    await db_session.flush()
+
+    risultati = await search_recipes(db_session)
+
+    assert {r.recipe.title: r.main_department for r in risultati} == {
+        "Verdure e pesce": "verdura",
+        "Solo sale": None,
+    }
