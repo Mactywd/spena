@@ -103,7 +103,7 @@ export function IngredientPicker({
           aria-label={accessibleLabel ?? label}
           value={term}
           onChange={(e) => setTerm(e.target.value)}
-          placeholder="Cerca in anagrafica"
+          placeholder="Cerca un ingrediente"
           disabled={disabled}
           className="mt-1.5 disabled:opacity-50"
         />
@@ -133,7 +133,10 @@ export function IngredientPicker({
             onCreate(debounced);
             setTerm("");
           }}
-          disabled={disabled}
+          // `busy` e non `disabled` (Consegna 6a): mentre la scelta di prima è in volo il
+          // pulsante tiene il fuoco. Campo e suggerimenti restano spenti con `disabled`:
+          // sono un'altra forma, annotata in next-steps.md
+          busy={disabled}
         >
           {`Aggiungi «${debounced}»`}
         </Button>

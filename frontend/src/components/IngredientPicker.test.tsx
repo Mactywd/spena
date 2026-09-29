@@ -236,4 +236,35 @@ describe("IngredientPicker", () => {
     await screen.findByRole("option", { name: "Latte" });
     expect(screen.queryByRole("button", { name: /Aggiungi/ })).toBeNull();
   });
+
+  it("mentre la scelta di prima è in volo, «Aggiungi «…»» è spento ma tiene il fuoco, e non crea", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    const onCreate = vi.fn();
+    renderWithClient(
+      <IngredientPicker
+        label="Ingrediente"
+        failureNote="x"
+        onPick={() => {}}
+        onCreate={onCreate}
+        initialTerm="zz tre"
+        disabled
+      />
+    );
+    const aggiungi = await screen.findByRole("button", { name: "Aggiungi «zz tre»" });
+    // `busy` e non `disabled` (Consegna 6a): il browser toglie il fuoco a un pulsante che
+    // diventa `disabled`. Campo e suggerimenti restano spenti come prima (idea in
+    // next-steps.md): cambia solo il pulsante
+    expect(aggiungi).toHaveAttribute("aria-disabled", "true");
+    expect(aggiungi.hasAttribute("disabled")).toBe(false);
+    aggiungi.focus();
+    expect(aggiungi).toHaveFocus();
+    fireEvent.click(aggiungi);
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("il campo invita a cercare un ingrediente (spec T3 §4.7)", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    renderWithClient(<IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} />);
+    expect(screen.getByLabelText("Ingrediente")).toHaveAttribute("placeholder", "Cerca un ingrediente");
+  });
 });
