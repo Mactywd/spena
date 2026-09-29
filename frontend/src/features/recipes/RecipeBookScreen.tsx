@@ -1,25 +1,34 @@
-import { useEffect, useRef, useState } from "react";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { RecipeCard } from "./RecipeCard";
+import { useEffect, useId, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { RecipeRow } from "./RecipeRow";
+import { RecipeFiltersPanel } from "./RecipeFiltersPanel";
 import { MissingBudgetFilter } from "./MissingBudgetFilter";
 import { MAX_BUDGET } from "./missingBudget";
+import { fetchCategories, fetchSearchMode, nextPageOffset, searchRecipes } from "./api";
 import {
-  fetchCategories,
-  fetchSearchMode,
-  nextPageOffset,
-  searchRecipes,
-  setRecipeArchived,
-} from "./api";
+  activeFilterCount,
+  filtersButtonName,
+  loadFilters,
+  resultsLabel,
+  saveFilters,
+  type RecipeFilters,
+} from "./recipeFilters";
 import { fetchImportStatus } from "../recipe-import/api";
 import { useDebounced } from "../../hooks/useDebounced";
-import { UNDO_MS } from "../../lib/undo";
-import { revealAtTop } from "../../lib/revealAtTop";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { ErrorState } from "../../components/ui/ErrorState";
 import { Screen } from "../../components/ui/Screen";
 import { SectionEntryCard } from "../../components/ui/SectionEntryCard";
-import { IngredientPicker } from "../../components/IngredientPicker";
+import {
+  IconAdjustmentsHorizontal,
+  IconClearAll,
+  IconPencilPlus,
+  IconSearch,
+} from "../../components/ui/icons";
 import type { Ingredient } from "../../domain/types";
 
 const DEBOUNCE_MS = 180;
@@ -52,6 +61,8 @@ function frammentoSoglia(maxMissing: number | null): string {
  * raggiungibile per la prima volta, e quasi sempre riguarda le parole cercate o il
  * filtro, non il ricettario. È lo stesso errore che b6ed1d9 ha corretto nel pannello
  * del catalogo («con queste parole», non «in catalogo»), dall'altro lato dell'app.
+ * Dove la via d'uscita è scrivere una ricetta, la frase porta a «Nuova» (T3 Consegna 4):
+ * l'AI non è più l'ingresso del modulo.
  */
 function emptyMessage({
   query,
@@ -91,7 +102,7 @@ function emptyMessage({
     );
   }
   if (searched) {
-    return "Nessuna ricetta con queste parole: provane altre, o scrivine una con l'AI.";
+    return "Nessuna ricetta con queste parole: provane altre, o scrivine una con «Nuova».";
   }
   if (maxMissing === 0) {
     return (
@@ -111,7 +122,7 @@ function emptyMessage({
       wayOut
     );
   }
-  return "Nessuna ricetta. Provane una scritta con l'AI.";
+  return "Il ricettario è vuoto: scrivi la prima ricetta con «Nuova».";
 }
 
 function uniqueById<T extends { id: string }>(items: T[]): T[] {
@@ -123,80 +134,52 @@ function uniqueById<T extends { id: string }>(items: T[]): T[] {
   });
 }
 
-interface DeletedRecipe {
-  id: string;
-  title: string;
-}
-
-/** La lapide: la ricetta appena eliminata, e a che punto è il suo annulla. */
-type Tombstone = DeletedRecipe & { phase: "waiting" | "restoring" | "failed" };
-
-/** La ricetta che il dettaglio ha appena eliminato, se la navigazione la porta (R10
- * §6.1): il segnale passa con lo stato della navigazione, non con la cache. */
-function deletedFrom(state: unknown): DeletedRecipe | null {
-  return (state as { deletedRecipe?: DeletedRecipe } | null)?.deletedRecipe ?? null;
-}
-
+/** Il ricettario (T3 Consegna 4, spec §4.5): «Nuova» in alto, la barra di ricerca con
+ * «Filtri» accanto, il pannello dei filtri in linea, la scala «Cosa posso cucinare»
+ * sempre a video, e le righe compatte. */
 export function RecipeBookScreen() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  // La lapide nasce dallo stato della navigazione e vive qui, non lì: la voce della
-  // cronologia si pulisce appena letta (sotto), così un «indietro» dal prossimo
-  // dettaglio non resuscita una lapide già scaduta con un «Annulla» ancora premibile.
-  const incoming = deletedFrom(location.state);
-  const [tombstone, setTombstone] = useState<Tombstone | null>(() =>
-    incoming ? { ...incoming, phase: "waiting" } : null
-  );
-  const incomingId = incoming?.id;
+  // I filtri nascono da quel che l'app ricorda (Mattia, 2026-09-29): tornando da una
+  // ricetta lo schermo rinasce, e deve ritrovare parole, scala, categoria e
+  // ingredienti. Ogni cambio si riscrive nella sessionStorage (`recipeFilters.ts`).
+  const [filters, setFilters] = useState<RecipeFilters>(() => loadFilters());
   useEffect(() => {
-    if (incomingId === undefined) return;
-    navigate(location.pathname, { replace: true, state: null });
-  }, [incomingId, navigate, location.pathname]);
-
-  // Si arriva dal dettaglio scorso in fondo, dov'era «Elimina» (R10 §6.1): senza
-  // riportare la vista in cima, la lapide nasce sotto l'intestazione fissa e i sei
-  // secondi del suo «Annulla» passano senza che nessuno la veda. Solo all'arrivo:
-  // `incomingId` è definito solo sul render che porta la lapide, non su quelli dopo
-  // (countdown, «Annulla», errore) che non devono far scattare un altro scorrimento.
-  const tombstoneRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (incomingId !== undefined && tombstoneRef.current) revealAtTop(tombstoneRef.current);
-  }, [incomingId]);
-
-  // sei secondi, come in dispensa; non mentre l'annulla è in volo né dopo che è
-  // fallito — una lapide che scade mostrando un errore toglie l'unico modo di riprovare
-  useEffect(() => {
-    if (tombstone?.phase !== "waiting") return;
-    const timer = setTimeout(() => setTombstone(null), UNDO_MS);
-    return () => clearTimeout(timer);
-  }, [tombstone]);
-
-  const restore = useMutation({
-    mutationFn: (id: string) => setRecipeArchived(id, false),
-    onMutate: () => setTombstone((current) => current && { ...current, phase: "restoring" }),
-    onSuccess: (_data, id) => {
-      setTombstone(null);
-      void queryClient.invalidateQueries({ queryKey: ["recipes"] });
-      void queryClient.invalidateQueries({ queryKey: ["recipe-categories"] });
-      void queryClient.invalidateQueries({ queryKey: ["recipe", id] });
-    },
-    // la lapide RESTA, con l'errore dentro: la ricetta è eliminata davvero, e senza la
-    // lapide non ci sarebbe più un modo di riportarla (mai un vicolo cieco)
-    onError: () => setTombstone((current) => current && { ...current, phase: "failed" }),
-  });
-
-  const [query, setQuery] = useState("");
-  // `null` è «Tutte»: l'assenza di soglia, non una soglia larghissima
-  const [maxMissing, setMaxMissing] = useState<number | null>(null);
-  const [category, setCategory] = useState("");
-  // gli ingredienti scelti, non solo i loro id: i nomi servono alle pastiglie del
-  // filtro e al messaggio di elenco vuoto, e una seconda chiamata per riaverli
-  // sarebbe un giro in rete per qualcosa che l'utente ha appena toccato
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+    saveFilters(filters);
+  }, [filters]);
+  const { query, maxMissing, category, ingredients } = filters;
   const ingredientIds = ingredients.map((i) => i.id);
   const debouncedQuery = useDebounced(query, DEBOUNCE_MS);
+  const activeCount = activeFilterCount(filters);
+
+  const [panelOpen, setPanelOpen] = useState(false);
+  const panelId = useId();
+
+  function update(patch: Partial<RecipeFilters>) {
+    setFilters((current) => ({ ...current, ...patch }));
+  }
+
+  // Scegliere due volte lo stesso non stringe niente: sarebbe una pastiglia doppia
+  // da togliere due volte e una condizione ripetuta a vuoto nella query. Tornando
+  // `current` immutato React non ridisegna e nessuna ricerca riparte.
+  function addIngredient(picked: Ingredient) {
+    setFilters((current) =>
+      current.ingredients.some((i) => i.id === picked.id)
+        ? current
+        : { ...current, ingredients: [...current.ingredients, picked] }
+    );
+  }
+
+  function removeIngredient(id: string) {
+    setFilters((current) => ({
+      ...current,
+      ingredients: current.ingredients.filter((i) => i.id !== id),
+    }));
+  }
+
+  // «Azzera» toglie quel che sta nel pannello, e che il numero su «Filtri» conta:
+  // categoria e ingredienti. Parole e scala sono sempre a video, e si cambiano da lì.
+  function resetFilters() {
+    update({ category: "", ingredients: [] });
+  }
 
   // Il termine sta dentro la chiave, e questo fa due cose che una ricerca scritta
   // a mano non fa. La sicurezza sull'ordine diventa strutturale: una risposta
@@ -208,7 +191,8 @@ export function RecipeBookScreen() {
   //
   // Una query a pagine (R4): 8.469 ricette non stanno in una. La chiave è la stessa
   // di prima, quindi gli `invalidateQueries({ queryKey: ["recipes"] })` sparsi
-  // nell'app continuano a rinfrescarla.
+  // nell'app continuano a rinfrescarla; e `useArchiveRecipe` ci toglie una ricetta
+  // eliminata sapendo che ogni pagina è una `RecipePage`.
   const {
     data,
     isLoading,
@@ -217,6 +201,8 @@ export function RecipeBookScreen() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    refetch,
+    isRefetching,
   } = useInfiniteQuery({
     queryKey: ["recipes", debouncedQuery, maxMissing, category, ingredientIds],
     initialPageParam: 0,
@@ -234,9 +220,12 @@ export function RecipeBookScreen() {
   // Un inserimento sopra la pagina (l'import che gira) sposta tutto in giù di uno:
   // l'offset fa vedere un doppione, mai un buco, e il doppione si scarta qui.
   const recipes = uniqueById(data?.pages.flatMap((page) => page.recipes) ?? []);
-  // una risposta arrivata prima dell'eliminazione la manda ancora: sotto la sua lapide
-  // non deve comparire
-  const visible = tombstone ? recipes.filter((recipe) => recipe.id !== tombstone.id) : recipes;
+  // il totale più recente: quello dell'ultima pagina arrivata. Il «è solo un minimo»
+  // viene dalla stessa pagina (R-D): preso da un'altra, direbbe «almeno» di un numero
+  // che il server ha contato per intero, o lo tacerebbe di uno che non ha finito di contare
+  const lastPage = data?.pages.at(-1);
+  const total = lastPage?.total ?? null;
+  const totalIsLowerBound = lastPage?.totalIsLowerBound ?? false;
   // l'errore di una pagina successiva non cancella quel che è già a video
   const searchFailed = isError && !isFetchNextPageError;
 
@@ -259,81 +248,92 @@ export function RecipeBookScreen() {
     staleTime: Infinity,
   });
 
-  // Scegliere due volte lo stesso non stringe niente: sarebbe una pastiglia doppia
-  // da togliere due volte e una condizione ripetuta a vuoto nella query. Tornando
-  // `current` immutato React non ridisegna e nessuna ricerca riparte.
-  function addIngredient(picked: Ingredient) {
-    setIngredients((current) =>
-      current.some((i) => i.id === picked.id) ? current : [...current, picked]
-    );
-  }
-
   // Fuori dalla chiave ["recipes"]: questa non cambia cercando, cambia quando si
-  // decide un termine o si scarica un lotto. Se la rotta non risponde non si mostra
-  // niente: una riga rotta su una cosa che forse funziona è peggio del silenzio.
+  // decide un termine o si scarica un lotto. Se la rotta non risponde la scheda non
+  // compare: la coda resta raggiungibile dal ☰.
   const { data: importStatus } = useQuery({
     queryKey: ["import-status"],
     queryFn: fetchImportStatus,
   });
+  const pendingTerms = importStatus?.pending_terms ?? 0;
 
   return (
     <Screen
       title="Ricette"
       action={
+        // «Nuova» apre il modulo di sempre (R10), da cui la bozza dell'AI si chiede con
+        // «Proponi»: l'AI non è più l'ingresso (spec T3 §4.5). La rotta resta quella.
+        // Il nome comincia con la scritta a video (label-in-name)
         <Link
           to="/ricette/nuova-ai"
-          className="min-h-11 shrink-0 content-center text-sm font-medium text-brand"
+          aria-label="Nuova ricetta"
+          className={`${buttonClasses("secondary")} shrink-0`}
         >
-          Scrivi con l'AI
+          <IconPencilPlus aria-hidden="true" className="size-[1.1em]" stroke={1.8} />
+          Nuova
         </Link>
       }
     >
-      {tombstone && (
-        <div
-          ref={tombstoneRef}
-          role="status"
-          className="mb-3 scroll-mt-16 flex flex-col gap-2 rounded-card bg-card p-3"
-        >
-          <div className="flex min-h-11 items-center justify-between gap-3">
-            <span className="min-w-0 truncate text-ink-soft">
-              <span className="font-medium text-ink">{tombstone.title}</span> eliminata
-            </span>
-            <button
-              type="button"
-              disabled={tombstone.phase === "restoring"}
-              onClick={() => restore.mutate(tombstone.id)}
-              className="min-h-11 shrink-0 px-2 text-sm font-medium text-brand disabled:opacity-40"
-            >
-              Annulla
-            </button>
-          </div>
-          {tombstone.phase === "failed" && (
-            <Alert>Non sono riuscito a riportarla nel ricettario. Riprova.</Alert>
-          )}
-        </div>
+      {/* solo con qualcosa da decidere (spec §4.5): a coda vuota, o con lo stato che non
+          arriva, spingerebbe la prima ricetta sotto la piega per niente. La coda resta
+          raggiungibile dal ☰, «Ingredienti da abbinare» */}
+      {importStatus && pendingTerms > 0 && (
+        <SectionEntryCard
+          to="/ricette/importa"
+          title="Ingredienti da abbinare"
+          note={
+            `${pendingTerms === 1 ? "1 ingrediente" : `${pendingTerms} ingredienti`}, ` +
+            `${importStatus.pending_recipes === 1 ? "1 ricetta in attesa" : `${importStatus.pending_recipes} ricette in attesa`}`
+          }
+          pending
+        />
       )}
 
-      <SectionEntryCard
-        to="/ricette/importa"
-        title="Ingredienti da abbinare"
-        note={
-          importStatus === undefined
-            ? "Le decisioni dell'import, da rivedere"
-            : importStatus.pending_terms === 0
-              ? "Niente in attesa: qui si rivedono le decisioni già prese"
-              : `${importStatus.pending_terms === 1 ? "1 ingrediente" : `${importStatus.pending_terms} ingredienti`}, ` +
-                `${importStatus.pending_recipes === 1 ? "1 ricetta in attesa" : `${importStatus.pending_recipes} ricette in attesa`}`
-        }
-        pending={(importStatus?.pending_terms ?? 0) > 0}
-      />
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <IconSearch
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink-faint"
+          />
+          <input
+            id="recipe-search"
+            aria-label="Cerca nel ricettario"
+            value={query}
+            onChange={(e) => update({ query: e.target.value })}
+            placeholder="Cerca un piatto o un ingrediente"
+            className="pl-10 text-base"
+          />
+        </div>
+        {/* Un pulsante da solo: icona e testo (spec §2). Il numero dei filtri accesi si
+            vede e si sente: nel nome, e in una pastiglia accanto alla scritta */}
+        <Button
+          icon={IconAdjustmentsHorizontal}
+          accessibleName={filtersButtonName(activeCount)}
+          aria-expanded={panelOpen}
+          aria-controls={panelId}
+          onClick={() => setPanelOpen((open) => !open)}
+          className="shrink-0"
+        >
+          Filtri
+          {activeCount > 0 && (
+            <span className="min-w-5 rounded-full bg-brand px-1.5 text-center text-xs font-semibold text-on-brand">
+              {activeCount}
+            </span>
+          )}
+        </Button>
+      </div>
 
-      <label htmlFor="recipe-search" className="sr-only">Cerca nel ricettario</label>
-      <input
-        id="recipe-search"
-        aria-label="Cerca nel ricettario"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Cerca un piatto o un ingrediente"
+      <RecipeFiltersPanel
+        id={panelId}
+        open={panelOpen}
+        categories={categories}
+        category={category}
+        onCategory={(value) => update({ category: value })}
+        ingredients={ingredients}
+        onPick={addIngredient}
+        onRemove={removeIngredient}
+        count={isLoading ? "Cerco…" : searchFailed ? null : resultsLabel(total, totalIsLowerBound)}
+        onReset={activeCount > 0 ? resetFilters : undefined}
       />
 
       {/* una constatazione, non un guasto: niente `role`, niente colore d'allarme.
@@ -345,95 +345,41 @@ export function RecipeBookScreen() {
         </p>
       )}
 
-      <MissingBudgetFilter value={maxMissing} onChange={setMaxMissing} />
-
-      {categories.length > 0 && (
-        <label className="text-sm font-medium text-ink-soft">
-          Categoria
-          <select
-            aria-label="Categoria"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="mt-1.5"
-          >
-            <option value="">Tutte</option>
-            {categories.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {/* il campo resta a video anche con qualcosa già scelto: gli ingredienti si
-          sommano, e un campo che sparisce al primo tocco direbbe il contrario */}
-      <IngredientPicker
-        label="Contiene ingredienti"
-        failureNote="Puoi comunque cercare per parole qui sopra."
-        kind="food"
-        onPick={addIngredient}
-      />
-
-      {ingredients.length > 0 && (
-        <ul className="flex flex-wrap items-center gap-2">
-          {ingredients.map((chosen) => (
-            <li
-              key={chosen.id}
-              className="flex items-center gap-1 rounded-card bg-brand-tint pr-1 pl-3"
-            >
-              <span className="min-w-0 truncate text-sm text-brand">{chosen.display_name}</span>
-              {/* la stessa X con cui si toglie una voce dalla dispensa, e per la
-                  stessa ragione il nome accessibile nomina l'ingrediente: su tre
-                  pastiglie «Togli» ripetuto identico non dice quale si sta togliendo */}
-              <button
-                type="button"
-                aria-label={`Togli il filtro su ${chosen.display_name}`}
-                onClick={() =>
-                  setIngredients((current) => current.filter((i) => i.id !== chosen.id))
-                }
-                className="flex size-11 shrink-0 items-center justify-center rounded-full text-brand"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  className="size-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <MissingBudgetFilter value={maxMissing} onChange={(value) => update({ maxMissing: value })} />
 
       {isLoading && <p className="pt-4 text-ink-soft">Cerco…</p>}
 
       {!isLoading && searchFailed && (
-        <Alert className="pt-4">
-          Non sono riuscito a cercare nel ricettario. Riprova, o scrivine una con l'AI.
-        </Alert>
+        <ErrorState
+          message="Non sono riuscito a cercare nel ricettario."
+          onRetry={() => void refetch()}
+          retrying={isRefetching}
+        />
       )}
 
-      {!isLoading && !searchFailed && visible.length === 0 && (
-        <p className="pt-4 text-ink-soft">
-          {emptyMessage({
+      {!isLoading && !searchFailed && recipes.length === 0 && (
+        <EmptyState
+          title="Nessuna ricetta"
+          body={emptyMessage({
             query: debouncedQuery,
             maxMissing,
             category,
             ingredientNames: ingredients.map((i) => i.display_name),
           })}
-        </p>
+          action={
+            activeCount > 0 ? (
+              <Button icon={IconClearAll} onClick={resetFilters}>
+                Azzera i filtri
+              </Button>
+            ) : undefined
+          }
+        />
       )}
 
-      {!isLoading && !searchFailed && visible.length > 0 && (
-        <ul className="flex flex-col gap-2 pt-2">
-          {visible.map((recipe) => (
-            <RecipeCard key={recipe.id} recipe={recipe} />
+      {!isLoading && !searchFailed && recipes.length > 0 && (
+        <ul aria-label="Ricette trovate" className="flex flex-col rounded-2xl bg-card px-3 py-1">
+          {recipes.map((recipe) => (
+            <RecipeRow key={recipe.id} recipe={recipe} />
           ))}
         </ul>
       )}
@@ -442,14 +388,10 @@ export function RecipeBookScreen() {
         <div className="flex flex-col items-center gap-2 pt-3">
           {/* il bottone resta: riprovare è la via d'uscita, mai un vicolo cieco */}
           {isFetchNextPageError && <Alert>Non sono riuscito a caricarne altre.</Alert>}
-          <button
-            type="button"
-            onClick={() => void fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className={buttonClasses("secondary")}
-          >
+          {/* `busy` e non `disabled`: in volo tiene il fuoco (regola dei pulsanti) */}
+          <Button onClick={() => void fetchNextPage()} busy={isFetchingNextPage}>
             {isFetchingNextPage ? "Carico…" : "Mostra altre"}
-          </button>
+          </Button>
         </div>
       )}
     </Screen>

@@ -78,6 +78,8 @@ test("un detersivo fa il giro: lista, dispensa, e ritorno in lista", async ({ pa
   // prova che il server esclude. L'asserzione sul DOM resta sotto e prova la
   // cosa diversa e utile che le compete: che a schermo non compare.
   await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  // categoria e ingredienti stanno nel pannello «Filtri» (T3 Consegna 4)
+  await page.getByRole("button", { name: /^Filtri/ }).click();
   const filtro = page.getByLabel("Contiene ingredienti");
 
   const rispostaDetersivo = page.waitForResponse(

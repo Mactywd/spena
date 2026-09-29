@@ -50,4 +50,12 @@ describe("MissingBudgetFilter", () => {
 
     expect(onChange).toHaveBeenCalledWith(null);
   });
+
+  it("ha un'etichetta visibile: «Cosa posso cucinare»", () => {
+    // dal giro: la scala non aveva un'etichetta che si vedesse, e «+2» da solo non è una
+    // domanda. Che si veda davvero (non `sr-only`) lo misura anche l'e2e
+    render(<MissingBudgetFilter value={null} onChange={vi.fn()} />);
+    expect(screen.getByRole("group", { name: "Cosa posso cucinare" })).toBeInTheDocument();
+    expect(screen.getByText("Cosa posso cucinare")).not.toHaveClass("sr-only");
+  });
 });

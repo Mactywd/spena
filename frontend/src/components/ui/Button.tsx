@@ -46,6 +46,9 @@ type Common = {
   "aria-describedby"?: string;
   /** Per chi apre e chiude qualcosa sotto di sé («Spostalo», «Sposta»). */
   "aria-expanded"?: boolean;
+  /** Il pannello che questo pulsante apre e chiude (i «Filtri» del ricettario, T3
+   * Consegna 4), accanto ad `aria-expanded`. Passa così com'è. */
+  "aria-controls"?: string;
   /** Per un interruttore («Mostra password»). */
   "aria-pressed"?: boolean;
 };
@@ -115,6 +118,7 @@ export function Button(props: WithText | IconOnly) {
         aria-label={iconOnly ? props.label : props.accessibleName}
         aria-describedby={describedBy}
         aria-expanded={props["aria-expanded"]}
+        aria-controls={props["aria-controls"]}
         aria-pressed={props["aria-pressed"]}
         className={`${buttonClasses(variant, shape)} ${className}`}
       >

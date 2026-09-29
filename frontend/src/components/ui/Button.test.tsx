@@ -30,6 +30,14 @@ describe("Button", () => {
     expect(screen.getByRole("button", { name: "Annulla" })).toHaveAttribute("type", "button");
   });
 
+  it("chi apre un pannello dice se è aperto e quale apre", () => {
+    // i «Filtri» del ricettario (T3 Consegna 4): il pannello è in linea, sotto la barra
+    render(<Button aria-expanded={false} aria-controls="pannello">Filtri</Button>);
+    const button = screen.getByRole("button", { name: "Filtri" });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(button).toHaveAttribute("aria-controls", "pannello");
+  });
+
   // La guardia di TypeScript che il vincolo globale chiede: un pulsante di sola
   // icona senza `label` non deve compilare, perché per uno screen reader non ha
   // nome. Se la riga del `@ts-expect-error` smette di dare errore, la regola si è

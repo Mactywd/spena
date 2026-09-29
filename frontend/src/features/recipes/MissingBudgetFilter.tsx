@@ -11,8 +11,9 @@ export function MissingBudgetFilter({
   const scelto = BUDGET_STEPS.find((step) => step.value === value) ?? BUDGET_STEPS[0];
   return (
     <fieldset>
-      {/* cinque radio senza gruppo, letti a voce, sono cinque scelte senza domanda */}
-      <legend className="sr-only">Quanto posso comprare</legend>
+      {/* cinque radio senza gruppo, letti a voce, sono cinque scelte senza domanda; e
+          dal giro, la domanda si deve anche vedere (T3 Consegna 4) */}
+      <legend className="pt-3 pb-1.5 text-sm font-medium text-ink-soft">Cosa posso cucinare</legend>
       <div className="flex flex-wrap gap-2">
         {BUDGET_STEPS.map((step) => {
           const checked = step.value === value;

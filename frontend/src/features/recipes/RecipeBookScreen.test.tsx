@@ -1,13 +1,15 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { RecipeBookScreen } from "./RecipeBookScreen";
 import { UnauthorizedError } from "../../api/client";
 
-const POMODORO = { id: "i9", name: "pomodoro", display_name: "Pomodoro", category: "verdura" };
-const BASILICO = { id: "i7", name: "basilico", display_name: "Basilico", category: "verdura" };
+// `kind` c'è perché c'è nella risposta vera, e perché i filtri ricordati scartano un
+// ingrediente che non ce l'ha: senza, il test del ricordo mentirebbe
+const POMODORO = { id: "i9", name: "pomodoro", display_name: "Pomodoro", category: "verdura", kind: "food" };
+const BASILICO = { id: "i7", name: "basilico", display_name: "Basilico", category: "verdura", kind: "food" };
 
 /** L'ultima richiesta di ricerca partita davvero: il filtro cambia la query, e
  * guardare la prima chiamata vorrebbe dire guardare lo schermo prima del gesto. */
@@ -21,11 +23,18 @@ function ultimaRicerca(fetchMock: { mock: { calls: unknown[][] } }): string {
 const RESULTS = [
   { id: "r1", title: "Pasta all'aglio", description: "Svelta", source: "dataset",
     missing: 0, cookable: true, missing_names: [], image_url: "https://example.com/aglio.jpg",
-    prep_minutes: 10, cook_minutes: 15, category: "Primi piatti" },
+    prep_minutes: 10, cook_minutes: 15, category: "Primi piatti", cost: null,
+    archived_at: null, main_department: "cereali" },
   { id: "r2", title: "Pasta al pomodoro", description: "Di sempre", source: "ai",
     missing: 1, cookable: false, missing_names: ["Pomodoro"], image_url: null,
-    prep_minutes: null, cook_minutes: null, category: null },
+    prep_minutes: null, cook_minutes: null, category: null, cost: null,
+    archived_at: null, main_department: null },
 ];
+
+/** Una riga di ricettario coi campi che la risposta vera porta tutti. */
+function riga(id: string, title: string, extra: Record<string, unknown> = {}) {
+  return { ...RESULTS[1], id, title, missing: 0, cookable: true, missing_names: [], ...extra };
+}
 
 function renderScreen(queryCache?: QueryCache) {
   const client = new QueryClient({
@@ -41,8 +50,8 @@ function renderScreen(queryCache?: QueryCache) {
   );
 }
 
-// Nessun ingrediente in attesa: la scheda d'ingresso verso la coda resta (D3), ma
-// tranquilla — senza ambra né conteggio in sospeso — nei test che non la riguardano.
+// Nessun ingrediente in attesa: la scheda d'ingresso alla coda non c'è (T3 Consegna 4),
+// e la coda resta raggiungibile dal ☰
 const NESSUN_IMPORT_IN_CORSO = {
   fetched: 0, pending_recipes: 0, imported: 0, skipped: 0, pending_terms: 0,
 };
@@ -66,35 +75,55 @@ function stubRoutedFetch(route: (path: string) => Risposta) {
   return spy;
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+/** Apre il pannello «Filtri»: categoria e ingredienti stanno lì dentro. */
+async function apriFiltri() {
+  await userEvent.click(await screen.findByRole("button", { name: /^Filtri/ }));
+}
+
+// i filtri si ricordano in sessionStorage: ogni test parte e finisce senza
+beforeEach(() => {
+  sessionStorage.clear();
 });
 
-const CODA_CON_CATEGORIE = (path: string): [unknown, number] => {
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  sessionStorage.clear();
+});
+
+const CODA_CON_CATEGORIE = (path: string): Risposta => {
   if (path.includes("/recipes/categories")) return [["Primi piatti", "Dolci e Desserts"], 200];
   if (path.includes("/recipes/search-mode")) return [{ semantic: true }, 200];
   return [RESULTS, 200];
 };
 
+/** Come `CODA_CON_CATEGORIE`, e in più i suggerimenti degli ingredienti. */
+const CON_POMODORO = (path: string): Risposta =>
+  path.includes("/ingredients") ? [[POMODORO], 200] : CODA_CON_CATEGORIE(path);
+
 describe("RecipeBookScreen", () => {
-  it("mostra la provenienza di ogni ricetta", async () => {
+  it("la riga non dice la provenienza né la descrizione", async () => {
+    // dal giro: «dataset» non dice niente a chi usa l'app, e la descrizione la dice il
+    // dettaglio (T3 Consegna 4)
     stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
-    expect(await screen.findByText("dataset")).toBeDefined();
-    expect(screen.getByText("AI")).toBeDefined();
+    await screen.findByText("Pasta all'aglio");
+    expect(screen.queryByText("dataset")).toBeNull();
+    expect(screen.queryByText("AI")).toBeNull();
+    expect(screen.queryByText("Svelta")).toBeNull();
   });
 
-  it("dice quanto manca, senza nascondere la ricetta", async () => {
+  it("dice cosa manca, senza nascondere la ricetta", async () => {
     stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
     expect(await screen.findByText("Pasta al pomodoro")).toBeDefined();
-    expect(screen.getByText("manca 1 ingrediente")).toBeDefined();
+    expect(screen.getByText("Manca: Pomodoro")).toBeDefined();
   });
 
   it("segnala le ricette che puoi cucinare adesso", async () => {
     stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
-    expect(await screen.findByText("Puoi cucinarla ora")).toBeDefined();
+    expect(await screen.findByText("Hai tutto")).toBeDefined();
   });
 
   it("la ricerca passa la query al backend", async () => {
@@ -141,6 +170,15 @@ describe("RecipeBookScreen", () => {
     await screen.findByText("Pasta all'aglio");
 
     expect(ultimaRicerca(spy)).not.toContain("max_missing");
+  });
+
+  it("la scala ha un'etichetta visibile, «Cosa posso cucinare», anche a pannello chiuso", async () => {
+    // dal giro: la scala «Tutte / Ora / +1 / +2 / +3» non aveva un'etichetta che si
+    // vedesse; e resta fuori dal pannello dei filtri, sempre a video
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+    expect(await screen.findByRole("group", { name: "Cosa posso cucinare" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Filtri" })).toHaveAttribute("aria-expanded", "false");
   });
 
   // Spec §11: «modello di embedding non caricato → la ricerca degrada a sola
@@ -289,15 +327,20 @@ describe("RecipeBookScreen", () => {
     expect(messaggio.textContent).toMatch(/«Tutte» nella scala/);
   });
 
-  it("senza parole cercate il verdetto sul ricettario è quello giusto", async () => {
-    // l'unico caso in cui «Nessuna ricetta» è vero: nessuna query, nessun filtro
+  it("senza parole cercate il verdetto sul ricettario è quello giusto, e porta a «Nuova»", async () => {
+    // l'unico caso in cui «il ricettario è vuoto» è vero: nessuna query, nessun filtro.
+    // La via d'uscita è «Nuova» (T3 Consegna 4): l'AI non è più l'ingresso
     stubRoutedFetch((path) =>
       path.includes("/search-mode") ? [{ semantic: true }, 200] : [[], 200]
     );
     renderScreen();
 
-    expect(await screen.findByText("Nessuna ricetta. Provane una scritta con l'AI."))
-      .toBeDefined();
+    expect(
+      await screen.findByText("Il ricettario è vuoto: scrivi la prima ricetta con «Nuova».")
+    ).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Nessuna ricetta" })).toBeInTheDocument();
+    // senza filtri accesi non c'è niente da azzerare
+    expect(screen.queryByRole("button", { name: "Azzera i filtri" })).toBeNull();
   });
 
   // Pattern 2 delle istruzioni: una ricerca fallita deve dirlo, non sembrare un
@@ -313,6 +356,24 @@ describe("RecipeBookScreen", () => {
 
     // il campo di ricerca resta utilizzabile: mai un vicolo cieco
     expect(screen.getByLabelText("Cerca nel ricettario")).not.toBeDisabled();
+  });
+
+  it("una ricerca fallita offre «Riprova», che riprova davvero", async () => {
+    let giu = true;
+    stubRoutedFetch((path) => {
+      if (path.includes("/recipes/search?")) return giu ? [{ detail: "giù" }, 500] : [RESULTS, 200];
+      return CODA_CON_CATEGORIE(path);
+    });
+    renderScreen();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Non sono riuscito a cercare nel ricettario."
+    );
+    giu = false;
+    await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
+
+    expect(await screen.findByText("Pasta all'aglio")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   // Pattern 3: una risposta lenta e superata non deve sovrascrivere una risposta
@@ -350,17 +411,11 @@ describe("RecipeBookScreen", () => {
     );
 
     // la rapida arriva prima...
-    releaseFast(new Response(JSON.stringify([
-      { id: "rf", title: "Risotto al pesce", description: null, source: "dataset",
-        missing: 0, cookable: true, missing_names: [] },
-    ]), { status: 200 }));
+    releaseFast(new Response(JSON.stringify([riga("rf", "Risotto al pesce")]), { status: 200 }));
     expect(await screen.findByText("Risotto al pesce")).toBeDefined();
 
     // ...e quella lenta, superata, arriva dopo: non deve cambiare nulla
-    releaseSlow(new Response(JSON.stringify([
-      { id: "rs", title: "Pollo al forno", description: null, source: "dataset",
-        missing: 0, cookable: true, missing_names: [] },
-    ]), { status: 200 }));
+    releaseSlow(new Response(JSON.stringify([riga("rs", "Pollo al forno")]), { status: 200 }));
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(screen.getByText("Risotto al pesce")).toBeDefined();
@@ -381,9 +436,19 @@ describe("RecipeBookScreen", () => {
     expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
   });
 
-  // Task 14, poi D3 (Task 3 di cinque-voci): la porta verso la coda di revisione
-  // è sempre presente — vedi il test più sotto — e quando c'è davvero qualcosa da
-  // decidere prende il fondo ambra e il conteggio nella nota.
+  it("«Nuova» in alto porta al modulo di sempre; l'AI non è più l'ingresso", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    const nuova = await screen.findByRole("link", { name: "Nuova ricetta" });
+    expect(nuova).toHaveAttribute("href", "/ricette/nuova-ai");
+    // il nome accessibile comincia con la scritta a video (label-in-name)
+    expect(nuova).toHaveTextContent("Nuova");
+    expect(screen.queryByRole("link", { name: /Scrivi con l'AI/ })).toBeNull();
+  });
+
+  // Task 14, poi D3, poi T3 Consegna 4: la porta verso la coda c'è quando c'è davvero
+  // qualcosa da decidere, col fondo ambra e il conteggio nella nota.
   it("quando ci sono ingredienti da abbinare, apre la porta verso la coda", async () => {
     const spy = vi.fn((url: unknown) => {
       const path = String(url);
@@ -442,23 +507,20 @@ describe("RecipeBookScreen", () => {
     );
   });
 
-  it("l'ingresso agli ingredienti da abbinare resta anche con la coda vuota", async () => {
-    // prima spariva: la revisione delle decisioni già prese diventava irraggiungibile
-    // proprio quando non c'era più niente da decidere
+  it("con la coda vuota la scheda non c'è: la coda si raggiunge dal ☰", async () => {
+    // dal giro: la scheda stava in cima anche quando non c'era niente da decidere, e
+    // spingeva la prima ricetta sotto la piega. La revisione delle decisioni già
+    // prese resta raggiungibile da «Ingredienti da abbinare» nel ☰ (AppHeader)
     stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
 
     await screen.findByText("Pasta al pomodoro");
-    const link = screen.getByRole("link", { name: /Ingredienti da abbinare/ });
-    expect(link.getAttribute("href")).toBe("/ricette/importa");
-    expect(link).not.toHaveClass("bg-low-tint");
-    expect(link).toHaveTextContent("Niente in attesa: qui si rivedono le decisioni già prese");
+    expect(screen.queryByRole("link", { name: /Ingredienti da abbinare/ })).toBeNull();
   });
 
-  // D3/CLAUDE.md, «mai un vicolo cieco»: un conteggio che non arriva toglie la
-  // nota, non la strada. La ricerca risponde normalmente, solo /imports/status
-  // fallisce con un 500.
-  it("se lo stato dell'import non arriva, la porta alla coda resta con una nota generica", async () => {
+  // «mai un vicolo cieco»: un conteggio che non arriva non si traveste da coda piena,
+  // e il ricettario resta; la coda resta raggiungibile dal ☰
+  it("se lo stato dell'import non arriva, la scheda non compare e il ricettario resta", async () => {
     const spy = vi.fn((url: unknown) => {
       const path = String(url);
       if (path.includes("/imports/status")) {
@@ -475,10 +537,7 @@ describe("RecipeBookScreen", () => {
     renderScreen();
 
     await screen.findByText("Pasta al pomodoro"); // la ricerca è arrivata comunque
-    const link = screen.getByRole("link", { name: /Ingredienti da abbinare/ });
-    expect(link.getAttribute("href")).toBe("/ricette/importa");
-    expect(link).not.toHaveClass("bg-low-tint");
-    expect(link).toHaveTextContent("Le decisioni dell'import, da rivedere");
+    expect(screen.queryByRole("link", { name: /Ingredienti da abbinare/ })).toBeNull();
   });
 
   it("non riordina: l'ordine è quello che decide il backend", async () => {
@@ -491,61 +550,237 @@ describe("RecipeBookScreen", () => {
     // finirebbe davanti. I primi dati che avevo scelto si ordinavano già così da
     // soli, e il test passava anche con un .sort() aggiunto: non aveva denti.
     const backendOrder = [
-      { id: "z", title: "Zuppa", description: null, source: "dataset",
-        missing: 2, cookable: false, missing_names: [] },
-      { id: "a", title: "Agnello", description: null, source: "dataset",
-        missing: 0, cookable: true, missing_names: [] },
+      riga("z", "Zuppa", { missing: 2, cookable: false, missing_names: ["Farro", "Porri"] }),
+      riga("a", "Agnello"),
     ];
     stubRoutedFetch((path) => (path.includes("/recipes/categories") ? [[], 200] : [backendOrder, 200]));
     renderScreen();
 
     await screen.findByText("Zuppa");
-    const titles = screen
-      .getAllByRole("listitem")
-      .map((li) => li.querySelector("span")?.textContent);
-    expect(titles).toEqual(["Zuppa", "Agnello"]);
+    // dagli indirizzi delle righe: il primo `span` di una riga ora è la miniatura
+    const righe = within(screen.getByRole("list", { name: "Ricette trovate" })).getAllByRole("link");
+    expect(righe.map((link) => link.getAttribute("href"))).toEqual(["/ricette/z", "/ricette/a"]);
   });
 
-  it("mostra la foto e il tempo totale quando ci sono", async () => {
+  it("la miniatura mostra la foto, e la riga il tempo totale", async () => {
     stubRoutedFetch(CODA_CON_CATEGORIE);
-    renderScreen();
+    const { container } = renderScreen();
 
-    const foto = await screen.findByRole("img", { name: "Pasta all'aglio" });
+    await screen.findByText("Pasta all'aglio");
+    // la foto è decorativa (`alt=""`): il titolo è già il nome del collegamento
+    const foto = container.querySelector('a[href="/ricette/r1"] img');
+    expect(foto).toHaveAttribute("src", "https://example.com/aglio.jpg");
     expect(foto).toHaveAttribute("loading", "lazy");
     expect(screen.getByText("25 min")).toBeInTheDocument();
   });
 
-  it("una ricetta senza foto e senza tempi non si rompe", async () => {
+  it("una ricetta senza foto e senza tempi non si rompe, e ha comunque la miniatura", async () => {
     stubRoutedFetch(CODA_CON_CATEGORIE);
-    renderScreen();
+    const { container } = renderScreen();
 
     expect(await screen.findByText("Pasta al pomodoro")).toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "Pasta al pomodoro" })).not.toBeInTheDocument();
+    const senzaFoto = container.querySelector('a[href="/ricette/r2"]')!;
+    expect(senzaFoto.querySelector("img")).toBeNull();
+    expect(senzaFoto.querySelector("[data-recipe-thumb] svg")).not.toBeNull();
   });
 
   // Il caso normale, non un'eccezione (spec §6.3): l'immagine viene dal server di
   // origine e non è mai copiata, quindi un 404 dopo un rinominamento a monte, un
   // blocco sul Referer o solo poco segnale in corridoio la fanno fallire. Senza
-  // questa gestione la scheda mostra il titolo due volte (l'alt dell'immagine
-  // rotta, e il titolo vero sotto) più un riquadro vuoto delle dimensioni della
-  // foto mancata — ~230px su 812.
-  it("una foto che non carica non lascia un buco: la scheda torna al layout senza foto", async () => {
+  // questa gestione la riga mostrerebbe un riquadro vuoto al posto della foto.
+  it("una foto che non carica non lascia un buco: resta l'icona del reparto", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    const { container } = renderScreen();
+
+    await screen.findByText("Pasta all'aglio");
+    fireEvent.error(container.querySelector('a[href="/ricette/r1"] img')!);
+
+    expect(container.querySelector('a[href="/ricette/r1"] img')).toBeNull();
+    expect(container.querySelector('a[href="/ricette/r1"] [data-recipe-thumb] svg')).not.toBeNull();
+    // il titolo resta una volta sola
+    expect(screen.getAllByText("Pasta all'aglio")).toHaveLength(1);
+  });
+
+  it("i filtri stanno in un pannello chiuso, che «Filtri» apre e richiude", async () => {
     stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
 
-    const foto = await screen.findByRole("img", { name: "Pasta all'aglio" });
-    fireEvent.error(foto);
+    const filtri = await screen.findByRole("button", { name: "Filtri" });
+    expect(filtri).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByLabelText("Contiene ingredienti")).not.toBeVisible();
 
-    expect(screen.queryByRole("img", { name: "Pasta all'aglio" })).not.toBeInTheDocument();
-    // il titolo resta una volta sola: non si duplica nell'alt di un'immagine ormai
-    // fuori pagina
-    expect(screen.getAllByText("Pasta all'aglio")).toHaveLength(1);
+    await userEvent.click(filtri);
+    expect(filtri).toHaveAttribute("aria-expanded", "true");
+    const campo = screen.getByLabelText("Contiene ingredienti");
+    expect(campo).toBeVisible();
+    // `aria-controls` nomina il pannello che contiene davvero i filtri
+    expect(document.getElementById(filtri.getAttribute("aria-controls")!)).toContainElement(campo);
+
+    await userEvent.click(filtri);
+    expect(filtri).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByLabelText("Contiene ingredienti")).not.toBeVisible();
+  });
+
+  it("«Filtri» conta categoria e ingredienti, non le parole né la scala", async () => {
+    stubRoutedFetch(CON_POMODORO);
+    renderScreen();
+
+    await userEvent.type(await screen.findByLabelText("Cerca nel ricettario"), "pasta");
+    await userEvent.click(
+      screen.getByRole("radio", { name: "Solo quelle che puoi cucinare adesso." })
+    );
+    expect(screen.getByRole("button", { name: "Filtri" })).toBeInTheDocument();
+
+    await apriFiltri();
+    await userEvent.selectOptions(await screen.findByLabelText("Categoria"), "Primi piatti");
+    expect(screen.getByRole("button", { name: "Filtri, 1 attivo" })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Contiene ingredienti"), "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    // il numero si sente e si vede
+    expect(screen.getByRole("button", { name: "Filtri, 2 attivi" })).toHaveTextContent("Filtri2");
+  });
+
+  it("il pannello dice quante ricette rispondono, col totale del server", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/recipes/search?")
+        ? [RESULTS, 200, { "X-Total-Count": "42" }]
+        : CODA_CON_CATEGORIE(path)
+    );
+    renderScreen();
+
+    await apriFiltri();
+    expect(await screen.findByText("42 ricette")).toBeVisible();
+  });
+
+  it("se il server dice che il totale è un minimo, il pannello dice «almeno»", async () => {
+    // la piscina dei candidati di una ricerca a parole era piena (R-D, sesta lezione di
+    // CLAUDE.md): altre ricette potrebbero rispondere e non sono state guardate, e un
+    // «34 ricette» secco prometterebbe un conto che il server non ha fatto
+    stubRoutedFetch((path) =>
+      path.includes("/recipes/search?")
+        ? [RESULTS, 200, { "X-Total-Count": "34", "X-Total-Count-Lower-Bound": "1" }]
+        : CODA_CON_CATEGORIE(path)
+    );
+    renderScreen();
+
+    await apriFiltri();
+    expect(await screen.findByText("almeno 34 ricette")).toBeVisible();
+    expect(screen.queryByText("34 ricette")).toBeNull();
+  });
+
+  it("«Azzera» toglie categoria e ingredienti, e lascia parole e scala", async () => {
+    const fetchMock = stubRoutedFetch(CON_POMODORO);
+    renderScreen();
+
+    await userEvent.type(await screen.findByLabelText("Cerca nel ricettario"), "pasta");
+    await userEvent.click(
+      screen.getByRole("radio", { name: "Al massimo 2 ingredienti da comprare." })
+    );
+    await apriFiltri();
+    await userEvent.selectOptions(await screen.findByLabelText("Categoria"), "Primi piatti");
+    await userEvent.type(screen.getByLabelText("Contiene ingredienti"), "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Azzera" }));
+
+    expect(screen.getByRole("button", { name: "Filtri" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Categoria")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Togli il filtro su Pomodoro" })).toBeNull();
+    await waitFor(() => {
+      const ultima = ultimaRicerca(fetchMock);
+      expect(ultima).not.toContain("category=");
+      expect(ultima).not.toContain("ingredient_id");
+      expect(ultima).toContain("q=pasta");
+      expect(ultima).toContain("max_missing=2");
+    });
+  });
+
+  it("«Azzera» non c'è finché non c'è niente da azzerare", async () => {
+    stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    await apriFiltri();
+    await screen.findByLabelText("Categoria");
+    expect(screen.queryByRole("button", { name: "Azzera" })).toBeNull();
+  });
+
+  it("i filtri si ricordano finché l'app è aperta: rimontato, lo schermo li ritrova", async () => {
+    // tornando da una ricetta lo schermo rinasce (Mattia, 2026-09-29)
+    const fetchMock = stubRoutedFetch(CON_POMODORO);
+    const primo = renderScreen();
+
+    await userEvent.type(await screen.findByLabelText("Cerca nel ricettario"), "pasta");
+    await userEvent.click(
+      screen.getByRole("radio", { name: "Al massimo 1 ingrediente da comprare." })
+    );
+    await apriFiltri();
+    await userEvent.selectOptions(await screen.findByLabelText("Categoria"), "Primi piatti");
+    await userEvent.type(screen.getByLabelText("Contiene ingredienti"), "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    await screen.findByRole("button", { name: "Filtri, 2 attivi" });
+    primo.unmount();
+
+    renderScreen();
+
+    expect(await screen.findByLabelText("Cerca nel ricettario")).toHaveValue("pasta");
+    expect(
+      screen.getByRole("radio", { name: "Al massimo 1 ingrediente da comprare." })
+    ).toBeChecked();
+    expect(screen.getByRole("button", { name: "Filtri, 2 attivi" })).toBeInTheDocument();
+    await waitFor(() => {
+      const ultima = ultimaRicerca(fetchMock);
+      expect(ultima).toContain("q=pasta");
+      expect(ultima).toContain("max_missing=1");
+      expect(ultima).toContain("category=Primi+piatti");
+      expect(ultima).toContain(`ingredient_id=${POMODORO.id}`);
+    });
+  });
+
+  it("se la memoria non si legge né si scrive, si parte vuoti e il ricettario funziona", async () => {
+    // finestra privata, dati del sito bloccati: il ricordo è una comodità
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("bloccata");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("bloccata");
+    });
+    const fetchMock = stubRoutedFetch(CODA_CON_CATEGORIE);
+    renderScreen();
+
+    expect(await screen.findByText("Pasta all'aglio")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cerca nel ricettario")).toHaveValue("");
+    await userEvent.type(screen.getByLabelText("Cerca nel ricettario"), "aglio");
+    await waitFor(() => expect(ultimaRicerca(fetchMock)).toContain("q=aglio"));
+  });
+
+  it("il vuoto con dei filtri accesi offre «Azzera i filtri», che li toglie", async () => {
+    const fetchMock = stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO], 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      if (path.includes("/recipes/search?")) {
+        return [path.includes("ingredient_id") ? [] : RESULTS, 200];
+      }
+      return [{ semantic: true }, 200];
+    });
+    renderScreen();
+
+    await apriFiltri();
+    await userEvent.type(await screen.findByLabelText("Contiene ingredienti"), "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    expect(await screen.findByRole("heading", { name: "Nessuna ricetta" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Azzera i filtri" }));
+
+    expect(await screen.findByText("Pasta all'aglio")).toBeInTheDocument();
+    await waitFor(() => expect(ultimaRicerca(fetchMock)).not.toContain("ingredient_id"));
   });
 
   it("il filtro per categoria chiede al backend solo quella categoria", async () => {
     const spy = stubRoutedFetch(CODA_CON_CATEGORIE);
     renderScreen();
 
+    await apriFiltri();
     await userEvent.selectOptions(
       await screen.findByLabelText("Categoria"),
       "Dolci e Desserts"
@@ -568,6 +803,8 @@ describe("RecipeBookScreen", () => {
     renderScreen();
 
     await screen.findByText("Pasta all'aglio");
+    await apriFiltri();
+    expect(screen.getByLabelText("Contiene ingredienti")).toBeVisible();
     expect(screen.queryByLabelText("Categoria")).not.toBeInTheDocument();
   });
 
@@ -581,6 +818,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
+    await apriFiltri();
     await userEvent.type(await screen.findByLabelText("Contiene ingredienti"), "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
 
@@ -601,6 +839,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
+    await apriFiltri();
     await userEvent.type(await screen.findByLabelText("Contiene ingredienti"), "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Togli il filtro su Pomodoro" }));
@@ -621,6 +860,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
+    await apriFiltri();
     await userEvent.type(await screen.findByLabelText("Contiene ingredienti"), "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
 
@@ -640,6 +880,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
+    await apriFiltri();
     const campo = await screen.findByLabelText("Contiene ingredienti");
     await userEvent.type(campo, "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
@@ -661,6 +902,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
+    await apriFiltri();
     const campo = await screen.findByLabelText("Contiene ingredienti");
     await userEvent.type(campo, "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
@@ -685,6 +927,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
+    await apriFiltri();
     const campo = await screen.findByLabelText("Contiene ingredienti");
     await userEvent.type(campo, "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
@@ -702,6 +945,7 @@ describe("RecipeBookScreen", () => {
     });
     renderScreen();
 
+    await apriFiltri();
     const campo = await screen.findByLabelText("Contiene ingredienti");
     await userEvent.type(campo, "pomo");
     await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
@@ -714,6 +958,7 @@ describe("RecipeBookScreen", () => {
     ).toBeDefined();
     expect(screen.getByText(/togli un ingrediente/)).toBeDefined();
   });
+
   describe("«Mostra altre»", () => {
     function ricette(quante: number, da = 0) {
       return Array.from({ length: quante }, (_, n) => ({
@@ -721,7 +966,7 @@ describe("RecipeBookScreen", () => {
       }));
     }
 
-    function paginato(path: string): [unknown, number] {
+    function paginato(path: string): Risposta {
       if (path.includes("/recipes/categories")) return [[], 200];
       if (path.includes("/recipes/search-mode")) return [{ semantic: true }, 200];
       const offset = Number(new URL(path, "http://x").searchParams.get("offset") ?? 0);

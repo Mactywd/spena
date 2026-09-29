@@ -2,10 +2,12 @@ import { Link } from "react-router-dom";
 
 /** L'ingresso a una sottosezione, in cima alla sezione madre.
  *
- * Sempre presente (D3 di docs/prossimi-passi.md). Sparire quando non c'è niente da
- * fare è ciò che rende una sottosezione irraggiungibile proprio quando la si vuole
- * visitare apposta — per sistemare una spesa che non si è spuntata, per rivedere
- * una decisione già presa.
+ * Chi la usa decide quando c'è. In Lista e Dispensa, «Sistema la spesa» è sempre
+ * presente (D3 di docs/prossimi-passi.md): sparire quando non c'è niente da fare la
+ * renderebbe irraggiungibile proprio quando la si vuole visitare apposta, per sistemare
+ * una spesa che non si è spuntata. Nel ricettario «Ingredienti da abbinare» compare solo
+ * con la coda non vuota (T3 Consegna 4, spec §4.5): lì la sottosezione ha un'altra porta
+ * che c'è sempre, la voce del ☰, e da lì si rivedono le decisioni già prese.
  *
  * L'ambra è lo stesso colore di «quasi finito»: nell'app vuol dire «c'è qualcosa
  * che ti riguarda», non «è andato male qualcosa». Il pallino è decorazione e basta:

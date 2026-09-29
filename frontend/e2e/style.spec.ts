@@ -303,6 +303,8 @@ test("la X di una pastiglia del filtro è un bersaglio da pollice, e la pastigli
   //
   // Non scrive niente: il filtro vive nello schermo, non sul server.
   await page.getByRole("link", { name: "Ricette" }).click();
+  // categoria e ingredienti stanno nel pannello «Filtri» (T3 Consegna 4)
+  await page.getByRole("button", { name: /^Filtri/ }).click();
   await page.getByLabel("Contiene ingredienti").fill("pomodo");
   await page.getByRole("option", { name: /^Pomodoro\b/ }).click();
 
@@ -1020,7 +1022,7 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
   }
 
   // il dettaglio: la prima scheda del ricettario. Una scheda è un link dentro una voce
-  // della lista (RecipeCard), senza titoli `h2`/`h3`
+  // della lista (RecipeRow), senza titoli `h2`/`h3`
   await page.goto("/ricette");
   await page.getByRole("listitem").getByRole("link").first().click();
   await expect(page.getByRole("button", { name: "Cucina", exact: true })).toBeVisible();
