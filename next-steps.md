@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-09-29 (fase giorno: migrazione da `docs/prossimi-passi.md`)_
+_Ultimo aggiornamento: 2026-09-29 (fase giorno)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -14,27 +14,21 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-_(nessuno: i piani di oggi sono in scrittura)_
+Da eseguire in quest'ordine, ciascuno sul suo ramo dal `master`. Toccano tutti e due `frontend/e2e/style.spec.ts`, `docs/prossimi-passi.md` e `next-steps.md`: i conflitti si risolvono di giorno, al merge.
+
+- [pronto] P1 · T3 Consegna 3, Sistema la spesa: una riga per voce con le icone, un pannello alla volta sotto la sua voce con le altre nascoste (S10 e i suoi tre dettagli), sezioni per reparto, «Abbina» col selettore unico e «Come si chiama in generale?», «È di un altro ingrediente: X» non rosso, «Metti in dispensa N» con l'avviso in Dispensa (T4) → `docs/superpowers/plans/2026-09-29-ridisegno-sistema-la-spesa.md`, ramo `night/sistema-la-spesa` [T3, S10, T4]
+- [pronto] P2 · Pulizie dopo la Lista: 409 del server sul doppione dell'«Annulla», `Button` con `busy`, altezza massima dei suggerimenti, vecchie pulizie e2e con `expect.soft`, via `set_fill`, il 404 non ritentato con «Questa ricetta non c'è più.», `occurrences` ricontato dopo l'annulla → `docs/superpowers/plans/2026-09-29-pulizie-dopo-la-lista.md`, ramo `night/pulizie-dopo-la-lista` [T3 Consegna 2, Parte X, D1]
 
 ## Da approfondire (giorno)
 
 ### Ridisegno (T3), spec `docs/superpowers/specs/2026-09-28-ridisegno-design.md`
-- [tbd] P1 · Consegna 3, Sistema la spesa: una riga per voce con le icone, i pannelli sotto la voce (S10 e i suoi tre dettagli), «Abbina» chiuso, «Metti in dispensa N» con l'avviso in Dispensa (T4) — serve il piano (spec §4.3) [T3, S10, T4]
 - [tbd] P1 · Consegna 4, Ricette: «+ Nuova», Filtri col contatore, «Cosa posso cucinare», righe compatte con «Hai tutto»/«Manca: …» — serve il piano (spec §4.5) [T3]
 - [tbd] P1 · Consegna 5, Dettaglio ricetta: «Metti in lista ciò che manca», `StatusDot` per riga, `StockGauge` nel foglio della cottura, costo in sola lettura, «Apri l'originale» a 44 px — serve il piano (spec §4.6) [T3]
 - [tbd] P2 · Consegna 6, il resto: modulo della ricetta con R12, Anagrafica, coda d'import, accesso con «Mostra password», parole a video — serve il piano (spec §4.7) [T3, R12]
 - [tbd] P2 · «Salva nel ricettario» senza avviso: l'ultimo punto aperto di T4; nessuna consegna lo nomina — TBD: va nella Consegna 5 o nella 6? [T4]
-- [tbd] P2 · Tema scuro, l'avviso con «Annulla» si rovescia in una pastiglia chiara, mentre la spec §3.5 dice «fondo scuro» — TBD per Mattia: va bene il rovescio, o scuro in tutti e due i temi? [T3 Consegna 0]
 - [tbd] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — TBD: come ridisegnarli [T3 Consegna 1]
 
 ### Code della Consegna 2 e pulizie
-- [tbd] P2 · Il doppione sull'«Annulla» della ✕ in Lista lo evita solo la cache del client: serve un controllo lato server sulla PATCH che rimanda a `pending`/`checked` — serve il piano [T3 Consegna 2]
-- [tbd] P2 · La ✕ di Lista usa ancora `disabled` (manca una variante `aria-disabled` di `Button`): dopo una ✕ fallita il fuoco cade sulla pagina — serve il piano [T3 Consegna 2]
-- [tbd] P3 · I suggerimenti sotto la barra appiccicata della Lista non hanno un'altezza massima — serve il piano [T3 Consegna 2]
-- [tbd] P3 · La vecchia pulizia e2e di `style.spec.ts` (prodotto e dispensa, righe ~985-1072) avvisa soltanto: deve far fallire la prova come la nuova — serve il piano [T3 Consegna 2]
-- [tbd] P2 · Togliere `set_fill` e la sua `PATCH` dal backend: nessun client la usa più dalla Consegna 1; `fill_percent` resta nello schema — TBD: si toglie solo la rotta o anche la colonna? [D1]
-- [tbd] P2 · Un 404 viene ritentato e poi offre «Riprova»: escluderlo in `lib/queryRetry.ts`, con «Questa ricetta non c'è più» e il ritorno al ricettario — serve il piano [Parte X]
-- [tbd] P2 · «1 ricetta in attesa» con due ricette sotto: `undo_decision` non riconta `occurrences` — serve il piano [T3, esito del giro]
 - [tbd] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più: una soglia o un salto di punteggio nel backend — TBD: quale criterio [T3, esito del giro]
 
 ### Voci decise, da portare a spec e piano
@@ -83,6 +77,7 @@ _(nessuno: i piani di oggi sono in scrittura)_
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-09-29 · Tema scuro: l'avviso rovesciato (chiaro sullo scuro) va bene, deciso da Mattia; spec §3.5 aggiornata
 - [fatto] 2026-09-28 · T3 Consegna 2, Lista → `master` c614e80, in produzione
 - [fatto] 2026-09-28 · T3 Consegna 1, Dispensa, con la riga a 375 px e l'Esc sulla data → in produzione
 - [fatto] 2026-09-28 · T3 Consegna 0, fondamenta (token chiari e scuri, Inter, icone, primitive) → in produzione

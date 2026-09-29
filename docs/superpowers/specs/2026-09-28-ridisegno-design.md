@@ -129,7 +129,8 @@ e le consegne seguenti migrano le schermate su di esse.
   minuscolo, «manca» è la disponibilità di una ricetta e in dispensa non esiste.
 - **`Chip`** — pastiglie di stato e di scadenza; sostituisce `StatusChip` ed `ExpiryChip`.
 - **`Notice`** — l'**avviso di conferma unico** (resto di T4): in basso, sopra la barra delle
-  schede, fondo scuro, testo breve, un'azione facoltativa («Annulla», «Vedi»), dura 6 secondi
+  schede, fondo `ink`, che si rovescia col tema — scuro sul chiaro, chiaro sullo scuro, così si
+  stacca sempre dalla pagina (deciso da Mattia il 2026-09-29), testo breve, un'azione facoltativa («Annulla», «Vedi»), dura 6 secondi
   e lo dice con una barra che si accorcia (dal giro: «la lapide dura 6 secondi e non lo
   dice»). `role="status"`. Assorbe la lapide di dispensa e ricettario.
 - **`ErrorState`** — l'**errore di caricamento unico**: cosa non è andato, che il dato è
