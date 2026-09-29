@@ -91,8 +91,11 @@ def is_cookable(requirements: Iterable[tuple[IngredientRole, Availability]]) -> 
 # La soglia di `status_for_fill`: fin qui è «quasi finito», oltre è «disponibile».
 # 30 e non 50: la zona bassa deve dire «comincia a mancare», non «siamo a metà».
 # Dal T3 Consegna 1 (2026-09-28) nessun client scrive più `fill_percent` — le tre
-# tacche della dispensa mandano lo stato direttamente — ma la via `PATCH` che lo
-# accetta (`set_fill`) resta nel backend, e questa soglia resta la sua unica lettura.
+# tacche della dispensa mandano lo stato direttamente — e dal 2026-09-29 non c'è più
+# nemmeno la via `PATCH` che lo accettava (`set_fill`, D1 in docs/prossimi-passi.md).
+# `status_for_fill` non ha quindi chiamanti in produzione. Resta, coi suoi test,
+# perché CLAUDE.md la cita come la regola che teneva d'accordo posizione e stato, e
+# perché le voci toccate prima del 2026-09-28 hanno ancora la colonna piena.
 #
 # È una soglia display con una conseguenza che display non è: `low` è l'unico stato
 # che cambia la risposta a «questa ricetta si può cucinare?» (vedi `is_satisfied`),

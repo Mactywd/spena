@@ -15,7 +15,6 @@ from app.repositories.pantry import (
     availability_map,
     list_pantry,
     set_expiry,
-    set_fill,
     set_status,
     unarchive_item,
 )
@@ -102,12 +101,6 @@ async def patch(
                 if payload.archived
                 else await unarchive_item(session, item_id)
             )
-        elif payload.fill_percent is not None:
-            # prima dello stato: in una richiesta che porta entrambi lo stato è una
-            # conseguenza della posizione, non una seconda opinione. Nessun client la
-            # manda più dal 2026-09-28 (T3 Consegna 1: le tacche mandano `status`),
-            # e questa via resta senza chiamanti — vedi D1 in docs/prossimi-passi.md
-            item = await set_fill(session, item_id, payload.fill_percent)
         elif payload.status is not None:
             item = await set_status(session, item_id, payload.status)
         elif "expires_on" in payload.model_fields_set:
