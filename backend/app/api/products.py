@@ -34,6 +34,37 @@ router = APIRouter(
 )
 
 
+async def _products_out(session: AsyncSession, products: list[Product]) -> list[ProductOut]:
+    """I prodotti con il nome del loro ingrediente, in una query sola per tutta la
+    risposta (T3 Consegna 3: «È di un altro ingrediente: burro»).
+
+    Una relazione `Product.ingredient` sempre caricata avrebbe cambiato ogni query che
+    legge un prodotto, dispensa compresa; qui il nome serve a tre rotte, e lo chiedono
+    loro. `ingredient_id` è una chiave esterna non annullabile, quindi il nome c'è sempre.
+    """
+    ids = {product.ingredient_id for product in products}
+    names: dict[uuid.UUID, str] = {}
+    if ids:
+        rows = await session.execute(
+            select(Ingredient.id, Ingredient.name).where(Ingredient.id.in_(ids))
+        )
+        names = {ingredient_id: name for ingredient_id, name in rows.all()}
+    return [
+        ProductOut(
+            id=product.id,
+            ingredient_id=product.ingredient_id,
+            ingredient_name=names[product.ingredient_id],
+            name=product.name,
+            brand=product.brand,
+            barcode=product.barcode,
+            source=product.source,
+            nutrients=product.nutrients,
+            image_url=product.image_url,
+        )
+        for product in products
+    ]
+
+
 @router.get("/barcode/{barcode}", response_model=BarcodeLookupOut)
 async def lookup_barcode(
     barcode: str, session: AsyncSession = Depends(get_session)
@@ -56,9 +87,9 @@ async def lookup_barcode(
     valid_checksum = has_valid_check_digit(barcode)
     existing = await find_by_barcode(session, barcode)
     if existing is not None:
+        [product] = await _products_out(session, [existing])
         return BarcodeLookupOut(
-            found=True, origin="catalog", product=ProductOut.model_validate(existing),
-            valid_checksum=valid_checksum,
+            found=True, origin="catalog", product=product, valid_checksum=valid_checksum,
         )
 
     try:
@@ -86,7 +117,7 @@ async def search(
     session: AsyncSession = Depends(get_session),
 ) -> list[ProductOut]:
     found = await search_products(session, q, limit)
-    return [ProductOut.model_validate(p) for p in found]
+    return await _products_out(session, found)
 
 
 @router.post("", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
@@ -110,7 +141,8 @@ async def create(
         if not is_unique_violation(exc):
             raise
         raise HTTPException(status.HTTP_409_CONFLICT, "codice a barre già in catalogo") from exc
-    return ProductOut.model_validate(product)
+    [created] = await _products_out(session, [product])
+    return created
 
 
 _CONFLICT = {status.HTTP_409_CONFLICT: {

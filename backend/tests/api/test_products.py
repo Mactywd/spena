@@ -238,3 +238,45 @@ async def test_duplicate_barcode_is_still_409(logged_client, yogurt):
     conflict = await logged_client.post("/api/v1/products", json=body)
     assert conflict.status_code == 409
     assert "codice a barre" in conflict.json()["detail"]
+
+
+async def test_a_catalog_hit_names_its_ingredient(logged_client, db_session, yogurt):
+    """T3 Consegna 3: «È di un altro ingrediente: burro» dice quale. Il nome lo manda il
+    server: il client non va a cercarselo."""
+    db_session.add(Product(ingredient_id=yogurt.id, name="Fage Total 0%", brand="Fage",
+                           barcode="5201054000138", source="openfoodfacts"))
+    await db_session.flush()
+
+    body = (await logged_client.get("/api/v1/products/barcode/5201054000138")).json()
+    assert body["product"]["ingredient_name"] == "yogurt greco"
+
+
+async def test_catalog_search_names_the_ingredient_of_each_product(
+    logged_client, db_session, yogurt
+):
+    """Il catalogo dice di chi è ogni prodotto che trova: «altri 2 prodotti, di un altro
+    ingrediente» diventa «…: burro di prova», e i nomi arrivano con la risposta."""
+    burro = Ingredient(name="burro di prova", display_name="Burro di prova",
+                       category=IngredientCategory.LATTICINI)
+    db_session.add(burro)
+    await db_session.flush()
+    db_session.add_all([
+        Product(ingredient_id=yogurt.id, name="Crema zafferanata", source="custom"),
+        Product(ingredient_id=burro.id, name="Panetto zafferanato", source="custom"),
+    ])
+    await db_session.flush()
+
+    response = await logged_client.get("/api/v1/products/search", params={"q": "zafferan"})
+    assert response.status_code == 200
+    assert {p["name"]: p["ingredient_name"] for p in response.json()} == {
+        "Crema zafferanata": "yogurt greco",
+        "Panetto zafferanato": "burro di prova",
+    }
+
+
+async def test_a_created_product_names_its_ingredient(logged_client, yogurt):
+    response = await logged_client.post("/api/v1/products", json={
+        "ingredient_id": str(yogurt.id), "name": "Yogurt greco al miele",
+    })
+    assert response.status_code == 201
+    assert response.json()["ingredient_name"] == "yogurt greco"

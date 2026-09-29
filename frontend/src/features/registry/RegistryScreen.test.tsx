@@ -11,7 +11,8 @@ const BURRO: Ingredient = {
   id: "i-burro", name: "burro", display_name: "Burro", category: "latticini", kind: "food",
 };
 const REGGIANO: Product = {
-  id: "p-reggiano", ingredient_id: "i-burro", name: "Parmigiano Reggiano 24 mesi",
+  id: "p-reggiano", ingredient_id: "i-burro", ingredient_name: "burro",
+  name: "Parmigiano Reggiano 24 mesi",
   brand: "Latteria", barcode: "8009876543217", source: "custom", nutrients: null, image_url: null,
 };
 

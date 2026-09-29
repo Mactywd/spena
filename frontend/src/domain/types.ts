@@ -18,6 +18,10 @@ export interface Ingredient {
 export interface Product {
   id: string;
   ingredient_id: string;
+  /** Il nome dell'ingrediente del prodotto (`Ingredient.name`), mandato dal server:
+   * «È di un altro ingrediente: burro» lo dice senza che il client vada a cercarlo
+   * (T3 Consegna 3). */
+  ingredient_name: string;
   name: string;
   brand: string | null;
   barcode: string | null;

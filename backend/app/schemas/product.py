@@ -6,10 +6,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProductOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    """Un prodotto del catalogo, come lo leggono la sistemazione e l'anagrafica.
+
+    `ingredient_name` è il `name` dell'ingrediente del prodotto: la sistemazione dice
+    «È di un altro ingrediente: burro» (T3 Consegna 3), e il nome lo manda il server
+    invece di lasciarlo cercare al client. Si costruisce con `_products_out` in
+    `app/api/products.py`, non da un `Product` da solo: il modello non ha la relazione
+    con l'ingrediente, e il nome arriva da una query a parte.
+    """
 
     id: uuid.UUID
     ingredient_id: uuid.UUID
+    ingredient_name: str
     name: str
     brand: str | None
     barcode: str | None
