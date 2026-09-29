@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchProducts } from "./api";
-import { OTHER_INGREDIENT } from "./wording";
+import { elsewhereNote } from "./wording";
 import { useDebounced } from "../../hooks/useDebounced";
+import { Button } from "../../components/ui/Button";
+import { IconPencilPlus } from "../../components/ui/icons";
 import type { Product } from "../../domain/types";
-import { buttonClasses } from "../../components/ui/buttonClasses";
 
 const DEBOUNCE_MS = 180;
 
@@ -18,7 +19,11 @@ const DEBOUNCE_MS = 180;
  * non c'è. L'alternativa, «sfuso», perde la marca e con essa i nutrienti.
  *
  * Il campo parte dal testo della voce di lista, perché l'affinamento è aggiungere
- * parole a quello che si è già scritto.
+ * parole a quello che si è già scritto (dal giro di T3: da non riprogettare via).
+ *
+ * Un messaggio per stato (T3 Consegna 3): «altri 2 prodotti, di un altro ingrediente»
+ * e «nessun prodotto» a video insieme si contraddicevano, e l'esempio «yogurt greco»
+ * compariva anche cercando le uova.
  */
 export function CatalogSearchPanel({
   itemLabel,
@@ -39,11 +44,6 @@ export function CatalogSearchPanel({
   onCreateByHand: () => void;
   onCancel: () => void;
 }) {
-  // parte dal testo della voce, come dice la spec §8.2 («da `yogurt greco` a
-  // `yogurt greco carrefour pesca`»): affinare è aggiungere parole a quel che si è
-  // già scritto. Vale quando il nome del prodotto contiene il termine generico, che
-  // è il caso di Open Food Facts; per una referenza di sola marca il campo si
-  // riscrive, ed è il motivo per cui non è di sola lettura.
   const [term, setTerm] = useState(itemLabel);
   const debounced = useDebounced(term, DEBOUNCE_MS).trim();
   const ready = debounced.length >= 2;
@@ -58,14 +58,31 @@ export function CatalogSearchPanel({
   });
 
   const mine = found.filter((product) => product.ingredient_id === ingredientId);
-  const elsewhere = found.length - mine.length;
-  const nothingToPick = isSuccess && mine.length === 0;
+  // di chi sono gli altri: lo dice il server (`ingredient_name`), il client non va a
+  // cercarselo
+  const elsewhere = found
+    .filter((product) => product.ingredient_id !== ingredientId)
+    .map((product) => product.ingredient_name);
+
+  // `term` e non `debounced` per l'esempio: svuotato il campo, l'invito compare subito
+  const state: "hint" | "searching" | "failed" | "found" | "elsewhere" | "none" =
+    term.trim().length < 2
+      ? "hint"
+      : isError
+        ? "failed"
+        : !isSuccess
+          ? "searching"
+          : mine.length > 0
+            ? "found"
+            : elsewhere.length > 0
+              ? "elsewhere"
+              : "none";
 
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-card bg-card p-4">
+    <div className="flex flex-col gap-3 rounded-card border border-line p-3">
       <h3 className="font-semibold">Cerca a catalogo per «{itemLabel}»</h3>
       <label className="text-sm">
-        Nome del prodotto
+        Nome o marca del prodotto
         <input
           aria-label="Cerca a catalogo"
           value={term}
@@ -73,40 +90,52 @@ export function CatalogSearchPanel({
           className="mt-1.5"
         />
       </label>
-      <p className="text-xs text-ink-soft">
-        Aggiungi parole per restringere: «yogurt greco», poi «yogurt greco pesca».
-      </p>
 
-      {mine.length > 0 && (
-        <ul role="listbox" className="divide-y divide-line overflow-hidden rounded-card bg-card">
-          {mine.map((product) => (
-            <li key={product.id}>
+      {state === "hint" && (
+        <p className="text-sm text-ink-soft">
+          Scrivi il nome o la marca, poi aggiungi parole per restringere: «yogurt greco», poi
+          «yogurt greco pesca».
+        </p>
+      )}
+
+      {state === "searching" && <p className="text-sm text-ink-soft">Cerco…</p>}
+
+      {state === "found" && (
+        <>
+          {/* un listbox contiene opzioni e basta: niente `<ul>/<li>` in mezzo, come in
+              OptionList (dal giro di T3) */}
+          <div
+            role="listbox"
+            aria-label={`Prodotti per «${itemLabel}»`}
+            className="flex flex-col overflow-hidden rounded-card ring-1 ring-line ring-inset"
+          >
+            {mine.map((product) => (
               <button
+                key={product.id}
                 type="button"
                 role="option"
                 aria-selected={false}
                 onClick={() => onPicked(product)}
-                className="min-h-11 w-full px-3 py-3 text-left text-sm"
+                className="flex min-h-11 w-full items-baseline gap-2 px-3 py-2.5 text-left text-sm"
               >
                 {/* lo spazio esplicito: senza, il nome accessibile del pulsante è
                     "Total 0%Fage", che è quello che legge uno screen reader */}
-                {product.name}{" "}
-                {product.brand && (
-                  <span className="text-xs text-ink-soft">{product.brand}</span>
-                )}
+                <span>{product.name}</span>{" "}
+                {product.brand && <span className="text-xs text-ink-soft">{product.brand}</span>}
               </button>
-            </li>
-          ))}
-        </ul>
+            ))}
+          </div>
+          {/* perché un prodotto che esiste può non comparire: senza questa riga
+              sembrerebbe che il catalogo non lo conosca */}
+          {elsewhere.length > 0 && (
+            <p className="text-xs text-ink-soft">{elsewhereNote(elsewhere)}</p>
+          )}
+        </>
       )}
 
-      {/* perché un prodotto che esiste può non comparire: senza questa riga
-          sembrerebbe che il catalogo non lo conosca */}
-      {elsewhere > 0 && (
-        <p className="text-xs text-ink-soft">
-          {elsewhere === 1
-            ? `Un altro prodotto corrisponde, ma ${OTHER_INGREDIENT.one}.`
-            : `Altri ${elsewhere} prodotti corrispondono, ma ${OTHER_INGREDIENT.many}.`}
+      {state === "elsewhere" && (
+        <p className="text-sm text-ink-soft">
+          {elsewhereNote(elsewhere)} Per questa voce prova con la marca, oppure crealo adesso.
         </p>
       )}
 
@@ -115,7 +144,7 @@ export function CatalogSearchPanel({
           referenza di marca può non comparire da nessuna parte — «Total 0% Fage»
           non contiene «yogurt greco». Dire che il catalogo è vuoto sarebbe un
           verdetto sbagliato sulla prima schermata del pannello. */}
-      {nothingToPick && (
+      {state === "none" && (
         <p className="text-sm text-ink-soft">
           Nessun prodotto con queste parole: la ricerca guarda nome e marca, prova con la
           marca. Oppure crealo adesso, leggi il codice a barre, o conferma la voce come sfusa.
@@ -124,29 +153,21 @@ export function CatalogSearchPanel({
 
       {/* anche qui la rete può essere giù, e il catalogo è solo una delle tre
           strade: dirlo senza togliere le altre */}
-      {isError && (
+      {state === "failed" && (
         <p role="alert" className="text-sm text-danger">
           La ricerca a catalogo non risponde. Riprova, oppure crea il prodotto a mano.
         </p>
       )}
 
-      {(nothingToPick || isError) && (
-        <button
-          type="button"
-          onClick={onCreateByHand}
-          className={`${buttonClasses("secondary")} self-start`}
-        >
+      {(state === "none" || state === "elsewhere" || state === "failed") && (
+        <Button icon={IconPencilPlus} onClick={onCreateByHand} className="self-start">
           Crea il prodotto a mano
-        </button>
+        </Button>
       )}
 
-      <button
-        type="button"
-        onClick={onCancel}
-        className={`${buttonClasses("ghost")} self-start`}
-      >
+      <Button variant="ghost" onClick={onCancel} className="self-start">
         Annulla
-      </button>
+      </Button>
     </div>
   );
 }
