@@ -1066,7 +1066,7 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
 
     // dall'anagrafica, cercando il prodotto; dalla sua scheda, il suo ingrediente
     await page.goto("/anagrafica");
-    await page.getByLabel("Cerca in anagrafica").fill(nome);
+    await page.getByLabel("Cerca un ingrediente o un prodotto", { exact: true }).fill(nome);
     await page.getByRole("link", { name: new RegExp(nome) }).click();
     await expect(page.getByRole("heading", { name: nome })).toBeVisible();
     await page.waitForLoadState("networkidle");

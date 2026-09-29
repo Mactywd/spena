@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -134,7 +134,9 @@ describe("ProductScreen", () => {
     });
     renderAt("/anagrafica/prodotto/p-reggiano");
 
-    expect(await screen.findByText("È sotto l'ingrediente sbagliato?")).toBeInTheDocument();
+    // «Spostalo» sta nel gruppo di icone accanto al titolo (Consegna 6a), senza più la
+    // domanda che lo introduceva
+    expect(await screen.findByRole("toolbar", { name: "Correzioni del prodotto" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Spostalo" }));
     await userEvent.type(screen.getByLabelText("Sposta sotto"), "parmig");
     await userEvent.click(await screen.findByRole("option", { name: /Parmigiano/ }));
@@ -329,5 +331,70 @@ describe("ProductScreen", () => {
     expect(
       spy.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")
     ).toHaveLength(1);
+  });
+
+  it("le correzioni sono un gruppo di icone accanto al titolo, coi nomi di sempre", async () => {
+    stubRoutedFetch((path) => base(path) ?? [{}, 404]);
+    renderAt("/anagrafica/prodotto/p-reggiano");
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Correzioni del prodotto" });
+    expect(toolbar.parentElement).toContainElement(
+      screen.getByRole("heading", { level: 1, name: "Parmigiano Reggiano 24 mesi" })
+    );
+    const buttons = within(toolbar).getAllByRole("button");
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Spostalo",
+      "Togli il codice",
+    ]);
+    for (const button of buttons) {
+      expect(button.textContent).toBe("");
+      expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    }
+    // «Spostalo» apre e chiude la scelta dell'ingrediente, e lo dice
+    expect(buttons[0]).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(buttons[0]);
+    expect(buttons[0]).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Sposta sotto")).toBeInTheDocument();
+  });
+
+  it("senza codice, nel gruppo non c'è «Togli il codice»", async () => {
+    stubRoutedFetch((path) =>
+      path.endsWith("/products/p-reggiano")
+        ? [{ ...REGGIANO, barcode: null, valid_checksum: null }, 200]
+        : (base(path) ?? [{}, 404])
+    );
+    renderAt("/anagrafica/prodotto/p-reggiano");
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Correzioni del prodotto" });
+    expect(within(toolbar).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Spostalo",
+    ]);
+  });
+
+  it("mentre il codice si toglie, «Togli il codice» resta spento col fuoco, e non riparte", async () => {
+    let risolvi: ((response: Response) => void) | null = null;
+    const pendente = new Promise<Response>((resolve) => {
+      risolvi = resolve;
+    });
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      if (init?.method === "PATCH") return pendente;
+      const [body, status] = base(String(url)) ?? [{}, 404];
+      return Promise.resolve(new Response(JSON.stringify(body), { status }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderAt("/anagrafica/prodotto/p-reggiano");
+
+    const togli = await screen.findByRole("button", { name: "Togli il codice" });
+    await userEvent.click(togli);
+    // `busy` e non `disabled` (Consegna 6a)
+    await waitFor(() => expect(togli).toHaveAttribute("aria-disabled", "true"));
+    expect(togli.hasAttribute("disabled")).toBe(false);
+    expect(togli).toHaveFocus();
+    await userEvent.click(togli);
+    expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
+
+    risolvi!(
+      new Response(JSON.stringify({ ...REGGIANO, barcode: null, valid_checksum: null }), { status: 200 })
+    );
   });
 });

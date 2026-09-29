@@ -78,10 +78,11 @@ export function RegistryScreen() {
       title="Anagrafica"
       subtitle="Ingredienti e prodotti, per correggere quel che è stato registrato male."
     >
+      {/* l'etichetta che si vede è il nome del campo (spec T3 §4.7): prima si vedeva
+          «Cerca» e si sentiva un altro nome, da un `aria-label`: due nomi per un campo */}
       <label className="block text-sm font-medium text-ink-soft">
-        Cerca
+        Cerca un ingrediente o un prodotto
         <input
-          aria-label="Cerca in anagrafica"
           value={term}
           onChange={(event) => setTerm(event.target.value)}
           placeholder="pomodoro, Fage…"

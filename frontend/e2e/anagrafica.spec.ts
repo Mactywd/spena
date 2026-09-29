@@ -122,7 +122,7 @@ test("il parmigiano sotto «burro» si sposta dalla dispensa, e a 375px niente s
     await nonScorreDiLato(page, "la scheda dell'ingrediente");
 
     await page.goto("/anagrafica");
-    await page.getByLabel("Cerca in anagrafica").fill("parmigiano");
+    await page.getByLabel("Cerca un ingrediente o un prodotto", { exact: true }).fill("parmigiano");
     await expect(page.getByRole("heading", { name: "Prodotti" })).toBeVisible();
     await expect(page.getByRole("link", { name: new RegExp(nome) })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("anagrafica-375.png"), fullPage: true });

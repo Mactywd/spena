@@ -60,7 +60,7 @@ describe("RegistryScreen", () => {
     });
     renderScreen();
 
-    await userEvent.type(screen.getByLabelText("Cerca in anagrafica"), "parmig");
+    await userEvent.type(screen.getByLabelText("Cerca un ingrediente o un prodotto"), "parmig");
 
     expect(await screen.findByRole("link", { name: /Burro/ })).toHaveAttribute(
       "href", "/anagrafica/ingrediente/i-burro"
@@ -85,9 +85,20 @@ describe("RegistryScreen", () => {
     });
     renderScreen();
 
-    await userEvent.type(screen.getByLabelText("Cerca in anagrafica"), "reggiano");
+    await userEvent.type(screen.getByLabelText("Cerca un ingrediente o un prodotto"), "reggiano");
 
     expect(await screen.findByText("Nessun ingrediente con questo nome.")).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: /Parmigiano Reggiano 24 mesi/ })).toBeInTheDocument();
+  });
+
+  it("il campo si chiama come dice l'etichetta che si vede (spec T3 §4.7)", () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderScreen();
+    const campo = screen.getByLabelText("Cerca un ingrediente o un prodotto");
+    // prima si vedeva «Cerca» e si sentiva un altro nome, dall'`aria-label`: due nomi per
+    // un campo. Ora il nome è l'etichetta che si vede
+    expect(campo).not.toHaveAttribute("aria-label");
+    expect(campo).toHaveAccessibleName("Cerca un ingrediente o un prodotto");
+    expect(campo).toHaveAttribute("placeholder", "pomodoro, Fage…");
   });
 });

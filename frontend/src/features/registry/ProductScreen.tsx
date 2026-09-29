@@ -4,10 +4,13 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { ApiError } from "../../api/client";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import { IconToolbar } from "../../components/ui/IconToolbar";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import { IconArrowsTransferDown, IconBarcodeOff } from "../../components/ui/icons";
 import type { Ingredient } from "../../domain/types";
 import { InlineField } from "./InlineField";
 import {
@@ -98,14 +101,13 @@ function ProductCard({ id }: { id: string }) {
       return (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-danger">Il codice è di «{refusal.existing.name}». Spostalo qui?</span>
-          <button
-            type="button"
-            disabled={barcodeAction.isPending}
+          <Button
+            variant="warn"
+            busy={barcodeAction.isPending}
             onClick={() => barcodeAction.mutate({ barcode: draft, take_barcode: true })}
-            className={buttonClasses("warn")}
           >
             Sposta il codice qui
-          </button>
+          </Button>
         </div>
       );
     }
@@ -114,14 +116,12 @@ function ProductCard({ id }: { id: string }) {
         // ambra e non rosso: non è un rifiuto, è un avviso (S20)
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-low">{refusal.detail}</span>
-          <button
-            type="button"
-            disabled={barcodeAction.isPending}
+          <Button
+            busy={barcodeAction.isPending}
             onClick={() => barcodeAction.mutate({ barcode: draft, accept_bad_checksum: true })}
-            className={buttonClasses("secondary")}
           >
             Usalo lo stesso
-          </button>
+          </Button>
         </div>
       );
     }
@@ -165,11 +165,61 @@ function ProductCard({ id }: { id: string }) {
   }
 
   return (
-    <Screen title={product.name} subtitle={product.brand ?? undefined} back={back}>
+    <Screen
+      title={product.name}
+      subtitle={product.brand ?? undefined}
+      back={back}
+      // le correzioni accanto al titolo, come quelle dell'ingrediente (spec T3 §4.7): più
+      // pulsanti in gruppo → solo icone, coi nomi di prima come `aria-label` (spec §6).
+      // «Togli il codice» c'è solo se c'è un codice da togliere, come prima
+      action={
+        <IconToolbar label="Correzioni del prodotto">
+          <Button
+            variant="ghost"
+            icon={IconArrowsTransferDown}
+            label="Spostalo"
+            aria-expanded={moving}
+            onClick={() => setMoving((open) => !open)}
+          />
+          {product.barcode && (
+            <Button
+              variant="ghost"
+              icon={IconBarcodeOff}
+              label="Togli il codice"
+              // `busy` e non `disabled` (Consegna 6a): chi l'ha premuto da tastiera
+              // tiene il fuoco finché la richiesta è in volo
+              busy={barcodeAction.isPending}
+              onClick={() => barcodeAction.mutate({ barcode: null })}
+            />
+          )}
+        </IconToolbar>
+      }
+    >
       {movedNote && (
         <p role="status" className="pb-2 text-sm font-medium text-brand">
           {movedNote}
         </p>
+      )}
+
+      {/* lo spostamento si apre qui, sotto l'intestazione, come i pannelli della scheda
+          dell'ingrediente. Senza filtro sul `kind`: in anagrafica si corregge anche il
+          non alimentare */}
+      {moving && (
+        <Card as="section" className="mb-3 flex flex-col gap-2">
+          <IngredientPicker
+            label="Sposta sotto"
+            failureNote="Il prodotto resta dov'è: riprova tra poco."
+            disabled={move.isPending}
+            onPick={(target) => move.mutate(target)}
+          />
+        </Card>
+      )}
+      {move.isError && (
+        <div className="pb-3">
+          <Alert>
+            Non sono riuscito a spostarlo: è ancora sotto «{product.ingredient.display_name}». Riprova.
+          </Alert>
+        </div>
       )}
 
       <Card className="flex flex-col gap-3">
@@ -204,16 +254,6 @@ function ProductCard({ id }: { id: string }) {
             La cifra di controllo di questo codice non torna: può essere un codice del negozio.
           </p>
         )}
-        {product.barcode && (
-          <button
-            type="button"
-            disabled={barcodeAction.isPending}
-            onClick={() => barcodeAction.mutate({ barcode: null })}
-            className={`${buttonClasses("ghost")} self-start`}
-          >
-            Togli il codice
-          </button>
-        )}
         {barcodeAction.isError && <Alert>{barcodeActionFailureText(barcodeAction.variables)}</Alert>}
       </Card>
 
@@ -225,31 +265,6 @@ function ProductCard({ id }: { id: string }) {
         >
           {product.ingredient.display_name}
         </Link>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">
-          <span>È sotto l'ingrediente sbagliato?</span>
-          <button
-            type="button"
-            aria-expanded={moving}
-            onClick={() => setMoving((open) => !open)}
-            className={buttonClasses("secondary")}
-          >
-            Spostalo
-          </button>
-        </div>
-        {/* senza filtro sul `kind`: in anagrafica si corregge anche il non alimentare */}
-        {moving && (
-          <IngredientPicker
-            label="Sposta sotto"
-            failureNote="Il prodotto resta dov'è: riprova tra poco."
-            disabled={move.isPending}
-            onPick={(target) => move.mutate(target)}
-          />
-        )}
-        {move.isError && (
-          <Alert>
-            Non sono riuscito a spostarlo: è ancora sotto «{product.ingredient.display_name}». Riprova.
-          </Alert>
-        )}
         <p className="text-xs text-ink-faint">{pantryText(product.pantry_items.length)}</p>
       </Card>
 
@@ -272,14 +287,10 @@ function ProductCard({ id }: { id: string }) {
               Gli elementi in dispensa restano, come «{product.ingredient.display_name}» sfuso.
             </p>
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate()}
-                className={buttonClasses("danger")}
-              >
+              {/* `busy` e non `disabled` (Consegna 6a): il fuoco resta su «Elimina» */}
+              <Button variant="danger" busy={remove.isPending} onClick={() => remove.mutate()}>
                 Elimina
-              </button>
+              </Button>
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(false)}
