@@ -977,7 +977,9 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
   // mostra né una tacca né la ✕ né il pulsante «+ scadenza», e lo scanner del
   // contrasto e quello dei nomi dei pulsanti non li vedrebbero mai. Una voce
   // feriale, creata e tolta qui perché serve solo a questo giro e non a un test
-  // suo — «farina» non la nomina nessun altro file o test di questa suite.
+  // suo. «Farina» la usa anche il passo 7 della prova di «Sistema la spesa a 375px»,
+  // ma solo per abbinarci una voce della lista: non crea righe in dispensa, e le due
+  // prove non si pestano i piedi.
   const trovate = (await (
     await page.request.get("/api/v1/ingredients/search?q=farina")
   ).json()) as { id: string; name: string }[];
