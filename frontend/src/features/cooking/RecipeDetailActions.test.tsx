@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-rou
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
 import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
@@ -50,26 +51,32 @@ function StatoDellaVoce() {
   return <p data-testid="stato">{JSON.stringify(location.state)}</p>;
 }
 
-function renderAt(entry: string | { pathname: string; state: unknown }) {
+function renderAt(
+  entry: string | { pathname: string; state: unknown },
+  { notice = false }: { notice?: boolean } = {}
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
   });
+  const albero = (
+    <MemoryRouter initialEntries={[entry]}>
+      <Routes>
+        <Route path="/ricette" element={<RecipeBookScreen />} />
+        <Route
+          path="/ricette/:id"
+          element={
+            <>
+              <RecipeDetailScreen />
+              <StatoDellaVoce />
+            </>
+          }
+        />
+      </Routes>
+    </MemoryRouter>
+  );
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/ricette" element={<RecipeBookScreen />} />
-          <Route
-            path="/ricette/:id"
-            element={
-              <>
-                <RecipeDetailScreen />
-                <StatoDellaVoce />
-              </>
-            }
-          />
-        </Routes>
-      </MemoryRouter>
+      {notice ? <NoticeProvider>{albero}</NoticeProvider> : albero}
     </QueryClientProvider>
   );
 }
@@ -96,15 +103,18 @@ describe("le azioni del dettaglio (R10 §6.1)", () => {
     expect(screen.getByRole("button", { name: "Elimina" })).toBeInTheDocument();
   });
 
-  it("«Elimina» archivia subito e torna al ricettario con la lapide", async () => {
+  it("«Elimina» archivia subito e torna al ricettario con l'avviso", async () => {
     const spy = stubFetch((_path, init) =>
       init?.method === "PATCH" ? [{ ...DETAIL, archived_at: "2026-09-28T10:00:00Z" }, 200] : undefined
     );
-    renderAt("/ricette/r1");
+    renderAt("/ricette/r1", { notice: true });
 
     await userEvent.click(await screen.findByRole("button", { name: "Elimina" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Pasta al pomodoro eliminata");
+    expect(await screen.findByText("Eliminata: Pasta al pomodoro")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Annulla" })).toBeInTheDocument();
+    // si è tornati al ricettario
+    expect(await screen.findByLabelText("Cerca nel ricettario")).toBeInTheDocument();
     expect(patchMandate(spy)).toEqual([["/api/v1/recipes/r1", { archived: true }]]);
   });
 
@@ -129,18 +139,20 @@ describe("le azioni del dettaglio (R10 §6.1)", () => {
     });
     render(
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/ricette", "/ricette/r1"]} initialIndex={1}>
-          <Routes>
-            <Route path="/ricette" element={<RecipeBookScreen />} />
-            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
-          </Routes>
-          <Cronologia />
-        </MemoryRouter>
+        <NoticeProvider>
+          <MemoryRouter initialEntries={["/ricette", "/ricette/r1"]} initialIndex={1}>
+            <Routes>
+              <Route path="/ricette" element={<RecipeBookScreen />} />
+              <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+            </Routes>
+            <Cronologia />
+          </MemoryRouter>
+        </NoticeProvider>
       </QueryClientProvider>
     );
 
     await userEvent.click(await screen.findByRole("button", { name: "Elimina" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Pasta al pomodoro eliminata");
+    expect(await screen.findByText("Eliminata: Pasta al pomodoro")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "torna indietro" }));
 
@@ -150,11 +162,13 @@ describe("le azioni del dettaglio (R10 §6.1)", () => {
 
   it("un'eliminazione che fallisce lo dice, e la ricetta resta lì", async () => {
     stubFetch((_path, init) => (init?.method === "PATCH" ? [{ detail: "no" }, 500] : undefined));
-    renderAt("/ricette/r1");
+    renderAt("/ricette/r1", { notice: true });
 
     await userEvent.click(await screen.findByRole("button", { name: "Elimina" }));
 
     expect(await screen.findByText(/non sono riuscito a eliminarla/i)).toBeInTheDocument();
+    // l'avviso offre di riprovare: la ricetta c'è ancora, e il gesto anche
+    expect(screen.getByRole("button", { name: "Riprova" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Pasta al pomodoro" })).toBeInTheDocument();
   });
 

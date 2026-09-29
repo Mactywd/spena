@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { fetchRecipe, setRecipeArchived, updateRecipeCost } from "../recipes/api";
+import { useArchiveRecipe } from "../recipes/useArchiveRecipe";
 import { fetchPantry } from "../pantry/api";
 import { ApiError } from "../../api/client";
 import { CookSheet } from "./CookSheet";
 import { ServingsStepper } from "./ServingsStepper";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { buttonClasses } from "../../components/ui/buttonClasses";
@@ -65,19 +67,10 @@ export function RecipeDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["recipe-categories"] }),
     ]);
 
-  // «Elimina» archivia subito, senza chiedere: la conferma è la lapide con «Annulla»
-  // nel ricettario, dove si torna (R10 §6.1). `replace`: la ricetta eliminata lascia il
-  // posto al ricettario, e «indietro» non ci riporta sopra.
-  const archive = useMutation({
-    mutationFn: () => setRecipeArchived(id, true),
-    onSuccess: (archived) => {
-      void refreshAfterArchive();
-      navigate("/ricette", {
-        replace: true,
-        state: { deletedRecipe: { id, title: archived.title } },
-      });
-    },
-  });
+  // «Elimina» archivia subito, senza chiedere: la conferma è l'avviso con «Annulla», e
+  // si torna al ricettario (T3 Consegna 4: l'avviso unico al posto della lapide). Tutto
+  // questo sta in `useArchiveRecipe`, che il dettaglio ridisegnato riusa.
+  const { archive, pending: archiving } = useArchiveRecipe();
 
   const restore = useMutation({
     mutationFn: () => setRecipeArchived(id, false),
@@ -410,20 +403,17 @@ export function RecipeDetailScreen() {
             <Link to={`/ricette/${id}/modifica`} className={buttonClasses("secondary")}>
               Modifica
             </Link>
-            <button
-              type="button"
-              onClick={() => archive.mutate()}
-              disabled={archive.isPending}
-              className={buttonClasses("danger")}
+            {/* `busy` e non `disabled`: in volo il pulsante tiene il fuoco, e il doppio
+                tocco non parte (regola dei pulsanti, Piano 1). Il guasto lo dice l'avviso,
+                con «Riprova» */}
+            <Button
+              variant="danger"
+              busy={archiving}
+              onClick={() => archive({ id, title: recipe.title })}
             >
-              {archive.isPending ? "Elimino…" : "Elimina"}
-            </button>
+              {archiving ? "Elimino…" : "Elimina"}
+            </Button>
           </div>
-          {archive.isError && (
-            <Alert className="pt-2">
-              Non sono riuscito a eliminarla: è ancora nel ricettario. Riprova.
-            </Alert>
-          )}
         </>
       )}
     </div>

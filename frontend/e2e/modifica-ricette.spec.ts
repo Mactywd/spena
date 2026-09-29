@@ -4,8 +4,9 @@ import { expect, test, type Page } from "@playwright/test";
  * R10 nel browser vero (spec §8.6): una ricetta si modifica togliendo l'unico
  * ingrediente che manca, e diventa cucinabile; si elimina, si annulla, torna. Tutto
  * a 375×812, il telefono su cui il difetto si è visto: «Elimina» sta in fondo al
- * dettaglio, si arriva scorsi, e la lapide del ricettario deve farsi vedere in cima
- * (spec §6.1), non nascere sotto l'intestazione fissa. E il modulo di modifica a
+ * dettaglio, si arriva scorsi, e l'esito — dal T3 Consegna 4 l'avviso unico, non più
+ * la lapide in cima al ricettario (R10 §6.1) — deve farsi vedere, sopra la barra delle
+ * schede. E il modulo di modifica a
  * 375 px non scorre di lato: `scrollWidth` lo calcola il browser dal CSS che
  * Tailwind ha costruito, jsdom non lo vede.
  *
@@ -104,31 +105,28 @@ test("una ricetta si modifica e diventa cucinabile, si elimina e torna; a 375px 
     await expect(page.getByRole("heading", { name: titolo })).toBeVisible();
 
     // eliminare, annullare, tornare — «Elimina» è in fondo al dettaglio, quindi ci si
-    // arriva scorsi: è esattamente lì che la lapide del ricettario nasceva nascosta
-    // sotto l'intestazione fissa (misurato: la sua `getBoundingClientRect().top` a
-    // circa −7, per tutti i sei secondi dell'«Annulla»)
+    // arriva scorsi. La lapide del ricettario nasceva lì sotto l'intestazione fissa
+    // (misurato: la sua `getBoundingClientRect().top` a circa −7); l'avviso unico che
+    // l'ha sostituita (T3 Consegna 4) è fisso in basso, e deve stare sopra la barra
+    // delle schede, a video, da dovunque si arrivi.
     const eliminaBtn = page.getByRole("button", { name: "Elimina" });
     await eliminaBtn.scrollIntoViewIfNeeded();
     const scrollYPrimaDiEliminare = await page.evaluate<number>("window.scrollY");
-    expect(scrollYPrimaDiEliminare, "il dettaglio non è scorso: il difetto non si può misurare").toBeGreaterThan(0);
+    expect(scrollYPrimaDiEliminare, "il dettaglio non è scorso: il caso non si può misurare").toBeGreaterThan(0);
 
     await eliminaBtn.click();
     await expect(page).toHaveURL(/\/ricette$/);
-    const lapide = page.getByRole("status").filter({ hasText: `${titolo} eliminata` });
-    await expect(lapide).toBeVisible();
-    // la lapide sta in cima, non sotto l'intestazione fissa che ci sta sopra. Lo
-    // scorrimento è animato (`revealAtTop`, comportamento `smooth`): si attende che si
-    // fermi, non lo stato a metà di un'animazione ancora in corso.
-    await expect(lapide).toBeInViewport();
-    const headerBox = (await page.getByRole("banner").boundingBox())!;
-    const headerBottom = headerBox.y + headerBox.height;
-    await expect
-      .poll(async () => (await lapide.boundingBox())!.y, {
-        message: "la lapide sta sotto l'intestazione fissa",
-      })
-      .toBeGreaterThanOrEqual(headerBottom);
-    await lapide.getByRole("button", { name: "Annulla" }).click();
-    await expect(lapide).toHaveCount(0);
+    const avviso = page.getByRole("status").filter({ hasText: `Eliminata: ${titolo}` });
+    await expect(avviso).toBeVisible();
+    await expect(avviso).toBeInViewport();
+    const schede = (await page.getByRole("navigation").boundingBox())!;
+    const boxAvviso = (await avviso.boundingBox())!;
+    expect(
+      boxAvviso.y + boxAvviso.height,
+      "l'avviso finisce sotto la barra delle schede"
+    ).toBeLessThanOrEqual(schede.y);
+    await avviso.getByRole("button", { name: "Annulla" }).click();
+    await expect(avviso).toHaveCount(0);
     await page.getByLabel("Cerca nel ricettario").fill(titolo);
     await expect(page.getByRole("link", { name: new RegExp(titolo) })).toBeVisible();
 
