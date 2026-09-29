@@ -130,7 +130,7 @@ export function CustomProductForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 rounded-card bg-card p-4">
-      <h3 className="font-semibold">Nuovo prodotto per «{itemLabel}»</h3>
+      <h2 className="font-semibold">Nuovo prodotto per «{itemLabel}»</h2>
       {/* cosa è successo al codice, e quale codice resta legato: prima il modulo
           non lo diceva, e si salvava senza sapere né l'uno né l'altro (S20) */}
       <div className="flex flex-col gap-1 text-sm text-ink-soft">

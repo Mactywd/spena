@@ -129,6 +129,18 @@ describe("StockingRow", () => {
     expect(onFocusReturned).toHaveBeenCalled();
   });
 
+  it("non toglie il fuoco a chi è già altrove: lo rimette solo se è caduto sulla pagina", () => {
+    // la richiesta dopo un abbinamento arriva con la rilettura, anche un momento dopo
+    const outside = document.createElement("input");
+    document.body.appendChild(outside);
+    outside.focus();
+    const { onFocusReturned } = renderRow({ returnFocusTo: "catalog" });
+    expect(document.activeElement).toBe(outside);
+    // la richiesta è consumata lo stesso: non resta in attesa di rubarlo più tardi
+    expect(onFocusReturned).toHaveBeenCalled();
+    outside.remove();
+  });
+
   it("a voce risolta il fuoco va a «Cambia»", () => {
     renderRow({ resolution: { kind: "loose" }, returnFocusTo: "change" });
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cambia la scelta per mele" }));

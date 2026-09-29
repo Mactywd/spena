@@ -1028,6 +1028,40 @@ describe("StockingScreen", () => {
       ).toBe(false);
     });
 
+    it("dopo l'abbinamento il fuoco resta sulla prima icona, anche quando la voce passa nel suo reparto", async () => {
+      // la rilettura dopo la PATCH dà alla voce il suo reparto: la riga lascia «Senza
+      // reparto» e rinasce in un'altra sezione, e il fuoco non deve cadere sulla pagina
+      // (decisione 18)
+      let patched = false;
+      stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[STRANGE]];
+        if (init?.method === "PATCH") {
+          patched = true;
+          return [{ ...UNMATCHED[0], ingredient_id: "i9" }];
+        }
+        return [
+          patched
+            ? [{ ...UNMATCHED[0], ingredient_id: "i9", ingredient_name: "cosa strana",
+                 ingredient_category: "altro" }]
+            : UNMATCHED,
+        ];
+      });
+
+      renderScreen();
+      const field = await openMatch();
+      await userEvent.clear(field);
+      await userEvent.type(field, "strana");
+      await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
+
+      expect(await screen.findByRole("heading", { level: 2, name: "Altro" })).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Senza reparto" })).toBeNull();
+      await vi.waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("button", { name: "Codice a barre per cosa strana" })
+        )
+      );
+    });
+
     it("se la voce non si aggiorna lo dice accanto, e la voce si sistema lo stesso", async () => {
       stubRoutedFetch((path, init) => {
         if (path.includes("/ingredients/search")) return [[STRANGE]];
@@ -1114,11 +1148,16 @@ describe("StockingScreen", () => {
       await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*yogurt greco/i }));
       await userEvent.click(screen.getByRole("button", { name: "Cerca a catalogo per mele" }));
 
-      expect(screen.getByRole("heading", { name: "Cerca a catalogo per «mele»" })).toBeDefined();
+      // il titolo del pannello sta subito sotto quello della pagina: h1 → h2
+      expect(
+        screen.getByRole("heading", { level: 2, name: "Cerca a catalogo per «mele»" })
+      ).toBeDefined();
       // le altre voci, i reparti e «Metti in dispensa» non ci sono (decisione 1, Mattia)
       expect(screen.queryByText("yogurt greco")).toBeNull();
       expect(screen.queryByText("cosa strana")).toBeNull();
-      expect(screen.queryAllByRole("heading", { level: 2 })).toEqual([]);
+      for (const reparto of ["Frutta", "Latticini", "Senza reparto"]) {
+        expect(screen.queryByRole("heading", { name: reparto })).toBeNull();
+      }
       expect(screen.queryByRole("button", { name: /Metti in dispensa/ })).toBeNull();
       // il fuoco resta sul pulsante che l'ha aperto, non cade sulla pagina
       expect(document.activeElement).toBe(

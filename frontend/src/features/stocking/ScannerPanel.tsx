@@ -126,7 +126,7 @@ export function ScannerPanel({
       {/* il nome della voce nel titolo: prima stava solo nel testo per lo screen reader
           del pulsante che apre il pannello, e arrivati qui non si sapeva più cosa si
           stava scansionando (S10) */}
-      <h3 className="font-semibold">Codice a barre per «{item.raw_text}»</h3>
+      <h2 className="font-semibold">Codice a barre per «{item.raw_text}»</h2>
       <BarcodeScanner
         onDetected={handleDetected}
         onCancel={onCancel}

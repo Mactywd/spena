@@ -65,7 +65,7 @@ export function MatchPanel({
 
   return (
     <div className="flex flex-col gap-3 rounded-card border border-line p-3">
-      <h3 className="font-semibold">Abbina «{item.raw_text}»</h3>
+      <h2 className="font-semibold">Abbina «{item.raw_text}»</h2>
       {creating === null ? (
         <>
           <p className="text-sm text-ink-soft">

@@ -31,7 +31,7 @@ export function OffSuggestionQuestion({
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-card border border-line p-3">
-      <h3 className="text-lg font-semibold">È un «{ingredientName}»?</h3>
+      <h2 className="font-semibold">È un «{ingredientName}»?</h2>
       <p className="text-ink">{describeSuggestion(suggestion)}</p>
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={onYes}>

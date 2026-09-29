@@ -80,7 +80,7 @@ export function CatalogSearchPanel({
 
   return (
     <div className="flex flex-col gap-3 rounded-card border border-line p-3">
-      <h3 className="font-semibold">Cerca a catalogo per «{itemLabel}»</h3>
+      <h2 className="font-semibold">Cerca a catalogo per «{itemLabel}»</h2>
       <label className="text-sm">
         Nome o marca del prodotto
         <input

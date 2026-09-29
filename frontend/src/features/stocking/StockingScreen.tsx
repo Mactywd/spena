@@ -142,7 +142,16 @@ export function StockingScreen() {
   const [returnFocus, setReturnFocus] = useState<{ itemId: string; target: FocusTarget } | null>(
     null
   );
-  const clearReturnFocus = useCallback(() => setReturnFocus(null), []);
+  // La voce appena abbinata, finché la rilettura non la rimette nel suo reparto (S19).
+  // Il fuoco sulla prima icona (decisione 18) non sopravvive al trasloco: la riga lascia
+  // la sezione «Senza reparto» e rinasce in un'altra, e il pulsante che lo aveva sparisce
+  // con la vecchia. La richiesta aspetta la voce riletta, che porta il suo ingrediente,
+  // e scatta dove la riga rinasce; la riga non ruba il fuoco a chi è già altrove.
+  const [refocusAfterMatch, setRefocusAfterMatch] = useState<string | null>(null);
+  const clearReturnFocus = useCallback(() => {
+    setReturnFocus(null);
+    setRefocusAfterMatch(null);
+  }, []);
 
   function setOpen(next: Panel | null) {
     openPanel.current = next;
@@ -185,6 +194,7 @@ export function StockingScreen() {
       patchShoppingItem(item.id, { ingredient_id: ingredient.id }),
     onSuccess: (_saved, { item }) => {
       setMatchNotSaved((prev) => without(prev, item.id));
+      setRefocusAfterMatch(item.id);
       // la lista, qui e nella schermata «Lista», deve rimettere la voce nel suo reparto:
       // la cache dice ancora «Senza reparto»
       queryClient.invalidateQueries({ queryKey: ["shopping-list"] });
@@ -406,6 +416,17 @@ export function StockingScreen() {
     );
   }
 
+  /** Dove rimettere il fuoco in questa riga, quando rinasce. La richiesta dopo
+   * l'abbinamento vale solo per la voce riletta col suo ingrediente: prima, la riga è
+   * ancora quella di «Senza reparto» che sta per sparire. */
+  function returnFocusFor(item: ShoppingItem): FocusTarget | null {
+    if (returnFocus?.itemId === item.id) return returnFocus.target;
+    if (refocusAfterMatch === item.id && item.ingredient_id) {
+      return resolved[item.id] ? "change" : "scanner";
+    }
+    return null;
+  }
+
   function renderRow(item: ShoppingItem) {
     return (
       <StockingRow
@@ -423,7 +444,7 @@ export function StockingScreen() {
         retryingMatch={persistMatch.isPending}
         onRetryMatch={() => persistMatch.mutate({ item, ingredient: matchNotSaved[item.id] })}
         focused={panel?.itemId === item.id}
-        returnFocusTo={returnFocus?.itemId === item.id ? returnFocus.target : null}
+        returnFocusTo={returnFocusFor(item)}
         onFocusReturned={clearReturnFocus}
         onOpen={(trigger) => openPanelFor(item, trigger)}
         onLoose={() => resolve(item, { kind: "loose" })}

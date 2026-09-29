@@ -80,10 +80,16 @@ export function StockingRow({
 
   // La vista cambia forma aprendo e chiudendo un pannello, e questa riga rinasce: il
   // pulsante che aveva il fuoco non c'è più. Lo schermo dice dove rimetterlo; `Button`
-  // non passa `ref`, quindi lo si cerca per il `data-trigger` dello span che lo avvolge
+  // non passa `ref`, quindi lo si cerca per il `data-trigger` dello span che lo avvolge.
+  // Solo se il fuoco è caduto sulla pagina: è sempre così quando il pulsante che lo
+  // aveva è sparito, e una richiesta arrivata in ritardo (la rilettura dopo un
+  // abbinamento) non lo toglie a chi è già andato altrove
   useEffect(() => {
     if (!returnFocusTo || !ref.current) return;
-    ref.current.querySelector<HTMLElement>(`[data-trigger="${returnFocusTo}"] button`)?.focus();
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (lost) {
+      ref.current.querySelector<HTMLElement>(`[data-trigger="${returnFocusTo}"] button`)?.focus();
+    }
     onFocusReturned();
   }, [returnFocusTo, onFocusReturned]);
 
