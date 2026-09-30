@@ -337,6 +337,20 @@ describe("StockingScreen", () => {
     expect(screen.getByRole("button", { name: /Rileggi la spesa/ })).toBeDefined();
   });
 
+  it("un guasto del server nel mettere in dispensa lo dice con «server», non con «backend»", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list/stock") ? [{ detail: "giù" }, 500] : [CHECKED]
+    );
+
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 1" }));
+
+    const avviso = await screen.findByRole("alert");
+    expect(avviso).toHaveTextContent(/è il server che non risponde/);
+    expect(avviso.textContent).not.toMatch(/backend/);
+  });
+
   it("un catalogo senza riscontri non è un muro: si crea il prodotto a mano", async () => {
     stubRoutedFetch((path) => (path.includes("/products/search") ? [[]] : [CHECKED]));
 

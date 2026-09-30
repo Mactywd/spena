@@ -82,11 +82,13 @@ export function AddItemField({
       {/* una ricerca che non risponde non deve bloccare la scrittura, e nemmeno restare
           muta: il testo libero passa comunque, e va detto che passerà senza ingrediente
           abbinato. `status` e non `alert`: è una rinuncia, non un guasto. L'ambra di
-          «quasi finito» vuol dire, nell'app, «funziona, ma non del tutto». */}
+          «quasi finito» vuol dire, nell'app, «funziona, ma non del tutto».
+          «la voce», non «l'ingrediente»: qui è una voce di testo libero, che si abbina
+          dopo (Parte X). */}
       {showSuggestions && isError && (
         <p role="status" className="pt-2 text-sm text-low">
-          L'autocomplete non risponde. Puoi aggiungere la voce così com'è: l'ingrediente
-          si abbina dopo.
+          I suggerimenti non rispondono. Puoi aggiungere la voce così com'è, e abbinarla
+          dopo in «Sistema la spesa».
         </p>
       )}
       {showSuggestions && suggestions.length > 0 && (

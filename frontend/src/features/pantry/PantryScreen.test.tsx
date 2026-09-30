@@ -55,7 +55,7 @@ describe("PantryScreen", () => {
       new Response(JSON.stringify(ITEMS), { status: 200 })
     ));
     renderScreen();
-    expect(await screen.findByText("mela")).toBeDefined();
+    expect(await screen.findByText("Mela")).toBeDefined();
   });
 
   it("elenca separatamente due prodotti dello stesso ingrediente", async () => {
@@ -123,7 +123,7 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "fage" } });
     expect(screen.getByText("Total 0%")).toBeDefined();
     expect(screen.queryByText("Pesca")).toBeNull();
-    expect(screen.queryByRole("link", { name: "mela" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
   });
 
   it("un testo che non trova niente offre di aggiungerlo", async () => {
@@ -243,7 +243,7 @@ describe("PantryScreen", () => {
     expect(summary.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(summary);
     expect(summary.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("link", { name: "mela" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
     expect(screen.queryByText("Total 0%")).toBeNull();
     fireEvent.click(summary);
     expect(screen.getByText("Total 0%")).toBeDefined();
@@ -269,7 +269,7 @@ describe("PantryScreen", () => {
 
     const summary = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
     expect(summary.getAttribute("aria-pressed")).toBe("true");
-    const row = screen.getByRole("link", { name: "mela" }).closest("li")!;
+    const row = screen.getByRole("link", { name: "Mela" }).closest("li")!;
     expect(within(row).getByRole("button", { name: "In lista" })).toBeDefined();
   });
 
@@ -390,7 +390,7 @@ describe("PantryScreen", () => {
     ).toBeDefined();
     expect(screen.queryByText("Non sono riuscito a caricare la dispensa.")).toBeNull();
     expect(screen.getByText("Total 0%")).toBeDefined();
-    expect(screen.getByRole("link", { name: "mela" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Riprova" })).toBeDefined();
   });
 
@@ -509,7 +509,7 @@ describe("PantryScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Togli Total 0% dalla dispensa" }));
     expect(await screen.findByRole("alert")).toBeDefined();
     // i due barattoli di yogurt greco sono ancora lì tutti e due
-    expect(screen.getAllByRole("link", { name: "yogurt greco" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "Yogurt greco" })).toHaveLength(2);
   });
 
   it("«In lista» su una voce finita la rimette in lista e lo dice", async () => {
@@ -530,7 +530,7 @@ describe("PantryScreen", () => {
     );
     renderScreen();
     fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
-    const row = screen.getByRole("link", { name: "mela" }).closest("li")!;
+    const row = screen.getByRole("link", { name: "Mela" }).closest("li")!;
     expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     // `not.toBeDisabled` passerebbe sempre, ora che il pulsante si spegne con
     // `aria-disabled`: si guarda l'attributo che conta
@@ -594,7 +594,7 @@ describe("PantryScreen", () => {
     );
     renderScreen();
 
-    const row = (await screen.findByText("mela")).closest("li")!;
+    const row = (await screen.findByText("Mela")).closest("li")!;
     fireEvent.click(within(row).getByRole("button", { name: /scadenza/i }));
     const field = within(row).getByLabelText(/scadenza/i);
     fireEvent.change(field, { target: { value: "" } });

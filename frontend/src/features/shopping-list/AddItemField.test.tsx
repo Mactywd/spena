@@ -171,7 +171,12 @@ describe("AddItemField", () => {
 
     await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "quella cosa verde");
     // per testo e non per ruolo: la regione `status` dell'avviso unico c'è sempre
-    expect(await screen.findByText(/autocomplete non risponde/i)).toBeDefined();
+    expect(
+      await screen.findByText(
+        "I suggerimenti non rispondono. Puoi aggiungere la voce così com'è, e abbinarla dopo in «Sistema la spesa»."
+      )
+    ).toBeDefined();
+    expect(screen.queryByText(/autocomplete/i)).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
     expect(onAdd).toHaveBeenCalledWith("quella cosa verde", undefined);

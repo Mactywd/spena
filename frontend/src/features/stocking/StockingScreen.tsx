@@ -93,7 +93,7 @@ function stockFailureMessage(error: unknown): string {
   }
   return (
     `${nothingWritten}: riprova. ` +
-    "Se insiste, è il backend che non risponde: le conferme restano su questo schermo."
+    "Se insiste, è il server che non risponde: le conferme restano su questo schermo."
   );
 }
 

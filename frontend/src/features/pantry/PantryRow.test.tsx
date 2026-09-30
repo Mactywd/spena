@@ -38,7 +38,7 @@ describe("PantryRow", () => {
 
   it("il nome è l'ingrediente, e sotto c'è il prodotto: un aggancio sbagliato si vede", () => {
     renderRow();
-    expect(screen.getByRole("link", { name: "yogurt greco" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Yogurt greco" })).toBeDefined();
     expect(screen.getByText("Total 0%")).toBeDefined();
   });
 
@@ -49,16 +49,22 @@ describe("PantryRow", () => {
 
   it("il nome porta alla scheda del prodotto se c'è, e ci porta da dispensa", () => {
     renderRow();
-    expect(screen.getByRole("link", { name: "yogurt greco" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: "Yogurt greco" }).getAttribute("href")).toBe(
       "/anagrafica/prodotto/pr1?da=dispensa"
     );
   });
 
   it("il nome di una voce sfusa porta alla scheda dell'ingrediente, e ci porta da dispensa", () => {
     renderRow({ product_id: null, product_name: null, product_brand: null });
-    expect(screen.getByRole("link", { name: "yogurt greco" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: "Yogurt greco" }).getAttribute("href")).toBe(
       "/anagrafica/ingrediente/i1?da=dispensa"
     );
+  });
+
+  it("il nome si legge con la maiuscola, e i nomi dei controlli lo tengono com'è dentro la frase", () => {
+    renderRow({ product_id: null, product_name: null, product_brand: null });
+    expect(screen.getByRole("link", { name: "Yogurt greco" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Togli yogurt greco dalla dispensa" })).toBeDefined();
   });
 
   it("le tacche mandano lo stato toccato, non una percentuale", () => {

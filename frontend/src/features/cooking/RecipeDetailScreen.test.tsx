@@ -108,7 +108,7 @@ describe("RecipeDetailScreen", () => {
     // il verdetto arriva dal server (`satisfied`): qui si legge, non si ricalcola
     stubFetch({});
     renderScreen();
-    const row = (await screen.findByText("pomodoro")).closest("li")!;
+    const row = (await screen.findByText("Pomodoro")).closest("li")!;
     expect(within(row).getByRole("img", { name: "quasi finito" })).toBeInTheDocument();
     expect(within(row).getByText("non basta")).toBeInTheDocument();
   });
@@ -116,9 +116,16 @@ describe("RecipeDetailScreen", () => {
   it("un secondario quasi finito basta: stesso pallino, e nessun «non basta»", async () => {
     stubFetch({});
     renderScreen();
-    const row = (await screen.findByText("aglio")).closest("li")!;
+    const row = (await screen.findByText("Aglio")).closest("li")!;
     expect(within(row).getByRole("img", { name: "quasi finito" })).toBeInTheDocument();
     expect(within(row).queryByText("non basta")).toBeNull();
+  });
+
+  it("il nome di una riga d'ingrediente si legge con la maiuscola, solo a video (T3 Consegna 6b)", async () => {
+    stubFetch({});
+    renderScreen();
+    expect(await screen.findByText("Pomodoro")).toBeInTheDocument();
+    expect(screen.queryByText("pomodoro")).toBeNull();
   });
 
   it("l'ordine delle righe è quello del backend: niente qui le riordina", async () => {
@@ -133,7 +140,7 @@ describe("RecipeDetailScreen", () => {
       within(principali)
         .getAllByRole("listitem")
         .map((row) => row.textContent)
-    ).toEqual(["pasta180 g", "pomodoronon basta400 g"]);
+    ).toEqual(["Pasta180 g", "Pomodoronon basta400 g"]);
   });
 
   it("dice cosa manca e cosa c'è, non solo i casi a metà", async () => {
@@ -144,10 +151,10 @@ describe("RecipeDetailScreen", () => {
       new Response(JSON.stringify(DETAIL), { status: 200 })
     ));
     renderScreen();
-    const assente = (await screen.findByText("basilico")).closest("li")!;
+    const assente = (await screen.findByText("Basilico")).closest("li")!;
     expect(within(assente).getByRole("img", { name: "manca" })).toBeInTheDocument();
 
-    const presente = screen.getByText("pasta").closest("li")!;
+    const presente = screen.getByText("Pasta").closest("li")!;
     expect(within(presente).getByRole("img", { name: "disponibile" })).toBeInTheDocument();
   });
 

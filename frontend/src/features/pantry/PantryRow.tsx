@@ -8,6 +8,7 @@ import { EXPIRY_INPUT_MAX, expiryText } from "./expiryLabels";
 import { itemLabel } from "./pantryView";
 import { ingredientPath, productPath } from "../registry/origin";
 import { revealAtTop } from "../../lib/revealAtTop";
+import { capitalizeFirst } from "../../lib/text";
 import type { PantryItem, PantryStatus } from "../../domain/types";
 
 /** Dove porta il nome: alla scheda del prodotto se la voce ne ha uno, a quella
@@ -115,11 +116,13 @@ export function PantryRow({
             spinta sotto e il «·» rimasto solo. Il nome intero è nella scheda del
             prodotto, dove porta il link. */}
         <div className="min-w-0 flex-1">
+          {/* la maiuscola solo a video (spec T3 §4.7): i nomi accessibili dei controlli
+              della riga usano `label`, in mezzo a una frase, e restano com'è */}
           <Link
             to={registryPath(item)}
             className="flex min-h-11 items-end pb-0.5 font-medium underline decoration-line underline-offset-4"
           >
-            {item.ingredient_name}
+            {capitalizeFirst(item.ingredient_name)}
           </Link>
           <p className="truncate pt-0.5 text-xs text-ink-faint">{item.product_name ?? "sfuso"}</p>
         </div>
