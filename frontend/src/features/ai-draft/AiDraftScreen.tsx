@@ -6,6 +6,7 @@ import { BackLink } from "../../components/BackLink";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { RecipeForm } from "../recipe-form/RecipeForm";
 import { EMPTY_FORM, applyDraft, type RecipeFormValues } from "../recipe-form/formModel";
+import { useNotice } from "../../components/ui/noticeContext";
 import type { RecipeDraft } from "../../domain/types";
 
 const SOURCE_REF_MAX = 500;
@@ -39,6 +40,7 @@ function sourceRef(prompt: string): string {
 export function AiDraftScreen() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const notice = useNotice();
 
   const [prompt, setPrompt] = useState("");
   const [draft, setDraft] = useState<RecipeDraft | null>(null);
@@ -106,6 +108,9 @@ export function AiDraftScreen() {
           onSaved={(recipe) => {
             // la ricetta appena scritta deve apparire nel ricettario al prossimo giro
             void queryClient.invalidateQueries({ queryKey: ["recipes"] });
+            // «Salvata.» dall'avviso unico (T4), prima di lasciare il modulo:
+            // `NoticeProvider` sta sopra il router, e l'avviso resta passando al dettaglio
+            notice({ text: "Salvata." });
             navigate(`/ricette/${recipe.id}`);
           }}
           submitLabel="Salva nel ricettario"

@@ -8,6 +8,7 @@ import { Screen } from "../../components/ui/Screen";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { RecipeForm } from "./RecipeForm";
 import { valuesFromRecipe } from "./formModel";
+import { useNotice } from "../../components/ui/noticeContext";
 import type { RecipeDetail } from "../../domain/types";
 
 const TITLE = "Modifica la ricetta";
@@ -15,6 +16,7 @@ const TITLE = "Modifica la ricetta";
 function EditForm({ recipe }: { recipe: RecipeDetail }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const notice = useNotice();
   // Una volta sola, dalla ricetta caricata: una rilettura in background mentre si
   // scrive (il fuoco che torna alla finestra) non deve cancellare il lavoro.
   const [values, setValues] = useState(() => valuesFromRecipe(recipe));
@@ -32,16 +34,19 @@ function EditForm({ recipe }: { recipe: RecipeDetail }) {
         save={(body) => updateRecipe(recipe.id, body)}
         onSaved={(saved) => {
           // la risposta della PUT è la ricetta a 1×, la stessa della GET senza porzioni:
-          // il dettaglio la mostra subito, e «Salvata» non sta mai sopra la versione di
+          // il dettaglio la mostra subito, e «Salvata.» non sta mai sopra la versione di
           // prima mentre la rilettura è in viaggio. Le altre chiavi (le porzioni, il
           // ricettario, le categorie) si rileggono come prima.
           queryClient.setQueryData(["recipe", recipe.id, null], saved);
           void queryClient.invalidateQueries({ queryKey: ["recipe", recipe.id] });
           void queryClient.invalidateQueries({ queryKey: ["recipes"] });
           void queryClient.invalidateQueries({ queryKey: ["recipe-categories"] });
+          // «Salvata.» dall'avviso unico (T4), non più da uno stato della cronologia che il
+          // dettaglio doveva leggere e poi pulire
+          notice({ text: "Salvata." });
           // `replace`: il modulo lascia il posto al dettaglio, e «indietro» (quello di
           // Android per primo) non riapre un modulo già salvato
-          navigate(`/ricette/${recipe.id}`, { replace: true, state: { saved: true } });
+          navigate(`/ricette/${recipe.id}`, { replace: true });
         }}
         submitLabel="Salva le modifiche"
       />

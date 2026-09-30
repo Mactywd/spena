@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { AiDraftScreen } from "./AiDraftScreen";
 import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { DraftIngredient } from "../../domain/types";
 
 const DRAFT = {
@@ -650,5 +651,47 @@ describe("il costo nel modulo (R9)", () => {
     const body = postedRecipe(spy);
     expect(body.source).toBe("manual");
     expect(body.cost).toBeNull();
+  });
+});
+
+describe("«Salva nel ricettario» (T4)", () => {
+  it("l'avviso dice «Salvata.» e porta al dettaglio della ricetta nuova", async () => {
+    // Dal giro di T3: salvare portava al dettaglio senza un messaggio. L'avviso parte
+    // prima di navigare, e `NoticeProvider` sta sopra il router, come in App.tsx.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+        const href = String(url);
+        if (href.includes("/recipes/ai-draft"))
+          return Promise.resolve(new Response(JSON.stringify(DRAFT), { status: 200 }));
+        if (href.endsWith("/recipes") && init?.method === "POST")
+          return Promise.resolve(new Response(CREATED, { status: 201 }));
+        return Promise.resolve(new Response("[]", { status: 200 }));
+      })
+    );
+    function Dettaglio() {
+      const { id } = useParams();
+      return <p data-testid="dettaglio">{id}</p>;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <NoticeProvider>
+          <MemoryRouter initialEntries={["/ricette/nuova-ai"]}>
+            <Routes>
+              <Route path="/ricette/nuova-ai" element={<AiDraftScreen />} />
+              <Route path="/ricette/:id" element={<Dettaglio />} />
+            </Routes>
+          </MemoryRouter>
+        </NoticeProvider>
+      </QueryClientProvider>
+    );
+
+    await proposeDraft();
+    await draftLanded();
+    await userEvent.click(saveButton());
+
+    expect(await screen.findByTestId("dettaglio")).toHaveTextContent("r9");
+    expect(screen.getByRole("status")).toHaveTextContent("Salvata.");
   });
 });

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { RecipeEditScreen } from "./RecipeEditScreen";
 import { RecipeDetailScreen } from "../cooking/RecipeDetailScreen";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import type { RecipeDetail } from "../../domain/types";
 
@@ -44,12 +45,14 @@ function renderEdit(start = "/ricette/r1/modifica", prime?: (client: QueryClient
   prime?.(client);
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[start]}>
-        <Routes>
-          <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
-          <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
-        </Routes>
-      </MemoryRouter>
+      <NoticeProvider>
+        <MemoryRouter initialEntries={[start]}>
+          <Routes>
+            <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
+            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+          </Routes>
+        </MemoryRouter>
+      </NoticeProvider>
     </QueryClientProvider>
   );
 }
@@ -105,7 +108,9 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Togli basilico" }));
     await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Salvata.");
+    expect(await screen.findByText("Salvata.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Salvata.");
+    expect(await screen.findByRole("heading", { name: "Pasta al pomodoro" })).toBeInTheDocument();
     const put = spy.mock.calls.find(([, init]) => init?.method === "PUT")!;
     expect(String(put[0])).toBe("/api/v1/recipes/r1");
     const corpo = JSON.parse(String(put[1]!.body));
@@ -121,19 +126,21 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     });
     render(
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/ricette/r1", "/ricette/r1/modifica"]} initialIndex={1}>
-          <Routes>
-            <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
-            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
-          </Routes>
-          <Cronologia />
-        </MemoryRouter>
+        <NoticeProvider>
+          <MemoryRouter initialEntries={["/ricette/r1", "/ricette/r1/modifica"]} initialIndex={1}>
+            <Routes>
+              <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
+              <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+            </Routes>
+            <Cronologia />
+          </MemoryRouter>
+        </NoticeProvider>
       </QueryClientProvider>
     );
 
     await screen.findByDisplayValue("Pasta al pomodoro");
     await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Salvata.");
+    expect(await screen.findByText("Salvata.")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "torna indietro" }));
 
@@ -167,19 +174,19 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     await userEvent.type(titolo, "Pasta al sugo");
     await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Salvata.");
-    expect(screen.getByRole("heading", { name: "Pasta al sugo" })).toBeInTheDocument();
+    expect(await screen.findByText("Salvata.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Pasta al sugo" })).toBeInTheDocument();
   });
 
-  it("dopo porzioni e costo cambiati nel dettaglio, il modulo parte dal costo salvato", async () => {
-    // Il dettaglio a 3 porzioni ha la chiave ["recipe", id, 3]: cambiare il costo
-    // invalida il prefisso, ma rilegge solo le chiavi attive, e quella a 1× — da cui la
-    // modifica partiva — restava col costo vecchio. La PUT rimpiazza la ricetta intera:
-    // mandare il costo vecchio era una perdita silenziosa del costo nuovo.
+  it("dopo porzioni cambiate nel dettaglio e un costo cambiato sul server, il modulo parte dal costo salvato", async () => {
+    // Il dettaglio a 3 porzioni ha la chiave ["recipe", id, 3], e la copia a 1× in cache
+    // è quella letta all'apertura. Se nel frattempo il costo cambia sul server (da un
+    // altro telefono), la PUT rimpiazza la ricetta intera: un modulo costruito sulla
+    // copia vecchia rimanderebbe il costo di prima, zitto. Il costo dal dettaglio non si
+    // cambia più (T3 Consegna 5), ma il modulo nasce ancora da una lettura fresca.
     let cost = 2;
     const spy = stubFetch((path, init) => {
       if (path.includes("/pantry")) return undefined;
-      if (init?.method === "PATCH") cost = JSON.parse(String(init.body)).cost;
       if (init?.method === "PUT") return [{ ...DETAIL, ...JSON.parse(String(init.body)), ingredients: DETAIL.ingredients }, 200];
       return [{ ...DETAIL, cost }, 200];
     });
@@ -190,16 +197,14 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     await waitFor(() =>
       expect(spy.mock.calls.some(([url]) => String(url).includes("servings=3"))).toBe(true)
     );
-    await userEvent.click(await screen.findByRole("button", { name: "Costo 4 su 5" }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Costo 4 su 5" })).toHaveAttribute("aria-pressed", "true")
-    );
+    // il costo cambia sul server, non da qui
+    cost = 4;
 
     await userEvent.click(screen.getByRole("link", { name: "Modifica" }));
     await screen.findByDisplayValue("Pasta al pomodoro");
     await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
 
-    await screen.findByRole("status");
+    await screen.findByText("Salvata.");
     const put = spy.mock.calls.find(([, init]) => init?.method === "PUT")!;
     expect(JSON.parse(String(put[1]!.body)).cost).toBe(4);
   });
