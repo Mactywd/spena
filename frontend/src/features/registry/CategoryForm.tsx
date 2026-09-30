@@ -5,7 +5,7 @@ import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { buttonClasses } from "../../components/ui/buttonClasses";
-import { FOOD_CATEGORIES, NON_FOOD_CATEGORIES } from "../../domain/categories";
+import { CategorySelect } from "../../components/CategorySelect";
 import type { IngredientDetail } from "../../domain/types";
 import { patchIngredient, refreshAfterCorrection, registryRefusal } from "./api";
 import { queuePath } from "./origin";
@@ -34,30 +34,9 @@ export function CategoryForm({
 
   return (
     <Card as="section" className="mt-2 flex flex-col gap-3">
-      <label className="text-sm font-medium text-ink-soft">
-        Reparto
-        <select
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-          disabled={save.isPending}
-          className="mt-1.5"
-        >
-          {FOOD_CATEGORIES.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-          {/* staccati, come in «Sistema la spesa»: non sono un reparto in più, sono la
-              metà dell'anagrafica che le ricette non vedono */}
-          <optgroup label="Non alimentari">
-            {NON_FOOD_CATEGORIES.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-      </label>
+      {/* tutti i reparti, i non alimentari compresi: in anagrafica si corregge anche il
+          detersivo creato in «latticini» */}
+      <CategorySelect value={category} onChange={setCategory} disabled={save.isPending} />
       {/* in colonna, come nella rinomina: il perché sta attaccato a «Salva il reparto» */}
       <div className="flex flex-col items-start gap-2">
         <Button

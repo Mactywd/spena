@@ -3,13 +3,17 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NewIngredientFields } from "./NewIngredientFields";
 
-function renderFields(props: { initialName?: string; busy?: boolean } = {}) {
+function renderFields(
+  props: { initialName?: string; busy?: boolean; foodOnly?: boolean; submitLabel?: string } = {}
+) {
   const onSubmit = vi.fn();
   const onCancel = vi.fn();
   render(
     <NewIngredientFields
       initialName={props.initialName ?? "zucchine tonde di Nizza"}
       busy={props.busy ?? false}
+      foodOnly={props.foodOnly}
+      submitLabel={props.submitLabel}
       onSubmit={onSubmit}
       onCancel={onCancel}
     />
@@ -81,5 +85,20 @@ describe("NewIngredientFields", () => {
     await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
     expect(onCancel).toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("`foodOnly` offre solo i reparti del cibo: nel modulo della ricetta un non alimentare sarebbe rifiutato", () => {
+    renderFields({ foodOnly: true });
+    const reparto = screen.getByLabelText("Reparto") as HTMLSelectElement;
+    expect(reparto.querySelector('option[value="casa"]')).toBeNull();
+    expect(reparto.querySelector('option[value="igiene"]')).toBeNull();
+    expect(reparto.querySelector('option[value="verdura"]')).not.toBeNull();
+  });
+
+  it("il pulsante dice cosa succede dove lo si usa", async () => {
+    const { onSubmit } = renderFields({ initialName: "zz tre", submitLabel: "Aggiungi alla ricetta" });
+    expect(screen.queryByRole("button", { name: "Crea l'ingrediente" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi alla ricetta" }));
+    expect(onSubmit).toHaveBeenCalledWith({ name: "zz tre", category: "altro" });
   });
 });
