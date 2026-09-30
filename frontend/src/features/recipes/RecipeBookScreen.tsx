@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { RecipeRow } from "./RecipeRow";
@@ -153,6 +153,23 @@ export function RecipeBookScreen() {
   const [panelOpen, setPanelOpen] = useState(false);
   const panelId = useId();
 
+  // «Azzera» (nel pannello) e «Azzera i filtri» (nel vuoto) smontano sé stessi al
+  // proprio tocco — il primo perché `activeCount` scende a 0 nello stesso giro, il
+  // secondo perché la lista torna piena — e il fuoco cadrebbe sul <body>. «Filtri»
+  // resta invece sempre montato, ed è lì che va restituito. Un contatore e non un
+  // booleano: due «Azzera» di fila devono far scattare l'effetto anche se il valore
+  // «vero» non cambierebbe da solo.
+  const filtriGroupRef = useRef<HTMLDivElement>(null);
+  const [resetTick, setResetTick] = useState(0);
+  useEffect(() => {
+    if (resetTick === 0) return;
+    // il selettore e non un ref dedicato: «Filtri» è l'unico bottone del gruppo con
+    // `aria-controls` (punta al pannello), quindi lo trova senza toccare `Button`
+    filtriGroupRef.current
+      ?.querySelector<HTMLButtonElement>("button[aria-controls]")
+      ?.focus();
+  }, [resetTick]);
+
   function update(patch: Partial<RecipeFilters>) {
     setFilters((current) => ({ ...current, ...patch }));
   }
@@ -179,6 +196,7 @@ export function RecipeBookScreen() {
   // categoria e ingredienti. Parole e scala sono sempre a video, e si cambiano da lì.
   function resetFilters() {
     update({ category: "", ingredients: [] });
+    setResetTick((tick) => tick + 1);
   }
 
   // Il termine sta dentro la chiave, e questo fa due cose che una ricerca scritta
@@ -289,14 +307,13 @@ export function RecipeBookScreen() {
         />
       )}
 
-      <div className="flex items-center gap-2">
+      <div ref={filtriGroupRef} className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <IconSearch
             aria-hidden="true"
             className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink-faint"
           />
           <input
-            id="recipe-search"
             aria-label="Cerca nel ricettario"
             value={query}
             onChange={(e) => update({ query: e.target.value })}

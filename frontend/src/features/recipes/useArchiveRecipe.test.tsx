@@ -209,6 +209,18 @@ describe("withoutRecipe", () => {
     expect(withoutRecipe(dati, "r-sconosciuta")).toBe(dati);
   });
 
+  it("non tocca `totalIsLowerBound`: un minimo del server resta un minimo", () => {
+    const conMinimo: InfiniteData<RecipePage> = {
+      pages: [{ recipes: [CARBONARA, AGLIO], total: 5, totalIsLowerBound: true }],
+      pageParams: [0],
+    };
+    expect(withoutRecipe(conMinimo, "r-carb")!.pages[0]).toEqual({
+      recipes: [AGLIO],
+      total: 4,
+      totalIsLowerBound: true,
+    });
+  });
+
   it("senza pagine, o senza totale, non inventa niente", () => {
     expect(withoutRecipe(undefined, "r-carb")).toBeUndefined();
     const senzaTotale: InfiniteData<RecipePage> = {

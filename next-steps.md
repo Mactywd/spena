@@ -45,7 +45,7 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 - [tbd] P3 · «Rimetti in lista» nel foglio della cottura è pre-spuntata solo per «finito», in dispensa la domanda arriva anche nel giallo — TBD: decidere una volta [Parte X]
 
 ### Idee
-- [idea] P3 · «Azzera» e «Azzera i filtri» spariscono al loro stesso tocco e il fuoco cade sulla pagina: dopo l'azzeramento va portato su «Filtri» [T3 Consegna 4]
+- [idea] P3 · Con la piscina delle parole piena e un filtro che scarta tutti i candidati, il ricettario dice «Nessuna ricetta»: ricette fuori dalla piscina potrebbero rispondere. Stesso limite già scritto in `recipe_search.py`, ma qui lo zero non è qualificato [T3 Consegna 4]
 - [idea] P3 · Una categoria ricordata che il pannello non può mostrare (le categorie non si caricano, o quella categoria non c'è più): il filtro vale e «Filtri» dice «1 attivo», ma il menu mostra «Tutte». Non è un vicolo cieco («Azzera» c'è), ma il pannello dice il falso [T3 Consegna 4]
 - [idea] P3 · Un aggiornamento di sfondo fallito della prima pagina (per esempio dopo un'eliminazione) sostituisce l'elenco già a video con l'errore: meglio tenere le righe e dire che l'aggiornamento non è riuscito [T3 Consegna 4]
 - [idea] P3 · Il «Riprova» di un'eliminazione fallita, toccato dopo essere usciti dal dettaglio, porta comunque al ricettario sostituendo la pagina corrente [T3 Consegna 4]

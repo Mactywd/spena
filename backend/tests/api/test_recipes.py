@@ -499,10 +499,28 @@ async def test_la_ricerca_dice_quante_ricette_ci_sono_prima_del_limite(logged_cl
     assert sfoglia.status_code == 200
     assert len(sfoglia.json()) == 2
     assert sfoglia.headers["x-total-count"] == "3"
+    # la piscina non era piena: niente minimo, né sfogliando né cercando (R-A)
+    assert "x-total-count-lower-bound" not in sfoglia.headers
 
     cercata = await logged_client.get("/api/v1/recipes/search?q=pasta&limit=1")
     assert len(cercata.json()) == 1
     assert cercata.headers["x-total-count"] == "3"
+    assert "x-total-count-lower-bound" not in cercata.headers
+
+
+async def test_la_ricerca_reale_manda_il_minimo_a_piscina_piena(logged_client, cucina, monkeypatch):
+    """Lo stesso segnale di `test_la_ricerca_manda_il_minimo_solo_a_piscina_piena`, ma
+    sul percorso HTTP vero, non su un servizio finto: la prima lezione di CLAUDE.md
+    vale anche al contrario — un test che passa da un doppio finto non prova che
+    quello vero, chiamato per davvero, mandi la stessa intestazione."""
+    from app.services import recipe_search
+
+    monkeypatch.setattr(recipe_search, "CANDIDATE_POOL", 2)
+    for titolo in ("Zuppa uno", "Zuppa due", "Zuppa tre"):
+        await _create_recipe(logged_client, cucina, title=titolo)
+
+    piena = await logged_client.get("/api/v1/recipes/search?q=zuppa")
+    assert piena.headers.get("x-total-count-lower-bound") == "1"
 
 
 async def test_la_ricerca_manda_il_minimo_solo_a_piscina_piena(logged_client, monkeypatch):

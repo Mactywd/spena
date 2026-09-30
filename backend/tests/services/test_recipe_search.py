@@ -748,3 +748,23 @@ async def test_con_parole_la_piscina_piena_rende_il_totale_un_minimo(db_session,
     pagina = await recipe_search.search_recipes(db_session, "zuppa", limit=10)
 
     assert pagina.total_is_lower_bound is True
+    # il totale è quello contato sui candidati (2, la piscina abbassata), non le 3
+    # ricette vere: è esattamente perché è un minimo che non deve sembrare il conto
+    # intero
+    assert pagina.total == 2
+
+
+async def test_senza_parole_un_offset_oltre_la_fine_non_torna_niente(db_session):
+    """Sfogliando oltre l'ultima pagina non c'è un errore né un giro all'inizio: la
+    lista è vuota, e il totale resta quello vero — non azzerato insieme ai
+    risultati, che direbbe «il ricettario è vuoto» quando è solo la pagina a esserlo."""
+    from app.db.models.recipe import Recipe
+
+    for numero in range(35):
+        db_session.add(Recipe(title=f"Minestra {numero:02d}", instructions="x", source="manual"))
+    await db_session.flush()
+
+    pagina = await recipe_search.search_recipes(db_session, limit=30, offset=100)
+
+    assert pagina.results == []
+    assert pagina.total == 35

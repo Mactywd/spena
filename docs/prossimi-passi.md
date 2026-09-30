@@ -2107,8 +2107,8 @@ righe principali (a parità il primo in ordine alfabetico), da `main_department`
 `app/domain/rules.py`, sulla query che `_requirements_by_recipe` faceva già.
 `RecipeBookScreen.tsx` è passato da 461 a 399 righe: il pannello sta in
 `RecipeFiltersPanel`, la riga in `RecipeRow` (al posto di `RecipeCard`), la miniatura in
-`RecipeThumb`, i filtri e il loro ricordo in `recipeFilters.ts`. Suite finale: 858 test
-vitest in 62 file, 955 backend, 42 prove e2e, tutte verdi.
+`RecipeThumb`, i filtri e il loro ricordo in `recipeFilters.ts`. Suite finale: 861 test
+vitest in 62 file, 957 backend, 42 prove e2e, tutte verdi.
 
 **Le scelte del piano che Mattia può voler rivedere:** il pannello non si ricorda aperto; «Azzera»
 toglie categoria e ingredienti ma non parole né scala, e non c'è quando non c'è niente da

@@ -705,6 +705,18 @@ describe("RecipeBookScreen", () => {
     expect(screen.queryByRole("button", { name: "Azzera" })).toBeNull();
   });
 
+  it("dopo «Azzera» il fuoco torna su «Filtri», che resta montato: «Azzera» no", async () => {
+    stubRoutedFetch(CON_POMODORO);
+    renderScreen();
+
+    await apriFiltri();
+    await userEvent.selectOptions(await screen.findByLabelText("Categoria"), "Primi piatti");
+
+    await userEvent.click(screen.getByRole("button", { name: "Azzera" }));
+
+    expect(screen.getByRole("button", { name: /^Filtri/ })).toHaveFocus();
+  });
+
   it("i filtri si ricordano finché l'app è aperta: rimontato, lo schermo li ritrova", async () => {
     // tornando da una ricetta lo schermo rinasce (Mattia, 2026-09-29)
     const fetchMock = stubRoutedFetch(CON_POMODORO);
@@ -728,6 +740,11 @@ describe("RecipeBookScreen", () => {
       screen.getByRole("radio", { name: "Al massimo 1 ingrediente da comprare." })
     ).toBeChecked();
     expect(screen.getByRole("button", { name: "Filtri, 2 attivi" })).toBeInTheDocument();
+    // decisione 15: solo i filtri si ricordano, non se il pannello era aperto
+    expect(screen.getByRole("button", { name: "Filtri, 2 attivi" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
     await waitFor(() => {
       const ultima = ultimaRicerca(fetchMock);
       expect(ultima).toContain("q=pasta");
@@ -774,6 +791,28 @@ describe("RecipeBookScreen", () => {
 
     expect(await screen.findByText("Pasta all'aglio")).toBeInTheDocument();
     await waitFor(() => expect(ultimaRicerca(fetchMock)).not.toContain("ingredient_id"));
+  });
+
+  it("«Azzera i filtri» nel vuoto restituisce il fuoco a «Filtri»: anche lei smonta al tocco", async () => {
+    stubRoutedFetch((path) => {
+      if (path.includes("/ingredients")) return [[POMODORO], 200];
+      if (path.includes("/recipes/categories")) return [[], 200];
+      if (path.includes("/recipes/search?")) {
+        return [path.includes("ingredient_id") ? [] : RESULTS, 200];
+      }
+      return [{ semantic: true }, 200];
+    });
+    renderScreen();
+
+    await apriFiltri();
+    await userEvent.type(await screen.findByLabelText("Contiene ingredienti"), "pomo");
+    await userEvent.click(await screen.findByRole("option", { name: /Pomodoro/ }));
+    expect(await screen.findByRole("heading", { name: "Nessuna ricetta" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Azzera i filtri" }));
+
+    expect(await screen.findByText("Pasta all'aglio")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Filtri/ })).toHaveFocus();
   });
 
   it("il filtro per categoria chiede al backend solo quella categoria", async () => {
