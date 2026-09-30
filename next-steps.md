@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-09-30 (fase notte)_
+_Ultimo aggiornamento: 2026-09-30 (fase giorno: i quattro rami della notte uniti e in produzione)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -103,12 +103,12 @@ Nessun piano pronto.
 _(niente)_
 
 ## Fatti (recenti)
-- [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → branch night/c6b-modulo-coda-parole (da revisionare)
+- [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → branch night/c6b-modulo-coda-parole (da revisionare)
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → branch night/c6b-modulo-coda-parole (da revisionare)
-- [fatto] 2026-09-30 · T3 Consegna 5, Dettaglio ricetta: il tasto sopra la foto, «Modifica»/«Elimina» come icone, costo in sola lettura, stepper sempre visibile, `StatusDot` e «non basta», «Metti in lista ciò che manca», `StockGauge` nel foglio della cottura, «Apri l'originale» a 44 px; e «Salva nel ricettario» con l'avviso «Salvata.» (T4 chiuso) → branch night/c5-dettaglio (da revisionare)
-- [fatto] 2026-09-30 · T3 Consegna 4, Ricette: «Nuova», «Filtri» col numero e il pannello in linea, «Cosa posso cucinare» a video, i filtri ricordati finché l'app è aperta, righe compatte con la miniatura, l'avviso al posto della lapide (`useArchiveRecipe`); nel backend `X-Total-Count` e `main_department` → branch night/c4-ricette (da revisionare)
-- [fatto] 2026-09-30 · T3 Consegna 6a, pulsanti, accesso e anagrafica: `Button` con `unavailableReason` e `accessibleName` (una regola sola per i pulsanti spenti), «Sistema la spesa» senza pulsanti scritti a mano, l'accesso col fuoco nel campo e «Mostra password», le correzioni dell'anagrafica come icone accanto al titolo, «Cerca un ingrediente o un prodotto» → branch night/c6a-pulsanti (da revisionare)
+- [fatto] 2026-09-30 · T3 Consegna 5, Dettaglio ricetta: il tasto sopra la foto, «Modifica»/«Elimina» come icone, costo in sola lettura, stepper sempre visibile, `StatusDot` e «non basta», «Metti in lista ciò che manca», `StockGauge` nel foglio della cottura, «Apri l'originale» a 44 px; e «Salva nel ricettario» con l'avviso «Salvata.» (T4 chiuso) → `master` 69cd9b2, in produzione dal 2026-09-30
+- [fatto] 2026-09-30 · T3 Consegna 4, Ricette: «Nuova», «Filtri» col numero e il pannello in linea, «Cosa posso cucinare» a video, i filtri ricordati finché l'app è aperta, righe compatte con la miniatura, l'avviso al posto della lapide (`useArchiveRecipe`); nel backend `X-Total-Count` e `main_department` → `master` 69cd9b2, in produzione dal 2026-09-30
+- [fatto] 2026-09-30 · T3 Consegna 6a, pulsanti, accesso e anagrafica: `Button` con `unavailableReason` e `accessibleName` (una regola sola per i pulsanti spenti), «Sistema la spesa» senza pulsanti scritti a mano, l'accesso col fuoco nel campo e «Mostra password», le correzioni dell'anagrafica come icone accanto al titolo, «Cerca un ingrediente o un prodotto» → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-29 · T3 Consegna 3, Sistema la spesa: una riga per voce, un pannello alla volta sotto la sua voce (S10), «Abbina» col selettore unico, «Metti in dispensa N» con l'avviso in Dispensa (T4) → `master` 28d0cdd, in produzione dal 2026-09-29
 - [fatto] 2026-09-29 · Pulizie dopo la Lista: il 409 sull'«Annulla» che farebbe un doppione, `Button` con `busy` (la ✕ tiene il fuoco), i suggerimenti che scorrono da sé, le pulizie e2e che fanno fallire, via `set_fill`, il 404 non ritentato con «Questa ricetta non c'è più.», `occurrences` ricontato dopo l'annullamento → `master` 28d0cdd, in produzione dal 2026-09-29
 - [fatto] 2026-09-29 · Tema scuro: l'avviso rovesciato (chiaro sullo scuro) va bene, deciso da Mattia; spec §3.5 aggiornata
