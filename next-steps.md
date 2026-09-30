@@ -41,7 +41,7 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 - [tbd] P3 · H2, Samsung Health — TBD: ricerca su una via praticabile senza diventare partner [H2]
 - [tbd] P3 · Dosi dell'import con l'aggettivo davanti (~70) e numeri nel nome letti come dose (~90, «36 mesi»), più le unità spurie in `units`: ripulire `quantity_text` all'import e rilanciare `reparse_quantities` — TBD: tocca i dati di produzione, serve il via di Mattia [Parte X]
 - [tbd] P3 · Una pagina `SKIPPED` non torna mai in coda, anche dopo aver corretto la causa — TBD: quale strada la rimette `pending` [Parte X]
-- [tbd] P3 · «Rimetti in lista» nel foglio della cottura è pre-spuntata solo per «finito», in dispensa la domanda arriva anche nel giallo — TBD: decidere una volta [Parte X]
+- [tbd] P3 · «Rimetti in lista» nel foglio della cottura è pre-spuntata solo per «finito», in dispensa la domanda arriva anche nel giallo — TBD: decidere una volta; e dalla Consegna 5 nel foglio non si può più rimettere in lista una voce già «quasi finito» (toccare lo stato di partenza vuol dire «invariato»): decidere insieme [Parte X]
 
 ### Idee
 - [idea] P3 · Lo stepper delle porzioni spegne il «−» con `disabled` quando arriva a 1: premuto da tastiera, il fuoco finisce sul `body` (la stessa forma della ✕ di Lista); `unavailableReason` lo terrebbe, ma con una frase in più sotto lo stepper [T3 Consegna 5]

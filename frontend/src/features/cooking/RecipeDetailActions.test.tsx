@@ -45,12 +45,6 @@ function stubFetch(route: Rotta = () => undefined) {
   return spy;
 }
 
-/** Quel che la cronologia ricorda di questa voce: «Salvata» non deve restarci. */
-function StatoDellaVoce() {
-  const location = useLocation();
-  return <p data-testid="stato">{JSON.stringify(location.state)}</p>;
-}
-
 function renderAt(entry: string | { pathname: string; state: unknown }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
@@ -63,15 +57,7 @@ function renderAt(entry: string | { pathname: string; state: unknown }) {
         <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route path="/ricette" element={<RecipeBookScreen />} />
-            <Route
-              path="/ricette/:id"
-              element={
-                <>
-                  <RecipeDetailScreen />
-                  <StatoDellaVoce />
-                </>
-              }
-            />
+            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
           </Routes>
         </MemoryRouter>
       </NoticeProvider>

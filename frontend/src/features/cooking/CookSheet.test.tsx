@@ -215,19 +215,26 @@ describe("CookSheet", () => {
 
   it("mentre registra, tacche e pulsanti si spengono tenendo il fuoco", async () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    const onDone = vi.fn();
 
-    renderSheet();
+    renderSheet(onDone);
     const fatto = screen.getByRole("button", { name: "Ho cucinato" });
     await userEvent.click(fatto);
 
     expect(fatto).toHaveAttribute("aria-disabled", "true");
     expect(fatto).toHaveFocus();
-    expect(screen.getByRole("button", { name: "Annulla" })).toHaveAttribute("aria-disabled", "true");
+    const annulla = screen.getByRole("button", { name: "Annulla" });
+    expect(annulla).toHaveAttribute("aria-disabled", "true");
     const row = screen.getByText("Total 0%").closest("li")!;
     const finito = within(row).getByRole("radio", { name: "Finito" });
     expect(finito).toHaveAttribute("aria-disabled", "true");
     await userEvent.click(finito);
     expect(finito).toHaveAttribute("aria-checked", "false");
+
+    // «Annulla» resta cliccabile a video ma è `busy`: il clic non deve chiamare `onDone`,
+    // altrimenti si chiuderebbe il foglio mentre la richiesta di cottura è ancora in volo
+    await userEvent.click(annulla);
+    expect(onDone).not.toHaveBeenCalled();
   });
 
   it("invia le transizioni scelte e passa l'esito del backend a onDone", async () => {

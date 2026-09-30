@@ -108,11 +108,8 @@ test("una ricetta si modifica e diventa cucinabile, si elimina e torna; a 375px 
     // fissa (misurato: la sua `getBoundingClientRect().top` a circa −7); l'avviso unico che
     // l'ha sostituita (T3 Consegna 4) è fisso in basso, e deve stare sopra la barra delle
     // schede, a video, da dovunque si arrivi.
-    // «Elimina» sta in alto, accanto al titolo (T3 Consegna 5): si scorre comunque in
-    // fondo al dettaglio, perché è lì che si è dopo aver letto la ricetta, e l'avviso
-    // dell'eliminazione deve farsi vedere lo stesso
-    await page.mouse.wheel(0, 4000);
-    await expect.poll(() => page.evaluate<number>("window.scrollY")).toBeGreaterThan(0);
+    // «Elimina» sta in alto, accanto al titolo (T3 Consegna 5); l'avviso dell'eliminazione
+    // è `fixed`, quindi si vede a video da qualunque punto della pagina ci si trovi
     const eliminaBtn = page.getByRole("button", { name: "Elimina", exact: true });
 
     await eliminaBtn.click();
