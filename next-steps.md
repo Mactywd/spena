@@ -16,7 +16,6 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano prima, così al merge non ci sono conflitti. Se un piano si blocca, i successivi aspettano.
 
-- [pronto] P1 · T3 Consegna 4, Ricette: «Nuova ricetta», Filtri in linea col numero e «Azzera», «Cosa posso cucinare» visibile, filtri ricordati finché l'app è aperta (Mattia), righe compatte con miniatura e reparto principale, «Hai tutto» / «Manca: …», il totale contato dal server prima del limite, la lapide nell'avviso unico → `docs/superpowers/plans/2026-09-30-ridisegno-ricette.md`, ramo `night/c4-ricette` da `night/c6a-pulsanti` [T3]
 - [pronto] P1 · T3 Consegna 5, Dettaglio ricetta: foto col tasto indietro sopra, Modifica/Elimina come icone, costo in sola lettura, porzioni sempre visibili, Principali/Secondari col pallino e «non basta» (Mattia), «Metti in lista ciò che manca», «Cucina» sotto gli ingredienti, tacche nel foglio della cottura, «Salvata.» nell'avviso unico (T4) → `docs/superpowers/plans/2026-09-30-ridisegno-dettaglio-ricetta.md`, ramo `night/c5-dettaglio` da `night/c4-ricette` [T3, T4]
 - [pronto] P2 · T3 Consegna 6b, modulo della ricetta, coda d'import e parole: «Proponi» secondario e «Salva» col perché, caselle da 44 px, R12 con «Come si chiama in generale?», `CategorySelect` unico, la coda senza il rosso dell'AI non configurata, via «backend», «autocomplete» e «dataset», «collegato ad astice», maiuscole uniformi a video → `docs/superpowers/plans/2026-09-30-ridisegno-modulo-coda-parole.md`, ramo `night/c6b-modulo-coda-parole` da `night/c5-dettaglio` [T3, R12, Parte X]
 
@@ -46,6 +45,10 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 - [tbd] P3 · «Rimetti in lista» nel foglio della cottura è pre-spuntata solo per «finito», in dispensa la domanda arriva anche nel giallo — TBD: decidere una volta [Parte X]
 
 ### Idee
+- [idea] P3 · «Azzera» e «Azzera i filtri» spariscono al loro stesso tocco e il fuoco cade sulla pagina: dopo l'azzeramento va portato su «Filtri» [T3 Consegna 4]
+- [idea] P3 · Una categoria ricordata che il pannello non può mostrare (le categorie non si caricano, o quella categoria non c'è più): il filtro vale e «Filtri» dice «1 attivo», ma il menu mostra «Tutte». Non è un vicolo cieco («Azzera» c'è), ma il pannello dice il falso [T3 Consegna 4]
+- [idea] P3 · Un aggiornamento di sfondo fallito della prima pagina (per esempio dopo un'eliminazione) sostituisce l'elenco già a video con l'errore: meglio tenere le righe e dire che l'aggiornamento non è riuscito [T3 Consegna 4]
+- [idea] P3 · Il «Riprova» di un'eliminazione fallita, toccato dopo essere usciti dal dettaglio, porta comunque al ricettario sostituendo la pagina corrente [T3 Consegna 4]
 - [idea] P3 · `NewIngredientFields` copia il `<select>` del reparto di `registry/CategoryForm.tsx`: unirli con R12 (Consegna 6) [T3]
 - [idea] P3 · «Ingrediente» invece di «voce» in `AddItemField.tsx` e `StockingScreen.tsx` (forse dentro le Consegne 3 e 6) [Parte X]
 - [idea] P3 · Nella bozza AI, «non in anagrafica» è la formula sbagliata per una riga non alimentare [Parte X]
@@ -75,6 +78,7 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 - [bloccato] P3 · M1, motore di suggerimento — attende: pasti, nutrienti e sostituti (P2, S4, R5)
 
 ## Da fare a mano (solo Mattia)
+- [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): la prima ricetta in vista, «Filtri» col pollice, i filtri che restano tornando da una ricetta, le miniature con la rete lenta, «Elimina» e «Annulla»
 - [tbd] P2 · Prove sul telefono della Consegna 6a: l'accesso (la tastiera col campo che ha il fuoco, l'occhio, la password mostrata senza maiuscola), le icone delle correzioni in Anagrafica senza testo, «Metti in dispensa» spento col perché sotto
 - [tbd] P1 · Prove sul telefono di Sistema la spesa (Consegna 3): un pannello aperto su una voce in fondo, lo scanner con la fotocamera vera e negata, il codice a mano con «Cerca», il campo data e la sua ✕, l'avviso in Dispensa
 - [tbd] P1 · Prove sul telefono della Lista (Consegna 2): la barra resta sotto l'intestazione scorrendo, con i suggerimenti che si aprono sotto; spuntare camminando senza le linee fra le righe; «Annulla» dopo la ✕ su una voce nel carrello
@@ -87,6 +91,7 @@ Da eseguire **a catena**, in quest'ordine: ogni ramo parte da quello del piano p
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-09-30 · T3 Consegna 4, Ricette: «Nuova», «Filtri» col numero e il pannello in linea, «Cosa posso cucinare» a video, i filtri ricordati finché l'app è aperta, righe compatte con la miniatura, l'avviso al posto della lapide (`useArchiveRecipe`); nel backend `X-Total-Count` e `main_department` → branch night/c4-ricette (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6a, pulsanti, accesso e anagrafica: `Button` con `unavailableReason` e `accessibleName` (una regola sola per i pulsanti spenti), «Sistema la spesa» senza pulsanti scritti a mano, l'accesso col fuoco nel campo e «Mostra password», le correzioni dell'anagrafica come icone accanto al titolo, «Cerca un ingrediente o un prodotto» → branch night/c6a-pulsanti (da revisionare)
 - [fatto] 2026-09-29 · T3 Consegna 3, Sistema la spesa: una riga per voce, un pannello alla volta sotto la sua voce (S10), «Abbina» col selettore unico, «Metti in dispensa N» con l'avviso in Dispensa (T4) → `master` 28d0cdd, in produzione dal 2026-09-29
 - [fatto] 2026-09-29 · Pulizie dopo la Lista: il 409 sull'«Annulla» che farebbe un doppione, `Button` con `busy` (la ✕ tiene il fuoco), i suggerimenti che scorrono da sé, le pulizie e2e che fanno fallire, via `set_fill`, il 404 non ritentato con «Questa ricetta non c'è più.», `occurrences` ricontato dopo l'annullamento → `master` 28d0cdd, in produzione dal 2026-09-29

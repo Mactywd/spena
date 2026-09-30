@@ -2079,6 +2079,51 @@ password mostrata senza maiuscola né correttore; nell'Anagrafica, se le icone d
 correzioni si capiscono senza testo; in «Sistema la spesa», «Metti in dispensa» spento col
 perché sotto.
 
+**Consegna 4 (Ricette) fatta il 2026-09-30, sul ramo `night/c4-ricette` (da
+`night/c6a-pulsanti`), non ancora in produzione.** Cosa è cambiato: «Nuova» in alto a
+destra (la matita col +) apre il modulo di sempre, e «Scrivi con l'AI» non è più
+l'ingresso — l'AI resta con «Proponi» dentro il modulo; accanto al campo di ricerca c'è
+«Filtri», col numero dei filtri accesi (la categoria uno, ogni ingrediente uno), che apre in
+linea un pannello con categoria, ingredienti, quante ricette rispondono e «Azzera»; la scala
+sta fuori, sempre a video, con l'etichetta «Cosa posso cucinare»; parole, scala, categoria e
+ingredienti si ricordano finché l'app è aperta (`sessionStorage`), così tornando da una
+ricetta si ritrovano; le righe sono compatte, con una miniatura da 56 px — la foto, e sotto
+l'icona del reparto principale sulla sua tinta, che si vede mentre la foto carica e resta se
+non carica —, il titolo su al più due righe, «Hai tutto» o «Manca: …» (tre nomi, poi «e un
+altro» / «e altri N»), e sotto categoria · costo · minuti; provenienza e descrizione non
+stanno più sulla riga; la scheda «Ingredienti da abbinare» compare solo con la coda non
+vuota (il ☰ la raggiunge sempre); il vuoto è un `EmptyState` che dice perché, con «Azzera i
+filtri» quando ce ne sono, e il guasto un `ErrorState` con «Riprova»; la lapide del
+ricettario è diventata l'avviso unico, «Eliminata: <titolo>» con «Annulla»
+(`useArchiveRecipe`, che il dettaglio chiama e che la Consegna 5 riusa). Nel backend: `GET
+/recipes/search` manda `X-Total-Count`, contato prima del limite in tutti e due i rami
+(sesta lezione di `CLAUDE.md`; sul ramo con le parole è il numero dei candidati che passano
+i filtri, dentro la piscina di `CANDIDATE_POOL`), e il corpo resta una lista. Quando la
+piscina dei candidati della ricerca a parole era piena il totale è solo un minimo: il
+server manda anche `X-Total-Count-Lower-Bound: 1` e il pannello dice «almeno N ricette»
+(aggiunta del coordinatore della fase giorno, sesta lezione di `CLAUDE.md`).
+`RecipeSummaryOut` e `RecipeOut` portano `main_department`, il reparto più frequente fra le
+righe principali (a parità il primo in ordine alfabetico), da `main_department` in
+`app/domain/rules.py`, sulla query che `_requirements_by_recipe` faceva già.
+`RecipeBookScreen.tsx` è passato da 461 a 399 righe: il pannello sta in
+`RecipeFiltersPanel`, la riga in `RecipeRow` (al posto di `RecipeCard`), la miniatura in
+`RecipeThumb`, i filtri e il loro ricordo in `recipeFilters.ts`. Suite finale: 858 test
+vitest in 62 file, 955 backend, 42 prove e2e, tutte verdi.
+
+**Le scelte del piano che Mattia può voler rivedere:** il pannello non si ricorda aperto; «Azzera»
+toglie categoria e ingredienti ma non parole né scala, e non c'è quando non c'è niente da
+azzerare; la miniatura senza reparto usa l'icona del ricettario su ardesia; «Manca: …» è
+rosso (`finished`, il colore che la spec dà all'ingrediente che manca), «Hai tutto» verde;
+«Nuova» è un pulsante secondario col nome «Nuova ricetta»; i vuoti che nominavano l'AI ora
+portano a «Nuova»; un'eliminazione fallita resta sul dettaglio con l'avviso e «Riprova»;
+«Mostra altre» usa il totale e non offre più una pagina vuota dopo una pagina piena che
+era l'ultima.
+
+**Da provare sul telefono:** la prima ricetta nella prima schermata; «Filtri» aperto e
+richiuso col pollice, e il numero sopra; una ricetta aperta e poi «indietro» (i filtri ci
+sono ancora); le miniature con la rete lenta del supermercato (l'icona sotto, mai un
+bianco); «Elimina» dal dettaglio e «Annulla» nell'avviso.
+
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
 chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
 spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
@@ -2325,15 +2370,17 @@ se l'ingrediente non c'è» (S3/R12).
 
 **Ricette**
 - **I filtri occupano tutta la prima schermata**: la prima ricetta è sotto la piega.
-  Categoria e ingredienti potrebbero stare dietro «Filtri».
-- **La scala «Tutte / Ora / +1 / +2 / +3» non ha un'etichetta visibile.**
+  Categoria e ingredienti potrebbero stare dietro «Filtri». *(T3 Consegna 4)*
+- **La scala «Tutte / Ora / +1 / +2 / +3» non ha un'etichetta visibile.** *(T3 Consegna 4)*
 - **I mancanti sulla scheda si leggono come un sottotitolo.** Andrebbe scritto «Manca:
-  …».
+  …». *(T3 Consegna 4)*
 - **Le schede sono alte 386 px**, e mentre la foto carica mostrano un rettangolo
-  bianco.
+  bianco. *(T3 Consegna 4)*
 - **La ricetta a mano si scrive da «Scrivi con l'AI».** Andrebbe «+ Nuova ricetta».
+  *(T3 Consegna 4)*
 - **La scheda «Ingredienti da abbinare»** sta in cima anche quando la coda è vuota.
-- **Il filtro per ingredienti** non conta i risultati e non ha «azzera».
+  *(T3 Consegna 4)*
+- **Il filtro per ingredienti** non conta i risultati e non ha «azzera». *(T3 Consegna 4)*
 - **Tecniche e preparazioni di base** («Come legare l'arrosto», «Uova sode») sono
   mescolate alle ricette.
 - **Alcune spaziature sono strette** fra la nota e le pastiglie.
