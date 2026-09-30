@@ -566,6 +566,36 @@ describe("AiDraftScreen", () => {
     const corpo = ultimoCorpoDiPost("/recipes");
     expect(corpo.ingredients[0]).toMatchObject({ name: "speck", quantity_text: "100 g" });
   });
+
+  it("«Proponi» è un pulsante secondario, e a richiesta troppo corta dice perché senza partire", async () => {
+    const spy = vi.fn();
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    const proponi = screen.getByRole("button", { name: "Proponi" });
+    // «Salva» è il solo primario della vista (spec T3 §4.7)
+    expect(proponi).not.toHaveClass("bg-brand");
+    expect(saveButton()).toHaveClass("bg-brand");
+    expect(proponi).toHaveAttribute("aria-disabled", "true");
+    expect(proponi).toHaveAccessibleDescription("Scrivi cosa vuoi cucinare: bastano tre lettere.");
+
+    await userEvent.click(proponi);
+    expect(spy).not.toHaveBeenCalled();
+
+    await userEvent.type(screen.getByLabelText("Cosa vuoi cucinare"), "zuppa");
+    expect(proponi).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("il guasto dell'AI ha l'ambra di «funziona, ma non del tutto», non il rosso degli errori", async () => {
+    vi.stubGlobal("fetch", aiDown());
+    renderScreen();
+    await proposeDraft();
+
+    const avviso = await screen.findByRole("alert");
+    expect(avviso).toHaveTextContent(/La stesura AI non è disponibile/);
+    expect(avviso).toHaveClass("text-low");
+    expect(avviso).not.toHaveClass("text-danger");
+  });
 });
 
 // La chiave `["recipes"]` invalida per prefisso ogni voce `["recipes", debouncedQuery,

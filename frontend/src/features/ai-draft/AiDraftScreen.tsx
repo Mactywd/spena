@@ -3,7 +3,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createRecipe, draftRecipe } from "../recipes/api";
 import { BackLink } from "../../components/BackLink";
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
+import { IconSparkles } from "../../components/ui/icons";
 import { RecipeForm } from "../recipe-form/RecipeForm";
 import { EMPTY_FORM, applyDraft, type RecipeFormValues } from "../recipe-form/formModel";
 import { useNotice } from "../../components/ui/noticeContext";
@@ -69,26 +71,32 @@ export function AiDraftScreen() {
           rows={3}
           placeholder="Qualcosa di veloce con quello che ho"
         />
-        <button
-          type="button"
+        {/* secondario: il primario della vista è «Salva» (spec T3 §4.7). Da solo, quindi
+            icona e testo (spec §2); «non ancora» col perché sotto, `busy` in volo */}
+        <Button
+          variant="secondary"
+          shape="block"
+          icon={IconSparkles}
           onClick={() => propose.mutate()}
-          disabled={prompt.trim().length < 3 || propose.isPending}
-          className={buttonClasses("primary", "block")}
+          busy={propose.isPending}
+          unavailableReason={
+            prompt.trim().length < 3 ? "Scrivi cosa vuoi cucinare: bastano tre lettere." : undefined
+          }
         >
           {propose.isPending ? "Propongo…" : "Proponi"}
-        </button>
+        </Button>
         <p className="text-xs text-ink-soft">
           Chiedere all'AI è facoltativo: precompila il modulo qui sotto, che funziona anche da
           solo.
         </p>
 
-        {/* il testo scritto resta qui sopra qualunque sia l'esito, e il modulo
-            qui sotto c'era già prima: il guasto non toglie niente */}
+        {/* il guasto dell'AI ha un colore solo in tutta l'app (spec T3 §4.7): l'ambra di
+            `Alert tone="degraded"`, lo stesso della coda d'import */}
         {propose.isError && (
-          <p role="alert" className="text-sm text-low">
+          <Alert tone="degraded">
             La stesura AI non è disponibile. Il modulo qui sotto resta tuo: scrivi la ricetta a
             mano e salvala.
-          </p>
+          </Alert>
         )}
       </div>
 
