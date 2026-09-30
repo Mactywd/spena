@@ -1668,7 +1668,7 @@ decisione a mano che crea l'ingrediente, elenco `human`, annulla, ingrediente
 cancellato. Le due note del giro su questa schermata restano aperte, sotto T3: nessuna
 delle due si chiudeva dentro la schermata.
 
-## R12. Scrivendo una ricetta a mano non si aggiunge un ingrediente che non c'è **[D — trovato da Mattia il 2026-09-28]**
+## R12. Scrivendo una ricetta a mano non si aggiunge un ingrediente che non c'è **[FATTO 2026-09-30 — T3 Consegna 6b, non ancora in produzione]**
 Nel modulo della ricetta (`RecipeForm`, sotto «Scrivi con l'AI» e «Modifica»), il
 campo «Aggiungi un ingrediente» è un `IngredientPicker`: sceglie solo fra gli
 ingredienti già in anagrafica. Si scrive «zz tre», non compare niente, e la riga non
@@ -1683,6 +1683,16 @@ scelta del reparto, e l'ingrediente nasce al salvataggio con lo stesso percorso 
 `create_recipe`. Da decidere con T3, perché tocca un componente che il ridisegno
 rifarà.
 *La spec di T3 (2026-09-28) la chiude dentro il `IngredientPicker` unico, §3.5.*
+
+**Fatto** con la Consegna 6b di T3: nel modulo (scrivere e modificare) il selettore unico
+offre «Aggiungi «…»» appena la ricerca ha risposto, anche quando trova altro
+(`createWhen="always"`, come in Sistema la spesa per S6); il passo «Come si chiama in
+generale?» (`NewIngredientFields`, reparto solo del cibo) mette una riga «lo creo io
+salvando», e l'ingrediente nasce al salvataggio con `_resolve_lines`, nella transazione
+della ricetta, alla creazione e alla modifica — nessuna modifica al backend, due test in
+`test_recipes_edit.py` ne fissano il contratto. Un nome uguale a una riga che c'è la
+include invece di duplicarla. Un nome che al salvataggio risulta un non alimentare torna
+come 422 con la frase, accanto a «Salva», e la riga si toglie con la sua ✕.
 
 ---
 
@@ -2165,6 +2175,44 @@ perché sotto lo stepper delle porzioni in una ricetta senza porzioni («Porzion
 indicate: si cambiano da «Modifica».») deve stare a capo sotto lo stepper, non accanto al
 «+» (nessuna prova e2e lo misura).
 
+**Consegna 6b (il modulo della ricetta, la coda d'import, le parole) fatta il 2026-09-30,
+sul ramo `night/c6b-modulo-coda-parole`, non ancora in produzione. È l'ultima
+consegna del ridisegno**: con lei ogni schermata della spec è sulle primitive, e restano le
+prove sul telefono e il via di Mattia per le Consegne 4, 5, 6a e 6b. Cosa è cambiato: nel
+modulo della ricetta «Salva» è il solo primario, e quando non è ancora pronto dice perché
+**sotto** di sé (`unavailableReason`); «Proponi» è secondario, con la sua icona, e con meno
+di tre lettere dice perché; le caselle hanno un bersaglio da 44 px (`Checkbox`, anche «Di
+solito è secondario» nella coda); «Ingredienti» è un `SectionHeading`; **R12**: il selettore
+unico offre «Aggiungi «…»» anche quando trova altro, e ne nasce il passo «Come si chiama in
+generale?» con un reparto solo del cibo, poi una riga «lo creo io salvando» col fuoco sulla
+sua quantità — l'ingrediente nasce salvando, nessuna modifica al backend, e lo stesso nome
+non fa due righe. Un campo «Reparto» solo (`CategorySelect`, con `foodOnly` nel mondo
+ricette) per Anagrafica, Sistema la spesa, coda e modulo; «Reparto per «…»» al posto di
+«Categoria per «…»», che nel modulo si confondeva con la categoria della ricetta. Il guasto
+dell'AI ha un colore solo, l'ambra di «funziona, ma non del tutto» (`Alert tone="degraded"`),
+nella stesura e nella coda: il rosso resta a «manca» e «non è andata». Nella coda l'AI
+assente dice «L'AI non è disponibile: decidi a mano qui sotto, la coda funziona.», senza il
+nome della variabile, e a coda vuota non c'è; «Forse «…»» ha la misura del resto della
+scheda; l'esito di un annullamento passa dall'avviso unico. Parole: «il server» al posto di
+«backend», «I suggerimenti non rispondono…» al posto dell'autocomplete, niente «dataset»,
+«collegato ad astice» e «Collega ad aglio» (`withPrepositionA`); i nomi degli ingredienti
+con la maiuscola dove aprono una riga — Dispensa, modulo, dettaglio della ricetta — solo a
+video (`capitalizeFirst`, spostato da `Section.tsx`). Suite finale: 938 test vitest in 69
+file, 959 backend, 52 prove e2e, tutte verdi.
+
+**Le scelte del piano che Mattia può voler rivedere:** l'ambra come colore del guasto
+dell'AI (e non il grigio di una nota); «Reparto» ovunque al posto di «Categoria» per il
+reparto di un ingrediente; il bersaglio da 44 intorno a un quadratino da 24; «Aggiungi alla
+ricetta» come pulsante del passo di R12; un nome nuovo uguale a una riga che c'è non ne
+aggiunge un'altra ma include quella (e a una riga dell'AI «non in anagrafica» dà il reparto
+scelto); l'annullamento nella coda come avviso senza «Annulla»; le maiuscole solo dove un
+nome apre una riga, non in Lista né in Sistema la spesa (lì si legge il testo che una
+persona ha scritto, com'è) né nel titolo del foglio della cottura.
+
+**Da provare sul telefono:** R12 con la tastiera aperta (il passo del nome, il reparto
+nativo, il fuoco che salta alla quantità); il tocco sulle caselle nuove, anche nell'angolo;
+la coda con un termine vero e l'AI non configurata; l'avviso dopo un annullamento.
+
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
 chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
 spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
@@ -2334,12 +2382,12 @@ Queste restano per il telefono.
   pulsante «Riprova» («Riprova più tardi» chiede di ricaricare a mano). Serve un
   componente d'errore unico.
 - **Ci sono parole tecniche a video**: «backend», `OPENROUTER_API_KEY`, «dataset» su
-  ogni scheda ricetta, «Cerca in anagrafica».
+  ogni scheda ricetta, «Cerca in anagrafica». *(T3 Consegna 6b; «Cerca in anagrafica» con la 6a)*
 - **Maiuscole a caso** negli ingredienti, e le etichette di stato scritte in modi
-  diversi fra dispensa e dettaglio ricetta.
-- **Accordi sbagliati**: «kiwi Tolta dalla dispensa», «collegato a astice».
+  diversi fra dispensa e dettaglio ricetta. *(T3 Consegna 6b, per le maiuscole)*
+- **Accordi sbagliati**: «kiwi Tolta dalla dispensa», «collegato a astice». *(T3 Consegne 1 e 6b)*
 - **Titoli e intestazioni di sezione hanno stili diversi**: «Sistema la spesa» è più
-  piccolo, e «INGREDIENTI» nella bozza non è un `SectionHeading`.
+  piccolo, e «INGREDIENTI» nella bozza non è un `SectionHeading`. *(«Ingredienti» nel modulo: T3 Consegna 6b)*
 - **Un indirizzo inesistente dà una pagina vuota.** Manca una rotta `*`.
 - **La barra delle schede non segna niente su `/sistema`.** Dovrebbe segnare «Lista».
 - **Su desktop non si rompe niente**: è una colonna da 448 px in mezzo al vuoto. Non è
@@ -2446,13 +2494,13 @@ se l'ingrediente non c'è» (S3/R12).
   volte. *(Fatto con R10.)*
 - **La riga non alimentare** ripete il nome ed è scritta nello stile delle righe da
   confermare (Parte X).
-- **«Proponi» e «Salva» sono due pulsanti primari.**
-- **Le caselle sono da 20×20.**
-- **Lo stesso guasto dell'AI** è ambra qui e rosso nella coda.
+- **«Proponi» e «Salva» sono due pulsanti primari.** *(T3 Consegna 6b)*
+- **Le caselle sono da 20×20.** *(T3 Consegna 6b)*
+- **Lo stesso guasto dell'AI** è ambra qui e rosso nella coda. *(T3 Consegna 6b)*
 
 **Ingredienti da abbinare** (oltre a R11)
 - **Il messaggio dell'AI non configurata** è rosso, cita il nome della variabile e
-  resta anche con la coda vuota.
+  resta anche con la coda vuota. *(T3 Consegna 6b)*
 - **«1 ricetta in attesa»** compare con due ricette elencate sotto. La causa è nel
   backend, non nel plurale: `occurrences` si ricalcola solo in `sync_terms`, cioè a
   ogni scarico, e `undo_decision` rimette le pagine in `pending` senza ricontarlo.
@@ -2467,13 +2515,13 @@ se l'ingrediente non c'è» (S3/R12).
   conteggio corretto è quello che il nuovo `count_pending_keys` trova, non quello vecchio
   rimasto fermo.)*
 - **Il suggerimento testuale è enorme anche quando è assurdo** («Aragosta» → «lonza di
-  maiale»).
+  maiale»). *(T3 Consegna 6b)*
 - **Un ingrediente creato è detto «collegato a»**. Non si corregge nella riga:
   `import_terms` non scrive se la decisione ha creato l'ingrediente o ne ha usato uno
   esistente, e la deduzione che sembra ovvia è sbagliata (`_decided_action` in
   `api/imports.py` spiega perché). Serve una colonna, quindi una migrazione.
 - **Non si cerca** nell'elenco delle decisioni.
-- **«Annulla» parte senza lapide.**
+- **«Annulla» parte senza lapide.** *(T3 Consegna 6b)*
 
 ## T4. Le azioni grosse non danno una conferma che si veda **[FATTO 2026-09-30 — l'ultimo punto con la Consegna 5 di T3, non ancora in produzione]**
 Le azioni che cambiano più cose dicono poco, o lo dicono dove non si guarda:
@@ -2713,6 +2761,12 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   testo libero all'anagrafica, che ora può anche non essere cibo. Non è un
   difetto introdotto dal lavoro sul non alimentare (D4), esisteva già prima;
   resta un rinominamento aperto.
+  *(Rivista caso per caso il 2026-09-30, T3 Consegna 6b: cambia la frase della barra
+  della Lista quando i suggerimenti non rispondono — «Puoi aggiungere la voce così com'è, e
+  abbinarla dopo in «Sistema la spesa».» — dove «l'ingrediente si abbina dopo» parlava della
+  voce. Restano «Abbina un ingrediente», «Scegli a quale ingrediente corrisponde», «Crea
+  l'ingrediente»: lì si nomina la voce dell'anagrafica, che nell'app si chiama ingrediente
+  anche quando è un detersivo; rinominarla è un'altra cosa, non una frase.)*
 - **Nella stesura AI, «non in anagrafica» è la formula sbagliata per una riga non
   alimentare.** `AiDraftScreen.tsx:104` mostra, per ogni riga senza `ingredientId`,
   «"X" non in anagrafica, sarà escluso». Per «carta forno» il match c'è — l'anagrafica
