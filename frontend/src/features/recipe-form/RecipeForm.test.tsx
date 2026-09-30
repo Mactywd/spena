@@ -114,10 +114,12 @@ describe("RecipeForm riempito da una ricetta", () => {
     );
   });
 
-  it("il nome di una riga si legge una volta sola", () => {
+  it("il nome di una riga si legge una volta sola, con la maiuscola; i nomi accessibili restano come sono", () => {
     stubCategories([[], 200]);
     renderForm(valuesFromRecipe(DETAIL));
-    expect(screen.getAllByText("pasta")).toHaveLength(1);
+    expect(screen.getAllByText("Pasta")).toHaveLength(1);
+    // dentro una frase il nome resta com'è: «Quantità per pasta», non «per Pasta»
+    expect(screen.getByLabelText("Quantità per pasta")).toBeInTheDocument();
   });
 
   it("il ruolo si cambia anche su una riga proposta dall'AI", async () => {
@@ -230,7 +232,63 @@ describe("un salvataggio rifiutato", () => {
     await salva();
 
     const avviso = await screen.findByRole("alert");
-    expect(avviso).toHaveTextContent(/rifiutato/);
-    expect(avviso.textContent).not.toMatch(/riprova/i);
+    expect(avviso).toHaveTextContent(/Il server ha rifiutato la ricetta/);
+    expect(avviso.textContent).not.toMatch(/backend/);
+  });
+});
+
+describe("«Salva» e le righe (T3 Consegna 6b)", () => {
+  it("«Salva» non ancora pronto dice perché, sotto di sé, e il tocco non salva", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm({ ...valuesFromRecipe(DETAIL), instructions: "" });
+
+    const salvaBtn = screen.getByRole("button", { name: "Salva le modifiche" });
+    expect(salvaBtn).toHaveAttribute("aria-disabled", "true");
+    expect(salvaBtn).not.toBeDisabled();
+    expect(salvaBtn).toHaveAccessibleDescription(
+      "Servono un titolo e un procedimento per salvare."
+    );
+    // una volta sola, e dopo il pulsante: il motivo non sta più anche sopra
+    const motivo = screen.getByText("Servono un titolo e un procedimento per salvare.");
+    expect(
+      salvaBtn.compareDocumentPosition(motivo) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await salva();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("in volo «Salva» si spegne tenendo il fuoco, e non salva due volte", async () => {
+    stubCategories([[], 200]);
+    const save = vi.fn((_body: RecipeBody) => new Promise<RecipeDetail>(() => {}));
+    renderForm(valuesFromRecipe(DETAIL), save);
+
+    await salva();
+
+    const inVolo = screen.getByRole("button", { name: "Salvo…" });
+    expect(inVolo).toHaveAttribute("aria-disabled", "true");
+    expect(inVolo).toHaveFocus();
+    await userEvent.click(inVolo);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it("una riga da creare chiede il reparto fra quelli del cibo, col nome della riga", () => {
+    stubCategories([[], 200]);
+    renderForm({
+      ...valuesFromRecipe(DETAIL),
+      lines: [
+        lineFromDraft(
+          { raw_name: "speck", role: "primary", quantity_text: "100 g", ingredient_id: null,
+            matched_name: null, confident: false, proposed_category: "carne" },
+          0
+        ),
+      ],
+    });
+
+    const reparto = screen.getByRole("combobox", { name: "Reparto per «speck»" });
+    expect(reparto).toHaveValue("carne");
+    expect(within(reparto).getByRole("option", { name: "Carne" })).toBeInTheDocument();
+    expect(within(reparto).queryByRole("option", { name: "Casa" })).toBeNull();
+    expect(within(reparto).queryByRole("option", { name: "Igiene" })).toBeNull();
   });
 });

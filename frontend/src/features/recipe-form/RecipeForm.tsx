@@ -1,11 +1,14 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
+import { CategorySelect } from "../../components/CategorySelect";
 import { IngredientPicker } from "../../components/IngredientPicker";
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { Button } from "../../components/ui/Button";
+import { Checkbox } from "../../components/ui/Checkbox";
 import { CostPicker } from "../../components/ui/CostPicker";
-import { FOOD_CATEGORIES } from "../../domain/categories";
+import { SectionHeading } from "../../components/ui/SectionHeading";
 import type { Ingredient, IngredientRole, RecipeBody, RecipeDetail } from "../../domain/types";
+import { capitalizeFirst } from "../../lib/text";
 import { CategoryField } from "./CategoryField";
 import {
   QUANTITY_MAX,
@@ -38,7 +41,7 @@ function saveProblem(error: unknown): string {
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
     const detail = (error.body as { detail?: unknown } | null)?.detail;
     if (typeof detail === "string") return detail;
-    return "Il backend ha rifiutato la ricetta: qualcosa nei campi qui sopra non va. Correggilo — rimandarla identica darà lo stesso esito.";
+    return "Il server ha rifiutato la ricetta: qualcosa nei campi qui sopra non va. Correggilo — rimandarla identica darà lo stesso esito.";
   }
   return "Non sono riuscito a salvare la ricetta. Niente è andato perso: riprova.";
 }
@@ -63,19 +66,22 @@ function LineRow({
           `justify-between` che non si stringeva, allargava la pagina a 562px con un nome
           di 60 caratteri (e2e/ai-draft.spec.ts). */}
       <div className="flex items-center gap-2">
-        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-3">
+        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-1">
           {/* La casella c'è solo dove l'AI ha un'ipotesi da confermare: lì vuol dire
-              «è questo», non «tienila». Le righe si tolgono con la ✕ (R10 §6.2). */}
+              «è questo», non «tienila». Le righe si tolgono con la ✕ (R10 §6.2). Il
+              bersaglio è il quadrato da 44 px di `Checkbox` (dal giro: «le caselle sono
+              da 20×20») */}
           {line.uncertain && (
-            <input
-              type="checkbox"
+            <Checkbox
               aria-label={`Includi ${line.label}`}
               checked={line.included}
               onChange={() => onUpdate({ included: !line.included })}
-              className="size-5 shrink-0"
             />
           )}
-          <span className="min-w-0 flex-1 break-words">{line.label}</span>
+          {/* la maiuscola solo a video (spec T3 §4.7): il nome mandato resta quello
+              scritto, e i nomi accessibili di questa riga lo mettono in mezzo a una frase
+              («Togli pasta», «Quantità per pasta»), dove resta com'è */}
+          <span className="min-w-0 flex-1 break-words">{capitalizeFirst(line.label)}</span>
         </label>
         {/* la stessa X delle pastiglie del filtro, e per la stessa ragione il nome
             accessibile nomina la riga: su dodici righe «Togli» da solo non dice quale */}
@@ -121,21 +127,14 @@ function LineRow({
       {line.ingredientId === null && line.proposedCategory !== null && (
         <div className="flex flex-col gap-1">
           <p className="text-xs text-ink-soft">Non è in anagrafica: lo creo io salvando.</p>
-          <label className="text-xs font-medium text-ink-soft">
-            Categoria
-            <select
-              aria-label={`Categoria per «${line.label}»`}
-              value={line.proposedCategory ?? "altro"}
-              onChange={(e) => onUpdate({ proposedCategory: e.target.value })}
-              className="mt-1"
-            >
-              {FOOD_CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* solo i reparti del cibo: una ricetta non può nominare un non alimentare, e
+              `write_recipe_ingredients` rifiuterebbe il salvataggio */}
+          <CategorySelect
+            value={line.proposedCategory}
+            onChange={(category) => onUpdate({ proposedCategory: category })}
+            foodOnly
+            accessibleLabel={`Reparto per «${line.label}»`}
+          />
         </div>
       )}
 
@@ -291,7 +290,9 @@ export function RecipeForm({
       </div>
 
       <div>
-        <h2 className="text-xs uppercase tracking-wide text-ink-faint">Ingredienti</h2>
+        {/* la stessa intestazione delle sezioni del resto dell'app (dal giro: «INGREDIENTI»
+            nella bozza non era un `SectionHeading`) */}
+        <SectionHeading>Ingredienti</SectionHeading>
         <ul className="divide-y divide-line">
           {values.lines.map((line) => (
             <LineRow
@@ -330,18 +331,19 @@ export function RecipeForm({
         </p>
       )}
 
-      {/* il motivo sta accanto al pulsante che sta disabilitando: un pulsante spento e
-          muto è un vicolo cieco quanto un errore senza spiegazione */}
-      {problem && <p className="text-sm text-low">{problem}</p>}
-
-      <button
-        type="button"
+      {/* «Salva» è il solo primario della vista (spec T3 §4.7). Non pronto, dice perché
+          sotto di sé (`unavailableReason`: un pulsante spento e muto è un vicolo cieco
+          quanto un errore senza spiegazione, dal giro); in volo è `busy`. Tutti e due con
+          `aria-disabled`, così il fuoco resta qui */}
+      <Button
+        variant="primary"
+        shape="block"
         onClick={() => submit.mutate()}
-        disabled={submit.isPending || problem !== null}
-        className={buttonClasses("primary", "block")}
+        busy={submit.isPending}
+        unavailableReason={problem ?? undefined}
       >
         {submit.isPending ? "Salvo…" : submitLabel}
-      </button>
+      </Button>
 
       {/* l'errore sta accanto al pulsante che ha fallito: tutti i campi restano qui,
           pronti per un altro tentativo */}

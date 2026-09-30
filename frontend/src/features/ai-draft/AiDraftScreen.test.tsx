@@ -161,24 +161,25 @@ describe("AiDraftScreen", () => {
   // Titolo e procedimento sono gli unici due campi che il backend pretende non
   // vuoti. Un pulsante spento che non dice perché è un vicolo cieco anche lui:
   // il motivo sta accanto al pulsante, e sparisce quando non serve più.
-  it("senza titolo o senza procedimento il salvataggio è spento, e dice cosa manca", async () => {
+  it("senza titolo o senza procedimento il salvataggio non è ancora pronto, e dice cosa manca sotto di sé", async () => {
     vi.stubGlobal("fetch", vi.fn());
     renderScreen();
 
     expect(screen.getByText(/servono un titolo e un procedimento/i)).toBeDefined();
-    expect(saveButton()).toBeDisabled();
+    expect(saveButton()).toHaveAttribute("aria-disabled", "true");
+    expect(saveButton()).toHaveAccessibleDescription(/servono un titolo e un procedimento/i);
 
     await userEvent.type(screen.getByLabelText("Titolo"), "Cacio e pepe");
     expect(screen.getByText(/servono un titolo e un procedimento/i)).toBeDefined();
-    expect(saveButton()).toBeDisabled();
+    expect(saveButton()).toHaveAttribute("aria-disabled", "true");
 
     await userEvent.type(screen.getByLabelText("Procedimento"), "1. Lessa.");
     expect(screen.queryByText(/servono un titolo e un procedimento/i)).toBeNull();
-    expect(saveButton()).not.toBeDisabled();
+    expect(saveButton()).not.toHaveAttribute("aria-disabled");
 
     await userEvent.clear(screen.getByLabelText("Titolo"));
     expect(screen.getByText(/servono un titolo e un procedimento/i)).toBeDefined();
-    expect(saveButton()).toBeDisabled();
+    expect(saveButton()).toHaveAttribute("aria-disabled", "true");
   });
 
   it("segnala gli agganci incerti, perché la conferma spetta a te", async () => {
@@ -388,7 +389,7 @@ describe("AiDraftScreen", () => {
     await draftLanded();
 
     expect(await screen.findByText(/porzioni devono stare tra 1 e 50/i)).toBeDefined();
-    expect(saveButton()).toBeDisabled();
+    expect(saveButton()).toHaveAttribute("aria-disabled", "true");
 
     const servings = screen.getByLabelText("Porzioni");
     await userEvent.clear(servings);
@@ -430,7 +431,7 @@ describe("AiDraftScreen", () => {
     await draftLanded();
 
     expect(await screen.findByText(/quantità di «pasta» è troppo lunga/i)).toBeDefined();
-    expect(saveButton()).toBeDisabled();
+    expect(saveButton()).toHaveAttribute("aria-disabled", "true");
 
     await userEvent.clear(screen.getByLabelText("Quantità per pasta"));
     await userEvent.type(screen.getByLabelText("Quantità per pasta"), "180 g");
@@ -492,7 +493,7 @@ describe("AiDraftScreen", () => {
     expect(screen.getByDisplayValue("Pasta al pomodoro")).toBeDefined();
   });
 
-  it("un ingrediente ignoto si crea salvando, con la categoria modificabile", async () => {
+  it("un ingrediente ignoto si crea salvando, col reparto modificabile", async () => {
     // usa l'apparato già presente in questo file per fingere la bozza: cerca come i
     // test esistenti servono POST /recipes/ai-draft e riusa quello
     await mostraBozzaCon([
@@ -504,7 +505,7 @@ describe("AiDraftScreen", () => {
     ]);
 
     expect(await screen.findByText(/lo creo io salvando/i)).toBeInTheDocument();
-    const categoria = screen.getByLabelText(/categoria per «speck»/i);
+    const categoria = screen.getByLabelText(/reparto per «speck»/i);
     expect(categoria).toHaveValue("carne");
 
     await userEvent.selectOptions(categoria, "pesce");
