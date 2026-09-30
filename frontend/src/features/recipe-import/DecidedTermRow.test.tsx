@@ -72,11 +72,25 @@ describe("DecidedTermRow", () => {
     expect(onUndo).toHaveBeenCalledOnce();
   });
 
-  it("mentre una decisione è in corso il pulsante è disabilitato", () => {
-    render(<DecidedTermRow term={term()} pending={true} onUndo={vi.fn()} />);
-    expect(
-      screen.getByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
-    ).toBeDisabled();
+  it("mentre una decisione è in corso il pulsante si spegne tenendo il fuoco, e il tocco non annulla", async () => {
+    const onUndo = vi.fn();
+    render(<DecidedTermRow term={term()} pending={true} onUndo={onUndo} />);
+    const annulla = screen.getByRole("button", { name: /annulla la decisione su «Rigatoni»/i });
+    expect(annulla).toHaveAttribute("aria-disabled", "true");
+    expect(annulla).not.toBeDisabled();
+    await userEvent.click(annulla);
+    expect(onUndo).not.toHaveBeenCalled();
+  });
+
+  it("davanti a un nome che comincia per «a» dice «ad»: «collegato ad astice»", () => {
+    render(
+      <DecidedTermRow
+        term={term({ display_name: "Astice blu", decided_name: "astice", created_ingredient: false })}
+        pending={false}
+        onUndo={vi.fn()}
+      />
+    );
+    expect(screen.getByText("collegato ad astice")).toBeInTheDocument();
   });
 
   it("dice chi ha deciso: «AI» per l'AI, «tu» per una decisione a mano", () => {

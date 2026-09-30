@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { ImportQueueScreen } from "./ImportQueueScreen";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { ImportTerm } from "../../domain/types";
 
 const TERMINI: ImportTerm[] = [
@@ -46,7 +47,9 @@ function renderScreen(
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
-        <ImportQueueScreen />
+        <NoticeProvider>
+          <ImportQueueScreen />
+        </NoticeProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -231,9 +234,10 @@ describe("coda di revisione dell'import", () => {
     expect(
       screen.getByRole("textbox", { name: /Nome dell'ingrediente per «Rigatoni»/i })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: /Categoria per «Rigatoni»/i })
-    ).toBeInTheDocument();
+    const reparto = screen.getByRole("combobox", { name: /Reparto per «Rigatoni»/i });
+    expect(reparto).toBeInTheDocument();
+    // la coda decide i termini delle ricette: niente reparti non alimentari
+    expect(within(reparto).queryByRole("option", { name: "Casa" })).toBeNull();
   });
 
   it("un aggancio testuale certo resta il pulsante primario", async () => {
@@ -668,20 +672,28 @@ describe("coda di revisione dell'import", () => {
     expect(JSON.parse(String((chiamata?.[1] as RequestInit).body))).toEqual({});
   });
 
-  it("un 503 dell'AI lo dice col messaggio del backend, e la coda resta usabile a mano", async () => {
-    // Mai un vicolo cieco: il modello irraggiungibile non deve impedire di
-    // decidere a mano. Il messaggio specifico del 503 (non quello generico)
-    // è l'unica prova che il branch sullo status è ancora lì.
+  it("un 503 dell'AI lo dice con parole sue, senza il nome della variabile, e la coda resta usabile a mano", async () => {
+    // Mai un vicolo cieco: il modello irraggiungibile non deve impedire di decidere a
+    // mano. Il `detail` è quello vero del backend, col nome della variabile: a video
+    // non deve arrivare (dal giro di T3). Il testo del 503 (non quello generico) è la
+    // prova che il ramo sullo status è ancora lì.
     renderQueue({
-      askAiResult: [{ detail: "il modello non risponde: decidi a mano." }, 503],
+      askAiResult: [
+        {
+          detail:
+            "il riconoscimento non è disponibile (OPENROUTER_API_KEY non configurata): decidi a mano, la coda funziona.",
+        },
+        503,
+      ],
     });
 
     await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
 
-    expect(await screen.findByText(/il modello non risponde: decidi a mano\./i)).toBeInTheDocument();
     expect(
-      screen.queryByText(/Non sono riuscito a chiedere all'AI/i)
-    ).not.toBeInTheDocument();
+      await screen.findByText("L'AI non è disponibile: decidi a mano qui sotto, la coda funziona.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/OPENROUTER_API_KEY/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Non sono riuscito a chiedere all'AI/i)).not.toBeInTheDocument();
     // i controlli a mano restano lì, invariati dal fallimento dell'AI
     expect(screen.getByRole("button", { name: /Forse «pasta»/i })).toBeEnabled();
   });
@@ -735,6 +747,101 @@ describe("coda di revisione dell'import", () => {
 
     expect((await screen.findByRole("link", { name: "Ricette" })).getAttribute("href"))
       .toBe("/ricette");
+  });
+
+  it("il guasto dell'AI è ambra, come nella stesura, e non rosso", async () => {
+    renderQueue({ askAiResult: [{ detail: "giù" }, 503] });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+
+    const avviso = await screen.findByText(/L'AI non è disponibile/);
+    expect(avviso).toHaveAttribute("role", "alert");
+    expect(avviso).toHaveClass("text-low");
+    expect(avviso).not.toHaveClass("text-danger");
+  });
+
+  it("a coda svuotata il guasto dell'AI non si mostra più: non c'è niente da chiederle", async () => {
+    let inCoda: ImportTerm[] = [TERMINI[1]];
+    stubFetch((path, method) => {
+      if (path.includes("/imports/terms/decide") && method === "POST") return [{ detail: "giù" }, 503];
+      if (path.includes("/decision") && method === "POST") {
+        inCoda = [];
+        return [{ unlocked: 0, remaining_terms: 0 }, 200];
+      }
+      if (path.includes("decided_by=")) return [[], 200];
+      if (path.includes("/imports/terms")) return [inCoda, 200];
+      if (path.includes("/imports/status")) return [STATO_NORMALE, 200];
+      return [{}, 404];
+    });
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+    expect(await screen.findByText(/L'AI non è disponibile/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Ignora «Acqua»$/ }));
+
+    expect(await screen.findByText(/Niente da abbinare/)).toBeInTheDocument();
+    expect(screen.queryByText(/L'AI non è disponibile/)).not.toBeInTheDocument();
+  });
+
+  it("l'esito di un annullamento passa dall'avviso unico, non da una riga della pagina", async () => {
+    renderQueue({
+      pending: [],
+      decided: [
+        {
+          id: "t9", display_name: "Rigatoni", occurrences: 3, suggestion: null,
+          waiting_titles: [], decided_by: "ai", decided_action: "map",
+          decided_name: "pasta", decided_at: "2026-09-20T10:00:00Z",
+        },
+      ],
+      undoStatus: 200,
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /annulla la decisione su «Rigatoni»/i })
+    );
+
+    const esito = await screen.findByText("Nessuna ricetta è tornata in coda.");
+    expect(esito.closest('[role="status"]')).not.toBeNull();
+  });
+
+  it("il suggerimento testuale non è più grande del resto della scheda", async () => {
+    renderQueue();
+
+    const forse = await screen.findByRole("button", { name: /Forse «pasta»/i });
+    // era un `block` in `text-base` a tutta larghezza: il pulsante più grosso della
+    // scheda anche quando la somiglianza è assurda («Aragosta» → «lonza di maiale»)
+    expect(forse).toHaveClass("text-sm");
+    expect(forse).not.toHaveClass("text-base");
+    expect(forse).not.toHaveClass("w-full");
+  });
+
+  it("una scorciatoia certa verso un nome che comincia per «a» dice «Collega ad …»", async () => {
+    renderQueue({
+      pending: [
+        {
+          ...TERMINI[0], id: "t4", display_name: "Aglio rosso",
+          suggestion: { ingredient_id: "i4", name: "aglio", certain: true },
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("button", { name: "Collega ad aglio" })).toBeInTheDocument();
+  });
+
+  it("«Crea e collega» senza nome non decide, e dice perché sotto di sé", async () => {
+    const spy = renderQueue();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Crea un ingrediente nuovo per «Acqua»/i })
+    );
+    await userEvent.clear(screen.getByRole("textbox", { name: /Nome dell'ingrediente per «Acqua»/i }));
+    const crea = screen.getByRole("button", { name: "Crea e collega" });
+    expect(crea).toHaveAttribute("aria-disabled", "true");
+    expect(crea).toHaveAccessibleDescription("Scrivi il nome per crearlo.");
+
+    await userEvent.click(crea);
+    expect(spy.mock.calls.some(([url]) => String(url).includes("/decision"))).toBe(false);
   });
 });
 

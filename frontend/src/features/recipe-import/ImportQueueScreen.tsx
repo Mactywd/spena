@@ -4,8 +4,9 @@ import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { Screen } from "../../components/ui/Screen";
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { useNotice } from "../../components/ui/noticeContext";
 import type { DecideResult, ImportTerm } from "../../domain/types";
 import {
   decideTerm,
@@ -83,6 +84,16 @@ function aiRunMessage(result: DecideResult): string {
       ? "1 resta in coda: non l'ha saputo giudicare."
       : `${result.still_pending} restano in coda: non li ha saputi giudicare.`;
   return `${decisePart}, ${pendingPart} ${unlockedPart}`;
+}
+
+/** Cosa dire quando chiedere all'AI non riesce. Il 503 porta nel `detail` il motivo per
+ * chi amministra il server — il nome della variabile che manca — che a video era una
+ * parola tecnica (dal giro di T3): qui si dice cosa resta possibile, con le parole
+ * dell'app. Il `detail` resta nella risposta, e nei log. */
+function aiFailureMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 503)
+    return "L'AI non è disponibile: decidi a mano qui sotto, la coda funziona.";
+  return "Non sono riuscito a chiedere all'AI. Decidi a mano: la coda funziona.";
 }
 
 interface UndoSummary {
@@ -172,8 +183,8 @@ type LastRun = { kind: "manual"; unlocked: number } | { kind: "ai"; result: Deci
 
 export function ImportQueueScreen() {
   const queryClient = useQueryClient();
+  const notice = useNotice();
   const [lastRun, setLastRun] = useState<LastRun | null>(null);
-  const [lastUndo, setLastUndo] = useState<UndoSummary | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
 
   const { data: queue = [], isLoading, isError } = useQuery({
@@ -229,10 +240,6 @@ export function ImportQueueScreen() {
     mutationFn: () => decideWithAi(),
     onSuccess: (result) => {
       setLastRun({ kind: "ai", result });
-      // un giro nuovo scavalca l'esito di un annullamento precedente: i due
-      // messaggi condividono lo stesso angolo di schermo, e lasciarli entrambi
-      // farebbe leggere un annullamento vecchio come l'esito di questo giro
-      setLastUndo(null);
       queryClient.invalidateQueries({ queryKey: ["import-terms"] });
       queryClient.invalidateQueries({ queryKey: ["import-status"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
@@ -248,13 +255,19 @@ export function ImportQueueScreen() {
       setUndoError(null);
     },
     onSuccess: (result) => {
-      setLastUndo({
-        recipesRequeued: result.recipes_requeued,
-        ingredientDeleted: result.ingredient_deleted,
-        // `?? 0` e `?? false`: una risposta di un backend di prima di R10 non li porta,
-        // e un `undefined` finirebbe scritto nella frase
-        adoptedUntouched: result.adopted_untouched ?? 0,
-        ingredientKeptForAdopted: result.ingredient_kept_for_adopted ?? false,
+      // l'esito passa dall'avviso unico (spec T3 §4.7, dal giro: «Annulla parte senza
+      // lapide»): la riga annullata sparisce dall'elenco, e la frase che dice cosa ha
+      // disfatto sta dove stanno tutte le conferme. Senza azione: rifare la decisione è
+      // decidere di nuovo, dalla scheda del termine appena tornato in coda.
+      // `?? 0` e `?? false`: una risposta di un backend di prima di R10 non li porta, e
+      // un `undefined` finirebbe scritto nella frase
+      notice({
+        text: undoResultMessage({
+          recipesRequeued: result.recipes_requeued,
+          ingredientDeleted: result.ingredient_deleted,
+          adoptedUntouched: result.adopted_untouched ?? 0,
+          ingredientKeptForAdopted: result.ingredient_kept_for_adopted ?? false,
+        }),
       });
       setLastRun(null);
       queryClient.invalidateQueries({ queryKey: ["import-terms"] });
@@ -270,7 +283,6 @@ export function ImportQueueScreen() {
       decideTerm(termId, decision),
     onSuccess: (result) => {
       setLastRun({ kind: "manual", unlocked: result.unlocked });
-      setLastUndo(null);
       // la coda e lo stato cambiano entrambi, e il ricettario è appena cresciuto:
       // senza questa riga l'utente torna a Ricette e non vede quel che ha sbloccato
       queryClient.invalidateQueries({ queryKey: ["import-terms"] });
@@ -308,10 +320,6 @@ export function ImportQueueScreen() {
 
       {lastRun?.kind === "ai" && (
         <p className="pt-2 text-sm font-medium text-brand">{aiRunMessage(lastRun.result)}</p>
-      )}
-
-      {lastUndo && (
-        <p className="pt-2 text-sm font-medium text-brand">{undoResultMessage(lastUndo)}</p>
       )}
 
       {decide.isError && (
@@ -357,14 +365,9 @@ export function ImportQueueScreen() {
             <span className="text-danger">
               Non sono riuscito a leggere quel termine. La coda è qui sotto.
             </span>
-            <button
-              type="button"
-              disabled={focus.isFetching}
-              onClick={() => void focus.refetch()}
-              className={buttonClasses("secondary")}
-            >
+            <Button busy={focus.isFetching} onClick={() => void focus.refetch()}>
               Riprova
-            </button>
+            </Button>
           </div>
         )
       )}
@@ -386,21 +389,18 @@ export function ImportQueueScreen() {
       )}
 
       {queue.length > 0 && (
-        <button
-          type="button"
-          disabled={askAi.isPending}
-          onClick={() => askAi.mutate()}
-          className={buttonClasses("secondary", "block")}
-        >
+        <Button shape="block" busy={askAi.isPending} onClick={() => askAi.mutate()}>
           {askAi.isPending ? "Sto chiedendo…" : "Riprova con l'AI"}
-        </button>
+        </Button>
       )}
 
-      {askAi.isError && (
-        <Alert className="pt-2">
-          {askAi.error instanceof ApiError && askAi.error.status === 503
-            ? askAi.error.message
-            : "Non sono riuscito a chiedere all'AI. Decidi a mano: la coda funziona."}
+      {/* Il guasto dell'AI ha un colore solo in tutta l'app, l'ambra di `degraded`: la
+          coda si decide a mano comunque (spec T3 §4.7). E a coda vuota non c'è niente da
+          chiedere all'AI, quindi niente da dire: dal giro, il messaggio restava lì dopo
+          aver deciso a mano l'ultimo termine */}
+      {askAi.isError && queue.length > 0 && (
+        <Alert tone="degraded" className="pt-2">
+          {aiFailureMessage(askAi.error)}
         </Alert>
       )}
 

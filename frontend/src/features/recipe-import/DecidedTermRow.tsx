@@ -1,15 +1,7 @@
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { Button } from "../../components/ui/Button";
 import type { ImportTerm } from "../../domain/types";
+import { withPrepositionA } from "../../lib/text";
 
-/** Cosa è stato fatto di questo termine, in una frase.
- *
- * «Rigatoni → pasta» e non «mappato con successo»: il nome dell'ingrediente è la sola
- * informazione su cui si può giudicare se la decisione è giusta, e nasconderla dietro
- * un verbo tecnico renderebbe la revisione una lista di caselle da spuntare.
- *
- * Un termine accorpato dal collasso non ha niente di speciale: è un aggancio, e si
- * mostra come un aggancio, perché è quello che è.
- */
 /** Chi ha deciso, in una parola: «AI» o «tu».
  *
  * Le decisioni dell'AI e quelle a mano stanno nello stesso elenco (R11), e sbagliano
@@ -34,6 +26,15 @@ function DecidedByLabel({ decidedBy }: { decidedBy: string | null }) {
   );
 }
 
+/** Cosa è stato fatto di questo termine, in una frase.
+ *
+ * «Rigatoni → pasta» e non «mappato con successo»: il nome dell'ingrediente è la sola
+ * informazione su cui si può giudicare se la decisione è giusta, e nasconderla dietro
+ * un verbo tecnico renderebbe la revisione una lista di caselle da spuntare.
+ *
+ * Un termine accorpato dal collasso non ha niente di speciale: è un aggancio, e si
+ * mostra come un aggancio, perché è quello che è.
+ */
 function decisionSummary(term: ImportTerm): string {
   if (term.decided_action === "ignored") return "ignorato: non si tiene in dispensa";
   // «creato dall'import» e non «creato»: il `true` può essere passato a questo termine da
@@ -41,7 +42,8 @@ function decisionSummary(term: ImportTerm): string {
   // Le decisioni di prima non lo sanno, e «collegato» non promette niente in più.
   if (term.created_ingredient === true)
     return `creato dall'import: ${term.decided_name ?? "un ingrediente"}`;
-  return `collegato a ${term.decided_name ?? "un ingrediente"}`;
+  // «ad astice», non «a astice» (dal giro di T3): la preposizione la sceglie il nome
+  return `collegato ${withPrepositionA(term.decided_name ?? "un ingrediente")}`;
 }
 
 export function DecidedTermRow({
@@ -62,17 +64,17 @@ export function DecidedTermRow({
         </div>
         <p className="truncate text-xs text-ink-soft">{decisionSummary(term)}</p>
       </div>
-      {/* il nome accessibile porta il termine: una riga per termine, e senza il nome
-          chi ascolta sente N pulsanti «Annulla» indistinguibili */}
-      <button
-        type="button"
-        disabled={pending}
+      {/* il nome accessibile porta il termine: una riga per termine, e senza il nome chi
+          ascolta sente N pulsanti «Annulla» indistinguibili. `busy` e non `disabled`:
+          mentre un annullamento è in volo il fuoco resta qui */}
+      <Button
+        variant="ghost"
+        busy={pending}
         onClick={onUndo}
-        aria-label={`Annulla la decisione su «${term.display_name}»`}
-        className={buttonClasses("ghost", "pill")}
+        accessibleName={`Annulla la decisione su «${term.display_name}»`}
       >
         Annulla
-      </button>
+      </Button>
     </li>
   );
 }

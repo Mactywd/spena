@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { CategorySelect } from "../../components/CategorySelect";
 import { IngredientPicker } from "../../components/IngredientPicker";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { buttonClasses } from "../../components/ui/buttonClasses";
-import { FOOD_CATEGORIES } from "../../domain/categories";
+import { Checkbox } from "../../components/ui/Checkbox";
 import type { ImportTerm } from "../../domain/types";
+import { withPrepositionA } from "../../lib/text";
 
 export type Decision = {
   action: "map" | "create" | "ignore";
@@ -49,6 +51,8 @@ export function TermCard({
   // tocco sul pulsante primario, perché qui `certain` non veniva mai letto.
   const shortcutIsCertain = shortcut !== null && term.suggestion?.certain === true;
 
+  // In volo ogni pulsante della scheda è `busy` e non `disabled`: il fuoco resta dov'è
+  // (regola di T3). «Crea e collega» senza nome è «non ancora», col perché sotto.
   return (
     <Card as="li" className="flex flex-col gap-3">
       <div>
@@ -64,16 +68,16 @@ export function TermCard({
       </div>
 
       {shortcut && shortcutIsCertain && (
-        <button
-          type="button"
-          disabled={pending}
+        <Button
+          variant="primary"
+          shape="block"
+          busy={pending}
           onClick={() =>
             onDecide({ action: "map", ingredient_id: shortcut.ingredient_id, role_override: role })
           }
-          className={buttonClasses("primary", "block")}
         >
-          Collega a {shortcut.name}
-        </button>
+          {`Collega ${withPrepositionA(shortcut.name)}`}
+        </Button>
       )}
 
       {/* il nome accessibile porta il termine: la schermata mette una scheda per
@@ -92,15 +96,14 @@ export function TermCard({
       />
 
       {!creating ? (
-        <button
-          type="button"
-          disabled={pending}
+        <Button
+          shape="block"
+          busy={pending}
           onClick={() => setCreating(true)}
-          aria-label={`Crea un ingrediente nuovo per «${term.display_name}»`}
-          className={buttonClasses("secondary", "block")}
+          accessibleName={`Crea un ingrediente nuovo per «${term.display_name}»`}
         >
           Crea un ingrediente nuovo
-        </button>
+        </Button>
       ) : (
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-ink-soft">
@@ -112,24 +115,19 @@ export function TermCard({
               className="mt-1.5"
             />
           </label>
-          <label className="text-sm font-medium text-ink-soft">
-            Categoria
-            <select
-              aria-label={`Categoria per «${term.display_name}»`}
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              className="mt-1.5"
-            >
-              {FOOD_CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            disabled={pending || newName.trim() === ""}
+          {/* solo i reparti del cibo: il termine viene da una ricetta, e una ricetta non
+              può nominare un non alimentare */}
+          <CategorySelect
+            value={newCategory}
+            onChange={setNewCategory}
+            foodOnly
+            accessibleLabel={`Reparto per «${term.display_name}»`}
+          />
+          <Button
+            variant="primary"
+            shape="block"
+            busy={pending}
+            unavailableReason={newName.trim() === "" ? "Scrivi il nome per crearlo." : undefined}
             onClick={() =>
               onDecide({
                 action: "create", name: newName.trim().toLowerCase(),
@@ -137,31 +135,28 @@ export function TermCard({
                 role_override: role,
               })
             }
-            className={buttonClasses("primary", "block")}
           >
             Crea e collega
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* l'aggancio testuale incerto: una somiglianza di nome, non un fatto
-          verificato (vedi `shortcutIsCertain` sopra). Sta sotto ai controlli a
-          mano e non sopra, e con un pulsante ghost come "Ignora" invece del verde
-          pieno: la stessa scorciatoia di prima, ma senza il peso visivo di una
-          risposta già data. Non la togliamo — un termine senza scorciatoia costa
-          tre tocchi — la retrocediamo. */}
+      {/* l'aggancio testuale incerto: una somiglianza di nome, non un fatto verificato
+          (vedi `shortcutIsCertain` sopra). Sta sotto ai controlli a mano, e ha la misura
+          del resto della scheda — un `ghost` in `text-sm`, non a tutta larghezza (dal
+          giro: «è enorme anche quando è assurdo», «Aragosta» → «lonza di maiale»). Non lo
+          togliamo — un termine senza scorciatoia costa tre tocchi — lo retrocediamo. */}
       {shortcut && !shortcutIsCertain && (
-        <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            disabled={pending}
+        <div className="flex flex-col items-start gap-1">
+          <Button
+            variant="ghost"
+            busy={pending}
             onClick={() =>
               onDecide({ action: "map", ingredient_id: shortcut.ingredient_id, role_override: role })
             }
-            className={buttonClasses("ghost", "block")}
           >
-            Forse «{shortcut.name}» — tocca per confermare
-          </button>
+            {`Forse «${shortcut.name}» — tocca per confermare`}
+          </Button>
           <p className="text-xs text-ink-faint">
             È solo una somiglianza tra i nomi: verificala prima di confermarla, oppure scegli
             un altro ingrediente con i controlli qui sopra.
@@ -170,16 +165,13 @@ export function TermCard({
       )}
 
       {/* la correzione dell'aglio: un tocco in più, solo per le eccezioni. Il nome
-          accessibile porta il termine per lo stesso motivo del picker qui sopra:
-          una scheda per termine, e senza il nome la casella è indistinguibile da
-          quella della scheda vicina */}
-      <label className="flex min-h-11 items-center gap-2.5 text-sm text-ink-soft">
-        <input
-          type="checkbox"
+          accessibile porta il termine per lo stesso motivo del picker qui sopra: una
+          scheda per termine. Il bersaglio è il quadrato da 44 px di `Checkbox` */}
+      <label className="flex min-h-11 items-center gap-1 text-sm text-ink-soft">
+        <Checkbox
           aria-label={`Di solito «${term.display_name}» è un ingrediente secondario`}
           checked={alsoSecondary}
           onChange={(e) => setAlsoSecondary(e.target.checked)}
-          className="size-5"
         />
         Di solito è secondario
       </label>
@@ -188,14 +180,14 @@ export function TermCard({
           decisione possibile. Quando la scorciatoia sopra è già certa questo resta
           comunque un pulsante distinto, perché la scorciatoia certa collega, non
           ignora: non c'è mai un doppione con lo stesso testo in scheda */}
-      <button
-        type="button"
-        disabled={pending}
+      <Button
+        variant="ghost"
+        shape="block"
+        busy={pending}
         onClick={() => onDecide({ action: "ignore" })}
-        className={buttonClasses("ghost", "block")}
       >
-        Ignora «{term.display_name}»
-      </button>
+        {`Ignora «${term.display_name}»`}
+      </Button>
     </Card>
   );
 }
