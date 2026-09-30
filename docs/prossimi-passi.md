@@ -2124,6 +2124,47 @@ richiuso col pollice, e il numero sopra; una ricetta aperta e poi «indietro» (
 sono ancora); le miniature con la rete lenta del supermercato (l'icona sotto, mai un
 bianco); «Elimina» dal dettaglio e «Annulla» nell'avviso.
 
+**Consegna 5 (Dettaglio ricetta) fatta il 2026-09-30, sul ramo `night/c5-dettaglio`,
+non ancora in produzione** (parte da `night/c4-ricette`, che parte da `night/c6a-pulsanti`:
+si uniscono in quest'ordine). Cosa è cambiato: in cima il tasto «Ricette» sta sopra la foto,
+con un fondo pieno che la foto non può scurire, e senza foto (o se non carica) resta al suo
+posto sopra il titolo; accanto al titolo «Modifica» ed «Elimina» sono icone in un
+`IconToolbar` («Elimina» chiama `useArchiveRecipe` della Consegna 4); sotto, categoria e costo
+in sola lettura (`CostMeter`: il costo si cambia da «Modifica»; `updateRecipeCost` è uscito
+dal client, la `PATCH` del server resta); lo stepper delle porzioni si vede sempre, e senza
+porzioni il «+» dice «Porzioni non indicate: si cambiano da «Modifica».»; gli ingredienti
+stanno in «Principali» e «Secondari» con lo `StatusDot` per riga, e un principale quasi
+finito dice «non basta» accanto al nome; «Cucina» (con l'icona) è il pulsante principale in
+fondo agli ingredienti, prima del procedimento, e sotto c'è il nuovo «Metti in lista ciò che
+manca», che manda una `POST /shopping-list` per ogni riga che il server dice non soddisfatta
+e riassume nell'avviso («2 in lista · 1 c'era già», «Era già tutto in lista.», con «Riprova»
+per le sole righe fallite); il foglio della cottura ha le tacche di `StockGauge` al posto dei
+tre pulsanti, e parte dallo stato della confezione (niente toccato è invariato, toccare di
+nuovo lo stato di partenza annulla la scelta, «Disponibile» si può scegliere); «Ho cucinato»
+dice l'esito con l'avviso e riporta il fuoco su «Cucina»; «Apri l'originale» è alto 44 px,
+con la sua icona. «Salva nel ricettario» e «Salva le modifiche» dicono «Salvata.» con
+l'avviso prima di portare al dettaglio (T4). `RecipeDetailScreen.tsx` ha ora 394 righe
+(431 prima delle Consegne 4 e 5); «Metti in lista…» sta in `AddMissingButton.tsx` e
+`missingToList.ts`. Suite finale: 892 test vitest in 65 file, 957 backend, 47 prove e2e,
+tutte verdi.
+
+**Le scelte del piano che Mattia può voler rivedere:** «non basta» è testo accanto al nome e
+`StatusDot` non ha imparato `satisfied`; lo stepper dice «Porzioni − 2 +» invece di «Per 2
+porzioni», e a porzioni ignote il motivo sta sotto il «+» soltanto (il «−» è spento); «Metti
+in lista ciò che manca» sta sotto «Cucina» a tutta larghezza, non accanto (a 375 px non ci
+stanno insieme); le frasi «2 c'erano già», «2 non sono andate» e «Non è andata: la lista è
+com'era.»; il fuoco torna su «Cucina» anche annullando il foglio; il tasto indietro è una
+pastiglia «‹ Ricette» anche senza foto; «Elimina» è grigia come «Modifica», non rossa; un
+gruppo d'ingredienti vuoto non ha l'intestazione.
+
+**Da provare sul telefono:** il tasto «Ricette» sopra una foto vera, chiara e scura; lo
+stepper di una ricetta senza porzioni; «Metti in lista ciò che manca» e l'avviso, poi la
+Lista; le tacche del foglio col pollice, e «Ho cucinato» che riporta a «Cucina»; «Apri
+l'originale»; «Salvata.» dopo aver scritto una ricetta e dopo averne modificata una; il
+perché sotto lo stepper delle porzioni in una ricetta senza porzioni («Porzioni non
+indicate: si cambiano da «Modifica».») deve stare a capo sotto lo stepper, non accanto al
+«+» (nessuna prova e2e lo misura).
+
 Dei tre punti di disegno del tema scuro annotati per questa consegna (sotto), uno si
 chiude: le zone del cursore non ci sono più. L'e2e misura la tacca accesa e quella
 spenta contro il fondo `card`, in chiaro e in scuro: ≥3:1 (WCAG 1.4.11, è un segno e
@@ -2388,13 +2429,13 @@ se l'ingrediente non c'è» (S3/R12).
 **Dettaglio ricetta** (oltre a R10 e T4)
 - **«N dosi su M non si riscalano»** non dice quali (Parte X).
 - **Il procedimento è un blocco unico** con i numeri spuri dell'import.
-- **«Cucina» sta in fondo e sembra dire «inizia a cucinare».**
+- **«Cucina» sta in fondo e sembra dire «inizia a cucinare».** *(T3 Consegna 5)*
 - **I mancanti non si mettono in lista dal dettaglio**: la freccia ricetta → lista
-  esiste solo dopo aver cucinato.
+  esiste solo dopo aver cucinato. *(T3 Consegna 5)*
 - **I cinque € sono pulsanti che non sembrano pulsanti**: un tocco scorrendo cambia il
-  costo.
-- **«Apri l'originale» è alto 19 px.**
-- **Senza porzioni lo stepper sparisce** senza dirlo.
+  costo. *(T3 Consegna 5)*
+- **«Apri l'originale» è alto 19 px.** *(T3 Consegna 5)*
+- **Senza porzioni lo stepper sparisce** senza dirlo. *(T3 Consegna 5)*
 
 **Scrivi una ricetta**
 - **Il ruolo delle righe proposte dall'AI non si cambia**, mentre quello delle righe a
@@ -2434,7 +2475,7 @@ se l'ingrediente non c'è» (S3/R12).
 - **Non si cerca** nell'elenco delle decisioni.
 - **«Annulla» parte senza lapide.**
 
-## T4. Le azioni grosse non danno una conferma che si veda **[FATTO IN PARTE 2026-09-27 — «Ho cucinato» e il foglio]**
+## T4. Le azioni grosse non danno una conferma che si veda **[FATTO 2026-09-30 — l'ultimo punto con la Consegna 5 di T3, non ancora in produzione]**
 Le azioni che cambiano più cose dicono poco, o lo dicono dove non si guarda:
 - **«Ho cucinato».** L'esito («Segnato. Una cosa è tornata in lista della spesa.»)
   compare in cima al dettaglio, mentre si è scorsi in fondo, dove stava il foglio. Chi
@@ -2466,8 +2507,11 @@ finisce il fuoco; che arrivi davvero sotto l'header si guarda in un browser vero
 dispensa: …» compare in un punto fisso, e la riga nuova è portata in vista con
 `revealAtTop`. **«Metti in dispensa» è fatto** (T3 Consegna 3, 2026-09-29): il pulsante
 dice quante voci entrano, e in Dispensa l'avviso dice «4 in dispensa · 3 restano in
-lista» — contando solo le voci nel carrello che non sono entrate. **Resta aperto** «Salva
-nel ricettario», con lo stesso avviso che lo servirebbe.
+lista» — contando solo le voci nel carrello che non sono entrate. **«Salva nel ricettario» è
+fatto** (T3 Consegna 5, 2026-09-30): dalla bozza e dalla modifica l'avviso unico dice
+«Salvata.» prima di portare al dettaglio, che non legge più uno stato della cronologia. Con
+la stessa consegna l'esito di «Ho cucinato» è passato dalla riga in cima al dettaglio
+all'avviso, e il fuoco torna su «Cucina».
 
 ---
 
