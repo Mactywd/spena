@@ -234,6 +234,7 @@ describe("un salvataggio rifiutato", () => {
     const avviso = await screen.findByRole("alert");
     expect(avviso).toHaveTextContent(/Il server ha rifiutato la ricetta/);
     expect(avviso.textContent).not.toMatch(/backend/);
+    expect(avviso.textContent).not.toMatch(/riprova/i);
   });
 });
 
