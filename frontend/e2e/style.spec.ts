@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import type { Ingredient, RecipeDraft } from "../src/domain/types.ts";
+import type { ImportTerm, Ingredient, RecipeDraft } from "../src/domain/types.ts";
 import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
 
 /**
@@ -2467,4 +2467,268 @@ test("il foglio della cottura a 375px: le tacche partono da com'è la confezione
   } finally {
     await ricetta.pulisci();
   }
+});
+
+// --- T3 Consegna 6b: il modulo della ricetta, la coda d'import, le parole ---
+
+/** Una coda d'import finta, servita da `page.route`. Il seme e2e non ha termini in coda,
+ * e «Riprova con l'AI» compare solo con la coda piena: come `ai-draft.spec.ts`, questa è
+ * una prova che si costruisce le risposte da sé (prima lezione di `CLAUDE.md`), e vale per
+ * la schermata, i componenti e il CSS veri, non per quel che il backend manda. Il 503 porta
+ * il `detail` vero di `backend/app/api/imports.py`, col nome della variabile: è quello che
+ * la schermata non deve mostrare. Una decisione a mano svuota la coda, e non arriva al
+ * backend. */
+async function codaFinta(page: Page) {
+  let inCoda: ImportTerm[] = [
+    {
+      id: "e2e-t1",
+      display_name: "Rigatoni",
+      occurrences: 3,
+      suggestion: { ingredient_id: "e2e-i1", name: "pasta", certain: false },
+      waiting_titles: ["Pasta alla norma"],
+      decided_by: null,
+      decided_action: null,
+      decided_name: null,
+      decided_at: null,
+    },
+  ];
+  await page.route("**/api/v1/imports/**", (route) => {
+    const richiesta = route.request();
+    const url = new URL(richiesta.url());
+    if (url.pathname.endsWith("/imports/terms/decide") && richiesta.method() === "POST")
+      return route.fulfill({
+        status: 503,
+        json: {
+          detail:
+            "il riconoscimento non è disponibile (OPENROUTER_API_KEY non configurata): decidi a mano, la coda funziona.",
+        },
+      });
+    if (url.pathname.endsWith("/decision") && richiesta.method() === "POST") {
+      inCoda = [];
+      return route.fulfill({ json: { unlocked: 0, remaining_terms: 0 } });
+    }
+    if (url.pathname.endsWith("/imports/terms"))
+      return route.fulfill({ json: url.searchParams.has("decided_by") ? [] : inCoda });
+    if (url.pathname.endsWith("/imports/status"))
+      return route.fulfill({
+        json: {
+          fetched: 3,
+          pending_recipes: inCoda.length > 0 ? 3 : 0,
+          imported: 0,
+          skipped: 0,
+          pending_terms: inCoda.length,
+        },
+      });
+    return route.continue();
+  });
+}
+
+/** Una bozza finta con un aggancio incerto: la sola riga del modulo che ha una casella.
+ * L'`ingredient_id` non esiste nel seme, e non importa: la prova non salva. */
+async function bozzaFinta(page: Page) {
+  await page.route("**/api/v1/recipes/ai-draft", (route) =>
+    route.fulfill({
+      json: {
+        title: "Minestra",
+        description: null,
+        instructions: "Cuoci.",
+        servings: 2,
+        cost: null,
+        ingredients: [
+          {
+            raw_name: "basilico fresco",
+            role: "secondary",
+            quantity_text: "q.b.",
+            ingredient_id: "00000000-0000-4000-8000-000000000001",
+            matched_name: "basilico",
+            confident: false,
+            proposed_category: null,
+          },
+        ],
+      } satisfies RecipeDraft,
+    })
+  );
+}
+
+test("R12 a 375px: «Aggiungi «…»» nel modulo, il passo del nome e la riga nuova stanno nello schermo", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const nomeLungo = "zz prova r12 cavolo nero di Toscana a foglia lunga del mercato rionale";
+  const scorre = async () => ({
+    scrollWidth: await page.evaluate<number>("document.documentElement.scrollWidth"),
+    clientWidth: await page.evaluate<number>("document.documentElement.clientWidth"),
+  });
+
+  await page.goto("/ricette/nuova-ai");
+  // la ricerca vera non trova il nome: «Aggiungi «…»» compare appena ha risposto
+  await page.getByLabel("Aggiungi un ingrediente").fill(nomeLungo);
+  await page.getByRole("button", { name: `Aggiungi «${nomeLungo}»` }).click();
+
+  const nome = page.getByLabel("Come si chiama in generale?");
+  await expect(nome).toHaveValue(nomeLungo);
+  await expect(nome).toBeFocused();
+  const reparto = page.getByLabel("Reparto", { exact: true });
+  await expect(reparto.locator('option[value="casa"]')).toHaveCount(0);
+  await expect(reparto.locator('option[value="igiene"]')).toHaveCount(0);
+  let misura = await scorre();
+  expect(misura.scrollWidth, "il passo del nome fa scorrere di lato").toBeLessThanOrEqual(
+    misura.clientWidth
+  );
+
+  await reparto.selectOption("verdura");
+  await page.getByRole("button", { name: "Aggiungi alla ricetta", exact: true }).click();
+
+  const togli = page.getByRole("button", { name: `Togli ${nomeLungo}` });
+  const riga = page.getByRole("listitem").filter({ has: togli });
+  await expect(riga.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(page.getByLabel(`Reparto per «${nomeLungo}»`)).toHaveValue("verdura");
+  await expect(page.getByLabel(`Quantità per ${nomeLungo}`)).toBeFocused();
+  await page.waitForLoadState("networkidle");
+  misura = await scorre();
+  expect(misura.scrollWidth, "la riga nuova fa scorrere di lato").toBeLessThanOrEqual(
+    misura.clientWidth
+  );
+  // la ✕ della riga resta intera dentro lo schermo, accanto al nome lungo
+  await togli.scrollIntoViewIfNeeded();
+  await expect(togli).toBeInViewport({ ratio: 1 });
+  // niente si salva: la riga vive nel modulo, e l'ingrediente nascerebbe solo salvando
+});
+
+test("le caselle del modulo della ricetta e della coda d'import sono bersagli da 44 px", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await bozzaFinta(page);
+  await codaFinta(page);
+
+  /** Il quadrato intorno alla casella: almeno 44×44, e un tocco nel suo angolo — fuori dal
+   * quadratino da 24 — la spunta. */
+  async function bersaglio(casella: Locator) {
+    await casella.scrollIntoViewIfNeeded();
+    const quadrato = await casella.locator("xpath=..").boundingBox();
+    expect(quadrato, "la casella non ha il suo quadrato").not.toBeNull();
+    expect(quadrato!.width).toBeGreaterThanOrEqual(44);
+    expect(quadrato!.height).toBeGreaterThanOrEqual(44);
+    const prima = await casella.isChecked();
+    await page.mouse.click(quadrato!.x + 3, quadrato!.y + 3);
+    await expect(casella).toBeChecked({ checked: !prima });
+  }
+
+  await page.goto("/ricette/nuova-ai");
+  await page.getByLabel("Cosa vuoi cucinare").fill("una minestra");
+  await page.getByRole("button", { name: "Proponi", exact: true }).click();
+  await bersaglio(page.getByRole("checkbox", { name: "Includi basilico fresco" }));
+
+  await page.goto("/ricette/importa");
+  await bersaglio(
+    page.getByRole("checkbox", { name: "Di solito «Rigatoni» è un ingrediente secondario" })
+  );
+});
+
+test("la coda d'import: il guasto dell'AI è ambra e senza nomi di variabili, e a coda vuota non c'è", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await codaFinta(page);
+  await page.goto("/ricette/importa");
+
+  // «Forse «…»» non è più grande del resto della scheda: `text-sm`, 14 px a video. `el`
+  // è `any`: questo file non ha la libreria DOM (vedi `testiIlleggibili`)
+  const forse = page.getByRole("button", { name: /^Forse «pasta»/ });
+  await expect(forse).toBeVisible();
+  const corpo = await forse.evaluate(
+    (el) => el.ownerDocument.defaultView.getComputedStyle(el).fontSize as string
+  );
+  expect(corpo).toBe("14px");
+
+  await page.getByRole("button", { name: "Riprova con l'AI", exact: true }).click();
+  const guasto = page.getByText(
+    "L'AI non è disponibile: decidi a mano qui sotto, la coda funziona.",
+    { exact: true }
+  );
+  await expect(guasto).toBeVisible();
+  await expect(page.getByText(/OPENROUTER/)).toHaveCount(0);
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    const misura = await contrastoAVideo(guasto);
+    expect(misura.colore, `il guasto dell'AI non è ambra, tema ${tema}`).toBe(
+      tema === "light" ? tokenDelTema("low") : tokenDelTemaScuro("low")
+    );
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+
+  // deciso a mano l'ultimo termine, la coda è vuota: niente da chiedere all'AI, niente da dire
+  await page.getByRole("button", { name: "Ignora «Rigatoni»", exact: true }).click();
+  await expect(page.getByText(/Niente da abbinare/)).toBeVisible();
+  await expect(guasto).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Riprova con l'AI" })).toHaveCount(0);
+});
+
+test("il modulo della ricetta e la coda d'import si leggono nei due temi, negli stati che solo questa prova apre", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.route("**/api/v1/recipes/ai-draft", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { detail: "stesura AI non disponibile (OPENROUTER_API_KEY non configurata)" },
+    })
+  );
+  await codaFinta(page);
+
+  async function leggibile(dove: string) {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `${dove}, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  }
+
+  // il modulo: i motivi sotto «Proponi» e «Salva», il guasto dell'AI, il passo di R12
+  await page.goto("/ricette/nuova-ai");
+  await page.getByLabel("Cosa vuoi cucinare").fill("zz");
+  await expect(page.getByText("Scrivi cosa vuoi cucinare: bastano tre lettere.")).toBeVisible();
+  await page.getByLabel("Cosa vuoi cucinare").fill("una zuppa");
+  await page.getByRole("button", { name: "Proponi", exact: true }).click();
+  await expect(page.getByText(/La stesura AI non è disponibile/)).toBeVisible();
+  await expect(page.getByText("Servono un titolo e un procedimento per salvare.")).toBeVisible();
+  await page.getByLabel("Aggiungi un ingrediente").fill("zz prova contrasto");
+  await page.getByRole("button", { name: "Aggiungi «zz prova contrasto»" }).click();
+  await expect(page.getByLabel("Come si chiama in generale?")).toBeVisible();
+  await leggibile("modulo col passo del nome");
+
+  await page.getByRole("button", { name: "Aggiungi alla ricetta", exact: true }).click();
+  await expect(page.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await leggibile("modulo con la riga nuova");
+
+  // la coda: la scheda con «Forse» e la casella, e il guasto dell'AI
+  await page.goto("/ricette/importa");
+  await page.getByRole("button", { name: "Riprova con l'AI", exact: true }).click();
+  await expect(page.getByText(/L'AI non è disponibile/)).toBeVisible();
+  await leggibile("coda col guasto dell'AI");
+});
+
+test("nessuna parola tecnica a video: né «backend», né «dataset», né «autocomplete», né il nome di una variabile", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  const tecniche = /\bbackend\b|\bdataset\b|autocomplete|OPENROUTER_API_KEY/i;
+  for (const luogo of SCHERMATE) {
+    await page.goto(luogo);
+    await page.waitForLoadState("networkidle");
+    expect(await page.locator("body").innerText(), luogo).not.toMatch(tecniche);
+  }
+  // il dettaglio di una ricetta del seme, che viene dall'import
+  await page.goto("/ricette");
+  await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+  await page.waitForLoadState("networkidle");
+  expect(await page.locator("body").innerText(), "dettaglio").not.toMatch(tecniche);
 });
