@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
@@ -1716,4 +1717,350 @@ test("le correzioni dell'anagrafica a 375px: icone da pollice accanto al titolo,
         .toBe(true);
     }
   }
+});
+
+// --- T3 Consegna 4: il ricettario a 375×812 ---
+//
+// Il seme non ha foto né categorie, e nessuna rotta le scrive: le prove che ne hanno
+// bisogno seminano tre ricette con `backend/tests/e2e_ricettario.py`, dentro il
+// container del backend dello stack e2e (come `import-review.spec.ts`), e le tolgono nel
+// `finally`. Le foto stanno su un dominio che non esiste: le serve `page.route`, la buona
+// con un PNG vero e la rotta interrotta. Il service worker è bloccato in queste prove,
+// così nessuna richiesta d'immagine gli passa accanto.
+
+const RADICE = fileURLToPath(new URL("../..", import.meta.url));
+// gli argomenti come elenco: un percorso o un nome di progetto con uno spazio non
+// cambiano il comando
+const COMPOSE_E2E = [
+  "compose",
+  "-p",
+  process.env.E2E_PROJECT ?? "spena-e2e",
+  "-f",
+  "docker-compose.yml",
+  "-f",
+  "docker-compose.e2e.yml",
+];
+
+/** Lancia l'aiutante del ricettario nel container del backend e torna la sua ultima riga. */
+function aiutanteRicettario(...args: string[]): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_ricettario.py", ...args],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+type RicettaSeminata = { id: string; title: string };
+type RicettarioSeminato = {
+  categoria: string;
+  conFoto: RicettaSeminata;
+  senzaFoto: RicettaSeminata;
+  fotoRotta: RicettaSeminata;
+  /** il nome a video del branzino della semina: sta in «con foto» e in «senza foto» */
+  ingrediente: string;
+};
+
+// un PNG di 1×1: la «foto» che `page.route` serve al posto di un server vero
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+/** Semina le tre ricette e serve le loro foto: la buona dopo `trattieni` (se c'è), la
+ * rotta mai. Prima di seminare, gli avanzi di un giro interrotto se ne vanno. */
+async function seminaRicettario(page: Page, trattieni?: Promise<void>): Promise<RicettarioSeminato> {
+  aiutanteRicettario("clean");
+  const seminato = JSON.parse(aiutanteRicettario("seed", String(Date.now()))) as RicettarioSeminato;
+  await page.route("https://foto.e2e.invalid/**", async (route) => {
+    if (route.request().url().endsWith("/rotta.png")) return route.abort();
+    if (trattieni) await trattieni;
+    return route.fulfill({ contentType: "image/png", body: PNG_1X1 });
+  });
+  return seminato;
+}
+
+/** La pulizia, in un `finally`: `expect.soft` non lancia — un `finally` che lancia
+ * nasconderebbe l'errore vero — ma segna la prova fallita, così una ricetta rimasta non
+ * passa per un successo silenzioso. */
+function pulisciRicettario() {
+  try {
+    aiutanteRicettario("clean");
+  } catch (guasto) {
+    expect.soft(false, `pulizia: non sono riuscito a togliere le ricette seminate (${guasto})`).toBe(true);
+  }
+}
+
+/** Il collegamento di una riga del ricettario: il suo nome comincia col titolo. */
+function rigaDi(page: Page, titolo: string): Locator {
+  return page
+    .getByRole("list", { name: "Ricette trovate" })
+    .getByRole("link", { name: new RegExp(`^${titolo}`) });
+}
+
+/** Il ricettario col pannello aperto sulla categoria della semina: tre ricette, e solo loro. */
+async function soloLaSemina(page: Page, seminato: RicettarioSeminato) {
+  await page.goto("/ricette");
+  await page.getByRole("button", { name: /^Filtri/ }).click();
+  await page.getByLabel("Categoria").selectOption(seminato.categoria);
+  await expect(page.getByText("3 ricette", { exact: true })).toBeVisible();
+}
+
+test.describe("il ricettario a 375px (T3 Consegna 4)", () => {
+  test.use({ viewport: { width: 375, height: 812 }, serviceWorkers: "block" });
+
+  // il `beforeEach` del file preme «Entra» e non aspetta la risposta: un `page.goto`
+  // subito dopo interromperebbe l'accesso. Si aspetta la barra delle schede, che c'è
+  // solo da dentro
+  test.beforeEach(async ({ page }) => {
+    await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+  });
+
+  test("la prima ricetta sta nella prima schermata, sopra la barra delle schede", async ({
+    page,
+  }) => {
+    // dal giro: «i filtri occupano tutta la prima schermata: la prima ricetta è sotto la
+    // piega». Con i filtri nel pannello chiuso, la prima riga si vede intera all'apertura
+    await page.goto("/ricette");
+    const prima = page.getByRole("list", { name: "Ricette trovate" }).getByRole("link").first();
+    await expect(prima).toBeVisible();
+    const riga = (await prima.boundingBox())!;
+    const schede = (await page.getByRole("navigation").boundingBox())!;
+    expect(riga.y, "la prima ricetta comincia fuori dalla finestra").toBeGreaterThanOrEqual(0);
+    expect(riga.y + riga.height, "la prima ricetta va oltre la finestra").toBeLessThanOrEqual(812);
+    expect(riga.y + riga.height, "la prima ricetta finisce sotto la barra delle schede").toBeLessThanOrEqual(
+      schede.y
+    );
+    // «Nuova» e «Filtri»: bersagli da pollice
+    for (const controllo of [
+      page.getByRole("link", { name: "Nuova ricetta" }),
+      page.getByRole("button", { name: /^Filtri/ }),
+    ]) {
+      const box = (await controllo.boundingBox())!;
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+    }
+    // una prova a occhio per chi rivede: la cartella è quella dei risultati di Playwright
+    await page.screenshot({ path: test.info().outputPath("ricettario-375.png") });
+  });
+
+  test("il ricettario non scorre di lato, nemmeno col pannello aperto e un ingrediente scelto", async ({
+    page,
+  }) => {
+    // stringhe e non funzioni: questo file non ha la libreria DOM
+    const nonScorreDiLato = async (quando: string) => {
+      await page.waitForLoadState("networkidle");
+      const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+      const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+      expect(scrollWidth, `il ricettario scorre di lato ${quando}`).toBeLessThanOrEqual(clientWidth);
+    };
+    await page.goto("/ricette");
+    await expect(page.getByRole("list", { name: "Ricette trovate" })).toBeVisible();
+    await nonScorreDiLato("a pannello chiuso");
+
+    await page.getByRole("button", { name: /^Filtri/ }).click();
+    await page.getByLabel("Contiene ingredienti").fill("pomodo");
+    await page.getByRole("option", { name: /^Pomodoro\b/ }).click();
+    await expect(page.getByRole("button", { name: "Togli il filtro su Pomodoro" })).toBeVisible();
+    await nonScorreDiLato("col pannello aperto e un ingrediente scelto");
+  });
+
+  test("la miniatura: la foto, e sotto l'icona del reparto principale mentre carica o se manca", async ({
+    page,
+  }) => {
+    // due `docker compose exec` oltre al browser: i 30 secondi di default non bastano su
+    // una macchina carica
+    test.setTimeout(120_000);
+    // la foto buona si trattiene finché la prova non ha guardato la miniatura «mentre
+    // carica»: dal giro, era un rettangolo bianco
+    let rilascia: () => void = () => {};
+    const trattenuta = new Promise<void>((resolve) => {
+      rilascia = resolve;
+    });
+    try {
+      const seminato = await seminaRicettario(page, trattenuta);
+      await soloLaSemina(page, seminato);
+      const mini = (titolo: string) => rigaDi(page, titolo).locator("[data-recipe-thumb]");
+
+      for (const titolo of [seminato.conFoto.title, seminato.senzaFoto.title, seminato.fotoRotta.title]) {
+        const box = (await mini(titolo).boundingBox())!;
+        expect(box.width, titolo).toBeCloseTo(56, 0);
+        expect(box.height, titolo).toBeCloseTo(56, 0);
+      }
+
+      // mentre la foto carica: sotto si vede già l'icona del reparto, sulla sua tinta
+      const conFoto = mini(seminato.conFoto.title);
+      await expect(conFoto).toHaveAttribute("data-dept", "verdura");
+      await expect(conFoto.locator("svg.tabler-icon-carrot")).toBeVisible();
+      await expect(conFoto).toHaveCSS("background-color", tokenDelTema("dept-peach"));
+      rilascia();
+      const foto = conFoto.locator("img");
+      await expect
+        .poll(() => foto.evaluate((el) => el.naturalWidth as number), { message: "la foto non arriva" })
+        .toBeGreaterThan(0);
+      await expect(foto).toBeVisible();
+
+      // senza foto: l'icona del pesce, sul suo azzurro
+      const senzaFoto = mini(seminato.senzaFoto.title);
+      await expect(senzaFoto.locator("img")).toHaveCount(0);
+      await expect(senzaFoto).toHaveAttribute("data-dept", "pesce");
+      await expect(senzaFoto.locator("svg.tabler-icon-fish")).toBeVisible();
+      await expect(senzaFoto).toHaveCSS("background-color", tokenDelTema("dept-blue"));
+
+      // la foto che non carica se ne va, e resta l'icona della carne, sul suo rosa
+      const fotoRotta = mini(seminato.fotoRotta.title);
+      await expect(fotoRotta.locator("img")).toHaveCount(0);
+      await expect(fotoRotta).toHaveAttribute("data-dept", "carne");
+      await expect(fotoRotta.locator("svg.tabler-icon-meat")).toBeVisible();
+      await expect(fotoRotta).toHaveCSS("background-color", tokenDelTema("dept-pink"));
+    } finally {
+      rilascia();
+      pulisciRicettario();
+    }
+  });
+
+  test("il pannello Filtri si apre sotto la barra, conta i risultati, e «Azzera» li toglie", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    try {
+      const seminato = await seminaRicettario(page);
+      await page.goto("/ricette");
+      const campo = page.getByLabel("Cerca nel ricettario");
+      const filtri = page.getByRole("button", { name: /^Filtri/ });
+      await expect(filtri).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByLabel("Contiene ingredienti")).toBeHidden();
+
+      // «Filtri» sta accanto al campo, sulla stessa riga
+      const boxCampo = (await campo.boundingBox())!;
+      const boxFiltri = (await filtri.boundingBox())!;
+      expect(
+        Math.abs(boxFiltri.y + boxFiltri.height / 2 - (boxCampo.y + boxCampo.height / 2)),
+        "«Filtri» va a capo"
+      ).toBeLessThan(2);
+      expect(boxFiltri.x).toBeGreaterThanOrEqual(boxCampo.x + boxCampo.width - 1);
+
+      await filtri.click();
+      await expect(filtri).toHaveAttribute("aria-expanded", "true");
+      const pannello = page.locator(`[id="${await filtri.getAttribute("aria-controls")}"]`);
+      await expect(pannello.getByLabel("Contiene ingredienti")).toBeVisible();
+      expect(
+        (await pannello.boundingBox())!.y,
+        "il pannello non sta sotto la barra"
+      ).toBeGreaterThanOrEqual(boxCampo.y + boxCampo.height);
+
+      // la scala resta fuori dal pannello, sempre a video, con un'etichetta che si vede
+      // davvero: una legenda `sr-only` sarebbe «visibile» per Playwright ma alta un pixel
+      await expect(page.getByRole("group", { name: "Cosa posso cucinare" })).toBeVisible();
+      await expect(pannello.getByRole("group", { name: "Cosa posso cucinare" })).toHaveCount(0);
+      const etichetta = (await page.getByText("Cosa posso cucinare", { exact: true }).boundingBox())!;
+      expect(etichetta.height, "«Cosa posso cucinare» non si vede").toBeGreaterThan(10);
+
+      await pannello.getByLabel("Categoria").selectOption(seminato.categoria);
+      await expect(page.getByRole("button", { name: "Filtri, 1 attivo" })).toBeVisible();
+      await expect(pannello.getByText("3 ricette", { exact: true })).toBeVisible();
+      await expect(rigaDi(page, seminato.fotoRotta.title)).toBeVisible();
+
+      await pannello.getByLabel("Contiene ingredienti").fill(seminato.ingrediente);
+      await page.getByRole("option", { name: new RegExp(`^${seminato.ingrediente}`) }).click();
+      await expect(page.getByRole("button", { name: "Filtri, 2 attivi" })).toBeVisible();
+      await expect(pannello.getByText("2 ricette", { exact: true })).toBeVisible();
+      await expect(rigaDi(page, seminato.fotoRotta.title)).toHaveCount(0);
+
+      await pannello.getByRole("button", { name: "Azzera", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Filtri", exact: true })).toBeVisible();
+      await expect(pannello.getByLabel("Categoria")).toHaveValue("");
+      // il ricettario intero: le ricette del seme più le tre della semina
+      await expect
+        .poll(async () =>
+          Number(((await pannello.getByText(/^\d+ ricette$/).textContent()) ?? "0").split(" ")[0])
+        )
+        .toBeGreaterThan(3);
+
+      await filtri.click();
+      await expect(filtri).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByLabel("Contiene ingredienti")).toBeHidden();
+    } finally {
+      pulisciRicettario();
+    }
+  });
+
+  test("il contrasto del ricettario nei due temi: righe vere, pannello aperto, e il vuoto", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    try {
+      const seminato = await seminaRicettario(page);
+      await soloLaSemina(page, seminato);
+      await page.getByLabel("Contiene ingredienti").fill(seminato.ingrediente);
+      await page.getByRole("option", { name: new RegExp(`^${seminato.ingrediente}`) }).click();
+      // il numero su «Filtri» (bianco su verde), la pastiglia dell'ingrediente, il conto,
+      // «Azzera», «Manca: …» in rosso e la riga di sotto
+      await expect(page.getByRole("button", { name: "Filtri, 2 attivi" })).toBeVisible();
+      await expect(rigaDi(page, seminato.senzaFoto.title)).toBeVisible();
+      for (const tema of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: tema });
+        await fermo(page);
+        expect(await testiIlleggibili(page), `ricettario col pannello, tema ${tema}`).toEqual([]);
+      }
+
+      // il vuoto, col suo perché e «Azzera i filtri»
+      await page.emulateMedia({ colorScheme: "light" });
+      await page.getByLabel("Cerca nel ricettario").fill("nessuna ricetta si chiama così");
+      await expect(page.getByRole("button", { name: "Azzera i filtri" })).toBeVisible();
+      for (const tema of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: tema });
+        await fermo(page);
+        expect(await testiIlleggibili(page), `ricettario vuoto coi filtri, tema ${tema}`).toEqual([]);
+      }
+      await page.emulateMedia({ colorScheme: "light" });
+    } finally {
+      pulisciRicettario();
+    }
+  });
+
+  test("i filtri sopravvivono al giro in una ricetta: indietro, la scheda Ricette, e un ricaricamento", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    try {
+      const seminato = await seminaRicettario(page);
+      await page.goto("/ricette");
+      await page.getByLabel("Cerca nel ricettario").fill("ricettario e2e");
+      await page.getByRole("button", { name: /^Filtri/ }).click();
+      await page.getByLabel("Categoria").selectOption(seminato.categoria);
+      const due = page.getByRole("radio", { name: "Al massimo 2 ingredienti da comprare." });
+      // si tocca la pastiglia, non il radio `sr-only` (vedi la prova della scala più sopra)
+      await page.locator("label").filter({ has: due }).locator("span").click();
+      await expect(due).toBeChecked();
+      // «+2»: alla «senza foto» ne mancano due, alla «foto rotta» uno, alla «con foto» tre
+      await expect(rigaDi(page, seminato.senzaFoto.title)).toBeVisible();
+      await expect(rigaDi(page, seminato.conFoto.title)).toHaveCount(0);
+
+      const ritrovati = async (come: string) => {
+        await expect(page.getByLabel("Cerca nel ricettario"), come).toHaveValue("ricettario e2e");
+        await expect(due, come).toBeChecked();
+        await expect(page.getByRole("button", { name: "Filtri, 1 attivo" }), come).toBeVisible();
+        await expect(rigaDi(page, seminato.senzaFoto.title), come).toBeVisible();
+        await expect(rigaDi(page, seminato.fotoRotta.title), come).toBeVisible();
+        await expect(rigaDi(page, seminato.conFoto.title), come).toHaveCount(0);
+      };
+
+      await rigaDi(page, seminato.senzaFoto.title).click();
+      await expect(page.getByRole("heading", { name: seminato.senzaFoto.title })).toBeVisible();
+      await page.goBack();
+      await ritrovati("tornando indietro");
+
+      await rigaDi(page, seminato.fotoRotta.title).click();
+      await expect(page.getByRole("heading", { name: seminato.fotoRotta.title })).toBeVisible();
+      await page.getByRole("navigation").getByRole("link", { name: "Ricette", exact: true }).click();
+      await ritrovati("dalla scheda Ricette");
+
+      // l'app è ancora aperta: la sessionStorage della scheda resta
+      await page.reload();
+      await ritrovati("dopo un ricaricamento");
+    } finally {
+      pulisciRicettario();
+    }
+  });
 });
