@@ -293,3 +293,109 @@ describe("«Salva» e le righe (T3 Consegna 6b)", () => {
     expect(within(reparto).queryByRole("option", { name: "Igiene" })).toBeNull();
   });
 });
+
+describe("R12: un ingrediente che non c'è si aggiunge dal modulo", () => {
+  async function offri(testo: string) {
+    await userEvent.type(screen.getByLabelText("Aggiungi un ingrediente"), testo);
+    return screen.findByRole("button", { name: `Aggiungi «${testo}»` });
+  }
+
+  it("«Aggiungi «…»» chiede come si chiama in generale e il reparto, solo del cibo, e la riga si crea salvando", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.click(await offri("zz tre"));
+
+    const nome = screen.getByLabelText("Come si chiama in generale?");
+    expect(nome).toHaveValue("zz tre");
+    expect(nome).toHaveFocus();
+    const reparto = screen.getByLabelText("Reparto");
+    expect(within(reparto).queryByRole("option", { name: "Casa" })).toBeNull();
+    expect(within(reparto).queryByRole("option", { name: "Igiene" })).toBeNull();
+
+    await userEvent.clear(nome);
+    await userEvent.type(nome, "zucchine");
+    await userEvent.selectOptions(reparto, "verdura");
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi alla ricetta" }));
+
+    // il passo si chiude, e la riga è come quelle dell'AI non agganciate
+    expect(screen.queryByLabelText("Come si chiama in generale?")).toBeNull();
+    const riga = screen.getByRole("button", { name: "Togli zucchine" }).closest("li")!;
+    expect(within(riga).getByText("Zucchine")).toBeInTheDocument();
+    expect(within(riga).getByText("Non è in anagrafica: lo creo io salvando.")).toBeInTheDocument();
+    expect(within(riga).getByRole("combobox", { name: "Reparto per «zucchine»" })).toHaveValue(
+      "verdura"
+    );
+
+    await salva();
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { name: "zucchine", category: "verdura", role: "primary", quantity_text: null },
+        ]),
+      })
+    );
+  });
+
+  it("aggiunta la riga, il fuoco va sulla sua quantità: è la prossima cosa da scrivere", async () => {
+    stubCategories([[], 200]);
+    renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.click(await offri("zz tre"));
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi alla ricetta" }));
+
+    expect(screen.getByLabelText("Quantità per zz tre")).toHaveFocus();
+  });
+
+  it("lo stesso nome due volte resta una riga, e il nome di una riga che c'è non ne aggiunge un'altra", async () => {
+    stubCategories([[], 200]);
+    renderForm(valuesFromRecipe(DETAIL));
+
+    for (let volta = 0; volta < 2; volta++) {
+      await userEvent.click(await offri("zz tre"));
+      await userEvent.click(screen.getByRole("button", { name: "Aggiungi alla ricetta" }));
+    }
+    expect(screen.getAllByRole("button", { name: "Togli zz tre" })).toHaveLength(1);
+
+    // «Pasta» è già la riga di «pasta»: una seconda il backend la rifiuterebbe come doppia
+    await userEvent.click(await offri("Pasta"));
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi alla ricetta" }));
+    expect(screen.getAllByRole("button", { name: /^Togli pasta$/i })).toHaveLength(1);
+    expect(screen.getByLabelText("Quantità per pasta")).toHaveFocus();
+  });
+
+  it("«Annulla» chiude il passo senza aggiungere niente, e il fuoco torna al campo", async () => {
+    stubCategories([[], 200]);
+    renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.click(await offri("zz tre"));
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+
+    expect(screen.queryByLabelText("Come si chiama in generale?")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Togli zz tre" })).toBeNull();
+    expect(screen.getByLabelText("Aggiungi un ingrediente")).toHaveFocus();
+  });
+
+  it("«Aggiungi «…»» c'è anche quando la ricerca trova qualcosa (S6): «zucch» non è per forza «Zucchero»", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              String(url).includes("/ingredients/search")
+                ? [{ id: "i9", name: "zucchero", display_name: "Zucchero", category: "dolci", kind: "food" }]
+                : []
+            ),
+            { status: 200 }
+          )
+        )
+      )
+    );
+    renderForm(valuesFromRecipe(DETAIL));
+
+    const offerta = await offri("zucch");
+    expect(screen.getByRole("option", { name: /Zucchero/ })).toBeInTheDocument();
+    expect(offerta).toBeInTheDocument();
+  });
+});

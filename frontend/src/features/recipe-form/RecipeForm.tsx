@@ -1,4 +1,5 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { flushSync } from "react-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
 import { CategorySelect } from "../../components/CategorySelect";
@@ -10,7 +11,9 @@ import { SectionHeading } from "../../components/ui/SectionHeading";
 import type { Ingredient, IngredientRole, RecipeBody, RecipeDetail } from "../../domain/types";
 import { capitalizeFirst } from "../../lib/text";
 import { CategoryField } from "./CategoryField";
+import { NewIngredientFields } from "../stocking/NewIngredientFields";
 import {
+  addNewLine,
   QUANTITY_MAX,
   TITLE_MAX,
   lineFromIngredient,
@@ -144,6 +147,7 @@ function LineRow({
             Quantità
             <input
               aria-label={`Quantità per ${line.label}`}
+              data-line-key={line.key}
               value={line.quantityText}
               onChange={(e) => onUpdate({ quantityText: e.target.value })}
               maxLength={QUANTITY_MAX}
@@ -201,6 +205,11 @@ export function RecipeForm({
   const queryClient = useQueryClient();
   const savable = savableLines(values.lines);
   const problem = validationProblem(values);
+  // R12: il nome che il selettore ha consegnato con «Aggiungi «…»», mentre il passo
+  // «Come si chiama in generale?» è aperto; `null` a passo chiuso
+  const [creating, setCreating] = useState<string | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const linesRef = useRef<HTMLUListElement>(null);
   const submit = useMutation({
     mutationFn: () => save(recipeBody(values)),
     onSuccess: onSaved,
@@ -242,6 +251,27 @@ export function RecipeForm({
         };
       return { ...prev, lines: [...prev.lines, lineFromIngredient(ingredient)] };
     });
+  }
+
+  function addNew(fields: { name: string; category: string }) {
+    const added = addNewLine(values.lines, fields.name, fields.category);
+    // `flushSync`: la riga deve essere in pagina prima di darle il fuoco, e il passo
+    // che l'aveva sparisce nello stesso momento — senza, il fuoco cadrebbe sul `body`
+    flushSync(() => {
+      onChange({ ...values, lines: added.lines });
+      setCreating(null);
+    });
+    linesRef.current
+      ?.querySelectorAll<HTMLInputElement>("input[data-line-key]")
+      .forEach((input) => {
+        if (input.dataset.lineKey === added.key) input.focus();
+      });
+  }
+
+  function cancelNew() {
+    setCreating(null);
+    // il passo sparisce col suo «Annulla»: il fuoco torna al campo da cui si era partiti
+    pickerRef.current?.querySelector<HTMLInputElement>("input")?.focus();
   }
 
   return (
@@ -293,7 +323,7 @@ export function RecipeForm({
         {/* la stessa intestazione delle sezioni del resto dell'app (dal giro: «INGREDIENTI»
             nella bozza non era un `SectionHeading`) */}
         <SectionHeading>Ingredienti</SectionHeading>
-        <ul className="divide-y divide-line">
+        <ul ref={linesRef} className="divide-y divide-line">
           {values.lines.map((line) => (
             <LineRow
               key={line.key}
@@ -304,12 +334,37 @@ export function RecipeForm({
           ))}
         </ul>
 
-        <IngredientPicker
-          label="Aggiungi un ingrediente"
-          failureNote="Puoi salvare la ricetta comunque, anche senza ingredienti agganciati."
-          kind="food"
-          onPick={attach}
-        />
+        <div ref={pickerRef}>
+          <IngredientPicker
+            label="Aggiungi un ingrediente"
+            failureNote="Puoi salvare la ricetta comunque, anche senza ingredienti agganciati."
+            kind="food"
+            onPick={attach}
+            // R12: «Aggiungi «…»» appena la ricerca ha risposto, anche se trova qualcosa —
+            // la scelta di «Sistema la spesa» (S6): «zucch» pesca «Zucchero», e la porta
+            // per «zucchine» non deve sparire dietro di lui
+            createWhen="always"
+            onCreate={setCreating}
+          />
+        </div>
+
+        {/* Il passo di R12: il nome generico e il reparto, solo del cibo. L'ingrediente
+            non nasce qui: nasce salvando la ricetta (`_resolve_lines`), per questo il
+            pulsante dice «Aggiungi alla ricetta» e non «Crea l'ingrediente». `key`: un
+            secondo «Aggiungi «…»» riparte dal suo nome */}
+        {creating !== null && (
+          <div className="mt-2 rounded-card bg-card p-3 ring-1 ring-line ring-inset">
+            <NewIngredientFields
+              key={creating}
+              initialName={creating}
+              busy={false}
+              foodOnly
+              submitLabel="Aggiungi alla ricetta"
+              onSubmit={addNew}
+              onCancel={cancelNew}
+            />
+          </div>
+        )}
       </div>
 
       <label className="text-sm">

@@ -301,3 +301,47 @@ async def test_la_categoria_che_ha_gia_si_tiene_e_una_inventata_no(logged_client
     ricetta, _ = importata
     assert (await _modifica(logged_client, ricetta.id, _corpo(cucina, category="Primi piatti"))).status_code == 200
     assert (await _modifica(logged_client, ricetta.id, _corpo(cucina, category="Secondi inventati"))).status_code == 422
+
+
+# --- R12: il modulo aggiunge un ingrediente che non c'è (T3 Consegna 6b) ---
+# Il modulo non chiama `POST /ingredients`: manda la riga come nome e reparto, e il
+# salvataggio crea l'ingrediente dentro la transazione della ricetta (`_resolve_lines`).
+# Per la creazione lo provano `test_recipes_create_ingredient.py`; qui la modifica, che
+# è l'altra metà del modulo e che finora aveva solo il caso dell'alias.
+
+
+async def test_r12_una_riga_nuova_scritta_in_modifica_crea_l_ingrediente(
+    logged_client, db_session, cucina
+):
+    ricetta = await _scritta(logged_client, cucina)
+
+    risposta = await _modifica(logged_client, ricetta["id"], _corpo(cucina, ingredients=[
+        _riga(cucina["pasta"], quantity="320 g"),
+        {"name": "zz tre", "category": "verdura", "role": "secondary", "quantity_text": "1"},
+    ]))
+
+    assert risposta.status_code == 200, risposta.text
+    creato = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "zz tre"))
+    ).scalar_one()
+    assert (creato.display_name, creato.category) == ("Zz tre", "verdura")
+    assert await _nomi(logged_client, ricetta["id"]) == {"pasta", "zz tre"}
+
+
+async def test_r12_un_nome_nuovo_che_e_un_non_alimentare_si_rifiuta_con_la_frase(
+    logged_client, cucina
+):
+    """Il selettore del modulo cerca solo cibo, quindi «sapone per le mani» non compare
+    fra i suggerimenti e il modulo offre di aggiungerlo. Al salvataggio `match_name` lo
+    trova, e l'imbuto di `write_recipe_ingredients` lo rifiuta: il 422 porta una frase,
+    che il modulo mostra com'è accanto a «Salva», e la ricetta resta com'era."""
+    ricetta = await _scritta(logged_client, cucina)
+
+    risposta = await _modifica(logged_client, ricetta["id"], _corpo(cucina, ingredients=[
+        _riga(cucina["pasta"]),
+        {"name": "sapone per le mani", "category": "altro", "role": "primary"},
+    ]))
+
+    assert risposta.status_code == 422
+    assert "non è un alimento" in risposta.json()["detail"]
+    assert await _nomi(logged_client, ricetta["id"]) == {"pasta", "pomodoro", "aglio"}

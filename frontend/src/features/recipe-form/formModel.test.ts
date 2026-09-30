@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { DraftIngredient, Ingredient, RecipeDetail, RecipeDraft } from "../../domain/types";
 import {
   EMPTY_FORM,
+  addNewLine,
   applyDraft,
   lineFromDraft,
   lineFromIngredient,
+  lineFromNewName,
   matchNote,
   recipeBody,
+  savableLines,
   showsMatch,
   validationProblem,
   valuesFromRecipe,
@@ -136,5 +139,66 @@ describe("il nome si scrive una volta", () => {
     expect(showsMatch(lineFromDraft(bozza({ raw_name: "basilico fresco", matched_name: "basilico" }), 0))).toBe(true);
     expect(showsMatch(lineFromDraft(bozza({ confident: false }), 0))).toBe(true);
     expect(showsMatch(lineFromDraft(bozza({ ingredient_id: null, matched_name: null }), 0))).toBe(true);
+  });
+});
+
+describe("R12: le righe di un nome nuovo", () => {
+  it("una riga nuova è come quelle dell'AI non agganciate, e parte salvando con nome e reparto", () => {
+    const riga = lineFromNewName("  Zucchine ", "verdura");
+    expect(riga).toMatchObject({
+      key: "new:zucchine", label: "Zucchine", ingredientId: null, proposedCategory: "verdura",
+      manual: true, included: true, role: "primary", uncertain: false,
+    });
+    const corpo = recipeBody({
+      title: "T", description: "", category: null, servingsText: "", cost: null,
+      instructions: "I", lines: [riga],
+    });
+    expect(corpo.ingredients).toEqual([
+      { name: "zucchine", category: "verdura", role: "primary", quantity_text: null },
+    ]);
+  });
+
+  it("un nome che non c'è si aggiunge in fondo, e torna la sua chiave", () => {
+    const { lines, key } = addNewLine([], "zz tre", "verdura");
+    expect(lines).toHaveLength(1);
+    expect(key).toBe("new:zz tre");
+    expect(lines[0].key).toBe(key);
+  });
+
+  it("lo stesso nome due volte resta una riga sola, anche con maiuscole e spazi diversi, e torna inclusa", () => {
+    const prima = addNewLine([], "zz tre", "verdura").lines;
+    const esclusa = [{ ...prima[0], included: false }];
+    const { lines, key } = addNewLine(esclusa, " ZZ Tre ", "frutta");
+    expect(lines).toHaveLength(1);
+    expect(key).toBe("new:zz tre");
+    expect(lines[0].included).toBe(true);
+    // il reparto scelto la prima volta resta: la riga c'era già
+    expect(lines[0].proposedCategory).toBe("verdura");
+  });
+
+  it("un nome che è già una riga non ne aggiunge un'altra: include quella, e a una riga dell'AI senza reparto dà il reparto", () => {
+    const agganciata = lineFromDraft(
+      { raw_name: "basilico fresco", role: "secondary", quantity_text: null, ingredient_id: "i2",
+        matched_name: "basilico", confident: false, proposed_category: null },
+      0
+    );
+    const ignota = lineFromDraft(
+      { raw_name: "zafferano di Navelli", role: "secondary", quantity_text: null,
+        ingredient_id: null, matched_name: null, confident: false, proposed_category: null },
+      1
+    );
+
+    const conBasilico = addNewLine([agganciata, ignota], "Basilico", "spezie");
+    expect(conBasilico.lines).toHaveLength(2);
+    expect(conBasilico.key).toBe(agganciata.key);
+    expect(conBasilico.lines[0].included).toBe(true);
+    expect(conBasilico.lines[0].proposedCategory).toBeNull();
+
+    const conZafferano = addNewLine([agganciata, ignota], "zafferano di navelli", "spezie");
+    expect(conZafferano.lines).toHaveLength(2);
+    expect(conZafferano.key).toBe(ignota.key);
+    // era «non in anagrafica, sarà escluso»: col reparto, parte salvando
+    expect(conZafferano.lines[1].proposedCategory).toBe("spezie");
+    expect(savableLines(conZafferano.lines).map((line) => line.key)).toContain(ignota.key);
   });
 });

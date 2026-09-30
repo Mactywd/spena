@@ -112,6 +112,66 @@ export function lineFromIngredient(ingredient: Ingredient): FormLine {
   };
 }
 
+/** R12: una riga per un ingrediente che l'anagrafica non ha, scritta a mano. È fatta
+ * come le righe dell'AI non agganciate — nome e reparto, «lo creo io salvando» — e
+ * l'ingrediente nasce al salvataggio, dentro la transazione della ricetta
+ * (`_resolve_lines` nel backend, per la creazione e per la modifica). `manual`: una
+ * bozza nuova dell'AI non la porta via. */
+export function lineFromNewName(name: string, category: string): FormLine {
+  const label = name.trim();
+  return {
+    key: `new:${label.toLowerCase()}`,
+    label,
+    ingredientId: null,
+    matchedName: null,
+    uncertain: false,
+    manual: true,
+    role: "primary",
+    quantityText: "",
+    included: true,
+    proposedCategory: category,
+    note: null,
+  };
+}
+
+/** Il nome con cui una riga si confronta con un nome nuovo: l'ingrediente a cui è
+ * agganciata, o il testo con cui nascerà. */
+function comparableName(line: FormLine): string {
+  return (line.matchedName ?? line.label).trim().toLowerCase();
+}
+
+/** Aggiunge la riga di un nome nuovo, se non c'è già (R12). Due righe con lo stesso nome
+ * diventerebbero lo stesso ingrediente al salvataggio, e il backend rifiuterebbe la
+ * ricetta per la riga doppia: la riga che c'è si include e basta, come fa la scelta di
+ * un ingrediente già in elenco. Una riga dell'AI che non sapeva il reparto («non in
+ * anagrafica, sarà escluso») prende quello scelto, e così parte salvando. Torna anche la
+ * chiave della riga, per darle il fuoco. */
+export function addNewLine(
+  lines: FormLine[],
+  name: string,
+  category: string
+): { lines: FormLine[]; key: string } {
+  const wanted = name.trim().toLowerCase();
+  const existing = lines.find((line) => comparableName(line) === wanted);
+  if (existing) {
+    return {
+      lines: lines.map((line) =>
+        line.key === existing.key
+          ? {
+              ...line,
+              included: true,
+              proposedCategory:
+                line.ingredientId === null ? line.proposedCategory ?? category : line.proposedCategory,
+            }
+          : line
+      ),
+      key: existing.key,
+    };
+  }
+  const line = lineFromNewName(name, category);
+  return { lines: [...lines, line], key: line.key };
+}
+
 export function lineFromRecipe(line: RecipeIngredientLine): FormLine {
   return {
     key: `recipe:${line.ingredient_id}`,
