@@ -70,13 +70,16 @@ Nessun piano pronto.
 - [idea] P3 · Una schermata per correggere i plurali di `units` (oggi `decide_units --imposta` da riga di comando basta) [Parte X]
 - [idea] P3 · `IngredientPicker` spegne campo e suggerimenti con `disabled` mentre la scelta è in volo (dalla Consegna 6a «Aggiungi «…»» usa `busy`): lo stesso fuoco perso della ✕ di Lista, in una forma diversa [T3 Consegna 2]
 - [idea] P3 · L'annullamento riconta `occurrences` caricando tutte le pagine in attesa col loro JSONB intero, per contare una chiave sola, moltiplicato nel ciclo di merge dell'anagrafica: va bene finché l'annullamento è raro, ma un conteggio SQL dovrebbe restare identico a `count_pending_keys` [S9/T3]
-- [idea] P3 · La suite del backend stampa 7 `StarletteDeprecationWarning` per `HTTP_422_UNPROCESSABLE_ENTITY` (preesistente, non tracciato) [Parte X]
+- [idea] P3 · La suite del backend stampa 8 `StarletteDeprecationWarning` per `HTTP_422_UNPROCESSABLE_ENTITY` (preesistente, non tracciato) [Parte X]
 - [idea] P3 · `InlineField.tsx` (nome, marca e codice del prodotto) ha ancora `<button disabled>`: dopo un salvataggio riuscito il «Salva» si spegne e il fuoco cade sulla pagina. Il motivo sotto un pulsante che sta nella riga del campo non ci sta, e «invariato» è lo stato di ogni campo a riposo — decidere la forma [T3 Consegna 6a]
 - [idea] P3 · `CustomProductForm.tsx` («Salva prodotto») spegne ancora con `disabled`: passarlo alla regola dei pulsanti (`unavailableReason` col perché) [T3 Consegna 6a]
 - [idea] P3 · Una prova e2e di `style.spec.ts` («il campo data si vede…») calcola la data con `toISOString()`, in UTC: fra mezzanotte e le 2 ora italiana manda il giorno sbagliato e fallisce («tra 4 gg» invece di «tra 5 gg»). Calcolarla nel giorno di Europe/Rome, come il backend [T3 Consegna 6a]
 - [idea] P3 · `ShoppingListScreen.test.tsx` è fallito in alcune corse della suite intera sotto carico, ogni volta su un'asserzione diversa, e passa da solo e nelle corse successive: un'attesa troppo corta da trovare [T3 Consegna 6a]
 - [idea] P3 · `Button` con `disabled` e `unavailableReason` insieme non è definito: il `disabled` nativo toglie il fuoco e il perché resta irraggiungibile da tastiera. Oggi nessun chiamante lo fa; far vincere `unavailableReason` o scriverlo nel JSDoc [T3 Consegna 6a]
 - [idea] P3 · In `MergePanel.tsx` «Cambia» è un `Button` dentro un `<p class="flex">`: oggi ha solo `busy`, ma se un giorno prende un `unavailableReason` il perché diventa un `<p>` dentro un `<p>`. Cambiare il contenitore in `<div>` [T3 Consegna 6a]
+- [idea] P3 · Nel modulo della ricetta, dopo «Aggiungi «pasta»» scegliere anche «Pasta» dai suggerimenti fa due righe (`attach` non confronta con le righe nuove): al salvataggio arriva il 409 delle due righe. Si esce togliendone una, ma confonde: `attach` dovrebbe riconoscere la riga nuova con lo stesso nome. [T3 Consegna 6b]
+- [idea] P3 · «Non è in anagrafica: lo creo io salvando.» può essere falso: con «Aggiungi «…»» sempre offerto, si può aggiungere un nome che c'è già (il server poi collega quello esistente e ignora il reparto scelto). [T3 Consegna 6b]
+- [idea] P3 · In `RecipeForm.tsx` restano due `<button>` scritti a mano: la ✕ «Togli» (con un SVG in linea: c'è `IconX`) e i due ruoli; passarli a `Button` (`aria-pressed` per i ruoli). [T3 Consegna 6b]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5

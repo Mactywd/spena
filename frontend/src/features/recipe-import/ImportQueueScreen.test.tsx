@@ -695,7 +695,10 @@ describe("coda di revisione dell'import", () => {
     expect(screen.queryByText(/OPENROUTER_API_KEY/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Non sono riuscito a chiedere all'AI/i)).not.toBeInTheDocument();
     // i controlli a mano restano lì, invariati dal fallimento dell'AI
-    expect(screen.getByRole("button", { name: /Forse «pasta»/i })).toBeEnabled();
+    const bottonePastaSuggerita = screen.getByRole("button", { name: /Forse «pasta»/i });
+    expect(bottonePastaSuggerita).toBeEnabled();
+    // un `busy` rimasto acceso da un giro precedente non lo direbbe: lo coglie solo l'attributo.
+    expect(bottonePastaSuggerita).not.toHaveAttribute("aria-disabled");
   });
 
   it("un giro dell'AI che non decide niente lo dice, nominando il lavoro rimasto", async () => {
