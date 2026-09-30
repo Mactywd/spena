@@ -1,4 +1,4 @@
-import { useId, type MouseEvent, type ReactNode } from "react";
+import { useId, type MouseEvent, type ReactNode, type Ref } from "react";
 import { buttonClasses, type ButtonShape, type ButtonVariant } from "./buttonClasses";
 import type { IconComponent } from "./icons";
 
@@ -43,6 +43,9 @@ type Common = {
    * antenati. */
   unavailableReason?: string;
   className?: string;
+  /** Il pulsante vero, per chi deve ridargli il fuoco (il dettaglio della ricetta, quando
+   * il foglio della cottura si chiude). In React 19 `ref` è una prop come le altre. */
+  ref?: Ref<HTMLButtonElement>;
   "aria-describedby"?: string;
   /** Per chi apre e chiude qualcosa sotto di sé («Spostalo», «Sposta»). */
   "aria-expanded"?: boolean;
@@ -83,6 +86,7 @@ export function Button(props: WithText | IconOnly) {
     busy = false,
     unavailableReason,
     className = "",
+    ref,
   } = props;
   const reasonId = useId();
   const Icon = props.icon;
@@ -112,6 +116,7 @@ export function Button(props: WithText | IconOnly) {
     <>
       <button
         type={type}
+        ref={ref}
         onClick={handleClick}
         disabled={disabled}
         aria-disabled={inert || undefined}

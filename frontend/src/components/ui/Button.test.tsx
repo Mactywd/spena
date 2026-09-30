@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createRef } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Button } from "./Button";
@@ -28,6 +29,12 @@ describe("Button", () => {
   it("è type=button se non si dice altro: dentro un modulo non deve inviarlo", () => {
     render(<Button>Annulla</Button>);
     expect(screen.getByRole("button", { name: "Annulla" })).toHaveAttribute("type", "button");
+  });
+
+  it("il `ref` arriva al pulsante vero: chi deve ridargli il fuoco lo trova", () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(<Button ref={ref}>Cucina</Button>);
+    expect(ref.current).toBe(screen.getByRole("button", { name: "Cucina" }));
   });
 
   it("chi apre un pannello dice se è aperto e quale apre", () => {
