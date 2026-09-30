@@ -1,29 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { fetchRecipe, setRecipeArchived, updateRecipeCost } from "../recipes/api";
-import { useArchiveRecipe } from "../recipes/useArchiveRecipe";
+import { Link, useParams } from "react-router-dom";
+import { fetchRecipe, setRecipeArchived } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { ApiError } from "../../api/client";
+import { AddMissingButton } from "./AddMissingButton";
 import { CookSheet } from "./CookSheet";
 import { ServingsStepper } from "./ServingsStepper";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import { CostMeter } from "../../components/ui/CostMeter";
+import { IconToolbar } from "../../components/ui/IconToolbar";
 import { SectionHeading } from "../../components/ui/SectionHeading";
+import { StatusDot } from "../../components/ui/StatusDot";
 import { buttonClasses } from "../../components/ui/buttonClasses";
+import {
+  IconChefHat,
+  IconChevronLeft,
+  IconExternalLink,
+  IconPencil,
+  IconRestore,
+  IconTrash,
+} from "../../components/ui/icons";
+import { useNotice } from "../../components/ui/noticeContext";
 import { BackLink } from "../../components/BackLink";
 import { RecipeImage } from "../recipes/RecipeImage";
-import { CostPicker } from "../../components/ui/CostPicker";
+import { useArchiveRecipe } from "../recipes/useArchiveRecipe";
 import { revealAtTop } from "../../lib/revealAtTop";
-import type { CookResult, RecipeIngredientLine } from "../../domain/types";
-
-function statusNote(line: RecipeIngredientLine): string {
-  if (line.availability === "missing") return "manca";
-  if (line.availability === "available") return "disponibile";
-  // l'unico caso interessante: quasi finito, dove il ruolo fa la differenza
-  return line.satisfied ? "quasi finito, basta" : "quasi finito, non basta";
-}
+import type { CookResult, RecipeDetail, RecipeIngredientLine } from "../../domain/types";
 
 // Il numero viene dal backend, non da un conteggio fatto qui: quante voci sono
 // tornate in lista lo sa solo chi ha applicato le transizioni (una lista può già
@@ -34,63 +39,84 @@ function cookNote(result: CookResult): string {
   return `Segnato. ${result.restocked} cose sono tornate in lista della spesa.`;
 }
 
+/** In cima al dettaglio: il ritorno al ricettario e, se c'è, la foto (spec T3 §4.6).
+ *
+ * Il tasto sta nel flusso e la foto gli scivola sotto con un margine negativo, alto
+ * quanto il tasto più il suo margine (44 + 8 px): così, se la foto non c'è o non carica
+ * — `RecipeImage` allora non disegna niente — il tasto resta al suo posto sopra il
+ * titolo, senza che questo schermo debba sapere se l'immagine è arrivata. `relative`
+ * lo dipinge sopra la foto, che non è posizionata, senza uno `z-index` che litighi con
+ * l'intestazione fissa. Il fondo è pieno (`bg-card`): sopra una foto un testo senza
+ * fondo avrebbe il contrasto della foto, cioè nessuno garantito. «Ricette» e non
+ * `navigate(-1)`, per il motivo scritto in `BackLink`. */
+function RecipeHero({ recipe }: { recipe: RecipeDetail }) {
+  return (
+    <div>
+      <Link
+        to="/ricette"
+        className="relative mt-2 ml-2 flex min-h-11 w-fit items-center gap-1 rounded-full bg-card py-2 pr-4 pl-2.5 text-sm font-medium text-ink ring-1 ring-line ring-inset"
+      >
+        <IconChevronLeft aria-hidden="true" className="size-5" stroke={1.8} />
+        Ricette
+      </Link>
+      <RecipeImage
+        url={recipe.image_url}
+        alt={recipe.title}
+        className="-mt-[3.25rem] block aspect-[3/2] w-full rounded-card object-cover"
+      />
+    </div>
+  );
+}
+
+/** Una riga d'ingrediente: il pallino dello stato, il nome, la dose.
+ *
+ * Il verdetto non si calcola qui: `availability` e `satisfied` arrivano dal server, che
+ * ha la regola primario/secondario (`backend/app/domain/rules.py`). «non basta» è il
+ * solo caso in cui il colore non dice abbastanza — un principale quasi finito è giallo
+ * come un secondario quasi finito, ma a questa ricetta non basta — e sta scritto,
+ * piccolo, accanto al nome (Mattia). Il nome del pallino resta quello del vocabolario
+ * (`STATUS_LABELS`); «non basta» lo sente anche chi ascolta, perché è testo. */
+function IngredientRow({ line }: { line: RecipeIngredientLine }) {
+  return (
+    <li className="flex items-center gap-2.5 px-3 py-2.5">
+      <StatusDot availability={line.availability} />
+      <span className="min-w-0 flex-1">
+        <span>{line.ingredient_name}</span>
+        {line.availability === "low" && !line.satisfied && (
+          <span className="ml-2 text-xs font-medium text-low">non basta</span>
+        )}
+      </span>
+      {line.quantity_display && (
+        <span className="shrink-0 text-sm text-ink-faint">{line.quantity_display}</span>
+      )}
+    </li>
+  );
+}
+
 export function RecipeDetailScreen() {
   const { id = "" } = useParams();
   const [cooking, setCooking] = useState(false);
-  // l'esito dell'ultima cottura: il foglio si smonta subito dopo averla registrata,
-  // e senza questo il gesto per cui esiste tutto il task non dice mai cosa ha fatto
-  const [lastCook, setLastCook] = useState<CookResult | null>(null);
 
   // le porzioni chieste: è una vista, non si salva. Uscire dalla ricetta se ne
   // dimentica, ed è quel che vuole chi sta guardando cosa cucinare stasera.
   const [servings, setServings] = useState<number | null>(null);
 
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  // «Salvata» arriva con la navigazione dalla modifica (R10 §6.2). Si legge una volta,
-  // nello stato di questo schermo, e la voce della cronologia si pulisce subito (sotto),
-  // come la lapide del ricettario: un «indietro» e un «avanti» non devono ridire
-  // «Salvata» di un salvataggio vecchio.
-  const location = useLocation();
-  const savedNow = (location.state as { saved?: boolean } | null)?.saved === true;
-  const [justSaved] = useState(savedNow);
-  useEffect(() => {
-    if (savedNow) navigate(location.pathname, { replace: true, state: null });
-  }, [savedNow, navigate, location.pathname]);
-
-  // Eliminare e ripristinare cambiano cosa elencano ricettario e filtro per categoria,
-  // oltre al dettaglio stesso: si rinfrescano tutti e tre.
-  const refreshAfterArchive = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["recipe", id] }),
-      queryClient.invalidateQueries({ queryKey: ["recipes"] }),
-      queryClient.invalidateQueries({ queryKey: ["recipe-categories"] }),
-    ]);
-
-  // «Elimina» archivia subito, senza chiedere: la conferma è l'avviso con «Annulla», e
-  // si torna al ricettario (T3 Consegna 4: l'avviso unico al posto della lapide). Tutto
-  // questo sta in `useArchiveRecipe`, che il dettaglio ridisegnato riusa.
+  const notice = useNotice();
+  // «Elimina» archivia subito, senza chiedere: la conferma è l'avviso con «Annulla»
+  // (Piano 2, spec T3 §3.5), e il gancio porta al ricettario
   const { archive, pending: archiving } = useArchiveRecipe();
 
+  // Ripristinare cambia cosa elencano ricettario e filtro per categoria, oltre al
+  // dettaglio stesso: si rinfrescano tutti e tre.
   const restore = useMutation({
     mutationFn: () => setRecipeArchived(id, false),
-    onSuccess: () => refreshAfterArchive(),
-  });
-
-  // Il valore mostrato è sempre quello che il server ha salvato, non quello toccato:
-  // niente aggiornamento ottimistico, perché un tocco fallito che restasse a video
-  // direbbe un costo che la ricetta non ha. La rilettura costa un giro, e il
-  // selettore resta spento finché non è tornato.
-  const setCost = useMutation({
-    mutationFn: (cost: number | null) => updateRecipeCost(id, cost),
-    onSuccess: async () => {
-      await Promise.all([
-        // il prefisso, non la chiave intera: le porzioni stanno in coda alla chiave
+    onSuccess: () =>
+      Promise.all([
         queryClient.invalidateQueries({ queryKey: ["recipe", id] }),
-        // la scheda del ricettario porta il costo anche lei
         queryClient.invalidateQueries({ queryKey: ["recipes"] }),
-      ]);
-    },
+        queryClient.invalidateQueries({ queryKey: ["recipe-categories"] }),
+      ]),
   });
 
   const {
@@ -121,35 +147,26 @@ export function RecipeDetailScreen() {
     refetch: refetchPantry,
   } = useQuery({ queryKey: ["pantry"], queryFn: fetchPantry });
 
-  // «Cucina» sta in fondo, sotto il procedimento, e il foglio prende il posto di
-  // ingredienti e procedimento: la pagina si accorcia ma resta scorsa in fondo, e le
-  // prime righe del foglio — con «Tocca solo ciò che è cambiato» — restano fuori
-  // vista. Si porta in vista il suo inizio appena c'è.
+  // Il foglio prende il posto di ciò che sta sotto la testa, e l'inizio del foglio —
+  // con «Tocca solo ciò che è cambiato» — può restare fuori vista: si porta in vista
+  // appena c'è.
   const sheetOpen = cooking && pantry !== undefined;
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (sheetOpen && sheetRef.current) revealAtTop(sheetRef.current);
   }, [sheetOpen]);
 
-  // L'esito compare in cima al dettaglio, mentre chi ha appena toccato «Ho
-  // cucinato» è ancora là in fondo dov'era il pulsante: chi non lo vede cucina due
-  // volte. Si porta in vista e prende il fuoco, così lo screen reader lo legge anche
-  // se la regione `status` è nata insieme al suo testo. Il fuoco senza scorrimento,
-  // perché quello istantaneo del fuoco interromperebbe quello animato.
-  const outcomeRef = useRef<HTMLParagraphElement>(null);
+  // Chiuso il foglio — cucinato o annullato — il fuoco torna su «Cucina»: il foglio si
+  // è smontato col pulsante che aveva il fuoco, che altrimenti finirebbe sul `body`, e
+  // l'esito lo dice l'avviso unico, che il fuoco non lo prende. Un `ref` e non uno
+  // stato: è un'intenzione per il prossimo disegno, non qualcosa da disegnare.
+  const cookRef = useRef<HTMLButtonElement>(null);
+  const refocusCook = useRef(false);
   useEffect(() => {
-    if (!lastCook || !outcomeRef.current) return;
-    outcomeRef.current.focus({ preventScroll: true });
-    revealAtTop(outcomeRef.current);
-  }, [lastCook]);
-
-  // «Salvata» in vista: si arriva dal pulsante in fondo al modulo, e la pagina nuova non
-  // riparte dall'alto da sola
-  const savedRef = useRef<HTMLParagraphElement>(null);
-  const hasRecipe = recipe !== undefined;
-  useEffect(() => {
-    if (justSaved && hasRecipe && savedRef.current) revealAtTop(savedRef.current);
-  }, [justSaved, hasRecipe]);
+    if (sheetOpen || !refocusCook.current) return;
+    refocusCook.current = false;
+    cookRef.current?.focus();
+  }, [sheetOpen]);
 
   if (isRecipeLoading) return <p className="p-4 text-ink-soft">Carico…</p>;
 
@@ -191,14 +208,16 @@ export function RecipeDetailScreen() {
         <BackLink to="/ricette" label="Ricette" />
         <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
         <p className="pt-2 text-ink-soft">Questa ricetta è stata eliminata.</p>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          shape="block"
+          icon={IconRestore}
+          busy={restore.isPending}
           onClick={() => restore.mutate()}
-          disabled={restore.isPending}
-          className={`${buttonClasses("primary", "block")} mt-4`}
+          className="mt-4"
         >
           {restore.isPending ? "Ripristino…" : "Ripristina"}
-        </button>
+        </Button>
         {restore.isError && (
           <Alert className="pt-2">Non sono riuscito a ripristinarla. Riprova.</Alert>
         )}
@@ -206,63 +225,68 @@ export function RecipeDetailScreen() {
     );
   }
 
-  const primary = recipe.ingredients.filter((line) => line.role === "primary");
-  const secondary = recipe.ingredients.filter((line) => line.role === "secondary");
   const groups: { label: string; lines: RecipeIngredientLine[] }[] = [
-    { label: "Principali", lines: primary },
-    { label: "Secondari", lines: secondary },
-  ];
+    { label: "Principali", lines: recipe.ingredients.filter((line) => line.role === "primary") },
+    { label: "Secondari", lines: recipe.ingredients.filter((line) => line.role === "secondary") },
+  ].filter((group) => group.lines.length > 0);
+  // quali righe mancano lo dice il server (`satisfied`): qui si filtra, non si giudica
+  const missing = recipe.ingredients.filter((line) => !line.satisfied);
 
   return (
     <div className="px-4 pt-2 pb-4">
-      <BackLink to="/ricette" label="Ricette" />
-      {justSaved && (
-        // `scroll-mt-16`: l'intestazione fissa (h-12) più un respiro, come l'esito
-        // della cottura; `tabIndex={-1}` per il fuoco dato dal codice, non dal Tab
-        <p
-          ref={savedRef}
-          role="status"
-          tabIndex={-1}
-          className="mb-3 scroll-mt-16 rounded-card bg-brand-tint px-3 py-2.5 text-sm text-brand"
-        >
-          Salvata.
+      <RecipeHero recipe={recipe} />
+
+      {/* le due azioni rare accanto al titolo, di sola icona (spec T3 §2): si correggono
+          o si tolgono ricette di rado, e non devono competere con «Cucina». `ghost` anche
+          «Elimina»: il rosso vuol dire «manca» e «non è andata» (spec §3.1) */}
+      <div className="flex items-start gap-2 pt-3">
+        <h1 className="min-w-0 flex-1 pt-1.5 text-2xl font-semibold tracking-tight">
+          {recipe.title}
+        </h1>
+        <IconToolbar label="Azioni della ricetta">
+          <Link
+            to={`/ricette/${recipe.id}/modifica`}
+            aria-label="Modifica"
+            className={buttonClasses("ghost", "icon")}
+          >
+            <IconPencil aria-hidden="true" className="size-5" stroke={1.8} />
+          </Link>
+          <Button
+            variant="ghost"
+            icon={IconTrash}
+            label="Elimina"
+            busy={archiving}
+            onClick={() => archive({ id: recipe.id, title: recipe.title })}
+          />
+        </IconToolbar>
+      </div>
+
+      {/* categoria e costo da leggere: il costo si cambia da «Modifica» (dal giro, un
+          tocco scorrendo sui € lo cambiava) */}
+      {(recipe.category || recipe.cost !== null) && (
+        <p className="flex items-center gap-2 pt-1 text-sm text-ink-soft">
+          {recipe.category && <span>{recipe.category}</span>}
+          {recipe.category && recipe.cost !== null && <span aria-hidden="true">·</span>}
+          <CostMeter cost={recipe.cost} />
         </p>
       )}
-      <RecipeImage
-        url={recipe.image_url}
-        alt={recipe.title}
-        className="mb-3 aspect-[3/2] w-full rounded-card object-cover"
-      />
-      <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
-      {recipe.description && <p className="pt-1 text-ink-soft">{recipe.description}</p>}
+      {recipe.description && <p className="pt-2 text-ink-soft">{recipe.description}</p>}
 
-      {/* L'attribuzione a un tocco. Solo se la provenienza è davvero un indirizzo:
-          per le ricette del seme `source_ref` è una nota («seme iniziale»), e un
-          collegamento a quella sarebbe un collegamento rotto.
-          `rel="noreferrer"` perché il sito di origine non ha bisogno di sapere da
-          dove arriva la visita. */}
+      {/* L'attribuzione a un tocco, alta 44 px (dal giro: era alta 19). Solo se la
+          provenienza è davvero un indirizzo: per le ricette del seme `source_ref` è una
+          nota («seme iniziale»), e un collegamento a quella sarebbe un collegamento
+          rotto. `rel="noreferrer"` perché il sito di origine non ha bisogno di sapere
+          da dove arriva la visita. */}
       {recipe.source_ref?.startsWith("http") && (
         <a
           href={recipe.source_ref}
           target="_blank"
           rel="noreferrer"
-          className="text-sm font-medium text-brand"
+          className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-brand"
         >
+          <IconExternalLink aria-hidden="true" className="size-[1.1em]" stroke={1.8} />
           Apri l'originale
         </a>
-      )}
-
-      <div className="flex items-center gap-2 pt-2">
-        <span className="text-sm text-ink-soft">Costo</span>
-        <CostPicker
-          value={recipe.cost}
-          onChange={(cost) => setCost.mutate(cost)}
-          disabled={setCost.isPending}
-        />
-        {recipe.cost === null && <span className="text-sm text-ink-faint">non indicato</span>}
-      </div>
-      {setCost.isError && (
-        <Alert>Non sono riuscito a salvare il costo: è rimasto quello di prima. Riprova.</Alert>
       )}
 
       {/* `scroll-mt-12` è l'altezza dell'intestazione fissa (h-12 in AppHeader):
@@ -274,65 +298,32 @@ export function RecipeDetailScreen() {
             recipe={recipe}
             pantryItems={pantry}
             onDone={(result) => {
-              if (result) setLastCook(result);
+              // l'esito passa dall'avviso unico (T4): lo stesso testo di prima, in un
+              // punto fisso, visibile da dovunque si sia scorsi
+              if (result) notice({ text: cookNote(result) });
+              refocusCook.current = true;
               setCooking(false);
             }}
           />
         </div>
       ) : (
         <>
-          {lastCook && (
-            // `tabIndex={-1}`: raggiungibile dal fuoco dato dal codice, non dal
-            // tasto Tab. `scroll-mt-16`: l'header (h-12) più un respiro, perché
-            // lo scorrimento allinea il bordo del riquadro e il suo `mt-3` non conta
-            <p
-              ref={outcomeRef}
-              role="status"
-              tabIndex={-1}
-              className="mt-3 scroll-mt-16 rounded-card bg-brand-tint px-3 py-2.5 text-sm text-brand"
-            >
-              {cookNote(lastCook)}
-            </p>
-          )}
-
-          {/* lo stepper compare solo se la ricetta dichiara le sue porzioni: senza
-              quelle non c'è una base da cui riscalare, e mostrarlo comunque
-              inviterebbe a un calcolo che qui non si fa */}
-          {recipe.servings != null && (
-            <div className="pt-3">
-              <ServingsStepper value={servings ?? recipe.servings} onChange={setServings} />
-            </div>
-          )}
+          {/* sempre, anche senza porzioni: allora dice perché è fermo */}
+          <div className="pt-3">
+            <ServingsStepper
+              value={recipe.servings === null ? null : (servings ?? recipe.servings)}
+              onChange={setServings}
+            />
+          </div>
 
           {groups.map(({ label, lines }) => (
             <section key={label}>
               <SectionHeading>{label}</SectionHeading>
+              {/* niente linee fra le righe (spec T3 §2): lo spazio basta */}
               <Card pad={false}>
-                <ul className="divide-y divide-line">
+                <ul>
                   {lines.map((line) => (
-                    <li
-                      key={line.ingredient_id}
-                      className="flex items-baseline justify-between gap-2 px-3 py-2.5"
-                    >
-                      <span>
-                        {line.ingredient_name}
-                        {line.quantity_display && (
-                          <span className="ml-2 text-sm text-ink-faint">
-                            {line.quantity_display}
-                          </span>
-                        )}
-                      </span>
-                      {/* gli stessi due colori della dispensa: il verdetto per riga è
-                          la stessa regola primario/secondario vista ingrediente per
-                          ingrediente */}
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                          line.satisfied ? "bg-brand-tint text-brand" : "bg-low-tint text-low"
-                        }`}
-                      >
-                        {statusNote(line)}
-                      </span>
-                    </li>
+                    <IngredientRow key={line.ingredient_id} line={line} />
                   ))}
                 </ul>
               </Card>
@@ -350,6 +341,44 @@ export function RecipeDetailScreen() {
             </p>
           )}
 
+          {/* «Cucina» in fondo agli ingredienti, prima del procedimento (dal giro: sotto
+              il procedimento sembrava dire «inizia a cucinare»), e sotto di lui la
+              freccia ricetta → lista. Uno sotto l'altro e non affiancati: a 375 px i due
+              testi con le icone non ci stanno su una riga */}
+          <div className="mt-6 flex flex-col gap-2">
+            {isPantryError ? (
+              // il foglio ha bisogno della dispensa per elencare i vasetti concreti:
+              // senza, il posto di «Cucina» dice perché non si può procedere invece di
+              // aprire un foglio vuoto e muto
+              <div className="flex flex-col items-start gap-3">
+                <Alert>
+                  Non sono riuscito a caricare la dispensa: non posso avviare la cottura.
+                </Alert>
+                <button
+                  type="button"
+                  onClick={() => void refetchPantry()}
+                  className={buttonClasses("secondary")}
+                >
+                  Riprova
+                </button>
+              </div>
+            ) : (
+              <Button
+                ref={cookRef}
+                variant="primary"
+                shape="block"
+                icon={IconChefHat}
+                // «non ancora», col perché scritto sotto (regola del Piano 1): un
+                // pulsante grigio e muto non si spiega da sé
+                unavailableReason={isPantryLoading ? "Carico la dispensa…" : undefined}
+                onClick={() => setCooking(true)}
+              >
+                Cucina
+              </Button>
+            )}
+            <AddMissingButton lines={missing} />
+          </div>
+
           <section>
             <SectionHeading>Procedimento</SectionHeading>
             {/* leggere mentre si cucina: interlinea larga, perché si torna a cercare
@@ -358,62 +387,6 @@ export function RecipeDetailScreen() {
               <p className="leading-relaxed whitespace-pre-line">{recipe.instructions}</p>
             </Card>
           </section>
-
-          {/* "Cucina" apre il foglio di cottura, che ha bisogno della dispensa per
-              elencare i vasetti concreti: senza quella, il pulsante dice perché non
-              si può procedere invece di aprire un foglio vuoto e muto */}
-          {isPantryError ? (
-            <div className="mt-6 flex flex-col items-start gap-3">
-              <Alert>
-                Non sono riuscito a caricare la dispensa: non posso avviare la cottura.
-              </Alert>
-              <button
-                type="button"
-                onClick={() => void refetchPantry()}
-                className={buttonClasses("secondary")}
-              >
-                Riprova
-              </button>
-            </div>
-          ) : (
-            <>
-              <button
-                type="button"
-                // un esito vecchio non deve sopravvivere alla cottura successiva
-                onClick={() => {
-                  setLastCook(null);
-                  setCooking(true);
-                }}
-                disabled={isPantryLoading}
-                className={`${buttonClasses("primary", "block")} mt-6`}
-              >
-                Cucina
-              </button>
-              {/* un pulsante grigio e muto non si spiega da sé: dire che manca la
-                  dispensa costa una riga e toglie l'unico dubbio */}
-              {isPantryLoading && (
-                <p className="pt-2 text-xs text-ink-soft">Carico la dispensa…</p>
-              )}
-            </>
-          )}
-
-          {/* due azioni secondarie sotto «Cucina» (R10 §6.1): si correggono o si
-              tolgono ricette di rado, e non devono competere con il gesto principale */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link to={`/ricette/${id}/modifica`} className={buttonClasses("secondary")}>
-              Modifica
-            </Link>
-            {/* `busy` e non `disabled`: in volo il pulsante tiene il fuoco, e il doppio
-                tocco non parte (regola dei pulsanti, Piano 1). Il guasto lo dice l'avviso,
-                con «Riprova» */}
-            <Button
-              variant="danger"
-              busy={archiving}
-              onClick={() => archive({ id, title: recipe.title })}
-            >
-              {archiving ? "Elimino…" : "Elimina"}
-            </Button>
-          </div>
         </>
       )}
     </div>

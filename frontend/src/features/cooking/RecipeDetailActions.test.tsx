@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -51,32 +51,30 @@ function StatoDellaVoce() {
   return <p data-testid="stato">{JSON.stringify(location.state)}</p>;
 }
 
-function renderAt(
-  entry: string | { pathname: string; state: unknown },
-  { notice = false }: { notice?: boolean } = {}
-) {
+function renderAt(entry: string | { pathname: string; state: unknown }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
   });
-  const albero = (
-    <MemoryRouter initialEntries={[entry]}>
-      <Routes>
-        <Route path="/ricette" element={<RecipeBookScreen />} />
-        <Route
-          path="/ricette/:id"
-          element={
-            <>
-              <RecipeDetailScreen />
-              <StatoDellaVoce />
-            </>
-          }
-        />
-      </Routes>
-    </MemoryRouter>
-  );
+  // sempre dentro `NoticeProvider`: l'esito dell'eliminazione, e ogni altro avviso del
+  // dettaglio, passa da lì
   return render(
     <QueryClientProvider client={client}>
-      {notice ? <NoticeProvider>{albero}</NoticeProvider> : albero}
+      <NoticeProvider>
+        <MemoryRouter initialEntries={[entry]}>
+          <Routes>
+            <Route path="/ricette" element={<RecipeBookScreen />} />
+            <Route
+              path="/ricette/:id"
+              element={
+                <>
+                  <RecipeDetailScreen />
+                  <StatoDellaVoce />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </NoticeProvider>
     </QueryClientProvider>
   );
 }
@@ -93,21 +91,22 @@ afterEach(() => {
 });
 
 describe("le azioni del dettaglio (R10 §6.1)", () => {
-  it("«Modifica» porta al modulo, «Elimina» gli sta accanto", async () => {
+  it("«Modifica» ed «Elimina» sono icone in un gruppo accanto al titolo", async () => {
     stubFetch();
     renderAt("/ricette/r1");
 
-    expect(await screen.findByRole("link", { name: "Modifica" })).toHaveAttribute(
+    const azioni = await screen.findByRole("toolbar", { name: "Azioni della ricetta" });
+    expect(within(azioni).getByRole("link", { name: "Modifica" })).toHaveAttribute(
       "href", "/ricette/r1/modifica"
     );
-    expect(screen.getByRole("button", { name: "Elimina" })).toBeInTheDocument();
+    expect(within(azioni).getByRole("button", { name: "Elimina" })).toBeInTheDocument();
   });
 
   it("«Elimina» archivia subito e torna al ricettario con l'avviso", async () => {
     const spy = stubFetch((_path, init) =>
       init?.method === "PATCH" ? [{ ...DETAIL, archived_at: "2026-09-28T10:00:00Z" }, 200] : undefined
     );
-    renderAt("/ricette/r1", { notice: true });
+    renderAt("/ricette/r1");
 
     await userEvent.click(await screen.findByRole("button", { name: "Elimina" }));
 
@@ -162,7 +161,7 @@ describe("le azioni del dettaglio (R10 §6.1)", () => {
 
   it("un'eliminazione che fallisce lo dice, e la ricetta resta lì", async () => {
     stubFetch((_path, init) => (init?.method === "PATCH" ? [{ detail: "no" }, 500] : undefined));
-    renderAt("/ricette/r1", { notice: true });
+    renderAt("/ricette/r1");
 
     await userEvent.click(await screen.findByRole("button", { name: "Elimina" }));
 
@@ -196,16 +195,13 @@ describe("le azioni del dettaglio (R10 §6.1)", () => {
     expect(patchMandate(spy)).toEqual([["/api/v1/recipes/r1", { archived: false }]]);
   });
 
-  it("dopo un salvataggio dice «Salvata» e lo porta in vista", async () => {
-    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+  it("il dettaglio non dice più «Salvata.» da sé: lo dice l'avviso di chi ha salvato", async () => {
+    // T4: «Salvata.» parte dal modulo con l'avviso unico (AiDraftScreen, RecipeEditScreen);
+    // uno stato della cronologia vecchio non deve farlo ricomparire qui
     stubFetch();
     renderAt({ pathname: "/ricette/r1", state: { saved: true } });
 
-    const esito = await screen.findByRole("status");
-    expect(esito).toHaveTextContent("Salvata.");
-    await vi.waitFor(() => expect(scroll.mock.contexts).toContain(esito));
-    // la cronologia lo dimentica subito: un «indietro» e un «avanti» non lo ridicono
-    await vi.waitFor(() => expect(screen.getByTestId("stato")).toHaveTextContent("null"));
-    expect(screen.getByRole("status")).toHaveTextContent("Salvata.");
+    expect(await screen.findByRole("heading", { name: "Pasta al pomodoro" })).toBeInTheDocument();
+    expect(screen.queryByText("Salvata.")).toBeNull();
   });
 });

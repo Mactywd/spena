@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
+import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { PantryItem, RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
@@ -46,13 +47,17 @@ const PANTRY: PantryItem[] = [
 
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // senza `NoticeProvider` l'avviso unico (l'esito della cottura, «Metti in lista…»,
+  // l'eliminazione) non avrebbe dove comparire
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/ricette/r1"]}>
-        <Routes>
-          <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
-        </Routes>
-      </MemoryRouter>
+      <NoticeProvider>
+        <MemoryRouter initialEntries={["/ricette/r1"]}>
+          <Routes>
+            <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+          </Routes>
+        </MemoryRouter>
+      </NoticeProvider>
     </QueryClientProvider>
   );
 }
@@ -99,22 +104,21 @@ describe("RecipeDetailScreen", () => {
     expect(screen.getByText("Secondari")).toBeDefined();
   });
 
-  it("spiega perché un principale quasi finito non basta", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(DETAIL), { status: 200 })
-    ));
+  it("un principale quasi finito ha il pallino giallo e, accanto al nome, «non basta»", async () => {
+    // il verdetto arriva dal server (`satisfied`): qui si legge, non si ricalcola
+    stubFetch({});
     renderScreen();
     const row = (await screen.findByText("pomodoro")).closest("li")!;
-    expect(row.textContent).toContain("quasi finito, non basta");
+    expect(within(row).getByRole("img", { name: "quasi finito" })).toBeInTheDocument();
+    expect(within(row).getByText("non basta")).toBeInTheDocument();
   });
 
-  it("un secondario quasi finito è accettato", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(DETAIL), { status: 200 })
-    ));
+  it("un secondario quasi finito basta: stesso pallino, e nessun «non basta»", async () => {
+    stubFetch({});
     renderScreen();
     const row = (await screen.findByText("aglio")).closest("li")!;
-    expect(row.textContent).toContain("quasi finito, basta");
+    expect(within(row).getByRole("img", { name: "quasi finito" })).toBeInTheDocument();
+    expect(within(row).queryByText("non basta")).toBeNull();
   });
 
   it("l'ordine delle righe è quello del backend: niente qui le riordina", async () => {
@@ -129,7 +133,7 @@ describe("RecipeDetailScreen", () => {
       within(principali)
         .getAllByRole("listitem")
         .map((row) => row.textContent)
-    ).toEqual(["pasta180 gdisponibile", "pomodoro400 gquasi finito, non basta"]);
+    ).toEqual(["pasta180 g", "pomodoronon basta400 g"]);
   });
 
   it("dice cosa manca e cosa c'è, non solo i casi a metà", async () => {
@@ -141,10 +145,10 @@ describe("RecipeDetailScreen", () => {
     ));
     renderScreen();
     const assente = (await screen.findByText("basilico")).closest("li")!;
-    expect(assente.textContent).toContain("manca");
+    expect(within(assente).getByRole("img", { name: "manca" })).toBeInTheDocument();
 
     const presente = screen.getByText("pasta").closest("li")!;
-    expect(presente.textContent).toContain("disponibile");
+    expect(within(presente).getByRole("img", { name: "disponibile" })).toBeInTheDocument();
   });
 
   it("una cottura riuscita dice quanto è tornato in lista, col numero del backend", async () => {
@@ -176,9 +180,8 @@ describe("RecipeDetailScreen", () => {
     await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Segnato. 2 cose sono tornate in lista della spesa."
-    );
+    expect(await screen.findByText("Segnato. 2 cose sono tornate in lista della spesa.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Segnato. 2 cose sono tornate in lista della spesa.");
   });
 
   it("un fallimento nel caricare la ricetta lo dice, non resta a caricare per sempre, e offre ancora «Riprova»", async () => {
@@ -382,83 +385,128 @@ describe("RecipeDetailScreen", () => {
     expect(screen.queryByText(/non si riscala/)).toBeNull();
   });
 
-  it("senza porzioni dichiarate il selettore non compare", async () => {
-    stubFetch({ servings: null });
+  it("senza porzioni dichiarate il selettore c'è, e dice perché è fermo", async () => {
+    const spy = vi.fn((_url: unknown, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ ...DETAIL, servings: null }), { status: 200 }))
+    );
+    vi.stubGlobal("fetch", spy);
     renderScreen();
-    await screen.findByText("180 g");
-    expect(screen.queryByRole("button", { name: /porzione in meno/ })).toBeNull();
+    const piu = await screen.findByRole("button", { name: "Una porzione in più" });
+    expect(piu).toHaveAttribute("aria-disabled", "true");
+    expect(piu).toHaveAccessibleDescription("Porzioni non indicate: si cambiano da «Modifica».");
+    await userEvent.click(piu);
+    expect(spy.mock.calls.some(([url]) => String(url).includes("servings="))).toBe(false);
   });
 });
 
-/** Un server finto che ricorda il costo: la GET dopo la PATCH deve vedere il nuovo.
- * `patchStatus` diverso da 200 simula un salvataggio rifiutato. */
-function stubCostServer(initial: number | null, patchStatus = 200) {
-  let cost = initial;
-  const spy = vi.fn((url: string, init?: RequestInit) => {
-    if (String(url).includes("/pantry")) {
-      return Promise.resolve(new Response(JSON.stringify(PANTRY), { status: 200 }));
-    }
-    if (init?.method === "PATCH") {
-      if (patchStatus !== 200) {
-        return Promise.resolve(new Response(JSON.stringify({ detail: "no" }), { status: patchStatus }));
-      }
-      cost = JSON.parse(String(init.body)).cost;
-    }
-    return Promise.resolve(new Response(JSON.stringify({ ...DETAIL, cost }), { status: 200 }));
-  });
-  vi.stubGlobal("fetch", spy);
-  return spy;
-}
-
-describe("il costo nel dettaglio (R9)", () => {
-  it("senza costo dice «non indicato», e nessun € è acceso", async () => {
-    stubCostServer(null);
+describe("il costo nel dettaglio si legge e basta (T3 Consegna 5)", () => {
+  // Dal giro: i cinque € erano pulsanti che non sembravano pulsanti, e un tocco scorrendo
+  // cambiava il costo. Si cambia da «Modifica», dove il modulo di R10 ce l'ha già.
+  it("categoria e costo stanno sotto il titolo, e il costo non si tocca", async () => {
+    stubFetch({ category: "Primi", cost: 3 });
     renderScreen();
-    expect(await screen.findByText("non indicato")).toBeInTheDocument();
-    for (const step of [1, 2, 3, 4, 5]) {
-      expect(screen.getByRole("button", { name: `Costo ${step} su 5` })).toHaveAttribute(
-        "aria-pressed", "false"
-      );
-    }
+    expect(await screen.findByRole("img", { name: "Costo 3 su 5" })).toBeInTheDocument();
+    expect(screen.getByText("Primi")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Costo \d su 5$/ })).toBeNull();
   });
 
-  it("toccare un € lo salva, e lo schermo mostra quel che il server ha salvato", async () => {
-    const spy = stubCostServer(null);
+  it("senza costo non si disegna niente, e nessuna PATCH parte", async () => {
+    const spy = vi.fn((_url: unknown, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ ...DETAIL, cost: null }), { status: 200 }))
+    );
+    vi.stubGlobal("fetch", spy);
     renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: "Costo 3 su 5" }));
+    await screen.findByRole("heading", { name: "Pasta al pomodoro" });
+    expect(screen.queryByRole("img", { name: /^Costo/ })).toBeNull();
+    expect(screen.queryByText("non indicato")).toBeNull();
+    expect(spy.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
+});
 
-    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(String(patch![0])).toMatch(/\/recipes\/r1$/);
-    expect(JSON.parse(String(patch![1]!.body))).toEqual({ cost: 3 });
+describe("la testa e le azioni del dettaglio (T3 Consegna 5)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
-    await vi.waitFor(() =>
-      expect(screen.getByRole("button", { name: "Costo 3 su 5" })).toHaveAttribute(
-        "aria-pressed", "true"
+  it("senza foto, o se la foto non carica, il tasto indietro resta sopra il titolo", async () => {
+    stubFetch({ image_url: "https://esempio.invalid/rotta.jpg" });
+    renderScreen();
+    fireEvent.error(await screen.findByRole("img", { name: "Pasta al pomodoro" }));
+    const indietro = screen.getByRole("link", { name: "Ricette" });
+    const titolo = screen.getByRole("heading", { name: "Pasta al pomodoro" });
+    expect(indietro).toHaveAttribute("href", "/ricette");
+    expect(indietro.compareDocumentPosition(titolo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("«Metti in lista ciò che manca» manda solo le righe che il server dice non soddisfatte", async () => {
+    // pomodoro è «quasi finito» come l'aglio, ma è principale: il server lo dice non
+    // soddisfatto, l'aglio no. Il client legge `satisfied` e non rifà la regola.
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      if (path.endsWith("/shopping-list") && init?.method === "POST")
+        return Promise.resolve(new Response(JSON.stringify({ id: "s1", added: true }), { status: 201 }));
+      if (path.includes("/pantry"))
+        return Promise.resolve(new Response(JSON.stringify(PANTRY), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify(DETAIL), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Metti in lista ciò che manca" }));
+
+    expect(await screen.findByText("2 in lista")).toBeInTheDocument();
+    const mandate = spy.mock.calls
+      .filter(([, init]) => init?.method === "POST")
+      .map(([, init]) => JSON.parse(String(init!.body)));
+    expect(mandate).toEqual([
+      { raw_text: "pomodoro", ingredient_id: "i2" },
+      { raw_text: "basilico", ingredient_id: "i4" },
+    ]);
+  });
+
+  it("con tutto soddisfatto, «Metti in lista ciò che manca» non c'è", async () => {
+    stubFetch({ ingredients: DETAIL.ingredients.map((line) => ({ ...line, satisfied: true })) });
+    renderScreen();
+    await screen.findByRole("heading", { name: "Pasta al pomodoro" });
+    expect(screen.queryByRole("button", { name: "Metti in lista ciò che manca" })).toBeNull();
+  });
+
+  it("«Cucina» e «Metti in lista ciò che manca» stanno fra gli ingredienti e il procedimento", async () => {
+    // dal giro: «Cucina» in fondo, sotto il procedimento, sembrava dire «inizia a cucinare»
+    stubCookServer();
+    renderScreen();
+    const cucina = await screen.findByRole("button", { name: "Cucina" });
+    const metti = screen.getByRole("button", { name: "Metti in lista ciò che manca" });
+    const secondari = screen.getByRole("heading", { name: "Secondari" });
+    const procedimento = screen.getByRole("heading", { name: "Procedimento" });
+    const DOPO = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(secondari.compareDocumentPosition(cucina) & DOPO).toBeTruthy();
+    expect(cucina.compareDocumentPosition(metti) & DOPO).toBeTruthy();
+    expect(metti.compareDocumentPosition(procedimento) & DOPO).toBeTruthy();
+  });
+
+  it("mentre la dispensa carica, «Cucina» dice perché non si apre ancora", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) =>
+        String(url).includes("/pantry")
+          ? new Promise<Response>(() => {})
+          : Promise.resolve(new Response(JSON.stringify(DETAIL), { status: 200 }))
       )
     );
-    expect(screen.queryByText("non indicato")).not.toBeInTheDocument();
+    renderScreen();
+    const cucina = await screen.findByRole("button", { name: "Cucina" });
+    expect(cucina).toHaveAttribute("aria-disabled", "true");
+    expect(cucina).toHaveAccessibleDescription("Carico la dispensa…");
+    await userEvent.click(cucina);
+    expect(screen.queryByText(/Tocca solo ciò che è cambiato/)).toBeNull();
   });
 
-  it("ritoccare quello scelto manda null, non lo lascia com'era", async () => {
-    const spy = stubCostServer(2);
+  it("un gruppo senza righe non ha la sua intestazione", async () => {
+    stubFetch({ ingredients: [DETAIL.ingredients[0]] });
     renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: "Costo 2 su 5" }));
-    const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(JSON.parse(String(patch![1]!.body))).toEqual({ cost: null });
-    expect(await screen.findByText("non indicato")).toBeInTheDocument();
-  });
-
-  it("un salvataggio rifiutato lo dice, e il costo mostrato resta quello di prima", async () => {
-    stubCostServer(2, 500);
-    renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: "Costo 5 su 5" }));
-    expect(await screen.findByText(/Non sono riuscito a salvare il costo/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Costo 2 su 5" })).toHaveAttribute(
-      "aria-pressed", "true"
-    );
-    expect(screen.getByRole("button", { name: "Costo 5 su 5" })).toHaveAttribute(
-      "aria-pressed", "false"
-    );
+    expect(await screen.findByRole("heading", { name: "Principali" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Secondari" })).toBeNull();
   });
 });
 
@@ -522,36 +570,33 @@ describe("il foglio e l'esito si fanno vedere (T4)", () => {
     expect(scroll).toHaveBeenLastCalledWith({ block: "start", behavior: "auto" });
   });
 
-  it("dopo «Ho cucinato» l'esito viene in vista e prende il fuoco", async () => {
-    // l'esito compare in cima al dettaglio mentre si è scorsi in fondo, dove stava
-    // il foglio: senza portarlo in vista, chi non lo vede cucina una seconda volta.
-    // Il fuoco è la metà per chi legge con lo screen reader.
+  it("dopo «Ho cucinato» l'esito passa dall'avviso, e il fuoco torna su «Cucina»", async () => {
+    // Il foglio si smonta col pulsante che aveva il fuoco: senza, il fuoco finirebbe sul
+    // `body`. L'esito lo dice l'avviso unico (T4, spec T3 §3.5), in un punto fisso, con
+    // lo stesso testo di prima.
     stubCookServer();
-    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
     renderScreen();
 
     await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
     const row = (await screen.findByText("Pelati")).closest("li")!;
     await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
-    scroll.mockClear();
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
-    const outcome = await screen.findByRole("status");
-    expect(outcome).toHaveTextContent("Segnato. Una cosa è tornata in lista della spesa.");
-    await vi.waitFor(() => expect(outcome).toHaveFocus());
-    expect(outcome).toHaveAttribute("tabindex", "-1");
-    expect(scroll.mock.contexts.at(-1)).toBe(outcome);
-    expect(scroll).toHaveBeenLastCalledWith({ block: "start", behavior: "smooth" });
+    expect(await screen.findByText("Segnato. Una cosa è tornata in lista della spesa.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Segnato. Una cosa è tornata in lista della spesa.");
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Cucina" })).toHaveFocus());
   });
 
-  it("annullare il foglio non inventa un esito da mettere in vista", async () => {
+  it("annullare il foglio non inventa un esito, e riporta il fuoco su «Cucina»", async () => {
     stubCookServer();
     renderScreen();
 
     await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
     await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
 
-    expect(await screen.findByRole("button", { name: "Cucina" })).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    const cucina = await screen.findByRole("button", { name: "Cucina" });
+    await vi.waitFor(() => expect(cucina).toHaveFocus());
+    // la regione dell'avviso c'è sempre, vuota finché nessuno parla
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 });
