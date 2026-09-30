@@ -69,7 +69,7 @@ describe("CookSheet", () => {
     // Due confezioni dello stesso ingrediente devono essere distinguibili a
     // colpo d'occhio: chi dichiara "finito" sul vasetto sbagliato lascia quello
     // vero disponibile, la ricetta continua a dirsi cucinabile e niente torna in
-    // lista. Lo stato attuale serve anche a dare un referente a "Invariato".
+    // lista. Lo stato attuale dice anche da dove partono le tacche.
     renderSheet();
     const yogurt = screen.getByText("Total 0%").closest("li")!;
     expect(yogurt.textContent).toContain("Fage");
@@ -100,8 +100,8 @@ describe("CookSheet", () => {
     const [first, second] = screen.getAllByRole("listitem");
     expect(first.textContent).not.toBe(second.textContent);
 
-    await userEvent.click(within(first).getByRole("button", { name: "Finito" }));
-    await userEvent.click(within(second).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(first).getByRole("radio", { name: "Finito" }));
+    await userEvent.click(within(second).getByRole("radio", { name: "Finito" }));
     const [firstBox, secondBox] = screen.getAllByRole("checkbox");
     expect(firstBox.getAttribute("aria-label")).not.toBe(secondBox.getAttribute("aria-label"));
   });
@@ -130,7 +130,7 @@ describe("CookSheet", () => {
   it("dichiarare finito un prodotto propone il riacquisto, già spuntato", async () => {
     renderSheet();
     const row = screen.getByText("Total 0%").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
 
     expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
   });
@@ -147,7 +147,7 @@ describe("CookSheet", () => {
 
     renderSheet();
     const row = screen.getByText("Total 0%").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Quasi finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Quasi finito" }));
 
     expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).not.toBeChecked();
 
@@ -156,6 +156,78 @@ describe("CookSheet", () => {
     expect(body.transitions).toEqual([
       { pantry_item_id: "p2", to_status: "low", restock: false },
     ]);
+  });
+
+  it("le tacche partono da com'è la confezione: niente toccato è invariato", async () => {
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const yogurt = screen.getByText("Total 0%").closest("li")!;
+    const pesca = screen.getByText("Pesca").closest("li")!;
+    expect(within(yogurt).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-checked", "true");
+    expect(within(pesca).getByRole("radio", { name: "Quasi finito" })).toHaveAttribute("aria-checked", "true");
+    // e nessuna domanda sul rientro finché non si tocca niente
+    expect(screen.queryByRole("checkbox")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
+  });
+
+  it("toccare di nuovo lo stato di partenza annulla la scelta", async () => {
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const row = screen.getByText("Total 0%").closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
+
+    await userEvent.click(within(row).getByRole("radio", { name: "Disponibile" }));
+    expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-checked", "true");
+    expect(within(row).queryByRole("checkbox")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
+  });
+
+  it("«Disponibile» si può scegliere: una confezione data per quasi finita che era ancora piena", async () => {
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 1, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Disponibile" }));
+    // tornare disponibile non fa rientrare niente in lista: la domanda non c'è
+    expect(within(row).queryByRole("checkbox")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([
+      { pantry_item_id: "p3", to_status: "available", restock: false },
+    ]);
+  });
+
+  it("mentre registra, tacche e pulsanti si spengono tenendo il fuoco", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    renderSheet();
+    const fatto = screen.getByRole("button", { name: "Ho cucinato" });
+    await userEvent.click(fatto);
+
+    expect(fatto).toHaveAttribute("aria-disabled", "true");
+    expect(fatto).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Annulla" })).toHaveAttribute("aria-disabled", "true");
+    const row = screen.getByText("Total 0%").closest("li")!;
+    const finito = within(row).getByRole("radio", { name: "Finito" });
+    expect(finito).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(finito);
+    expect(finito).toHaveAttribute("aria-checked", "false");
   });
 
   it("invia le transizioni scelte e passa l'esito del backend a onDone", async () => {
@@ -167,7 +239,7 @@ describe("CookSheet", () => {
 
     renderSheet(onDone);
     const row = screen.getByText("Total 0%").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
     const body = JSON.parse(spy.mock.calls[0][1].body);
@@ -221,7 +293,7 @@ describe("CookSheet", () => {
 
     const { show } = renderSheet();
     const row = screen.getByText("Pesca").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
 
     show(PANTRY.filter((item) => item.id !== "p3"));
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
@@ -240,8 +312,9 @@ describe("CookSheet", () => {
     ]);
 
     const row = screen.getByText("Penne rigate").closest("li")!;
-    expect(within(row).getByRole("button", { name: "Invariato" })).toHaveAttribute(
-      "aria-pressed",
+    // la confezione nuova parte da com'è, come le altre: «Disponibile»
+    expect(within(row).getByRole("radio", { name: "Disponibile" })).toHaveAttribute(
+      "aria-checked",
       "true"
     );
   });
@@ -266,18 +339,20 @@ describe("CookSheet", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("le tre scelte sono un gruppo con nome, con bersagli da pollice", async () => {
-    // Lo stesso standard da pollice delle tacche della dispensa (StockGauge), alte
-    // 44px (`size-11`): da telefono tre pulsanti da 26px sono tre bersagli
-    // mancabili, e per chi legge con lo screen reader tre "Finito" senza
-    // confezione non dicono nulla.
+  it("le tre tacche sono un gruppo con nome, con bersagli da pollice", async () => {
+    // Le tacche della dispensa (StockGauge, spec T3 §4.4), da 44px (`size-11`): lo stesso
+    // controllo per lo stesso giudizio. Il nome del gruppo porta prodotto e marca, come
+    // prima: per chi legge con lo screen reader tre «Finito» senza confezione non
+    // dicono nulla.
     renderSheet();
     const row = screen.getByText("Total 0%").closest("li")!;
-    const group = within(row).getByRole("group");
+    const group = within(row).getByRole("radiogroup");
     expect(group.getAttribute("aria-label")).toContain("Total 0%");
     expect(group.getAttribute("aria-label")).toContain("Fage");
-    for (const button of within(group).getAllByRole("button")) {
-      expect(button).toHaveClass("min-h-11");
+    const tacche = within(group).getAllByRole("radio");
+    expect(tacche).toHaveLength(3);
+    for (const tacca of tacche) {
+      expect(tacca).toHaveClass("size-11");
     }
   });
 
@@ -301,7 +376,7 @@ describe("CookSheet", () => {
 
     const { client: used } = renderSheet(vi.fn(), client);
     const row = screen.getByText("Total 0%").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
     await vi.waitFor(() => {
@@ -320,13 +395,13 @@ describe("CookSheet", () => {
 
     renderSheet();
     const row = screen.getByText("Total 0%").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     // la scelta fatta prima dell'invio non si è svuotata
-    expect(within(row).getByRole("button", { name: "Finito" })).toHaveAttribute(
-      "aria-pressed",
+    expect(within(row).getByRole("radio", { name: "Finito" })).toHaveAttribute(
+      "aria-checked",
       "true"
     );
   });
@@ -339,7 +414,7 @@ describe("CookSheet", () => {
 
     renderSheet();
     const row = screen.getByText("Total 0%").closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     await userEvent.click(within(row).getByRole("checkbox", { name: /Rimetti in lista/ }));
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 

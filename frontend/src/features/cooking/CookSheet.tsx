@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { cookRecipe } from "../recipes/api";
-import { STATUS_LABELS, STATUS_TONE } from "../pantry/statusLabels";
+import { STATUS_LABELS } from "../pantry/statusLabels";
 import { Alert } from "../../components/ui/Alert";
+import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { StockGauge } from "../../components/ui/StockGauge";
+import { IconCircleCheck } from "../../components/ui/icons";
 import type { CookResult, PantryItem, PantryStatus, RecipeDetail } from "../../domain/types";
 
 type Choice = { status: PantryStatus | "unchanged"; restock: boolean };
@@ -12,14 +14,6 @@ type Choice = { status: PantryStatus | "unchanged"; restock: boolean };
 // Una voce non toccata non è una transizione: è il valore di partenza di ogni riga
 // e la risposta alla domanda che il foglio non fa.
 const UNCHANGED: Choice = { status: "unchanged", restock: false };
-
-// Le stesse parole della dispensa, perché è lo stesso giudizio. "available" non è
-// fra le scelte: cucinare non fa ricomparire niente.
-const OPTIONS: [PantryStatus | "unchanged", string][] = [
-  ["unchanged", "Invariato"],
-  ["low", STATUS_LABELS.low],
-  ["finished", STATUS_LABELS.finished],
-];
 
 function addedOn(item: PantryItem): string {
   return new Date(item.added_at).toLocaleDateString("it-IT");
@@ -69,7 +63,7 @@ export function CookSheet({
 
   // niente istantanea al mount: le righe vengono da una prop viva (la query della
   // dispensa si aggiorna anche a foglio aperto) e una voce comparsa dopo non
-  // troverebbe la sua casella
+  // troverebbe la sua scelta
   const [choices, setChoices] = useState<Record<string, Choice>>({});
 
   const queryClient = useQueryClient();
@@ -84,7 +78,7 @@ export function CookSheet({
         // Scrivere 2 dopo aver cucinato per 6 sarebbe invisibile oggi e sbagliato
         // per sempre.
         servings: recipe.scaled_to ?? recipe.servings ?? undefined,
-        // si parte da ciò che è in elenco, non da ciò che è stato cliccato: una voce
+        // si parte da ciò che è in elenco, non da ciò che è stato toccato: una voce
         // sparita dalla dispensa mentre il foglio era aperto farebbe fallire tutta
         // la cottura per un id che l'utente non ha più davanti e non può togliere.
         // E invariato non è una transizione: non si manda.
@@ -117,11 +111,15 @@ export function CookSheet({
     },
   });
 
-  function choose(itemId: string, status: PantryStatus | "unchanged") {
+  // Le tacche partono da com'è la confezione (spec T3 §4.4, e decisione del 2026-09-29):
+  // toccare lo stato di partenza vuol dire «come prima», cioè invariato, e annulla una
+  // scelta fatta. «Disponibile» si può scegliere — una confezione data per quasi finita
+  // che si scopre piena — e il backend lo accetta. Finito propone il riacquisto già
+  // spuntato, quasi finito no (la regola di prima).
+  function choose(item: PantryItem, status: PantryStatus) {
     setChoices((current) => ({
       ...current,
-      // finito propone il riacquisto già spuntato, quasi finito no
-      [itemId]: { status, restock: status === "finished" },
+      [item.id]: status === item.status ? UNCHANGED : { status, restock: status === "finished" },
     }));
   }
 
@@ -150,49 +148,34 @@ export function CookSheet({
             const choice = choices[item.id] ?? UNCHANGED;
             const label = itemLabel(item);
             return (
-              <Card as="li" key={item.id} className="flex flex-col gap-2">
-                <div>
-                  {/* la marca che hai comprato è più utile del nome generico */}
-                  <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
-                  {item.product_brand && (
-                    <span className="ml-2 text-sm text-ink-faint">{item.product_brand}</span>
-                  )}
+              <Card as="li" key={item.id} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    {/* la marca che hai comprato è più utile del nome generico */}
+                    <p>
+                      <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
+                      {item.product_brand && (
+                        <span className="ml-2 text-sm text-ink-faint">{item.product_brand}</span>
+                      )}
+                    </p>
+                    {item.note && <p className="text-xs text-ink-soft">{item.note}</p>}
+                    {/* lo stato di partenza dice da dove partono le tacche, e la data
+                        separa il sacco di ieri da quello di stamattina */}
+                    <p className="text-xs text-ink-soft">
+                      {STATUS_LABELS[item.status]} · in dispensa dal {addedOn(item)}
+                    </p>
+                  </div>
+                  {/* le stesse tacche della dispensa: lo stesso giudizio ha un
+                      controllo solo (dal giro di T3). Il nome del gruppo porta tutto
+                      ciò che distingue la confezione */}
+                  <StockGauge
+                    status={choice.status === "unchanged" ? item.status : choice.status}
+                    onChange={(next) => choose(item, next)}
+                    itemName={label}
+                    disabled={cook.isPending}
+                  />
                 </div>
-                {item.note && <p className="text-xs text-ink-soft">{item.note}</p>}
-                {/* lo stato attuale dà un referente a "Invariato", e la data separa
-                    il sacco di ieri da quello di stamattina */}
-                <p className="text-xs text-ink-soft">
-                  {STATUS_LABELS[item.status]} · in dispensa dal {addedOn(item)}
-                </p>
-                {/* bersagli da pollice e un gruppo con nome, come in dispensa: da
-                    telefono tre pulsanti da 26px senza nome sono tre bersagli
-                    mancabili e, per chi legge con lo screen reader, tre "Finito"
-                    senza indicazione di quale confezione */}
-                <div className="flex gap-1.5" role="group" aria-label={label}>
-                  {OPTIONS.map(([status, optionLabel]) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => choose(item.id, status)}
-                      aria-pressed={choice.status === status}
-                      // i colori degli stati vengono dalla stessa mappa della
-                      // dispensa: è lo stesso giudizio, e due schermi che se lo
-                      // colorano da soli prima o poi si contraddicono. «Invariato»
-                      // non è uno stato, quindi quando è scelto resta contornato e
-                      // non pieno — il pieno vuol dire «qui hai dichiarato qualcosa»
-                      className={`min-h-11 flex-1 rounded-full px-3 py-2 text-xs font-medium transition-colors ${
-                        choice.status !== status
-                          ? "bg-page text-ink-soft ring-1 ring-line ring-inset"
-                          : status === "unchanged"
-                            ? "bg-card text-ink ring-2 ring-ink ring-inset"
-                            : STATUS_TONE[status].fill
-                      }`}
-                    >
-                      {optionLabel}
-                    </button>
-                  ))}
-                </div>
-                {choice.status !== "unchanged" && (
+                {(choice.status === "low" || choice.status === "finished") && (
                   <label className="flex min-h-11 items-center gap-2.5 text-sm text-ink-soft">
                     <input
                       type="checkbox"
@@ -220,25 +203,24 @@ export function CookSheet({
         </Alert>
       )}
 
+      {/* `busy` e non `disabled` mentre la cottura è in volo: chi ha premuto da
+          tastiera ritrova il fuoco dove l'aveva (regola del Piano 1) */}
       <div className="flex gap-2">
         {/* si entra qui anche per sbaglio: senza questa uscita l'unico modo di
             tornare alla ricetta è registrare una cottura che non è avvenuta */}
-        <button
-          type="button"
-          onClick={() => onDone()}
-          disabled={cook.isPending}
-          className={`${buttonClasses("secondary", "block")} flex-1`}
-        >
+        <Button shape="block" className="flex-1" busy={cook.isPending} onClick={() => onDone()}>
           Annulla
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="primary"
+          shape="block"
+          className="flex-[2]"
+          icon={IconCircleCheck}
+          busy={cook.isPending}
           onClick={() => cook.mutate()}
-          disabled={cook.isPending}
-          className={`${buttonClasses("primary", "block")} flex-[2]`}
         >
           Ho cucinato
-        </button>
+        </Button>
       </div>
     </div>
   );

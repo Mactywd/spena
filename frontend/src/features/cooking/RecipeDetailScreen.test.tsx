@@ -173,7 +173,7 @@ describe("RecipeDetailScreen", () => {
     renderScreen();
     await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
     const row = (await screen.findByText("Pelati")).closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
@@ -532,7 +532,7 @@ describe("il foglio e l'esito si fanno vedere (T4)", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
     const row = (await screen.findByText("Pelati")).closest("li")!;
-    await userEvent.click(within(row).getByRole("button", { name: "Finito" }));
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
     scroll.mockClear();
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
