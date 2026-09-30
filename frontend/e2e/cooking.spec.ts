@@ -69,7 +69,7 @@ test("il ciclo si chiude: lista, dispensa, cottura, ritorno in lista", async ({ 
   const row = page.locator("li", { hasText: "pomodoro" }).first();
   // `exact` non è decorativo: senza, «Finito» corrisponde anche a «Quasi finito»
   // (il nome accessibile si cerca come sottostringa) e il selettore è ambiguo
-  await row.getByRole("button", { name: "Finito", exact: true }).click();
+  await row.getByRole("radio", { name: "Finito", exact: true }).click();
   await expect(row.getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
   await page.getByRole("button", { name: "Ho cucinato", exact: true }).click();
   // il conto viene dal backend: è lui a sapere quante voci sono rientrate. La regione

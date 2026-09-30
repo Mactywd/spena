@@ -3,8 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * R10 nel browser vero (spec §8.6): una ricetta si modifica togliendo l'unico
  * ingrediente che manca, e diventa cucinabile; si elimina, si annulla, torna. Tutto
- * a 375×812, il telefono su cui il difetto si è visto: «Elimina» sta in fondo al
- * dettaglio, si arriva scorsi, e l'esito — dal T3 Consegna 4 l'avviso unico, non più
+ * a 375×812, il telefono su cui il difetto si è visto: si arriva al dettaglio scorsi
+ * in fondo, e l'esito — dal T3 Consegna 4 l'avviso unico, non più
  * la lapide in cima al ricettario (R10 §6.1) — deve farsi vedere, sopra la barra delle
  * schede. E il modulo di modifica a
  * 375 px non scorre di lato: `scrollWidth` lo calcola il browser dal CSS che
@@ -78,7 +78,7 @@ test("una ricetta si modifica e diventa cucinabile, si elimina e torna; a 375px 
     // manca l'anguria, e solo lei
     await page.goto(`/ricette/${ricettaId}`);
     await expect(page.getByRole("heading", { name: titolo })).toBeVisible();
-    await expect(page.getByText("manca", { exact: true })).toHaveCount(1);
+    await expect(page.getByRole("img", { name: "manca", exact: true })).toHaveCount(1);
 
     // la modifica: via l'anguria, e la ricetta diventa cucinabile
     await page.getByRole("link", { name: "Modifica" }).click();
@@ -88,7 +88,7 @@ test("una ricetta si modifica e diventa cucinabile, si elimina e torna; a 375px 
 
     await expect(page).toHaveURL(new RegExp(`/ricette/${ricettaId}$`));
     await expect(page.getByRole("status").filter({ hasText: "Salvata." })).toBeVisible();
-    await expect(page.getByText("manca", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("img", { name: "manca", exact: true })).toHaveCount(0);
     const dettaglio = (await (await page.request.get(`/api/v1/recipes/${ricettaId}`)).json()) as {
       cookable: boolean;
     };
@@ -104,15 +104,16 @@ test("una ricetta si modifica e diventa cucinabile, si elimina e torna; a 375px 
     await page.getByRole("link", { name: new RegExp(titolo) }).click();
     await expect(page.getByRole("heading", { name: titolo })).toBeVisible();
 
-    // eliminare, annullare, tornare — «Elimina» è in fondo al dettaglio, quindi ci si
-    // arriva scorsi. La lapide del ricettario nasceva lì sotto l'intestazione fissa
-    // (misurato: la sua `getBoundingClientRect().top` a circa −7); l'avviso unico che
-    // l'ha sostituita (T3 Consegna 4) è fisso in basso, e deve stare sopra la barra
-    // delle schede, a video, da dovunque si arrivi.
-    const eliminaBtn = page.getByRole("button", { name: "Elimina" });
-    await eliminaBtn.scrollIntoViewIfNeeded();
-    const scrollYPrimaDiEliminare = await page.evaluate<number>("window.scrollY");
-    expect(scrollYPrimaDiEliminare, "il dettaglio non è scorso: il caso non si può misurare").toBeGreaterThan(0);
+    // eliminare, annullare, tornare — la lapide del ricettario nasceva sotto l'intestazione
+    // fissa (misurato: la sua `getBoundingClientRect().top` a circa −7); l'avviso unico che
+    // l'ha sostituita (T3 Consegna 4) è fisso in basso, e deve stare sopra la barra delle
+    // schede, a video, da dovunque si arrivi.
+    // «Elimina» sta in alto, accanto al titolo (T3 Consegna 5): si scorre comunque in
+    // fondo al dettaglio, perché è lì che si è dopo aver letto la ricetta, e l'avviso
+    // dell'eliminazione deve farsi vedere lo stesso
+    await page.mouse.wheel(0, 4000);
+    await expect.poll(() => page.evaluate<number>("window.scrollY")).toBeGreaterThan(0);
+    const eliminaBtn = page.getByRole("button", { name: "Elimina", exact: true });
 
     await eliminaBtn.click();
     await expect(page).toHaveURL(/\/ricette$/);

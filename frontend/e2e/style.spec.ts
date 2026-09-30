@@ -356,38 +356,57 @@ test("i € del costo si distinguono accesi e spenti, e arrivano sulla scheda", 
   page,
 }) => {
   // R9: `€€€··` si legge «tre su cinque» solo se il nero e il grigio chiaro sono
-  // davvero due colori diversi a video, e quello lo dice Tailwind, non jsdom. Il
-  // costo scelto qui si toglie prima di finire: il file non lascia niente dietro.
+  // davvero due colori diversi a video, e quello lo dice Tailwind, non jsdom. Da T3
+  // Consegna 5 il dettaglio il costo lo mostra e basta (si cambia da «Modifica»): qui
+  // lo si scrive con l'API, e lo si toglie prima di finire — il file non lascia niente
+  // dietro. Il selettore del modulo di modifica si misura senza salvare.
   await page.getByRole("link", { name: "Ricette", exact: true }).click();
   await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
 
   // per indirizzo e non per titolo: le altre prove e2e ne salvano una seconda con
   // lo stesso nome, e `.first()` sceglierebbe ricette diverse qui e nell'elenco
   const indirizzo = new URL(page.url()).pathname;
+  const ricettaId = indirizzo.split("/").pop()!;
+  try {
+    const scritto = await page.request.patch(`/api/v1/recipes/${ricettaId}`, { data: { cost: 3 } });
+    expect(scritto.ok()).toBe(true);
+    await page.reload();
 
-  const tre = page.getByRole("button", { name: "Costo 3 su 5" });
-  const quattro = page.getByRole("button", { name: "Costo 4 su 5" });
-  await tre.click();
-  await expect(tre).toHaveAttribute("aria-pressed", "true");
-  // --color-ink #16281f acceso, --color-ink-ghost #b3bcb5 spento
-  await expect(tre).toHaveCSS("color", "rgb(22, 40, 31)");
-  await expect(quattro).toHaveCSS("color", "rgb(179, 188, 181)");
-  const box = await tre.boundingBox();
-  expect(box!.height).toBeGreaterThanOrEqual(40);
-  expect(box!.width).toBeGreaterThanOrEqual(40);
+    // nel dettaglio: un segno da leggere, non un controllo
+    const segno = page.getByRole("main").getByRole("img", { name: "Costo 3 su 5" });
+    await expect(segno).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Costo \d su 5$/ })).toHaveCount(0);
+    // --color-ink #16281f acceso, --color-ink-ghost #b3bcb5 spento
+    await expect(segno.locator("[data-cost-step='3']")).toHaveCSS("color", "rgb(22, 40, 31)");
+    await expect(segno.locator("[data-cost-step='4']")).toHaveCSS("color", "rgb(179, 188, 181)");
 
-  // dal dettaglio «Ricette» è due link, il tasto indietro e la scheda in basso: la
-  // barra delle schede li distingue
-  await page.getByRole("navigation").getByRole("link", { name: "Ricette", exact: true }).click();
-  const scheda = page.locator(`a[href="${indirizzo}"]`);
-  const segno = scheda.getByRole("img", { name: "Costo 3 su 5" });
-  await expect(segno).toBeVisible();
-  await expect(segno.locator("[data-cost-step='3']")).toHaveCSS("color", "rgb(22, 40, 31)");
-  await expect(segno.locator("[data-cost-step='4']")).toHaveCSS("color", "rgb(179, 188, 181)");
+    // nel modulo di modifica il selettore c'è ancora: acceso, spento, e da pollice
+    await page.goto(`${indirizzo}/modifica`);
+    const tre = page.getByRole("button", { name: "Costo 3 su 5" });
+    const quattro = page.getByRole("button", { name: "Costo 4 su 5" });
+    await expect(tre).toHaveAttribute("aria-pressed", "true");
+    await expect(tre).toHaveCSS("color", "rgb(22, 40, 31)");
+    await expect(quattro).toHaveCSS("color", "rgb(179, 188, 181)");
+    const box = await tre.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(40);
+    expect(box!.width).toBeGreaterThanOrEqual(40);
 
-  await scheda.click();
-  await page.getByRole("button", { name: "Costo 3 su 5" }).click();
-  await expect(page.getByText("non indicato")).toBeVisible();
+    // e sulla scheda del ricettario
+    await page.getByRole("navigation").getByRole("link", { name: "Ricette", exact: true }).click();
+    const scheda = page.locator(`a[href="${indirizzo}"]`);
+    const sullaScheda = scheda.getByRole("img", { name: "Costo 3 su 5" });
+    await expect(sullaScheda).toBeVisible();
+    await expect(sullaScheda.locator("[data-cost-step='3']")).toHaveCSS("color", "rgb(22, 40, 31)");
+    await expect(sullaScheda.locator("[data-cost-step='4']")).toHaveCSS("color", "rgb(179, 188, 181)");
+  } finally {
+    // `expect.soft`: un `finally` che lancia nasconderebbe l'errore vero del `try`
+    try {
+      const tolto = await page.request.patch(`/api/v1/recipes/${ricettaId}`, { data: { cost: null } });
+      expect.soft(tolto.ok(), `pulizia: il costo della ricetta ${ricettaId} è rimasto`).toBe(true);
+    } catch (guasto) {
+      expect.soft(false, `pulizia: non sono riuscito a togliere il costo (${guasto})`).toBe(true);
+    }
+  }
 });
 
 test("il gradino scelto della scala si distingue, e si legge", async ({ page }) => {
@@ -850,8 +869,8 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
   const ricetta = new URL(page.url()).pathname;
   await page.getByRole("button", { name: "Cucina", exact: true }).click();
   await page
-    .getByRole("group", { name: /mascarpone/i })
-    .getByRole("button", { name: "Finito", exact: true })
+    .getByRole("radiogroup", { name: /mascarpone/i })
+    .getByRole("radio", { name: "Finito", exact: true })
     .click();
   await expect(page.getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
   await page.getByRole("button", { name: "Ho cucinato", exact: true }).click();
@@ -963,8 +982,8 @@ async function fermo(page: Page) {
  * di un id, raggiunte toccando come fa chi usa l'app: il dettaglio della prima ricetta,
  * il foglio della cottura aperto, la modifica della ricetta, la scheda di un ingrediente
  * e quella di un prodotto dall'anagrafica. Il seme non ha prodotti e non popola la
- * dispensa, e senza una confezione il foglio della cottura non mostra i tre stati (né il
- * rosso pieno di «Finito», `STATUS_TONE.finished.fill`), né l'ingrediente elenca un
+ * dispensa, e senza una confezione il foglio della cottura non mostra le sue tacche (né
+ * quella rossa di «Finito»), né l'ingrediente elenca un
  * prodotto da aprire: così prodotto e confezione si creano con `page.request`, sotto il
  * primo ingrediente della ricetta, e si tolgono nel `finally`. Nella cottura si sceglie
  * «Finito» e poi «Annulla»: niente si registra. Per ultimi il ☰ aperto e l'accesso, che
@@ -1056,9 +1075,9 @@ async function perOgniLuogo(page: Page, misura: (luogo: string) => Promise<void>
     await misuraFermo("dettaglio");
 
     await page.getByRole("button", { name: "Cucina", exact: true }).click();
-    const finito = page.getByRole("button", { name: "Finito", exact: true }).first();
+    const finito = page.getByRole("radio", { name: "Finito", exact: true }).first();
     await finito.click();
-    await expect(finito).toHaveAttribute("aria-pressed", "true");
+    await expect(finito).toHaveAttribute("aria-checked", "true");
     await misuraFermo("cottura, con «Finito» scelto");
     await page.getByRole("button", { name: "Annulla", exact: true }).click();
 
@@ -2063,4 +2082,389 @@ test.describe("il ricettario a 375px (T3 Consegna 4)", () => {
       pulisciRicettario();
     }
   });
+});
+
+// T3 Consegna 5, il dettaglio della ricetta. Una ricetta di prova con una riga per ogni
+// caso che il dettaglio distingue, e la dispensa che serve a farli nascere:
+// - carciofo, principale, manca;
+// - farro, principale, manca, ed è già da comprare (una voce in lista creata qui);
+// - porro, principale, quasi finito in dispensa: non basta;
+// - radicchio, principale, disponibile;
+// - sgombro, secondario, manca;
+// - scamorza, secondario, quasi finito: basta.
+// Nessun altro file nomina questi sei ingredienti. `pulisci` archivia le voci di lista di
+// questi ingredienti (anche quelle nate nella prova), le confezioni e la ricetta, con
+// `expect.soft` come le altre pulizie del file.
+const DI_PROVA = {
+  carciofo: { ruolo: "primary", dispensa: null, dose: "2" },
+  farro: { ruolo: "primary", dispensa: null, dose: "160 g" },
+  porro: { ruolo: "primary", dispensa: "low", dose: "1" },
+  radicchio: { ruolo: "primary", dispensa: "available", dose: "1 cespo" },
+  sgombro: { ruolo: "secondary", dispensa: null, dose: "1 filetto" },
+  scamorza: { ruolo: "secondary", dispensa: "low", dose: "50 g" },
+} as const;
+type IngredienteDiProva = keyof typeof DI_PROVA;
+const NOMI_DI_PROVA = Object.keys(DI_PROVA) as IngredienteDiProva[];
+
+async function ricettaDiProva(page: Page) {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: senza un'attesa qui la
+  // prima `page.request` può partire prima del cookie di sessione, e tornare 401
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  const ids = {} as Record<IngredienteDiProva, string>;
+  for (const nome of NOMI_DI_PROVA) {
+    const trovati = (await (
+      await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)
+    ).json()) as { id: string; name: string }[];
+    const voce = trovati.find((trovato) => trovato.name === nome);
+    expect(voce, `«${nome}» non è nel seme`).toBeDefined();
+    ids[nome] = voce!.id;
+  }
+  const nostri = new Set<string>(Object.values(ids));
+
+  // su uno stack già usato una voce rimasta cambierebbe i conti dell'avviso: detto qui,
+  // si capisce
+  const inLista = (await (
+    await page.request.get("/api/v1/shopping-list?status=pending&status=checked")
+  ).json()) as { ingredient_id: string | null }[];
+  expect(
+    inLista.filter((voce) => voce.ingredient_id !== null && nostri.has(voce.ingredient_id)),
+    "lo stack e2e non è pulito: ricrealo con `down -v` e riesegui"
+  ).toEqual([]);
+  const inDispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
+    ingredient_id: string;
+  }[];
+  expect(
+    inDispensa.filter((voce) => nostri.has(voce.ingredient_id)),
+    "lo stack e2e non è pulito: ricrealo con `down -v` e riesegui"
+  ).toEqual([]);
+
+  const titolo = `Dettaglio e2e ${Date.now()}`;
+  const creata = await page.request.post("/api/v1/recipes", {
+    data: {
+      title: titolo,
+      instructions: "1. Pulisci le verdure.\n2. Cuoci il farro.\n3. Unisci tutto.",
+      servings: 2,
+      source: "manual",
+      // niente `category`: `_check_category` (backend/app/api/recipes.py) accetta solo una
+      // categoria che il ricettario ha già, e questo seme non ne semina nessuna — nessuna
+      // delle cinque prove sotto guarda la categoria, quindi ometterla non ne toglie nulla
+      cost: 3,
+      ingredients: NOMI_DI_PROVA.map((nome) => ({
+        ingredient_id: ids[nome],
+        role: DI_PROVA[nome].ruolo,
+        quantity_text: DI_PROVA[nome].dose,
+      })),
+    },
+  });
+  expect(creata.ok()).toBe(true);
+  const id = ((await creata.json()) as { id: string }).id;
+  const confezioni: string[] = [];
+
+  const pulisci = async () => {
+    try {
+      // prima le voci di lista di questi ingredienti, comprese quelle nate nella prova
+      const voci = (await (
+        await page.request.get("/api/v1/shopping-list?status=pending&status=checked")
+      ).json()) as { id: string; ingredient_id: string | null }[];
+      for (const voce of voci.filter((v) => v.ingredient_id !== null && nostri.has(v.ingredient_id))) {
+        const risposta = await page.request.patch(`/api/v1/shopping-list/${voce.id}`, {
+          data: { status: "archived" },
+        });
+        expect.soft(risposta.ok(), `pulizia: la voce ${voce.id} non si è archiviata`).toBe(true);
+      }
+      for (const confezione of confezioni) {
+        const risposta = await page.request.patch(`/api/v1/pantry/${confezione}`, {
+          data: { archived: true },
+        });
+        expect.soft(risposta.ok(), `pulizia: la confezione ${confezione} non si è archiviata`).toBe(true);
+      }
+      const risposta = await page.request.patch(`/api/v1/recipes/${id}`, { data: { archived: true } });
+      expect.soft(risposta.ok(), `pulizia: la ricetta ${id} non si è eliminata`).toBe(true);
+    } catch (guasto) {
+      expect.soft(false, `pulizia del dettaglio: ${guasto}`).toBe(true);
+    }
+  };
+
+  try {
+    for (const nome of NOMI_DI_PROVA) {
+      const stato = DI_PROVA[nome].dispensa;
+      if (stato === null) continue;
+      const risposta = await page.request.post("/api/v1/pantry", {
+        data: { ingredient_id: ids[nome], status: stato },
+      });
+      expect(risposta.ok()).toBe(true);
+      confezioni.push(((await risposta.json()) as { id: string }).id);
+    }
+    const farro = await page.request.post("/api/v1/shopping-list", {
+      data: { raw_text: "farro", ingredient_id: ids.farro },
+    });
+    expect(farro.status(), "il farro era già in lista").toBe(201);
+  } catch (guasto) {
+    await pulisci();
+    throw guasto;
+  }
+  return { id, titolo, ids, pulisci };
+}
+
+async function senzaScorrimentoLaterale(page: Page, luogo: string) {
+  // stringhe e non funzioni: questo file non ha la libreria DOM
+  await page.waitForLoadState("networkidle");
+  const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+  const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+  expect(scrollWidth, `${luogo} scorre di lato`).toBeLessThanOrEqual(clientWidth);
+}
+
+test("il dettaglio a 375px: il tasto indietro sta sopra la foto, col suo fondo, e si legge nei due temi", async ({
+  page,
+}) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    // Il seme non ha foto né provenienze: le aggiunge la risposta, deviata qui. Una foto
+    // nera: il fondo peggiore per il testo scuro del tasto in chiaro — ma il tasto ha un
+    // fondo suo, ed è quel che si misura
+    const foto = `data:image/svg+xml,${encodeURIComponent(
+      "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='400'><rect width='600' height='400' fill='#000'/></svg>"
+    )}`;
+    await page.route(new RegExp(`/api/v1/recipes/${ricetta.id}(\\?.*)?$`), async (route) => {
+      const risposta = await route.fetch();
+      const corpo = (await risposta.json()) as Record<string, unknown>;
+      await route.fulfill({
+        response: risposta,
+        json: { ...corpo, image_url: foto, source_ref: "https://esempio.invalid/ricetta" },
+      });
+    });
+    await page.goto(`/ricette/${ricetta.id}`);
+    const immagine = page.getByRole("img", { name: ricetta.titolo, exact: true });
+    await expect(immagine).toBeVisible();
+    const indietro = page.getByRole("main").getByRole("link", { name: "Ricette", exact: true });
+
+    // 1. il tasto sta sopra la foto: dentro il suo riquadro, e il punto al suo centro è suo
+    const sFoto = (await immagine.boundingBox())!;
+    const sTasto = (await indietro.boundingBox())!;
+    expect(sTasto.x).toBeGreaterThanOrEqual(sFoto.x);
+    expect(sTasto.y).toBeGreaterThanOrEqual(sFoto.y);
+    expect(sTasto.x + sTasto.width).toBeLessThanOrEqual(sFoto.x + sFoto.width);
+    expect(sTasto.y + sTasto.height).toBeLessThanOrEqual(sFoto.y + sFoto.height);
+    expect(sTasto.height).toBeGreaterThanOrEqual(44);
+    const scoperto = await indietro.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const sopra = el.ownerDocument.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!sopra && el.contains(sopra);
+    });
+    expect(scoperto, "la foto copre il tasto indietro").toBe(true);
+
+    // 2. nei due temi il tasto ha il fondo pieno della scheda, e «Ricette» ci si legge
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      await expect(indietro).toHaveCSS(
+        "background-color",
+        tema === "light" ? tokenDelTema("card") : tokenDelTemaScuro("card")
+      );
+      const misura = await contrastoAVideo(indietro);
+      expect(misura.opacita).toBe(1);
+      expect(misura.rapporto, `«Ricette» sopra la foto, tema ${tema}`).toBeGreaterThanOrEqual(4.5);
+      expect(await testiIlleggibili(page), `dettaglio con la foto, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // 3. bersagli da pollice: le icone accanto al titolo, «Apri l'originale», le porzioni
+    const azioni = page.getByRole("toolbar", { name: "Azioni della ricetta" });
+    for (const [nome, bersaglio] of [
+      ["Modifica", azioni.getByRole("link", { name: "Modifica", exact: true })],
+      ["Elimina", azioni.getByRole("button", { name: "Elimina", exact: true })],
+    ] as const) {
+      const scatola = (await bersaglio.boundingBox())!;
+      expect(scatola.width, nome).toBeGreaterThanOrEqual(44);
+      expect(scatola.height, nome).toBeGreaterThanOrEqual(44);
+    }
+    for (const [nome, bersaglio] of [
+      ["Apri l'originale", page.getByRole("link", { name: "Apri l'originale" })],
+      ["Una porzione in meno", page.getByRole("button", { name: "Una porzione in meno" })],
+      ["Una porzione in più", page.getByRole("button", { name: "Una porzione in più" })],
+    ] as const) {
+      expect((await bersaglio.boundingBox())!.height, nome).toBeGreaterThanOrEqual(44);
+    }
+    // il costo si legge, non si tocca
+    await expect(page.getByRole("main").getByRole("img", { name: "Costo 3 su 5" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Costo \d su 5$/ })).toHaveCount(0);
+
+    await senzaScorrimentoLaterale(page, "il dettaglio con la foto");
+  } finally {
+    await ricetta.pulisci();
+  }
+});
+
+test("il dettaglio senza foto: il tasto indietro sta al suo posto, sopra il titolo", async ({ page }) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${ricetta.id}`);
+    const titolo = page.getByRole("heading", { level: 1, name: ricetta.titolo });
+    await expect(titolo).toBeVisible();
+    await expect(page.getByRole("img", { name: ricetta.titolo, exact: true })).toHaveCount(0);
+
+    const indietro = page.getByRole("main").getByRole("link", { name: "Ricette", exact: true });
+    const sTasto = (await indietro.boundingBox())!;
+    const sTitolo = (await titolo.boundingBox())!;
+    expect(sTasto.height).toBeGreaterThanOrEqual(44);
+    expect(sTasto.y + sTasto.height, "il tasto indietro finisce sopra il titolo").toBeLessThanOrEqual(sTitolo.y);
+    // e lo spazio della foto non resta: il titolo sta in alto, sotto il tasto
+    expect(sTitolo.y, "senza foto resta un buco sopra il titolo").toBeLessThan(200);
+    await senzaScorrimentoLaterale(page, "il dettaglio senza foto");
+  } finally {
+    await ricetta.pulisci();
+  }
+});
+
+test("«Metti in lista ciò che manca» manda le righe che non bastano, e l'avviso lo conta", async ({
+  page,
+}) => {
+  const ricetta = await ricettaDiProva(page);
+  const mandati: string[] = [];
+  let guastoFatto = false;
+  // la prima volta lo sgombro non arriva: l'avviso deve offrire «Riprova», e «Riprova»
+  // rimandare lui solo. `page.request` (la preparazione e la pulizia) non passa di qui
+  await page.route("**/api/v1/shopping-list", async (route) => {
+    const richiesta = route.request();
+    if (richiesta.method() !== "POST") return route.fallback();
+    const { ingredient_id } = richiesta.postDataJSON() as { ingredient_id: string };
+    mandati.push(ingredient_id);
+    if (ingredient_id === ricetta.ids.sgombro && !guastoFatto) {
+      guastoFatto = true;
+      return route.fulfill({ status: 500, json: { detail: "guasto di prova" } });
+    }
+    return route.fallback();
+  });
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${ricetta.id}`);
+    const metti = page.getByRole("button", { name: "Metti in lista ciò che manca", exact: true });
+    await expect(metti).toBeVisible();
+    expect((await metti.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+    // carciofo e porro entrano, il farro c'era già, lo sgombro non arriva; radicchio e
+    // scamorza bastano e non partono
+    await metti.click();
+    const avviso = page.getByRole("status").filter({ hasText: "in lista" });
+    await expect(avviso).toContainText("2 in lista · 1 c'era già · 1 non è andata");
+    expect([...mandati].sort()).toEqual(
+      [ricetta.ids.carciofo, ricetta.ids.farro, ricetta.ids.porro, ricetta.ids.sgombro].sort()
+    );
+
+    await avviso.getByRole("button", { name: "Riprova" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "in lista" })).toHaveText("1 in lista");
+    expect(mandati.slice(4)).toEqual([ricetta.ids.sgombro]);
+
+    // in lista una voce per ciascuna riga che mancava, nessun doppione
+    const voci = (await (
+      await page.request.get("/api/v1/shopping-list?status=pending&status=checked")
+    ).json()) as { ingredient_id: string | null }[];
+    for (const nome of ["carciofo", "farro", "porro", "sgombro"] as const) {
+      expect(voci.filter((voce) => voce.ingredient_id === ricetta.ids[nome]), nome).toHaveLength(1);
+    }
+    for (const nome of ["radicchio", "scamorza"] as const) {
+      expect(voci.filter((voce) => voce.ingredient_id === ricetta.ids[nome]), nome).toHaveLength(0);
+    }
+
+    // di nuovo: c'è già tutto
+    await metti.click();
+    await expect(page.getByRole("status").filter({ hasText: "in lista" })).toHaveText(
+      "Era già tutto in lista."
+    );
+  } finally {
+    await page.unroute("**/api/v1/shopping-list");
+    await ricetta.pulisci();
+  }
+});
+
+test("i pallini degli ingredienti si distinguono dal fondo, e «non basta» si legge, nei due temi", async ({
+  page,
+}) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${ricetta.id}`);
+    const riga = (nome: string) => page.locator("li").filter({ hasText: nome });
+
+    await expect(riga("carciofo").getByRole("img", { name: "manca", exact: true })).toBeVisible();
+    await expect(riga("porro").getByRole("img", { name: "quasi finito", exact: true })).toBeVisible();
+    await expect(riga("porro").getByText("non basta", { exact: true })).toBeVisible();
+    await expect(riga("scamorza").getByRole("img", { name: "quasi finito", exact: true })).toBeVisible();
+    await expect(riga("scamorza").getByText("non basta", { exact: true })).toHaveCount(0);
+    await expect(riga("radicchio").getByRole("img", { name: "disponibile", exact: true })).toBeVisible();
+
+    // un pallino è un segno, non un testo: WCAG 1.4.11, 3:1 contro il fondo della scheda
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      for (const [nome, parola] of [
+        ["carciofo", "manca"],
+        ["porro", "quasi finito"],
+        ["radicchio", "disponibile"],
+      ] as const) {
+        const misura = await contrastoSegno(riga(nome).getByRole("img", { name: parola, exact: true }));
+        expect(
+          misura.rapporto,
+          `il pallino «${parola}», tema ${tema}: ${misura.colore} su ${misura.fondo}`
+        ).toBeGreaterThanOrEqual(3);
+      }
+      expect(await testiIlleggibili(page), `dettaglio, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    await ricetta.pulisci();
+  }
+});
+
+test("il foglio della cottura a 375px: le tacche partono da com'è la confezione, e dopo «Ho cucinato» il fuoco torna su «Cucina»", async ({
+  page,
+}) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${ricetta.id}`);
+    const cucina = page.getByRole("button", { name: "Cucina", exact: true });
+    await expect(cucina).toBeVisible();
+    expect((await cucina.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await cucina.click();
+
+    const porro = page.getByRole("radiogroup", { name: /porro/ });
+    const radicchio = page.getByRole("radiogroup", { name: /radicchio/ });
+    await expect(porro.getByRole("radio", { name: "Quasi finito", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    await expect(radicchio.getByRole("radio", { name: "Disponibile", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    for (const tacca of await radicchio.getByRole("radio").all()) {
+      const scatola = (await tacca.boundingBox())!;
+      expect(scatola.width).toBeGreaterThanOrEqual(44);
+      expect(scatola.height).toBeGreaterThanOrEqual(44);
+    }
+    await senzaScorrimentoLaterale(page, "il foglio della cottura");
+
+    // radicchio finito: il rientro in lista si propone già spuntato
+    await radicchio.getByRole("radio", { name: "Finito", exact: true }).click();
+    await expect(page.getByRole("checkbox", { name: /Rimetti in lista radicchio/ })).toBeChecked();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `foglio della cottura, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    await page.getByRole("button", { name: "Ho cucinato", exact: true }).click();
+    // per il testo: l'avviso unico tiene sempre la sua regione
+    await expect(page.getByRole("status").filter({ hasText: /^Segnato\./ })).toHaveText(
+      "Segnato. Una cosa è tornata in lista della spesa."
+    );
+    await expect(cucina).toBeFocused();
+    await expect(cucina).toBeInViewport();
+  } finally {
+    await ricetta.pulisci();
+  }
 });
