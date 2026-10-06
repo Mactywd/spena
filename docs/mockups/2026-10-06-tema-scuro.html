@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tema scuro: pulsante spento e velo del ☰</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Mockup statico della bozza docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md.
+   Le due colonne hanno i valori veri dei token di frontend/src/index.css (2026-10-06),
+   forzati: la sinistra in chiaro, la destra in scuro, qualunque sia il tema del sistema.
+   I rapporti scritti sotto ogni variante vengono dallo script della bozza (luminanza
+   WCAG 2.x, composizione alfa in sRGB); qui la composizione la fa il browser, con
+   `opacity` e con un velo `rgba`, come nell'app. */
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px 16px 48px;
+  background: #d9dcda; color: #16281f;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+h1 { font-size: 20px; margin: 0 0 4px; }
+.intro { max-width: 790px; margin: 0 auto 20px; font-size: 14px; line-height: 1.5; }
+.intro p { margin: 6px 0; }
+code { font-family: ui-monospace, Menlo, monospace; font-size: 0.92em; }
+
+.cols { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+.col { width: 375px; max-width: 100%; background: var(--page); color: var(--ink); border-radius: 18px; padding: 16px; }
+.col > h2 { font-size: 15px; margin: 0 0 12px; color: var(--ink-soft); font-weight: 600; }
+h3 { font-size: 13px; margin: 22px 0 6px; color: var(--ink); font-weight: 600; letter-spacing: .01em; }
+h3:first-of-type { margin-top: 4px; }
+.note { font-size: 12px; color: var(--ink-faint); margin: 0 0 8px; line-height: 1.4; }
+.measure { font-size: 11.5px; color: var(--ink-soft); margin: 6px 0 0; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.measure b { color: var(--ink); font-weight: 600; }
+.measure b.ko, .ko { color: var(--danger); font-weight: 600; }
+.measure b.ok, .ok { color: var(--brand); font-weight: 600; }
+
+.theme-light {
+  --page:#f1f4f2; --card:#ffffff; --ink:#16281f; --ink-soft:#4e5a52; --ink-faint:#636e66;
+  --line:#dce1dc; --notch-off:#848e87; --scrim-rgb: 11,15,13;
+  --brand:#0f7a4a; --on-brand:#ffffff; --danger:#b3261e;
+  /* proposti */
+  --disabled:#d8dfdb; --on-disabled:#4e5a52; --raised:#ffffff; --panel-edge:#ffffff;
+}
+.theme-dark {
+  --page:#0e1210; --card:#181e1a; --ink:#e7ece9; --ink-soft:#b4beb8; --ink-faint:#939e98;
+  --line:#2c342f; --notch-off:#69736d; --scrim-rgb: 0,0,0;
+  --brand:#3cb878; --on-brand:#06170e; --danger:#ff8a80;
+  /* proposti */
+  --disabled:#2a332d; --on-disabled:#b4beb8; --raised:#232b26; --panel-edge:#5a645e;
+}
+
+/* --- i pulsanti, come buttonClasses.ts: block, min-h 44, rounded-card 14px --- */
+.surface { padding: 10px; border-radius: 14px; }
+.surface.on-card { background: var(--card); }
+.surface + .surface { margin-top: 8px; }
+.where { font-size: 11px; color: var(--ink-faint); margin: 0 0 6px; }
+.btn {
+  display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: center;
+  border-radius: 14px; padding: 12px 16px; font: 500 16px/1.2 Inter, system-ui, sans-serif; border: 0;
+}
+.btn.pill { width: auto; display: inline-flex; border-radius: 999px; font-size: 14px; padding: 0 16px; }
+.primary { background: var(--brand); color: var(--on-brand); }
+.secondary { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.off-today { opacity: .4; }
+.off-a { background: var(--disabled); color: var(--on-disabled); }
+.off-b { background: transparent; color: var(--ink-faint); box-shadow: inset 0 0 0 1px var(--notch-off); }
+.reason { font-size: 12px; color: var(--ink-faint); padding-top: 4px; margin: 0; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* --- il ☰ sopra una pagina finta --- */
+.frame { position: relative; height: 300px; overflow: hidden; background: var(--page); border-radius: 14px;
+  outline: 1px solid rgba(127,127,127,.25); }
+.f-head { height: 48px; background: var(--card); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.f-brand { color: var(--brand); font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.f-mark { width: 22px; height: 22px; border-radius: 7px; background: var(--brand); }
+.f-burger { width: 22px; height: 14px; border-top: 2px solid var(--ink-soft); border-bottom: 2px solid var(--ink-soft); position: relative; }
+.f-burger::after { content: ""; position: absolute; left: 0; right: 0; top: 4px; border-top: 2px solid var(--ink-soft); }
+.f-body { padding: 12px 16px; }
+.f-title { font-size: 20px; font-weight: 600; margin: 0 0 10px; }
+.f-sec { background: var(--card); border-radius: 16px; padding: 10px 12px; margin-bottom: 10px; }
+.f-sec-h { display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.f-sec-h span { color: var(--ink-soft); font-weight: 500; }
+.f-item { font-size: 15px; padding: 6px 0; display: flex; justify-content: space-between; }
+.f-item i { font-style: normal; font-size: 12px; color: var(--ink-faint); }
+.veil { position: absolute; inset: 0; background: rgba(var(--scrim-rgb), var(--a, .4)); }
+.panel { position: absolute; top: 0; bottom: 0; right: 0; width: 288px; max-width: 85%;
+  background: var(--panel-bg, var(--card)); padding: 4px 16px 16px; border-left: var(--edge, 0) solid var(--panel-edge); }
+.p-head { min-height: 44px; display: flex; align-items: center; justify-content: space-between; font-weight: 600; }
+.p-x { color: var(--ink-soft); font-size: 18px; padding-right: 4px; }
+.p-nav a { display: flex; min-height: 48px; align-items: center; color: var(--ink); text-decoration: none; font-size: 16px; font-weight: 500;
+  border-top: 1px solid var(--line); }
+.p-nav a:first-child { border-top: 0; }
+
+/* le varianti del ☰: l'alfa del velo, il fondo e il bordo del pannello, per tema */
+.theme-light .v1, .theme-light .rec { --a: .45; }
+.theme-dark  .v1 { --a: .6; }
+.theme-dark  .rec { --a: .6; --edge: 1px; }
+.theme-dark  .v2 { --edge: 1px; }
+.theme-dark  .v3 { --panel-bg: var(--raised); }
+
+@media (max-width: 420px) { body { padding: 16px 0 32px; } .intro { padding: 0 16px; } .col { border-radius: 0; } }
+</style>
+</head>
+<body>
+
+<div class="intro">
+  <h1>Tema scuro: il pulsante primario spento e il velo del ☰</h1>
+  <p>Mockup della bozza <code>docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md</code> (voce del backlog «[T3 Consegna 1]»). Due colonne da 375&nbsp;px con i token veri di <code>frontend/src/index.css</code>: a sinistra il chiaro, a destra lo scuro, forzati. I token nuovi delle opzioni (<code>disabled</code>, <code>on-disabled</code>, <code>raised</code>, <code>panel-edge</code>) sono proposte.</p>
+  <p>Ogni rapporto è WCAG 2.x, calcolato sui colori composti (l'<code>opacity</code> del pulsante sopra il suo sfondo, il velo sopra la pagina). Soglie del progetto: testo 4,5:1, segni e bordi 3:1. In rosso quel che sta sotto.</p>
+</div>
+
+<div class="cols">
+<!-- ======================================================================= CHIARO -->
+<section class="col theme-light">
+  <h2>Chiaro</h2>
+
+  <h3>Primario acceso</h3>
+  <div class="surface"><button class="btn primary">Entra</button></div>
+  <p class="measure">testo su fondo <b class="ok">5,38:1</b> · fondo su pagina 4,86:1</p>
+
+  <h3>Spento oggi — <code>opacity: .4</code></h3>
+  <div class="surface"><p class="where">sulla pagina</p><button class="btn primary off-today" aria-disabled="true">Entra</button><p class="reason">Scrivi la password per entrare.</p></div>
+  <p class="measure">testo su fondo <b class="ko">1,84:1</b> · fondo su pagina 1,77:1</p>
+  <div class="surface on-card"><p class="where">in una scheda</p><button class="btn primary off-today" aria-disabled="true">Salva</button></div>
+  <p class="measure">testo su fondo <b class="ko">1,81:1</b> · fondo su scheda 1,81:1</p>
+
+  <h3>A — fondo pieno <code>disabled</code> / <code>on-disabled</code></h3>
+  <div class="surface"><p class="where">sulla pagina</p><button class="btn off-a" aria-disabled="true">Entra</button><p class="reason">Scrivi la password per entrare.</p></div>
+  <p class="measure">testo su fondo <b class="ok">5,33:1</b> · fondo su pagina 1,22:1</p>
+  <div class="surface on-card"><p class="where">in una scheda, accanto a un secondario acceso</p>
+    <div class="row"><button class="btn pill off-a" aria-disabled="true">Salva</button><button class="btn pill secondary">Annulla</button></div></div>
+  <p class="measure">testo su fondo <b class="ok">5,33:1</b> · fondo su scheda 1,36:1</p>
+
+  <h3>B — fantasma: bordo <code>notch-off</code>, testo <code>ink-faint</code></h3>
+  <div class="surface"><p class="where">sulla pagina</p><button class="btn off-b" aria-disabled="true">Entra</button><p class="reason">Scrivi la password per entrare.</p></div>
+  <p class="measure">testo <b class="ok">4,80:1</b> · bordo <b class="ok">3,06:1</b></p>
+  <div class="surface on-card"><p class="where">in una scheda, accanto a un secondario acceso</p>
+    <div class="row"><button class="btn pill off-b" aria-disabled="true">Salva</button><button class="btn pill secondary">Annulla</button></div></div>
+  <p class="measure">testo <b class="ok">5,31:1</b> · bordo <b class="ok">3,39:1</b> — più marcato del secondario acceso (anello <code>line</code> 1,33:1)</p>
+
+  <h3>C — <code>opacity</code> solo in chiaro</h3>
+  <div class="surface"><button class="btn primary off-today" aria-disabled="true">Entra</button></div>
+  <p class="measure">il chiaro resta quello di oggi: testo su fondo <b class="ko">1,84:1</b></p>
+
+  <h3>☰ oggi — velo <code>scrim/40</code>, pannello <code>card</code></h3>
+  <div class="frame">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">pannello su pagina velata <b class="ko">2,91:1</b> · su scheda velata <b class="ko">2,66:1</b> · pagina velata su pagina 2,63:1 · testo <code>ink</code> sotto il velo 5,89:1</p>
+
+  <h3>V1 — velo per tema (chiaro 45%)</h3>
+  <div class="frame v1">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">pannello su pagina velata <b class="ok">3,35:1</b> · su scheda velata <b class="ok">3,09:1</b> · <code>ink</code> sotto il velo 5,17:1</p>
+
+  <h3>V2 — bordo del pannello <code>panel-edge</code></h3>
+  <p class="note">In chiaro il token vale quanto <code>card</code>: il bordo non si vede, e il pannello bianco fa già da bordo.</p>
+  <div class="frame v2">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">come oggi: <b class="ko">2,91:1</b> · <b class="ko">2,66:1</b></p>
+
+  <h3>V3 — pannello <code>raised</code> (in chiaro = <code>card</code>)</h3>
+  <div class="frame v3">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">come oggi: <b class="ko">2,91:1</b> · <b class="ko">2,66:1</b></p>
+
+  <h3>Raccomandata — V1 + V2</h3>
+  <div class="frame rec">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">velo 45%, nessun bordo visibile · pannello su pagina velata <b class="ok">3,35:1</b> · su scheda velata <b class="ok">3,09:1</b></p>
+</section>
+
+<!-- ======================================================================== SCURO -->
+<section class="col theme-dark">
+  <h2>Scuro</h2>
+
+  <h3>Primario acceso</h3>
+  <div class="surface"><button class="btn primary">Entra</button></div>
+  <p class="measure">testo su fondo <b class="ok">7,32:1</b> · fondo su pagina 7,48:1</p>
+
+  <h3>Spento oggi — <code>opacity: .4</code></h3>
+  <div class="surface"><p class="where">sulla pagina</p><button class="btn primary off-today" aria-disabled="true">Entra</button><p class="reason">Scrivi la password per entrare.</p></div>
+  <p class="measure">testo su fondo <b class="ko">2,13:1</b> · fondo su pagina 2,15:1 — il verde torbido</p>
+  <div class="surface on-card"><p class="where">in una scheda</p><button class="btn primary off-today" aria-disabled="true">Salva</button></div>
+  <p class="measure">testo su fondo <b class="ko">2,26:1</b> · fondo su scheda 2,17:1</p>
+
+  <h3>A — fondo pieno <code>disabled</code> / <code>on-disabled</code></h3>
+  <div class="surface"><p class="where">sulla pagina</p><button class="btn off-a" aria-disabled="true">Entra</button><p class="reason">Scrivi la password per entrare.</p></div>
+  <p class="measure">testo su fondo <b class="ok">6,83:1</b> · fondo su pagina 1,45:1</p>
+  <div class="surface on-card"><p class="where">in una scheda, accanto a un secondario acceso</p>
+    <div class="row"><button class="btn pill off-a" aria-disabled="true">Salva</button><button class="btn pill secondary">Annulla</button></div></div>
+  <p class="measure">testo su fondo <b class="ok">6,83:1</b> · fondo su scheda 1,30:1</p>
+
+  <h3>B — fantasma: bordo <code>notch-off</code>, testo <code>ink-faint</code></h3>
+  <div class="surface"><p class="where">sulla pagina</p><button class="btn off-b" aria-disabled="true">Entra</button><p class="reason">Scrivi la password per entrare.</p></div>
+  <p class="measure">testo <b class="ok">6,82:1</b> · bordo <b class="ok">3,84:1</b></p>
+  <div class="surface on-card"><p class="where">in una scheda, accanto a un secondario acceso</p>
+    <div class="row"><button class="btn pill off-b" aria-disabled="true">Salva</button><button class="btn pill secondary">Annulla</button></div></div>
+  <p class="measure">testo <b class="ok">6,12:1</b> · bordo <b class="ok">3,45:1</b> — più marcato del secondario acceso (anello <code>line</code> 1,32:1)</p>
+
+  <h3>C — <code>opacity</code> solo in chiaro</h3>
+  <div class="surface"><button class="btn off-a" aria-disabled="true">Entra</button></div>
+  <p class="measure">in scuro è A: testo su fondo <b class="ok">6,83:1</b></p>
+
+  <h3>☰ oggi — velo <code>scrim/40</code>, pannello <code>card</code></h3>
+  <div class="frame">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">pannello su pagina velata <b class="ko">1,17:1</b> · su scheda velata <b class="ko">1,11:1</b> · pagina velata su pagina 1,05:1 · testo <code>ink</code> sotto il velo 5,97:1</p>
+
+  <h3>V1 — velo per tema (scuro 60%)</h3>
+  <div class="frame v1">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">la pagina si spegne: <code>ink</code> sotto il velo 3,09:1 · ma il pannello su pagina velata <b class="ko">1,19:1</b> · su scheda velata <b class="ko">1,16:1</b></p>
+
+  <h3>V2 — bordo del pannello <code>panel-edge</code> #5a645e</h3>
+  <div class="frame v2">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">bordo su pagina velata <b class="ok">3,22:1</b> · su scheda velata <b class="ok">3,07:1</b> · la pagina resta poco spenta (<code>ink</code> sotto il velo 5,97:1)</p>
+
+  <h3>V3 — pannello <code>raised</code> #232b26</h3>
+  <div class="frame v3">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">pannello su pagina velata <b class="ko">1,36:1</b> · su scheda velata <b class="ko">1,30:1</b> · divisori <code>line</code> nel pannello 1,13:1 (oggi 1,32:1)</p>
+
+  <h3>Raccomandata — V1 + V2</h3>
+  <div class="frame rec">
+    <div class="f-head"><span class="f-brand"><span class="f-mark"></span>Spena</span><span class="f-burger"></span></div>
+    <div class="f-body"><p class="f-title">Lista</p>
+      <div class="f-sec"><div class="f-sec-h">Latticini <span>2</span></div><div class="f-item">latte <i>Quasi finito</i></div><div class="f-item">yogurt greco</div></div>
+      <div class="f-sec"><div class="f-sec-h">Dispensa <span>1</span></div><div class="f-item">pomodori pelati</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="panel"><div class="p-head">Menu <span class="p-x">✕</span></div>
+      <nav class="p-nav"><a>Sistema la spesa</a><a>Ingredienti da abbinare</a><a>Anagrafica</a></nav></div>
+  </div>
+  <p class="measure">velo 60% · bordo su pagina velata <b class="ok">3,29:1</b> · su scheda velata <b class="ok">3,20:1</b> · <code>ink</code> sotto il velo 3,09:1</p>
+</section>
+</div>
+</body>
+</html>

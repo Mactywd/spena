@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Righe della dispensa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  Mockup statico di S12 (2026-10-06): tre direzioni per riconoscere una riga della
+  dispensa senza leggerla, nei due temi, a 375 px. I colori sono i valori veri dei token
+  di frontend/src/index.css al 2026-10-06; la riga riproduce PantryRow.tsx (nome come
+  link, prodotto o «sfuso» sotto, le tre tacche di StockGauge da 44 px, la ✕, la riga
+  della scadenza). Le icone sono le SVG di Tabler (licenza MIT) che l'app già usa.
+  Le «foto» della direzione B sono finte: rettangoli disegnati in CSS, non immagini di
+  Open Food Facts (il repo è pubblico).
+-->
+<style>
+  .light {
+    --page:#f1f4f2; --card:#ffffff; --ink:#16281f; --ink-soft:#4e5a52; --ink-faint:#636e66;
+    --line:#dce1dc; --notch-off:#848e87; --brand:#0f7a4a; --on-brand:#ffffff;
+    --low:#9a5f0c; --finished:#b3261e; --expiry:#5b45a8;
+    --dept-peach:#fde7dc; --dept-peach-ink:#8a3b17; --dept-blue:#dcecff; --dept-blue-ink:#1a4f8f;
+  }
+  .dark {
+    --page:#0e1210; --card:#181e1a; --ink:#e7ece9; --ink-soft:#b4beb8; --ink-faint:#939e98;
+    --line:#2c342f; --notch-off:#69736d; --brand:#3cb878; --on-brand:#06170e;
+    --low:#e0a63a; --finished:#ff8a80; --expiry:#b9a6ff;
+    --dept-peach:#3d2317; --dept-peach-ink:#f5b99c; --dept-blue:#16304d; --dept-blue-ink:#a8cdf5;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #d9ddda; color: #16281f; }
+  header.doc { max-width: 1180px; margin: 0 auto; padding: 24px 16px 8px; }
+  header.doc h1 { font-size: 22px; margin: 0 0 6px; }
+  header.doc p { margin: 4px 0; font-size: 14px; line-height: 1.45; max-width: 80ch; }
+  .variant { max-width: 1180px; margin: 0 auto; padding: 16px; }
+  .variant > h2 { font-size: 17px; margin: 18px 0 4px; }
+  .variant > p { font-size: 14px; margin: 0 0 10px; max-width: 90ch; line-height: 1.45; }
+  .pair { display: flex; flex-wrap: wrap; gap: 16px; }
+  .phone { width: 375px; max-width: 100%; background: var(--page); color: var(--ink); padding: 12px 16px 16px; border-radius: 18px; }
+  .phone .tag { font-size: 11px; color: var(--ink-faint); margin: 0 0 8px; }
+  section.s { background: var(--card); border-radius: 16px; overflow: hidden; margin-bottom: 12px; }
+  .sh { display: flex; align-items: center; gap: 10px; padding: 12px 12px 6px; }
+  .badge { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .peach { background: var(--dept-peach); color: var(--dept-peach-ink); }
+  .blue { background: var(--dept-blue); color: var(--dept-blue-ink); }
+  .sh h3 { flex: 1; margin: 0; font-size: 14px; font-weight: 600; }
+  .sh .n { font-size: 12px; color: var(--ink-faint); }
+  .rows { padding: 0 12px 8px; list-style: none; margin: 0; }
+  .row { display: flex; align-items: center; gap: 4px; }
+  .fig { width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; margin-right: 4px; display: flex; align-items: center; justify-content: center; background: var(--page); color: var(--ink-faint); font-size: 18px; line-height: 1; }
+  .fig.photo { background: #ffffff; padding: 3px; }
+  .txt { min-width: 0; flex: 1; }
+  .name { display: flex; min-height: 44px; align-items: flex-end; padding-bottom: 2px; font-weight: 500; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; font-size: 16px; }
+  .prod { padding-top: 2px; font-size: 12px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+  .gauge { display: flex; flex-shrink: 0; }
+  .notch { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+  .notch span { width: 16px; height: 6px; border-radius: 99px; background: var(--notch-off); }
+  .x { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); flex-shrink: 0; }
+  .exp { display: flex; min-height: 44px; align-items: flex-start; font-size: 12px; color: var(--ink-faint); padding-top: 2px; }
+  .exp.soon { color: var(--expiry); }
+  .fin { display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; }
+  .fin span { font-size: 14px; font-weight: 500; color: var(--finished); }
+  .fin b { font-size: 14px; font-weight: 500; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--ink); }
+  .fig.indent { visibility: hidden; }
+  svg.i { width: 16px; height: 16px; }
+  .fig svg.i { width: 18px; height: 18px; }
+  /* le confezioni finte della direzione B */
+  .pk { width: 100%; height: 100%; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #fff; }
+  .notes { max-width: 1180px; margin: 0 auto; padding: 8px 16px 40px; font-size: 13px; line-height: 1.5; }
+  .notes table { border-collapse: collapse; margin-top: 6px; }
+  .notes td, .notes th { border: 1px solid #b9c0bb; padding: 4px 8px; text-align: left; }
+</style>
+</head>
+<body>
+<header class="doc">
+  <h1>S12 · Righe della dispensa riconoscibili</h1>
+  <p>Stessa dispensa, quattro volte: oggi, e le tre direzioni della bozza
+  (<code>docs/superpowers/specs/2026-10-06-righe-dispensa-bozza.md</code>). A sinistra il tema
+  chiaro, a destra lo scuro, a 375 px. I reparti sono scelti apposta: <b>Latticini</b> è dove
+  le figure si ripetono, <b>Verdura</b> dove distinguono.</p>
+</header>
+<div id="out"></div>
+<div class="notes">
+  <b>Contrasti misurati</b> (WCAG 2.x, sui valori dei token): il ripiego monocromo
+  <code>ink-faint</code> sul quadratino <code>page</code> 4,80:1 in chiaro e 6,82:1 in scuro
+  (un segno chiede 3:1); il quadratino <code>page</code> sul fondo <code>card</code> 1,11:1 nei due
+  temi — di proposito: è un appoggio, non un bordo che dice qualcosa. Il fondo bianco di
+  una foto di prodotto sul <code>card</code> scuro: 16,94:1, cioè la macchia più chiara della pagina.
+  Le emoji non hanno un rapporto misurabile (sono multicolori) e non portano testo: il nome
+  accessibile della riga resta il nome dell'ingrediente, e la figura è <code>aria-hidden</code>.
+</div>
+<script>
+const P = (d) => `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  carrot: P('<path d="M3 21s9.834 -3.489 12.684 -6.34a4.487 4.487 0 0 0 0 -6.344a4.483 4.483 0 0 0 -6.342 0c-2.86 2.861 -6.347 12.689 -6.347 12.689l.005 -.005"/><path d="M9 13l-1.5 -1.5"/><path d="M16 14l-2 -2"/><path d="M22 8s-1.14 -2 -3 -2c-1.406 0 -3 2 -3 2s1.14 2 3 2s3 -2 3 -2"/><path d="M16 2s-2 1.14 -2 3s2 3 2 3s2 -1.577 2 -3c0 -1.86 -2 -3 -2 -3"/>'),
+  cheese: P('<path d="M4.519 20.008l16.481 -.008v-3.5a2 2 0 1 1 0 -4v-3.5h-16.722"/><path d="M21 9l-9.385 -4.992c-2.512 .12 -4.758 1.42 -6.327 3.425c-1.423 1.82 -2.288 4.221 -2.288 6.854c0 2.117 .56 4.085 1.519 5.721"/><path d="M15 13v.01"/><path d="M8 13v.01"/><path d="M11 16v.01"/>'),
+  milk: P('<path d="M8 6h8v-2a1 1 0 0 0 -1 -1h-6a1 1 0 0 0 -1 1v2"/><path d="M16 6l1.094 1.759a6 6 0 0 1 .906 3.17v8.071a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-8.071a6 6 0 0 1 .906 -3.17l1.094 -1.759"/><path d="M10 16a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M10 10h4"/>'),
+  x: P('<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>'),
+};
+// le righe: com'è oggi in PantryRow, più le figure di ogni direzione
+const SECTIONS = [
+  { name: "Latticini", tint: "blue", icon: "cheese", rows: [
+    { n: "Mozzarella", p: "Mozzarella fior di latte 125 g", s: "available", e: "tra 3 gg", emoji: "🧀", tabler: "cheese", photo: ["#1f5fbf", "M"] },
+    { n: "Parmigiano", p: "Parmigiano 24 mesi", s: "low", emoji: "🧀", tabler: "cheese", photo: ["#d8a21b", "P"] },
+    { n: "Yogurt greco", p: "Yogurt greco 0% 170 g", s: "available", emoji: "🥛", tabler: null, photo: ["#2a9fd6", "Y"] },
+    { n: "Latte", p: "Latte intero 1 l", s: "finished", emoji: "🥛", tabler: "milk", photo: null },
+  ]},
+  { name: "Verdura", tint: "peach", icon: "carrot", rows: [
+    { n: "Carota", p: null, s: "available", emoji: "🥕", tabler: "carrot" },
+    { n: "Zucchina", p: null, s: "low", emoji: "🥒", tabler: null },
+    { n: "Sedano", p: null, s: "available", emoji: null, tabler: null },
+  ]},
+];
+const LIT = { finished: 0, low: 1, available: 2 };
+const TONE = { finished: "var(--finished)", low: "var(--low)", available: "var(--brand)" };
+
+function gauge(s) {
+  const lvl = LIT[s];
+  return `<div class="gauge">${[0, 1, 2].map(i => `<div class="notch"><span style="${i <= lvl ? `background:${TONE[s]}` : ""}"></span></div>`).join("")}</div>`;
+}
+// la figura di una riga, per direzione; il ripiego è sempre l'icona del reparto, monocroma
+function figure(v, r, sec) {
+  const fallback = `<div class="fig" aria-hidden="true">${ICON[sec.icon]}</div>`;
+  if (v === "oggi") return "";
+  if (v === "A") return r.emoji ? `<div class="fig" aria-hidden="true">${r.emoji}</div>` : fallback;
+  if (v === "B") {
+    if (r.photo) return `<div class="fig photo" aria-hidden="true"><div class="pk" style="background:${r.photo[0]}">${r.photo[1]}</div></div>`;
+    return r.emoji ? `<div class="fig" aria-hidden="true">${r.emoji}</div>` : fallback;
+  }
+  if (v === "C") return r.tabler ? `<div class="fig" aria-hidden="true">${ICON[r.tabler]}</div>` : fallback;
+}
+function row(v, r, sec) {
+  const fig = figure(v, r, sec);
+  const indent = v === "oggi" ? "" : `<div class="fig indent"></div>`;
+  return `<li>
+    <div class="row">${fig}<div class="txt"><div class="name">${r.n}</div><p class="prod">${r.p ?? "sfuso"}</p></div>${gauge(r.s)}<div class="x">${ICON.x}</div></div>
+    <div class="exp ${r.e ? "soon" : ""}">${indent}${r.e ? "Scade " + r.e : "+ scadenza"}</div>
+    ${r.s === "finished" ? `<div class="fin"><span>Finito</span><b>In lista</b></div>` : ""}
+  </li>`;
+}
+function phone(v, theme) {
+  return `<div class="phone ${theme}"><p class="tag">${theme === "light" ? "chiaro" : "scuro"}</p>${SECTIONS.map(sec => `
+    <section class="s"><div class="sh"><span class="badge ${sec.tint}">${ICON[sec.icon]}</span><h3>${sec.name}</h3><span class="n">${sec.rows.length}</span></div>
+    <ul class="rows">${sec.rows.map(r => row(v, r, sec)).join("")}</ul></section>`).join("")}</div>`;
+}
+const VARIANTS = [
+  ["oggi", "Oggi", "Le righe sono tutte uguali: si riconoscono solo leggendo. Il reparto lo dice già il titolo della sezione, con la sua icona e la sua tinta."],
+  ["A", "A · Emoji dell'ingrediente, ripiego sull'icona del reparto (raccomandata)", "Un'emoji per ingrediente, decisa una volta (dall'AI, correggibile in Anagrafica). Dove non ce n'è una giusta, l'icona del reparto in grigio. Distingue bene frutta e verdura, poco i formaggi: 🧀🧀 sono due righe uguali. Costa 36 px al nome (da 135 a 99 a 375 px)."],
+  ["B", "B · Foto del prodotto, poi emoji, poi icona", "La foto di Open Food Facts quando la voce ha un prodotto che ce l'ha; per gli altri la A. Il più riconoscibile per le confezioni di marca, ma tre linguaggi nella stessa colonna, e in scuro le foto (quasi tutte su fondo bianco) sono le macchie più chiare della pagina."],
+  ["C", "C · Icona di Tabler per ingrediente, monocroma", "Lo stesso set di icone dell'app, una per ingrediente dove Tabler ce l'ha (~45 alimenti), il reparto altrove. Coerente coi due temi e coi token, ma senza colore si legge poco più del testo: dentro una sezione quasi tutte le righe ripetono l'icona del titolo."],
+];
+document.getElementById("out").innerHTML = VARIANTS.map(([v, t, d]) =>
+  `<div class="variant"><h2>${t}</h2><p>${d}</p><div class="pair">${phone(v, "light")}${phone(v, "dark")}</div></div>`).join("");
+</script>
+</body>
+</html>
