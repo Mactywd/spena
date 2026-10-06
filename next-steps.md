@@ -22,7 +22,7 @@ Nessun piano pronto.
 - [tbd] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — proposte misurate in `docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md` (oggi lo spento sta a 1,84:1 in chiaro: grigio pieno al posto di `opacity`; velo per tema più un bordo in scuro) — TBD: le sei decisioni del §7 [T3 Consegna 1]
 
 ### Code della Consegna 2 e pulizie
-- [tbd] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più: una soglia o un salto di punteggio nel backend — TBD: quale criterio [T3, esito del giro]
+- [tbd] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — misurato in `docs/superpowers/specs/2026-10-06-suggerimenti-soglia-bozza.md`: nessun salto di punteggio da trovare, raccomandato «chi contiene il testo, e gli altri solo se nessuno lo contiene» (righe da 6,7 a 2,0 in media, richiamo invariato); serve anche una nota di ripiego in `IngredientPicker` — TBD: le sei decisioni del §10 [T3, esito del giro]
 
 ### Voci decise, da portare a spec e piano
 - [tbd] P2 · S3, ingresso diretto in dispensa, veloce: scansione e inserimento a mano senza passare dalla lista, estraendo scanner, catalogo e modulo da `StockingScreen.tsx` — bozza `docs/superpowers/specs/2026-10-06-ingresso-diretto-bozza.md`, raccomandata la parità subito senza scontrino — TBD: le cinque decisioni del §8 [S3]
@@ -84,6 +84,9 @@ Nessun piano pronto.
 - [idea] P3 · Altri controlli spenti fuori da `Button` usano ancora `opacity` e si leggono male (in chiaro ~1,8:1): `Checkbox` e la casella di `ListRow`, le tacche di `StockGauge`, il nome in `PantryRow` (`aria-disabled:opacity-40`), `CostPicker` (`disabled:opacity-60`), `IngredientPicker` e `OptionList` (`disabled:opacity-50`). Da portare alla regola che la bozza del tema scuro propone per `Button` [T3, bozza 2026-10-06]
 - [idea] P3 · Una voce già in lista (in attesa o spuntata) che entra dall'ingresso diretto: la lista continua a chiederla. La scheda di conferma potrebbe dire «è anche in lista» con «Toglila» — fuori dalla bozza di S3, da valutare dopo l'uso [S3, bozza 2026-10-06]
 - [idea] P3 · La foto del prodotto (`products.image_url`) nella scheda del prodotto e nella scheda di conferma di S3, dove è grande e una sola; porta con sé la domanda delle immagini chieste a Open Food Facts (rete, privacy, senza rete) [S12, bozza 2026-10-06]
+- [idea] P3 · `search_ingredients` non protegge il testo cercato nel `LIKE`: un `%` o un `_` digitati fanno da jolly (`backend/app/repositories/ingredients.py`) [bozza suggerimenti 2026-10-06]
+- [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
+- [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
