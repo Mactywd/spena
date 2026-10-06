@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-09-30 (fase giorno: i quattro rami della notte uniti e in produzione)_
+_Ultimo aggiornamento: 2026-10-06 (fase giorno in autonomia: bozze per S3, S12, S14, S15, tema scuro e suggerimenti; report in `docs/night-reports/2026-10-06.md`)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -19,16 +19,16 @@ Nessun piano pronto.
 ## Da approfondire (giorno)
 
 ### Ridisegno (T3), spec `docs/superpowers/specs/2026-09-28-ridisegno-design.md`
-- [tbd] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — TBD: come ridisegnarli [T3 Consegna 1]
+- [tbd] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — proposte misurate in `docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md` (oggi lo spento sta a 1,84:1 in chiaro: grigio pieno al posto di `opacity`; velo per tema più un bordo in scuro) — TBD: le sei decisioni del §7 [T3 Consegna 1]
 
 ### Code della Consegna 2 e pulizie
 - [tbd] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più: una soglia o un salto di punteggio nel backend — TBD: quale criterio [T3, esito del giro]
 
 ### Voci decise, da portare a spec e piano
-- [tbd] P2 · S3, ingresso diretto in dispensa, veloce: scansione e inserimento a mano senza passare dalla lista, estraendo scanner, catalogo e modulo da `StockingScreen.tsx` — TBD: parità subito senza scontrino (è dove pende) o aspettare lo scontrino [S3]
-- [tbd] P2 · S12, righe della dispensa riconoscibili: icona per reparto, emoji per ingrediente, foto del prodotto — TBD: brainstorming [S12]
-- [tbd] P3 · S14, «Tutto / Cibo / Casa» in dispensa: il server espone `ingredient_kind` o filtra lui — serve la spec [S14]
-- [tbd] P3 · S15, reparti della dispensa collassabili, col numero di voci quando sono chiusi e aperti da una ricerca — serve la spec [S15]
+- [tbd] P2 · S3, ingresso diretto in dispensa, veloce: scansione e inserimento a mano senza passare dalla lista, estraendo scanner, catalogo e modulo da `StockingScreen.tsx` — bozza `docs/superpowers/specs/2026-10-06-ingresso-diretto-bozza.md`, raccomandata la parità subito senza scontrino — TBD: le cinque decisioni del §8 [S3]
+- [tbd] P2 · S12, righe della dispensa riconoscibili: icona per reparto, emoji per ingrediente, foto del prodotto — brainstorming in `docs/superpowers/specs/2026-10-06-righe-dispensa-bozza.md` e mockup `docs/mockups/2026-10-06-righe-dispensa.html`, raccomandata l'emoji dell'ingrediente col ripiego sull'icona del reparto — TBD: le cinque decisioni del §5 [S12]
+- [tbd] P3 · S14, «Tutto / Cibo / Casa» in dispensa — bozza di spec `docs/superpowers/specs/2026-10-06-cibo-casa-bozza.md`, raccomandato che il server esponga `ingredient_kind` — TBD: le cinque decisioni del §6 [S14]
+- [tbd] P3 · S15, reparti della dispensa collassabili, col numero di voci quando sono chiusi e aperti da una ricerca — bozza di spec `docs/superpowers/specs/2026-10-06-reparti-collassabili-bozza.md` — TBD: le cinque decisioni del §6 [S15]
 - [tbd] P3 · R2, secondo modo: riporzionare a partire da un ingrediente («io ne faccio 150 g») — TBD: solo vista o si salva [R2]
 - [tbd] P3 · R5, sostituisci ingrediente, precalcolato — TBD grosso: quante coppie, costo col tetto di 1 $/giorno, dipende dalla ricetta o dalla coppia, come si corregge [R5]
 - [tbd] P3 · R8, modifica con AI che salva una ricetta nuova — TBD: il legame con l'originale si tiene e si vede? [R8]
@@ -80,6 +80,10 @@ Nessun piano pronto.
 - [idea] P3 · Nel modulo della ricetta, dopo «Aggiungi «pasta»» scegliere anche «Pasta» dai suggerimenti fa due righe (`attach` non confronta con le righe nuove): al salvataggio arriva il 409 delle due righe. Si esce togliendone una, ma confonde: `attach` dovrebbe riconoscere la riga nuova con lo stesso nome. [T3 Consegna 6b]
 - [idea] P3 · «Non è in anagrafica: lo creo io salvando.» può essere falso: con «Aggiungi «…»» sempre offerto, si può aggiungere un nome che c'è già (il server poi collega quello esistente e ignora il reparto scelto). [T3 Consegna 6b]
 - [idea] P3 · In `RecipeForm.tsx` restano due `<button>` scritti a mano: la ✕ «Togli» (con un SVG in linea: c'è `IconX`) e i due ruoli; passarli a `Button` (`aria-pressed` per i ruoli). [T3 Consegna 6b]
+
+- [idea] P3 · Altri controlli spenti fuori da `Button` usano ancora `opacity` e si leggono male (in chiaro ~1,8:1): `Checkbox` e la casella di `ListRow`, le tacche di `StockGauge`, il nome in `PantryRow` (`aria-disabled:opacity-40`), `CostPicker` (`disabled:opacity-60`), `IngredientPicker` e `OptionList` (`disabled:opacity-50`). Da portare alla regola che la bozza del tema scuro propone per `Button` [T3, bozza 2026-10-06]
+- [idea] P3 · Una voce già in lista (in attesa o spuntata) che entra dall'ingresso diretto: la lista continua a chiederla. La scheda di conferma potrebbe dire «è anche in lista» con «Toglila» — fuori dalla bozza di S3, da valutare dopo l'uso [S3, bozza 2026-10-06]
+- [idea] P3 · La foto del prodotto (`products.image_url`) nella scheda del prodotto e nella scheda di conferma di S3, dove è grande e una sola; porta con sé la domanda delle immagini chieste a Open Food Facts (rete, privacy, senza rete) [S12, bozza 2026-10-06]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
