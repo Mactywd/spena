@@ -73,7 +73,7 @@ La buona notizia è che i pannelli **sono già componenti a sé**, in
 |---|---|---|
 | `BarcodeScanner` | No | La fotocamera e il suo ripiego. |
 | `ScannerPanel` | **Sì, poco**: prende `item: ShoppingItem` e ne usa solo `raw_text` (titolo e messaggio) | Vive qui, e solo qui, la guardia del codice: il prodotto di un altro ingrediente (S20/409), la cifra di controllo (S20), il codice che segue la voce (S8). **Presuppone l'ingrediente noto** (`ingredientId` obbligatorio). |
-| `CatalogSearchPanel` | No: `itemLabel` e `ingredientId` | Cerca solo fra i prodotti di quell'ingrediente. |
+| `CatalogSearchPanel` | No: `itemLabel` e `ingredientId` | Cerca in tutto il catalogo e lascia scegliere solo i prodotti di quell'ingrediente; degli altri dice di chi sono. Presuppone l'ingrediente noto, come lo scanner. |
 | `CustomProductForm` | No: `ingredientId`, `itemLabel`, `barcode`, `suggestion`, `isNonFood` | |
 | `OffSuggestionQuestion` | No | La domanda «è davvero …?» prima del modulo (S20). |
 | `MatchPanel` | **Sì, poco**: `item.raw_text` | Contiene la creazione dell'ingrediente (S6, S19: il 409 che porta l'ingrediente esistente). |
