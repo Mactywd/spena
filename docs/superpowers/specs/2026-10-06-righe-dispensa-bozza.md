@@ -169,7 +169,8 @@ c'è già (S11).
    2026-10-07: Emoji 14.0.**
 3. **Solo la Dispensa, o anche Lista, Sistema la spesa e il foglio della cottura**:
    raccomandato **solo la Dispensa** per cominciare; l'emoji arriva in `PantryItemOut` e
-   basta. Allargarla dopo è aggiungere un campo a tre risposte.
+   basta. Allargarla dopo è aggiungere un campo a tre risposte. **Deciso da Mattia il
+   2026-10-07: solo la Dispensa.**
 4. **Chi decide l'emoji di un ingrediente nuovo** (creato a mano, dall'import, dalla
    coda): raccomandato **nessuno al momento della creazione** — nasce senza, mostra il
    ripiego, e il comando dell'AI la riempie quando si lancia (come `decide_units`).
