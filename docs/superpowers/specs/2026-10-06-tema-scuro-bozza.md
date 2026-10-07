@@ -5,6 +5,10 @@ pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco
 `next-steps.md` ([T3 Consegna 1]). È una bozza: niente è deciso, le domande stanno nelle
 «Decisioni per Mattia» in fondo, ognuna con la raccomandazione.
 
+_2026-10-07: decise tutte e sei le voci del §7, le raccomandate. Le prime due da Mattia; le
+altre quattro da Claude, perché Mattia ha delegato le scelte estetiche e non funzionali
+(«è un'app per me»). Non resta niente da confermare; manca il piano._
+
 Mockup: `docs/mockups/2026-10-06-tema-scuro.html` (le due colonne, chiaro e scuro, con i
 valori veri dei token). I numeri vengono da uno script rimasto nello scratchpad della
 notte; il metodo e tutti i valori usati sono al §3, così chiunque li rifà.
@@ -311,14 +315,16 @@ pannello ci sta sotto 3:1 (2,91 e 2,66). V3 resta un'aggiunta possibile, non nec
    della richiesta)? Raccomandato: **sì**, è già la regola scritta in `buttonClasses.ts`
    («deve sembrare spento come uno spento davvero»). L'alternativa, un aspetto suo per
    `busy` (per esempio il colore pieno con un'icona che gira), è un lavoro a parte.
+   **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte estetiche: sì.**
 4. **I nomi** `disabled` / `on-disabled` invece di `brand-off`? Raccomandato: **sì**, perché
-   lo stesso fondo serve anche a `warn`.
+   lo stesso fondo serve anche a `warn`. **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte estetiche: sì.**
 5. **Il velo: 45% in chiaro e 60% in scuro, più un bordo `#5a645e` sul pannello in scuro**
    (V1 + V2)? Raccomandato: **sì**. In alternativa 70% in scuro, che spegne di più la pagina
    (`ink` sotto il velo 2,18:1) ma rende quasi illeggibile quel che si sta lasciando.
+   **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte estetiche: V1 + V2.**
 6. **L'e2e smette di saltare i pulsanti spenti** nel controllo «ogni testo sopra 4,5:1»?
    Raccomandato: **sì**: con A diventano misurabili, e lasciarli fuori vuol dire che il
-   prossimo `opacity` torna senza che nessun test lo veda.
+   prossimo `opacity` torna senza che nessun test lo veda. **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte estetiche: sì.**
 
 ## 8. Fuori scope
 

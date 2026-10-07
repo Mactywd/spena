@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-07 (fase giorno: le decisioni di Mattia sulle bozze del 2026-10-06; S3, S12, S14 e S15 decise; S3 con «Articolo aggiuntivo» e più confezioni per voce)_
+_Ultimo aggiornamento: 2026-10-07 (fase giorno: le decisioni di Mattia sulle bozze del 2026-10-06; S3, S12, S14, S15 e tema scuro decisi; S3 con «Articolo aggiuntivo» e più confezioni per voce)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -19,7 +19,7 @@ Nessun piano pronto.
 ## Da approfondire (giorno)
 
 ### Ridisegno (T3), spec `docs/superpowers/specs/2026-09-28-ridisegno-design.md`
-- [tbd] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — proposte misurate in `docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md` (oggi lo spento sta a 1,84:1 in chiaro: grigio pieno al posto di `opacity`; velo per tema più un bordo in scuro) — TBD: le sei decisioni del §7 [T3 Consegna 1]
+- [tbd] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — proposte misurate in `docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md` (oggi lo spento sta a 1,84:1 in chiaro: grigio pieno al posto di `opacity`; velo per tema più un bordo in scuro) — decise il 2026-10-07 tutte le voci del §7 (le prime due da Mattia, le altre da Claude su sua delega): grigio pieno coi token `disabled` / `on-disabled` per tutte le varianti, `busy` come spento, velo 45% / 60% col bordo `panel-edge` in scuro, l'e2e misura anche i pulsanti spenti — TBD: il piano [T3 Consegna 1]
 
 ### Code della Consegna 2 e pulizie
 - [tbd] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — misurato in `docs/superpowers/specs/2026-10-06-suggerimenti-soglia-bozza.md`: nessun salto di punteggio da trovare, raccomandato «chi contiene il testo, e gli altri solo se nessuno lo contiene» (righe da 6,7 a 2,0 in media, richiamo invariato); serve anche una nota di ripiego in `IngredientPicker` — TBD: le sei decisioni del §10 [T3, esito del giro]
