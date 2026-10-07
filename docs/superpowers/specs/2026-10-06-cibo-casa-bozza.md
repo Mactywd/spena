@@ -122,7 +122,8 @@ L'ordine dei filtri è uno, ed è scritto in una funzione pura in `pantryView.ts
    2026-10-07: A.**
 2. **`sessionStorage` e non `localStorage`** — raccomandato, per coerenza col ricettario.
    **Deciso da Mattia il 2026-10-07: `sessionStorage`.**
-3. **Il selettore nascosto quando la dispensa ha un mondo solo** — raccomandato.
+3. **Il selettore nascosto quando la dispensa ha un mondo solo** — raccomandato. **Deciso
+   da Mattia il 2026-10-07: nascosto.**
 4. **Il nome «Casa»** — raccomandato.
 5. **Il riepilogo delle scadenze segue il mondo scelto** — raccomandato.
 
