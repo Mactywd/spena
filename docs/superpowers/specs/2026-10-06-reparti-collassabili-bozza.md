@@ -101,7 +101,7 @@ silenzio, perché il titolo chiuso dice quante voci ha e quali chiedono attenzio
 2. **`localStorage`** per i reparti chiusi (diverso da S14) — raccomandato. **Deciso da
    Mattia il 2026-10-07: `localStorage`.**
 3. **Il riepilogo delle scadenze premuto apre i reparti con una scadenza**, come la
-   ricerca — raccomandato.
+   ricerca — raccomandato. **Deciso da Mattia il 2026-10-07: sì.**
 4. **Una voce aggiunta in un reparto chiuso lo apre e lo salva aperto** — raccomandato.
 5. **Niente «chiudi tutto / apri tutto»** per ora: con una ventina di reparti al massimo
    (14 oggi), toccarli uno per uno basta. Si aggiunge se sul telefono manca.
