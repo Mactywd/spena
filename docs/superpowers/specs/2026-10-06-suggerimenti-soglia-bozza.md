@@ -6,6 +6,11 @@ salto di punteggio nel backend — TBD: quale criterio» di `next-steps.md` ([T3
 giro]). È una bozza: niente è deciso. Le domande stanno nelle «Decisioni per Mattia» in
 fondo, ognuna con la sua raccomandazione.
 
+_2026-10-07: decise tutte e sei le voci del §10. Mattia ha deciso la 1 (pavimento 0,30), la
+4 (inizio di parola anche negli alias, **diversa dalla raccomandazione**) e la 5; Claude la
+2, la 3 e la 6, su delega di Mattia per le scelte non funzionali. Non resta niente da
+confermare; manca il piano._
+
 I numeri vengono da script rimasti nello scratchpad della notte. Il metodo, le regole con
 cui sono costruiti i dati e l'SQL della misura sono al §3 e in appendice, così chiunque può
 rifarli.
@@ -473,6 +478,7 @@ Intorno servono tre ritocchi alla query, che restano da progettare nel piano:
    «zucch», con Zucchina seconda; (b) uno spareggio nuovo fra prefissi a pari punteggio,
    per esempio prima quel che è in dispensa o in lista. **Raccomandazione: (a)** in questa
    voce. Se il giro dopo il taglio dice ancora che sbaglia, (b) diventa una voce sua.
+   **Deciso da Mattia il 2026-10-07: (a).**
 6. **La nota di ripiego in `IngredientPicker`** per i cinque schermi che non passano né
    `emptyNote` né `onCreate` (§7). (a) dentro questa voce; (b) voce a parte.
    **Raccomandazione: (a).** Senza la nota, il taglio crea muti dove oggi c'è rumore.
