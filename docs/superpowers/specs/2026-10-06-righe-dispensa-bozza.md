@@ -175,7 +175,7 @@ c'è già (S11).
    coda): raccomandato **nessuno al momento della creazione** — nasce senza, mostra il
    ripiego, e il comando dell'AI la riempie quando si lancia (come `decide_units`).
    L'alternativa, chiederla nel modulo del nuovo ingrediente, aggiunge un campo a R12 e a
-   S6 per una figurina.
+   S6 per una figurina. **Deciso da Mattia il 2026-10-07: nessuno alla creazione.**
 5. **Una foto nella scheda del prodotto e nella scheda di conferma di S3** (la parte buona
    di B): raccomandata, ma come voce a sé, perché porta con sé la domanda delle immagini di
    terzi.
