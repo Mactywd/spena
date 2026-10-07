@@ -64,7 +64,7 @@ per arrivare intera, e non lo è. **Deciso da Mattia il 2026-10-07: A.**
 
 - **Tre pulsanti in fila sotto la barra**, con `aria-pressed`, uno solo premuto. «Casa»
   vuol dire `non_food`: i reparti `casa` e `igiene`. A video «Casa», come nella voce.
-  **[da confermare]** il nome: «Casa» è corto e ci sta; «Non alimentari» no.
+  **Deciso da Mattia il 2026-10-07: «Casa».** È corto e ci sta; «Non alimentari» no.
 - **Compare solo se servono entrambi**: se in dispensa (voci attive) c'è un mondo solo, il
   selettore non si mostra e vale «Tutto». Un selettore che può solo svuotare la pagina non
   serve. Se sparisce mentre era su «Casa» (l'ultima voce di casa tolta), torna a «Tutto»
@@ -124,7 +124,7 @@ L'ordine dei filtri è uno, ed è scritto in una funzione pura in `pantryView.ts
    **Deciso da Mattia il 2026-10-07: `sessionStorage`.**
 3. **Il selettore nascosto quando la dispensa ha un mondo solo** — raccomandato. **Deciso
    da Mattia il 2026-10-07: nascosto.**
-4. **Il nome «Casa»** — raccomandato.
+4. **Il nome «Casa»** — raccomandato. **Deciso da Mattia il 2026-10-07: «Casa».**
 5. **Il riepilogo delle scadenze segue il mondo scelto** — raccomandato.
 
 ## 7. Fuori scope
