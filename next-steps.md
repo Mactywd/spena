@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-07 (fase giorno: le decisioni di Mattia sulle bozze del 2026-10-06; tutte e sei decise, S3 con «Articolo aggiuntivo» e più confezioni per voce; manca a ognuna il piano)_
+_Ultimo aggiornamento: 2026-10-07 (fase giorno: le decisioni di Mattia sulle bozze del 2026-10-06, tutte e sei decise, manca a ognuna il piano; poi il giro delle prove a mano nel browser, che lascia al telefono solo tastiera, fotocamera, pollice e installazione)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -44,6 +44,7 @@ Nessun piano pronto.
 ### Idee
 - [idea] P3 · Annullando una decisione nella coda la riga sparisce e il fuoco cade sulla pagina: portarlo alla scheda del termine tornato in coda [T3 Consegna 6b]
 - [idea] P3 · Il titolo del foglio della cottura, per una confezione senza prodotto, è il nome dell'ingrediente in minuscolo: `capitalizeFirst` come nelle righe [T3 Consegna 6b]
+- [idea] P3 · La domanda di Open Food Facts in Sistema la spesa dice sempre «È un «…»?» (`OffSuggestionQuestion.tsx`): con un nome femminile esce «È un «zucchina»?». Riformulare senza articolo, per esempio «È «zucchina»?» o «Va bene come «zucchina»?» [giro nel browser 2026-10-07]
 - [idea] P3 · Lista e Sistema la spesa mostrano il testo della voce com'è stato scritto, anche in minuscolo (di proposito: è il testo di chi l'ha scritto) — da confermare con Mattia [T3 Consegna 6b]
 - [idea] P3 · Nel modulo, un nome nuovo che coincide con un non alimentare dell'anagrafica si scopre solo salvando (422 con la frase): il selettore cerca solo cibo, quindi non lo mostra prima [T3 Consegna 6b, R12]
 - [idea] P3 · La casella della Lista (`ListRow.tsx`) è ancora un quadratino da 20 px: `Checkbox` è pronta [T3 Consegna 6b]
@@ -95,16 +96,24 @@ Nessun piano pronto.
 - [bloccato] P3 · M1, motore di suggerimento — attende: pasti, nutrienti e sostituti (P2, S4, R5)
 
 ## Da fare a mano (solo Mattia)
-- [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera aperta (il passo del nome, il reparto, il fuoco sulla quantità), il tocco sulle caselle nuove, la coda con un termine vero e l'AI non configurata, l'avviso dopo un annullamento
-- [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura, lo stepper senza porzioni, «Metti in lista ciò che manca» e l'avviso, le tacche del foglio col pollice e il fuoco su «Cucina», «Salvata.» dopo il salvataggio; il perché sotto lo stepper delle porzioni in una ricetta senza porzioni («Porzioni non indicate: si cambiano da «Modifica».») deve stare a capo sotto lo stepper, non accanto al «+»
-- [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): la prima ricetta in vista, «Filtri» col pollice, i filtri che restano tornando da una ricetta, le miniature con la rete lenta, «Elimina» e «Annulla»
-- [tbd] P2 · Prove sul telefono della Consegna 6a: l'accesso (la tastiera col campo che ha il fuoco, l'occhio, la password mostrata senza maiuscola), le icone delle correzioni in Anagrafica senza testo, «Metti in dispensa» spento col perché sotto
-- [tbd] P1 · Prove sul telefono di Sistema la spesa (Consegna 3): un pannello aperto su una voce in fondo, lo scanner con la fotocamera vera e negata, il codice a mano con «Cerca», il campo data e la sua ✕, l'avviso in Dispensa
-- [tbd] P1 · Prove sul telefono della Lista (Consegna 2): la barra resta sotto l'intestazione scorrendo, con i suggerimenti che si aprono sotto; spuntare camminando senza le linee fra le righe; «Annulla» dopo la ✕ su una voce nel carrello
-- [tbd] P1 · Prove sul telefono della Dispensa (Consegna 1): le tacche col pollice, il selettore data nativo, le righe «Finito»
-- [tbd] P2 · Prove sul telefono del tema scuro (Consegna 0): tema vero, barra di stato nei due temi, icona reinstallata, Inter senza rete, schermata d'avvio (probabile lampo chiaro)
+
+_Il 2026-10-07 Claude ha fatto il giro nel browser, a 375 px e nei due temi, sullo stack e2e
+usa e getta (seme, nessun dato di produzione): quel che lì è passato è tolto dalle voci qui
+sotto, e resta solo ciò che vuole il telefono vero (tastiera, fotocamera, pollice, barra di
+stato, installazione) o dati che il seme non ha (foto delle ricette, termini veri della
+coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
+scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
+fra le idee._
+- [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
+- [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
+- [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)
+- [tbd] P2 · Prove sul telefono della Consegna 6a: la tastiera che si apre da sola sul campo password, e se toccare l'occhio la chiude (nel browser il fuoco passa dal campo al pulsante). Nel browser passati il fuoco nel campo, l'occhio con `autocapitalize="none"`, le icone delle correzioni in Anagrafica (44 px, col nome per lo screen reader), «Metti in dispensa» spento col perché sotto
+- [tbd] P1 · Prove sul telefono di Sistema la spesa (Consegna 3): lo scanner con la fotocamera vera, il permesso negato dalle impostazioni del telefono, il selettore data nativo. Nel browser passati il pannello sull'ultima voce, «Fotocamera non disponibile» con la strada a mano, il codice a mano con «Cerca» (anche sbagliato: «ricontrollalo» e «Usa questo codice lo stesso»), la ✕ della data, l'avviso in Dispensa
+- [tbd] P1 · Prove sul telefono della Lista (Consegna 2): spuntare camminando col pollice. Nel browser passati la barra sotto l'intestazione scorrendo, i suggerimenti sotto la barra, la riga intera che spunta senza linee fra le righe, «Annulla» dopo la ✕ su una voce nel carrello
+- [tbd] P1 · Prove sul telefono della Dispensa (Consegna 1): le tacche col pollice, il selettore data nativo. Nel browser passati il tocco sul bordo di ogni tacca, il campo data col fuoco, la riga «Finito» con «In lista» nei due temi
+- [tbd] P2 · Prove sul telefono del tema scuro (Consegna 0): barra di stato nei due temi, icona reinstallata, Inter senza rete, schermata d'avvio (probabile lampo chiaro). Nel browser passati il cambio di tema senza ricaricare e i due `theme-color`
 - [tbd] P3 · Sul server: restringere `Bash(ssh hetznerserver:*)` in `.claude/settings.local.json`; togliere `ANTHROPIC_API_KEY` dal `.env`; decidere dei due file non tracciati `.env.bak` e `imposta-password.sh` [Parte X]
-- [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera aperta i suggerimenti della barra della Lista scorrono nel loro elenco, e l'ultimo si raggiunge senza scorrere la pagina
+- [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
 _(niente)_
