@@ -449,7 +449,8 @@ Intorno servono tre ritocchi alla query, che restano da progettare nel piano:
    solo 0,8 × primo: 99,1 %, 65 %, 7 %, cioè per un ingrediente assente quasi sempre una o
    due righe sbagliate.
    **Raccomandazione: (a).** Il tocco sbagliato è il difetto che ha aperto la voce, e i
-   refusi a metà parola tornano da soli a parola finita.
+   refusi a metà parola tornano da soli a parola finita. **Deciso da Mattia il 2026-10-07:
+   (a), il criterio B col pavimento a 0,30.**
 2. **Togliere gli accenti nel confronto «contiene il testo».**
    (a) `translate()` sulle vocali accentate, nella query, senza migrazioni; (b)
    l'estensione `unaccent`, con una migrazione; (c) niente. Misurato: senza accenti si
