@@ -168,7 +168,7 @@ Due porte, una per caso:
 2. Il codice trova un prodotto del catalogo → **scheda di conferma** (§4.4) con prodotto,
    marca e ingrediente.
 3. Il codice è nuovo e Open Food Facts lo conosce → la scheda chiede prima
-   **l'ingrediente** (`IngredientChooser`, che può crearlo), mostrando nome, marca e foto
+   **l'ingrediente** (`IngredientChooser`, che può crearlo), mostrando nome e marca
    del suggerimento perché si sappia di cosa si sta parlando; poi
    `OffSuggestionQuestion` non serve (la domanda «è davvero yogurt greco?» ha senso solo
    quando l'ingrediente c'era prima del codice) e si va dritti al `CustomProductForm`
@@ -194,15 +194,15 @@ Una scheda sola per le due porte, sotto la barra:
 
 ```
 ┌──────────────────────────────────────────┐
-│ [foto] Fage Total 0%            Cambia   │
-│        Fage · yogurt greco               │
+│ Fage Total 0%                   Cambia   │
+│ Fage · yogurt greco                      │
 │ + scadenza                               │
 │ [ Metti in dispensa ]   Annulla          │
 └──────────────────────────────────────────┘
 ```
 
-- dice **cosa entra**: prodotto e marca, o «sfuso» e l'ingrediente; la foto se il
-  prodotto ce l'ha (`image_url`, vedi anche S12);
+- dice **cosa entra**: prodotto e marca, o «sfuso» e l'ingrediente. Niente foto: Mattia
+  il 2026-10-07 l'ha decisa come voce a sé (S12 §5.5, l'`idea` P3 nel backlog);
 - **«+ scadenza»** come in sistemazione (S7): un campo data nativo, facoltativo, con la ✕;
 - «Metti in dispensa» è il pulsante primario e prende il fuoco; entra **disponibile**;
 - dopo: l'avviso «In dispensa: Fage Total 0%» con **«Annulla»** (archivia la voce

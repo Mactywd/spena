@@ -3,6 +3,9 @@
 _Bozza del 2026-10-06, scritta in una fase giorno senza Mattia: tre direzioni, una
 raccomandazione e le decisioni che restano sue. La voce resta `tbd`._
 
+_2026-10-07: Mattia ha deciso tutte e cinque le voci del §5 (le raccomandate). Non resta
+niente da confermare; manca il piano._
+
 Voce del backlog: «S12, righe della dispensa riconoscibili: icona per reparto, emoji per
 ingrediente, foto del prodotto» [S12 in `docs/prossimi-passi.md`].
 Mockup: `docs/mockups/2026-10-06-righe-dispensa.html` (oggi e le tre direzioni, chiaro e
@@ -178,7 +181,7 @@ c'è già (S11).
    S6 per una figurina. **Deciso da Mattia il 2026-10-07: nessuno alla creazione.**
 5. **Una foto nella scheda del prodotto e nella scheda di conferma di S3** (la parte buona
    di B): raccomandata, ma come voce a sé, perché porta con sé la domanda delle immagini di
-   terzi.
+   terzi. **Deciso da Mattia il 2026-10-07: voce a sé** (l'`idea` P3 già nel backlog).
 
 ## 6. Fuori scope
 
