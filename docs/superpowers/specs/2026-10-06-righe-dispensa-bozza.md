@@ -75,7 +75,7 @@ sono a mano e discutibili caso per caso, l'ordine di grandezza no.
 
 ## 3. Le tre direzioni
 
-### A. Emoji dell'ingrediente, ripiego sull'icona del reparto — **raccomandata**
+### A. Emoji dell'ingrediente, ripiego sull'icona del reparto — **raccomandata; decisa da Mattia il 2026-10-07**
 
 - **Cosa si vede**: un quadratino da 28 px a sinistra del nome, fondo `page`, con l'emoji
   dell'ingrediente a 18 px; dove non c'è, l'icona Tabler del reparto in `ink-faint`
@@ -162,7 +162,7 @@ c'è già (S11).
 
 ## 5. Decisioni per Mattia
 
-1. **Direzione A** (emoji con ripiego) — raccomandata.
+1. **Direzione A** (emoji con ripiego) — raccomandata. **Deciso da Mattia il 2026-10-07: A.**
 2. **Fino a quale versione di emoji**: raccomandato **Emoji 14.0** (2021): esclude 🫚
    zenzero e 🫛 baccello (15.0) e il fungo marrone (15.1), ma si vede sui telefoni
    aggiornati dal 2022 in poi. Se il telefono è recente, 15.0.
