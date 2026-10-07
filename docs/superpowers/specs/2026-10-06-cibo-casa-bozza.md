@@ -49,7 +49,7 @@ chiave della cache.
 **Il server espone `ingredient_kind`.** Il client non deduce niente: legge un verdetto già
 preso, come legge `expiry` invece di calcolare i sette giorni. È la stessa forma che la
 Lista usa già. Filtrare nel server avrebbe senso solo se la dispensa fosse troppo grande
-per arrivare intera, e non lo è. **[da confermare]**, ma netta.
+per arrivare intera, e non lo è. **Deciso da Mattia il 2026-10-07: A.**
 
 ## 3. Il selettore
 
@@ -118,7 +118,8 @@ L'ordine dei filtri è uno, ed è scritto in una funzione pura in `pantryView.ts
 
 ## 6. Decisioni per Mattia
 
-1. **Il server espone `ingredient_kind`** (A) — raccomandato.
+1. **Il server espone `ingredient_kind`** (A) — raccomandato. **Deciso da Mattia il
+   2026-10-07: A.**
 2. **`sessionStorage` e non `localStorage`** — raccomandato, per coerenza col ricettario.
 3. **Il selettore nascosto quando la dispensa ha un mondo solo** — raccomandato.
 4. **Il nome «Casa»** — raccomandato.
