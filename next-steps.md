@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-07 (fase giorno: le decisioni di Mattia sulle bozze del 2026-10-06; S3 e S12 decise; S3 con «Articolo aggiuntivo» e più confezioni per voce)_
+_Ultimo aggiornamento: 2026-10-07 (fase giorno: le decisioni di Mattia sulle bozze del 2026-10-06; S3, S12 e S14 decise; S3 con «Articolo aggiuntivo» e più confezioni per voce)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -27,7 +27,7 @@ Nessun piano pronto.
 ### Voci decise, da portare a spec e piano
 - [tbd] P2 · S3, ingresso diretto in dispensa, veloce: scansione e inserimento a mano senza passare dalla lista, estraendo scanner, catalogo e modulo da `StockingScreen.tsx` — bozza `docs/superpowers/specs/2026-10-06-ingresso-diretto-bozza.md`, decise da Mattia il 2026-10-07 tutte le voci del §8: parità subito senza scontrino, scheda di conferma, scansione in serie, e in «Sistema la spesa» «Articolo aggiuntivo» (voce di lista già spuntata) e «+ un'altra confezione» dello stesso ingrediente (§10) — TBD: il piano [S3]
 - [tbd] P2 · S12, righe della dispensa riconoscibili: icona per reparto, emoji per ingrediente, foto del prodotto — brainstorming in `docs/superpowers/specs/2026-10-06-righe-dispensa-bozza.md` e mockup `docs/mockups/2026-10-06-righe-dispensa.html`, decise da Mattia il 2026-10-07 tutte le voci del §5: emoji dell'ingrediente (elenco chiuso fino a Emoji 14.0, decisa dall'AI sulle colonne vuote, correggibile in Anagrafica) col ripiego sull'icona del reparto, solo in Dispensa; la foto nelle schede grandi resta voce a sé — TBD: il piano [S12]
-- [tbd] P3 · S14, «Tutto / Cibo / Casa» in dispensa — bozza di spec `docs/superpowers/specs/2026-10-06-cibo-casa-bozza.md`, raccomandato che il server esponga `ingredient_kind` — TBD: le cinque decisioni del §6 [S14]
+- [tbd] P3 · S14, «Tutto / Cibo / Casa» in dispensa — bozza di spec `docs/superpowers/specs/2026-10-06-cibo-casa-bozza.md`, decise da Mattia il 2026-10-07 tutte le voci del §6: il server espone `ingredient_kind`, scelta in `sessionStorage`, selettore nascosto con un mondo solo, nome «Casa», il riepilogo delle scadenze segue il mondo — TBD: il piano [S14]
 - [tbd] P3 · S15, reparti della dispensa collassabili, col numero di voci quando sono chiusi e aperti da una ricerca — bozza di spec `docs/superpowers/specs/2026-10-06-reparti-collassabili-bozza.md` — TBD: le cinque decisioni del §6 [S15]
 - [tbd] P3 · R2, secondo modo: riporzionare a partire da un ingrediente («io ne faccio 150 g») — TBD: solo vista o si salva [R2]
 - [tbd] P3 · R5, sostituisci ingrediente, precalcolato — TBD grosso: quante coppie, costo col tetto di 1 $/giorno, dipende dalla ricetta o dalla coppia, come si corregge [R5]

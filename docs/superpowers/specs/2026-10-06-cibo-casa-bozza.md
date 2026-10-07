@@ -3,6 +3,9 @@
 _Bozza del 2026-10-06, scritta in una fase giorno senza Mattia. Le decisioni marcate
 **[da confermare]** hanno una raccomandazione; finché ce ne sono, la voce resta `tbd`._
 
+_2026-10-07: Mattia ha deciso tutte e cinque le voci del §6 (le raccomandate). Non resta
+niente da confermare; manca il piano._
+
 Voce del backlog: «S14, "Tutto / Cibo / Casa" in dispensa: il server espone
 `ingredient_kind` o filtra lui» [S14 in `docs/prossimi-passi.md`]. Va letta insieme a S15
 (`2026-10-06-reparti-collassabili-bozza.md`), che tocca lo stesso schermo.
@@ -125,7 +128,8 @@ L'ordine dei filtri è uno, ed è scritto in una funzione pura in `pantryView.ts
 3. **Il selettore nascosto quando la dispensa ha un mondo solo** — raccomandato. **Deciso
    da Mattia il 2026-10-07: nascosto.**
 4. **Il nome «Casa»** — raccomandato. **Deciso da Mattia il 2026-10-07: «Casa».**
-5. **Il riepilogo delle scadenze segue il mondo scelto** — raccomandato.
+5. **Il riepilogo delle scadenze segue il mondo scelto** — raccomandato. **Deciso da Mattia
+   il 2026-10-07: segue il mondo.**
 
 ## 7. Fuori scope
 
