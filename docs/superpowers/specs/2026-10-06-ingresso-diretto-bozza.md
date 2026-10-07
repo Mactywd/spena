@@ -4,6 +4,9 @@ _Bozza del 2026-10-06, scritta in una fase giorno senza Mattia. Le decisioni mar
 **[da confermare]** hanno una raccomandazione ma aspettano il suo sì; finché ce ne sono, la
 voce resta `tbd`._
 
+_2026-10-07: Mattia ha deciso tutte e sette le voci del §8 (le raccomandate), comprese le due
+richieste nuove del §10. Non resta niente da confermare; manca il piano._
+
 Voce del backlog: «S3, ingresso diretto in dispensa, veloce» [S3 in `docs/prossimi-passi.md`].
 
 ## 1. Il problema
@@ -294,7 +297,8 @@ pezzo più utile e non tocca l'ingresso diretto.
 6. **«Articolo aggiuntivo»** in «Sistema la spesa» come voce di lista nata già spuntata
    (§10.1, forma a) — raccomandata. **Deciso da Mattia il 2026-10-07: forma a.**
 7. **Più confezioni per una voce**: «+ un'altra confezione» sotto una voce risolta, tutte
-   dello stesso ingrediente (§10.2) — raccomandato.
+   dello stesso ingrediente (§10.2) — raccomandato. **Deciso da Mattia il 2026-10-07: lo
+   stesso ingrediente.**
 
 ## 9. Fuori scope
 
@@ -351,6 +355,7 @@ sotto la voce una seconda riga con le stesse tre strade (codice, catalogo, sfuso
   dello stesso ingrediente `yogurt`, e vanno bene. «Yogurt greco» insieme a «yogurt
   bianco» sono due ingredienti diversi. Raccomandato: **lo stesso ingrediente**, che è la
   guardia che lo scanner fa già (il prodotto di un altro ingrediente non si aggancia); per
-  un ingrediente diverso c'è «Articolo aggiuntivo».
+  un ingrediente diverso c'è «Articolo aggiuntivo». **Deciso da Mattia il 2026-10-07: lo
+  stesso ingrediente.**
 - Con l'ingresso diretto (§4) la stessa cosa è gratuita: la scansione in serie (§4.5) è già
   «un'altra confezione».

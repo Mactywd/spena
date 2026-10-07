@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-06 (fase giorno in autonomia: bozze per S3, S12, S14, S15, tema scuro e suggerimenti; report in `docs/night-reports/2026-10-06.md`)_
+_Ultimo aggiornamento: 2026-10-07 (fase giorno: le decisioni di Mattia sulle bozze del 2026-10-06; S3 decisa, con «Articolo aggiuntivo» e più confezioni per voce)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -25,7 +25,7 @@ Nessun piano pronto.
 - [tbd] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — misurato in `docs/superpowers/specs/2026-10-06-suggerimenti-soglia-bozza.md`: nessun salto di punteggio da trovare, raccomandato «chi contiene il testo, e gli altri solo se nessuno lo contiene» (righe da 6,7 a 2,0 in media, richiamo invariato); serve anche una nota di ripiego in `IngredientPicker` — TBD: le sei decisioni del §10 [T3, esito del giro]
 
 ### Voci decise, da portare a spec e piano
-- [tbd] P2 · S3, ingresso diretto in dispensa, veloce: scansione e inserimento a mano senza passare dalla lista, estraendo scanner, catalogo e modulo da `StockingScreen.tsx` — bozza `docs/superpowers/specs/2026-10-06-ingresso-diretto-bozza.md`, raccomandata la parità subito senza scontrino — TBD: le cinque decisioni del §8 [S3]
+- [tbd] P2 · S3, ingresso diretto in dispensa, veloce: scansione e inserimento a mano senza passare dalla lista, estraendo scanner, catalogo e modulo da `StockingScreen.tsx` — bozza `docs/superpowers/specs/2026-10-06-ingresso-diretto-bozza.md`, decise da Mattia il 2026-10-07 tutte le voci del §8: parità subito senza scontrino, scheda di conferma, scansione in serie, e in «Sistema la spesa» «Articolo aggiuntivo» (voce di lista già spuntata) e «+ un'altra confezione» dello stesso ingrediente (§10) — TBD: il piano [S3]
 - [tbd] P2 · S12, righe della dispensa riconoscibili: icona per reparto, emoji per ingrediente, foto del prodotto — brainstorming in `docs/superpowers/specs/2026-10-06-righe-dispensa-bozza.md` e mockup `docs/mockups/2026-10-06-righe-dispensa.html`, raccomandata l'emoji dell'ingrediente col ripiego sull'icona del reparto — TBD: le cinque decisioni del §5 [S12]
 - [tbd] P3 · S14, «Tutto / Cibo / Casa» in dispensa — bozza di spec `docs/superpowers/specs/2026-10-06-cibo-casa-bozza.md`, raccomandato che il server esponga `ingredient_kind` — TBD: le cinque decisioni del §6 [S14]
 - [tbd] P3 · S15, reparti della dispensa collassabili, col numero di voci quando sono chiusi e aperti da una ricerca — bozza di spec `docs/superpowers/specs/2026-10-06-reparti-collassabili-bozza.md` — TBD: le cinque decisioni del §6 [S15]
