@@ -165,7 +165,8 @@ c'è già (S11).
 1. **Direzione A** (emoji con ripiego) — raccomandata. **Deciso da Mattia il 2026-10-07: A.**
 2. **Fino a quale versione di emoji**: raccomandato **Emoji 14.0** (2021): esclude 🫚
    zenzero e 🫛 baccello (15.0) e il fungo marrone (15.1), ma si vede sui telefoni
-   aggiornati dal 2022 in poi. Se il telefono è recente, 15.0.
+   aggiornati dal 2022 in poi. Se il telefono è recente, 15.0. **Deciso da Mattia il
+   2026-10-07: Emoji 14.0.**
 3. **Solo la Dispensa, o anche Lista, Sistema la spesa e il foglio della cottura**:
    raccomandato **solo la Dispensa** per cominciare; l'emoji arriva in `PantryItemOut` e
    basta. Allargarla dopo è aggiungere un campo a tre risposte.
