@@ -219,8 +219,8 @@ e la data finisce a dopo, sulla riga.
 
 Dopo «Metti in dispensa» da una scansione, il pannello **non si chiude**: torna allo
 scanner pronto per il codice successivo, con l'avviso della voce appena entrata sopra.
-Si chiude con la ✕ del pannello. Dal + invece si chiude, come oggi. **[da confermare]** —
-raccomandato: il censimento è il secondo caso della richiesta, e riaprire lo scanner a
+Si chiude con la ✕ del pannello. Dal + invece si chiude, come oggi. **Deciso da Mattia il
+2026-10-07: in serie.** Il perché: il censimento è il secondo caso della richiesta, e riaprire lo scanner a
 ogni confezione è il gesto che lo rende lento. La fotocamera resta accesa fra un codice e
 l'altro? Oggi no: `BarcodeScanner` rilascia la fotocamera al primo codice letto
 (`release`, «l'unica uscita: smontaggio, codice letto, Annulla»). In serie lo scanner va
@@ -281,7 +281,8 @@ pezzo più utile e non tocca l'ingresso diretto.
 2. **Scheda di conferma prima di scrivere** (un tocco in più) o scrittura immediata con
    «Annulla» nell'avviso — raccomandata la scheda, §4.4. **Deciso da Mattia il 2026-10-07:
    la scheda.**
-3. **Scansione in serie** dopo una conferma — raccomandata sì, §4.5.
+3. **Scansione in serie** dopo una conferma — raccomandata sì, §4.5. **Deciso da Mattia il
+   2026-10-07: sì.**
 4. **Una voce già in lista** (in attesa o spuntata) che entra dall'ingresso diretto: la
    lista continua a chiederla. Raccomandato **fuori da questa voce**: l'ingresso diretto
    serve per quel che non era scritto, e la sistemazione resta la strada per la lista. Se
