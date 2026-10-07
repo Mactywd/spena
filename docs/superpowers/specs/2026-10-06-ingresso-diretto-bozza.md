@@ -292,7 +292,7 @@ pezzo più utile e non tocca l'ingresso diretto.
 5. **Nomi**: «Scansiona» accanto al +, e «Metti in dispensa» anche qui (lo stesso verbo
    della sistemazione). Raccomandati. **Deciso da Mattia il 2026-10-07: questi.**
 6. **«Articolo aggiuntivo»** in «Sistema la spesa» come voce di lista nata già spuntata
-   (§10.1, forma a) — raccomandata.
+   (§10.1, forma a) — raccomandata. **Deciso da Mattia il 2026-10-07: forma a.**
 7. **Più confezioni per una voce**: «+ un'altra confezione» sotto una voce risolta, tutte
    dello stesso ingrediente (§10.2) — raccomandato.
 
@@ -321,7 +321,8 @@ Due forme:
   `IngredientChooser` (§3.2.3), crea la voce in lista come `checked` con le rotte di oggi e
   la voce compare fra le altre, con le sue tre strade. La sistemazione resta tutto-o-niente
   e la rotta `stock` non cambia (vuole `shopping_item_id`, e lo ha). La voce finisce `done`
-  come le altre, e resta nella storia della lista come comprata. **Raccomandata.**
+  come le altre, e resta nella storia della lista come comprata. **Raccomandata; decisa da
+  Mattia il 2026-10-07.**
 - **b. Una voce locale, senza lista**: lo schermo terrebbe voci di due tipi, e la rotta
   `stock` dovrebbe accettare righe senza `shopping_item_id`. Più lavoro, per niente di più
   a video.
