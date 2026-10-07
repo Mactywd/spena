@@ -114,7 +114,7 @@ Le soglie: la scritta ≥ 4,5:1 sul suo fondo anche da spenta (soglia del proget
 WCAG); il fondo non deve sparire contro pagina e scheda, ma nemmeno arrivare a 3:1, che è
 quanto basta a un segno per dire «qui si tocca».
 
-### A. Un fondo pieno dedicato, senza `opacity` (raccomandata)
+### A. Un fondo pieno dedicato, senza `opacity` (raccomandata; decisa da Mattia il 2026-10-07)
 
 Due token nuovi nel blocco `@theme` e nel blocco scuro:
 
@@ -301,7 +301,8 @@ pannello ci sta sotto 3:1 (2,91 e 2,66). V3 resta un'aggiunta possibile, non nec
 
 1. **Il pulsante spento diventa grigio pieno** (opzione A: fondo `disabled`, scritta
    `on-disabled`, niente più `opacity`)? Raccomandato: **sì**. In alternativa B (fantasma), che
-   però fa sembrare lo spento più toccabile del secondario acceso.
+   però fa sembrare lo spento più toccabile del secondario acceso. **Deciso da Mattia il
+   2026-10-07: A.**
 2. **La regola vale per tutte le varianti**, nella stessa consegna (`primary` e `warn` col
    fondo grigio, `secondary`, `ghost` e `danger` con la scritta `ink-faint`)? Raccomandato:
    **sì** — oggi stanno tutte sotto 4,5:1, e due regole per «spento» nello stesso componente
