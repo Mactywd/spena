@@ -38,7 +38,8 @@ sembra vuoto.
 - **Chevron** `chevron-down` aperto, `chevron-right` chiuso, in `ink-faint`. Nessuna
   animazione: a 375 px un'altezza che si apre sposta il resto sotto il dito.
 - **Il numero c'è già** (`count`) e resta lo stesso aperto e chiuso.
-- **Chiuso, il titolo dice anche quel che chiede attenzione** **[da confermare]**: le voci
+- **Chiuso, il titolo dice anche quel che chiede attenzione** (**deciso da Mattia il
+  2026-10-07**): le voci
   finite («1 finito», in `finished`) e quelle in scadenza («2 in scadenza», in `expiry`),
   solo quando ci sono. Raccomandato: un reparto chiuso non deve nascondere proprio le
   righe che hanno un pulsante da toccare («In lista» su una finita) o un tempo che corre.
@@ -95,6 +96,7 @@ silenzio, perché il titolo chiuso dice quante voci ha e quali chiedono attenzio
 ## 6. Decisioni per Mattia
 
 1. **Chiuso, il titolo dice «N finito» e «N in scadenza»** oltre al numero — raccomandato.
+   **Deciso da Mattia il 2026-10-07: sì.**
 2. **`localStorage`** per i reparti chiusi (diverso da S14) — raccomandato.
 3. **Il riepilogo delle scadenze premuto apre i reparti con una scadenza**, come la
    ricerca — raccomandato.
