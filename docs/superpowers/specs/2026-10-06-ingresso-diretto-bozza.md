@@ -60,7 +60,7 @@ scansionarne il codice.
 **Parità subito, senza scontrino.** È dove la voce pendeva già, ed è l'unica che risponde
 alla richiesta così com'è stata fatta. Lo scontrino resta la sua voce (fase 2) e si
 progetta sopra i pezzi estratti qui; questa bozza dice in §7 come ci si aggancerà, per non
-chiudere la porta. **[da confermare]**, ma la raccomandazione è netta.
+chiudere la porta. **Deciso da Mattia il 2026-10-07: A.**
 
 ## 3. Cosa comporta estrarre scanner, catalogo e modulo
 
@@ -276,7 +276,7 @@ pezzo più utile e non tocca l'ingresso diretto.
 
 ## 8. Decisioni per Mattia
 
-1. **Strada A (parità subito, scontrino dopo)** — raccomandata, §2.3.
+1. **Strada A (parità subito, scontrino dopo)** — raccomandata, §2.3. **Deciso da Mattia il 2026-10-07: A.**
 2. **Scheda di conferma prima di scrivere** (un tocco in più) o scrittura immediata con
    «Annulla» nell'avviso — raccomandata la scheda, §4.4.
 3. **Scansione in serie** dopo una conferma — raccomandata sì, §4.5.
@@ -287,6 +287,10 @@ pezzo più utile e non tocca l'ingresso diretto.
    «Toglila».
 5. **Nomi**: «Scansiona» accanto al +, e «Metti in dispensa» anche qui (lo stesso verbo
    della sistemazione). Raccomandati.
+6. **«Articolo aggiuntivo»** in «Sistema la spesa» come voce di lista nata già spuntata
+   (§10.1, forma a) — raccomandata.
+7. **Più confezioni per una voce**: «+ un'altra confezione» sotto una voce risolta, tutte
+   dello stesso ingrediente (§10.2) — raccomandato.
 
 ## 9. Fuori scope
 
@@ -296,3 +300,52 @@ pezzo più utile e non tocca l'ingresso diretto.
 - Distinguere due confezioni dello stesso prodotto (idea già nel backlog).
 - La quantità: la dispensa non ne ha, per la decisione fondante 1.
 - Desktop.
+
+## 10. Due richieste nuove su «Sistema la spesa» (Mattia, 2026-10-07)
+
+Arrivate rispondendo alla prima domanda. Toccano lo schermo da cui la bozza estrae i pezzi,
+quindi stanno qui; le domande aperte sono in fondo a §8.
+
+### 10.1 «Articolo aggiuntivo»
+
+In fondo a «Sistema la spesa» serve un modo di aggiungere una cosa comprata che in lista non
+c'era. Oggi bisogna tornare in Lista, scriverla, spuntarla e rientrare.
+
+Due forme:
+
+- **a. Una voce di lista nata già spuntata**: «Articolo aggiuntivo» apre
+  `IngredientChooser` (§3.2.3), crea la voce in lista come `checked` con le rotte di oggi e
+  la voce compare fra le altre, con le sue tre strade. La sistemazione resta tutto-o-niente
+  e la rotta `stock` non cambia (vuole `shopping_item_id`, e lo ha). La voce finisce `done`
+  come le altre, e resta nella storia della lista come comprata. **Raccomandata.**
+- **b. Una voce locale, senza lista**: lo schermo terrebbe voci di due tipi, e la rotta
+  `stock` dovrebbe accettare righe senza `shopping_item_id`. Più lavoro, per niente di più
+  a video.
+
+### 10.2 Più confezioni per una voce
+
+Una voce di lista oggi diventa una sola voce di dispensa. Ma da «prosciutto cotto» possono
+uscire due vaschette con due scadenze, e da «yogurt» uno yogurt alla fragola e uno alla
+pesca, due prodotti diversi.
+
+La forma proposta: su una voce già risolta compare **«+ un'altra confezione»**, che aggiunge
+sotto la voce una seconda riga con le stesse tre strade (codice, catalogo, sfuso) e la sua
+«+ scadenza». «Metti in dispensa N» conta le confezioni, non le voci.
+
+- **Dati**: nessuna colonna nuova. La rotta `stock` riceve più righe con lo stesso
+  `shopping_item_id`; `stock_items` crea una voce di dispensa per riga e chiude la voce di
+  lista (la seconda volta non cambia niente). Da verificare nel piano: oggi lo schema non
+  vieta i doppioni di `shopping_item_id`, ma nessun test li prova.
+- **Nel client**: `resolved` ed `expiry` passano da «una per voce» a «un elenco per voce»
+  (`stockEntries` in `stockingView.ts` ne fa una riga di richiesta per confezione). È il
+  cambiamento più delicato, perché le guardie dello schermo sono tutte indicizzate per
+  voce (S8, S19): il piano le deve indicizzare per confezione.
+- **Un vincolo da decidere**: tutte le confezioni di una voce devono essere dello stesso
+  ingrediente? La voce di lista ha un ingrediente solo (`shopping_item.ingredient_id`, che
+  `stock_items` riscrive). «Yogurt alla fragola» e «yogurt alla pesca» sono due prodotti
+  dello stesso ingrediente `yogurt`, e vanno bene. «Yogurt greco» insieme a «yogurt
+  bianco» sono due ingredienti diversi. Raccomandato: **lo stesso ingrediente**, che è la
+  guardia che lo scanner fa già (il prodotto di un altro ingrediente non si aggancia); per
+  un ingrediente diverso c'è «Articolo aggiuntivo».
+- Con l'ingresso diretto (§4) la stessa cosa è gratuita: la scansione in serie (§4.5) è già
+  «un'altra confezione».
