@@ -72,7 +72,7 @@ per arrivare intera, e non lo è. **Deciso da Mattia il 2026-10-07: A.**
   stessa ragione: una dispensa vuota per un filtro che non si vede più sarebbe una bugia.
 - **Ricordato per dispositivo**, nella `sessionStorage` (chiave
   `spena.dispensa.mondo`), con un involucro che non lancia se lo spazio del sito è
-  bloccato, come `recipeFilters.ts`. **[da confermare]**: la voce in `prossimi-passi.md`
+  bloccato, come `recipeFilters.ts`. **Deciso da Mattia il 2026-10-07: `sessionStorage`.** La voce in `prossimi-passi.md`
   diceva `localStorage`; la raccomandazione qui è `sessionStorage` perché il 2026-09-29
   Mattia ha deciso così per i filtri del ricettario, con un argomento che vale anche qui —
   chiusa l'app, la dispensa riparte intera, invece di aprirsi su «Casa» per una scelta di
@@ -121,6 +121,7 @@ L'ordine dei filtri è uno, ed è scritto in una funzione pura in `pantryView.ts
 1. **Il server espone `ingredient_kind`** (A) — raccomandato. **Deciso da Mattia il
    2026-10-07: A.**
 2. **`sessionStorage` e non `localStorage`** — raccomandato, per coerenza col ricettario.
+   **Deciso da Mattia il 2026-10-07: `sessionStorage`.**
 3. **Il selettore nascosto quando la dispensa ha un mondo solo** — raccomandato.
 4. **Il nome «Casa»** — raccomandato.
 5. **Il riepilogo delle scadenze segue il mondo scelto** — raccomandato.
