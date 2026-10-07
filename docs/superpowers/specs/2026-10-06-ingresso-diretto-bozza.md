@@ -290,7 +290,7 @@ pezzo più utile e non tocca l'ingresso diretto.
    «Toglila». **Deciso da Mattia il 2026-10-07: fuori da questa voce** (resta l'`idea` P3
    già nel backlog).
 5. **Nomi**: «Scansiona» accanto al +, e «Metti in dispensa» anche qui (lo stesso verbo
-   della sistemazione). Raccomandati.
+   della sistemazione). Raccomandati. **Deciso da Mattia il 2026-10-07: questi.**
 6. **«Articolo aggiuntivo»** in «Sistema la spesa» come voce di lista nata già spuntata
    (§10.1, forma a) — raccomandata.
 7. **Più confezioni per una voce**: «+ un'altra confezione» sotto una voce risolta, tutte
