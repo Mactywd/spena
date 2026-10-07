@@ -329,7 +329,8 @@ pertinenti per lista (§5.1), perché oggi i prefissi sono già in cima.
 1. Una riga è un **riscontro** se, tolti gli accenti, il **nome** dell'ingrediente contiene
    il testo digitato all'inizio di una parola (inizio, dopo uno spazio, un apostrofo o un
    trattino), oppure se un suo **alias comincia** con il testo. Il secondo caso è
-   l'`is_prefix` di oggi sugli alias.
+   l'`is_prefix` di oggi sugli alias. _(2026-10-07: Mattia ha deciso che vale l'inizio di
+   parola anche negli alias, decisione 4.)_
 2. **Se c'è almeno un riscontro, si mostrano solo i riscontri**, al massimo 10, nell'ordine
    di oggi: prefisso, acquisti, somiglianza, nome.
 3. **Se non c'è nessun riscontro**, si mostrano gli sfumati con
@@ -461,7 +462,13 @@ Intorno servono tre ritocchi alla query, che restano da progettare nel piano:
    vicini per l'AI (`limit=3`) vivono degli sfumati. **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte non funzionali: (a).**
 4. **Gli alias che contengono il testo a metà** («olio» → «Tonno in scatola» per «tonno
    sott'olio»). (a) fuori, criterio B; (b) dentro, criterio A: 0,24 righe in più per lista
-   che a chi legge sembrano rumore. **Raccomandazione: (a).**
+   che a chi legge sembrano rumore. **Raccomandazione: (a).** **Deciso da Mattia il
+   2026-10-07: (b)**, con le sue parole: «se scrivo "pollo" voglio "petto di pollo", "ali
+   di pollo" eccetera». Quindi un riscontro è l'inizio di una parola **nel nome o in un
+   alias qualunque** (la regola di A); il resto resta B: con un riscontro gli sfumati
+   restano fuori, senza riscontri passano con il pavimento a 0,30 (decisione 1). Il piano
+   rifà la misura con questa regola: ci si aspettano circa 0,24 righe in più per lista
+   rispetto ai numeri del §6, nessun bersaglio perso.
 5. **«zucch».** (a) nessuna regola nuova: il taglio lascia 5 righe che contengono tutte
    «zucch», con Zucchina seconda; (b) uno spareggio nuovo fra prefissi a pari punteggio,
    per esempio prima quel che è in dispensa o in lista. **Raccomandazione: (a)** in questa
