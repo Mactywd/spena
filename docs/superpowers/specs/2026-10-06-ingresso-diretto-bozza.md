@@ -206,7 +206,8 @@ Una scheda sola per le due porte, sotto la barra:
   appena creata, come la ✕ di una riga), la riga nuova portata in vista (`revealId`, come
   oggi), e la barra vuota.
 
-**Perché una scheda e non la scrittura immediata dopo la scansione** **[da confermare]**:
+**Perché una scheda e non la scrittura immediata dopo la scansione** (**deciso da Mattia il
+2026-10-07: la scheda**):
 è un tocco in più, ma un codice letto male o un prodotto del catalogo agganciato
 all'ingrediente sbagliato finirebbero in dispensa in silenzio — è il «dato sbagliato
 scritto in silenzio» di S13. E la scheda è il solo posto dove la scadenza si scrive con la
@@ -278,7 +279,8 @@ pezzo più utile e non tocca l'ingresso diretto.
 
 1. **Strada A (parità subito, scontrino dopo)** — raccomandata, §2.3. **Deciso da Mattia il 2026-10-07: A.**
 2. **Scheda di conferma prima di scrivere** (un tocco in più) o scrittura immediata con
-   «Annulla» nell'avviso — raccomandata la scheda, §4.4.
+   «Annulla» nell'avviso — raccomandata la scheda, §4.4. **Deciso da Mattia il 2026-10-07:
+   la scheda.**
 3. **Scansione in serie** dopo una conferma — raccomandata sì, §4.5.
 4. **Una voce già in lista** (in attesa o spuntata) che entra dall'ingresso diretto: la
    lista continua a chiederla. Raccomandato **fuori da questa voce**: l'ingresso diretto
