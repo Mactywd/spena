@@ -454,10 +454,10 @@ Intorno servono tre ritocchi alla query, che restano da progettare nel piano:
    (a) `translate()` sulle vocali accentate, nella query, senza migrazioni; (b)
    l'estensione `unaccent`, con una migrazione; (c) niente. Misurato: senza accenti si
    recupera «te» → tè; «caffe» → caffè passa già come sfumato (0,50).
-   **Raccomandazione: (a).** Costa una riga e non cambia nient'altro.
+   **Raccomandazione: (a).** Costa una riga e non cambia nient'altro. **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte non funzionali: (a).**
 3. **Dove si applica il taglio.** (a) solo nell'endpoint `/ingredients/search`; (b) dentro
    `search_ingredients`, per tutti. **Raccomandazione: (a).** `match_name` (`limit=1`) e i
-   vicini per l'AI (`limit=3`) vivono degli sfumati.
+   vicini per l'AI (`limit=3`) vivono degli sfumati. **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte non funzionali: (a).**
 4. **Gli alias che contengono il testo a metà** («olio» → «Tonno in scatola» per «tonno
    sott'olio»). (a) fuori, criterio B; (b) dentro, criterio A: 0,24 righe in più per lista
    che a chi legge sembrano rumore. **Raccomandazione: (a).**
@@ -468,6 +468,7 @@ Intorno servono tre ritocchi alla query, che restano da progettare nel piano:
 6. **La nota di ripiego in `IngredientPicker`** per i cinque schermi che non passano né
    `emptyNote` né `onCreate` (§7). (a) dentro questa voce; (b) voce a parte.
    **Raccomandazione: (a).** Senza la nota, il taglio crea muti dove oggi c'è rumore.
+   **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte non funzionali: (a).**
 
 ## 11. Fuori scope
 
