@@ -287,7 +287,8 @@ pezzo più utile e non tocca l'ingresso diretto.
    lista continua a chiederla. Raccomandato **fuori da questa voce**: l'ingresso diretto
    serve per quel che non era scritto, e la sistemazione resta la strada per la lista. Se
    capita spesso, una voce a sé: la scheda di conferma direbbe «è anche in lista» con
-   «Toglila».
+   «Toglila». **Deciso da Mattia il 2026-10-07: fuori da questa voce** (resta l'`idea` P3
+   già nel backlog).
 5. **Nomi**: «Scansiona» accanto al +, e «Metti in dispensa» anche qui (lo stesso verbo
    della sistemazione). Raccomandati.
 6. **«Articolo aggiuntivo»** in «Sistema la spesa» come voce di lista nata già spuntata
