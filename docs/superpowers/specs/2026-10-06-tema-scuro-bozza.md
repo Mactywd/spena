@@ -306,7 +306,7 @@ pannello ci sta sotto 3:1 (2,91 e 2,66). V3 resta un'aggiunta possibile, non nec
 2. **La regola vale per tutte le varianti**, nella stessa consegna (`primary` e `warn` col
    fondo grigio, `secondary`, `ghost` e `danger` con la scritta `ink-faint`)? Raccomandato:
    **sì** — oggi stanno tutte sotto 4,5:1, e due regole per «spento» nello stesso componente
-   sono quel che il ridisegno ha tolto.
+   sono quel che il ridisegno ha tolto. **Deciso da Mattia il 2026-10-07: tutte.**
 3. **`busy` resta uguale a spento** (anche il pulsante in volo diventa grigio per la durata
    della richiesta)? Raccomandato: **sì**, è già la regola scritta in `buttonClasses.ts`
    («deve sembrare spento come uno spento davvero»). L'alternativa, un aspetto suo per
