@@ -71,7 +71,8 @@ dispensa di oggi). Con lo stesso involucro di `recipeFilters.ts`: se lo spazio d
 bloccato o il valore è illeggibile, tutto aperto; un nome di reparto che non esiste più si
 ignora.
 
-`localStorage` e non `sessionStorage`, a differenza di S14 **[da confermare]**: chiudere
+`localStorage` e non `sessionStorage`, a differenza di S14 (**deciso da Mattia il
+2026-10-07**): chiudere
 «Spezie» perché non si guardano mai è una disposizione della propria dispensa, come
 l'ordine delle cartelle, e ritrovarla domani è il punto. E non nasconde niente in
 silenzio, perché il titolo chiuso dice quante voci ha e quali chiedono attenzione (§2).
@@ -97,7 +98,8 @@ silenzio, perché il titolo chiuso dice quante voci ha e quali chiedono attenzio
 
 1. **Chiuso, il titolo dice «N finito» e «N in scadenza»** oltre al numero — raccomandato.
    **Deciso da Mattia il 2026-10-07: sì.**
-2. **`localStorage`** per i reparti chiusi (diverso da S14) — raccomandato.
+2. **`localStorage`** per i reparti chiusi (diverso da S14) — raccomandato. **Deciso da
+   Mattia il 2026-10-07: `localStorage`.**
 3. **Il riepilogo delle scadenze premuto apre i reparti con una scadenza**, come la
    ricerca — raccomandato.
 4. **Una voce aggiunta in un reparto chiuso lo apre e lo salva aperto** — raccomandato.
