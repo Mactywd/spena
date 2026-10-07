@@ -3,6 +3,9 @@
 _Bozza del 2026-10-06, scritta in una fase giorno senza Mattia. Le decisioni marcate
 **[da confermare]** hanno una raccomandazione; finché ce ne sono, la voce resta `tbd`._
 
+_2026-10-07: Mattia ha deciso tutte e cinque le voci del §6 (le raccomandate). Non resta
+niente da confermare; manca il piano._
+
 Voce del backlog: «S15, reparti della dispensa collassabili, col numero di voci quando
 sono chiusi e aperti da una ricerca» [S15 in `docs/prossimi-passi.md`]. Va letta insieme a
 S14 (`2026-10-06-cibo-casa-bozza.md`).
@@ -105,7 +108,8 @@ silenzio, perché il titolo chiuso dice quante voci ha e quali chiedono attenzio
 4. **Una voce aggiunta in un reparto chiuso lo apre e lo salva aperto** — raccomandato.
    **Deciso da Mattia il 2026-10-07: sì.**
 5. **Niente «chiudi tutto / apri tutto»** per ora: con una ventina di reparti al massimo
-   (14 oggi), toccarli uno per uno basta. Si aggiunge se sul telefono manca.
+   (14 oggi), toccarli uno per uno basta. Si aggiunge se sul telefono manca. **Deciso da
+   Mattia il 2026-10-07: niente, per ora.**
 
 ## 7. Fuori scope
 
