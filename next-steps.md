@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-07 (fase giorno: le decisioni di Mattia sulle bozze del 2026-10-06, tutte e sei decise, manca a ognuna il piano; poi il giro delle prove a mano nel browser, che lascia al telefono solo tastiera, fotocamera, pollice e installazione)_
+_Ultimo aggiornamento: 2026-10-09 (fase giorno: i sei piani scritti e `pronto`, in catena — S3, S12, tema scuro, S14, S15 — più i suggerimenti da `master`; le sette scelte rimaste decise da Mattia)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -14,21 +14,22 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-Nessun piano pronto.
+Una catena e un ramo a sé, da eseguire in quest'ordine (decisa nella fase giorno del 2026-10-09).
+I piani 2, 3, 5 e 6 partono ciascuno dal ramo del piano prima; se un anello manca, quelli dopo
+si fermano nella loro Preparazione. Il 4 parte da `master`. La migrazione `0013` di S12 si
+eredita lungo la catena: per questo i piani dopo S12 fanno girare pytest su un database dei test
+loro (`spena_test_<slug>`), e `spena_test` resta per chi parte da `master`.
+
+1. [pronto] P2 · S3, ingresso diretto in dispensa, veloce: «Scansiona» in serie con la scheda di conferma, il + che crea l'ingrediente, «Articolo aggiuntivo» e «+ un'altra confezione» in Sistema la spesa; le tre scelte A, B, C decise da Mattia il 2026-10-09 [S3] → `docs/superpowers/plans/2026-10-08-s3-ingresso-diretto.md`, ramo `night/s3-ingresso-diretto` da `master`
+2. [pronto] P2 · S12, righe della dispensa riconoscibili: emoji dell'ingrediente (elenco chiuso, 148, fino a Emoji 14.0) col ripiego sull'icona del reparto, «Cambia figura» in Anagrafica, migrazione `0013` e `decide_emoji` (da lanciare in produzione solo da Mattia dopo il deploy) [S12] → `docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`, ramo `night/s12-righe-dispensa` da `night/s3-ingresso-diretto`
+3. [pronto] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — grigio pieno coi token `disabled` / `on-disabled`, velo 45% / 60% col bordo `panel-edge` [T3 Consegna 1] → `docs/superpowers/plans/2026-10-08-tema-scuro-spenti.md`, ramo `night/tema-scuro-spenti` da `night/s12-righe-dispensa`
+4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
+5. [pronto] P3 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` dal server, scelta in `sessionStorage`, una voce aggiunta dello stesso mondo lascia il mondo com'è (Mattia, 2026-10-09) [S14] → `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md`, ramo `night/s14-cibo-casa` da `night/tema-scuro-spenti`
+6. [pronto] P3 · S15, reparti della dispensa collassabili, col numero e «N finiti» / «N in scadenza» da chiusi, in `localStorage`; le tre scelte su ricerca, scadenze e reparto che torna decise da Mattia il 2026-10-09 [S15] → `docs/superpowers/plans/2026-10-08-s15-reparti-collassabili.md`, ramo `night/s15-reparti-collassabili` da `night/s14-cibo-casa`
 
 ## Da approfondire (giorno)
 
-### Ridisegno (T3), spec `docs/superpowers/specs/2026-09-28-ridisegno-design.md`
-- [tbd] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — proposte misurate in `docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md` (oggi lo spento sta a 1,84:1 in chiaro: grigio pieno al posto di `opacity`; velo per tema più un bordo in scuro) — decise il 2026-10-07 tutte le voci del §7 (le prime due da Mattia, le altre da Claude su sua delega): grigio pieno coi token `disabled` / `on-disabled` per tutte le varianti, `busy` come spento, velo 45% / 60% col bordo `panel-edge` in scuro, l'e2e misura anche i pulsanti spenti — TBD: il piano [T3 Consegna 1]
-
-### Code della Consegna 2 e pulizie
-- [tbd] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — misurato in `docs/superpowers/specs/2026-10-06-suggerimenti-soglia-bozza.md`: nessun salto di punteggio da trovare, raccomandato «chi contiene il testo, e gli altri solo se nessuno lo contiene» (righe da 6,7 a 2,0 in media, richiamo invariato); serve anche una nota di ripiego in `IngredientPicker` — decise il 2026-10-07 tutte le voci del §10: pavimento 0,30, l'inizio di parola vale nel nome e in ogni alias (Mattia, diversa dalla raccomandazione), accenti tolti con `translate()`, taglio solo nell'endpoint, nessuno spareggio per «zucch», la nota di ripiego dentro questa voce — TBD: il piano, che rifà la misura con la regola degli alias [T3, esito del giro]
-
 ### Voci decise, da portare a spec e piano
-- [tbd] P2 · S3, ingresso diretto in dispensa, veloce: scansione e inserimento a mano senza passare dalla lista, estraendo scanner, catalogo e modulo da `StockingScreen.tsx` — bozza `docs/superpowers/specs/2026-10-06-ingresso-diretto-bozza.md`, decise da Mattia il 2026-10-07 tutte le voci del §8: parità subito senza scontrino, scheda di conferma, scansione in serie, e in «Sistema la spesa» «Articolo aggiuntivo» (voce di lista già spuntata) e «+ un'altra confezione» dello stesso ingrediente (§10) — TBD: il piano [S3]
-- [tbd] P2 · S12, righe della dispensa riconoscibili: icona per reparto, emoji per ingrediente, foto del prodotto — brainstorming in `docs/superpowers/specs/2026-10-06-righe-dispensa-bozza.md` e mockup `docs/mockups/2026-10-06-righe-dispensa.html`, decise da Mattia il 2026-10-07 tutte le voci del §5: emoji dell'ingrediente (elenco chiuso fino a Emoji 14.0, decisa dall'AI sulle colonne vuote, correggibile in Anagrafica) col ripiego sull'icona del reparto, solo in Dispensa; la foto nelle schede grandi resta voce a sé — TBD: il piano [S12]
-- [tbd] P3 · S14, «Tutto / Cibo / Casa» in dispensa — bozza di spec `docs/superpowers/specs/2026-10-06-cibo-casa-bozza.md`, decise da Mattia il 2026-10-07 tutte le voci del §6: il server espone `ingredient_kind`, scelta in `sessionStorage`, selettore nascosto con un mondo solo, nome «Casa», il riepilogo delle scadenze segue il mondo — TBD: il piano [S14]
-- [tbd] P3 · S15, reparti della dispensa collassabili, col numero di voci quando sono chiusi e aperti da una ricerca — bozza di spec `docs/superpowers/specs/2026-10-06-reparti-collassabili-bozza.md`, decise da Mattia il 2026-10-07 tutte le voci del §6: il titolo chiuso dice «N finito» e «N in scadenza», reparti chiusi in `localStorage`, ricerca e riepilogo delle scadenze aprono senza salvare, la voce aggiunta apre e salva aperto, niente «chiudi tutto» — TBD: il piano [S15]
 - [tbd] P3 · R2, secondo modo: riporzionare a partire da un ingrediente («io ne faccio 150 g») — TBD: solo vista o si salva [R2]
 - [tbd] P3 · R5, sostituisci ingrediente, precalcolato — TBD grosso: quante coppie, costo col tetto di 1 $/giorno, dipende dalla ricetta o dalla coppia, come si corregge [R5]
 - [tbd] P3 · R8, modifica con AI che salva una ricetta nuova — TBD: il legame con l'originale si tiene e si vede? [R8]
