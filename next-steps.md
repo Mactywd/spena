@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-13 (fase giorno: altri cinque piani `pronto`, dal 7 all'11 — due in coda alla catena, tre da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -14,12 +14,17 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-Una catena e quattro rami a sé, da eseguire in quest'ordine (decisa nelle fasi giorno del
+Una catena e dei rami a sé, da eseguire in quest'ordine (decisa nelle fasi giorno del
 2026-10-09 e del 2026-10-13). I piani 2, 3, 5, 6 e 7 partono ciascuno dal ramo del piano prima,
-il 10 da quello del 7; se un anello manca, quelli dopo si fermano nella loro Preparazione. Il 4,
-l'8, il 9 e l'11 partono da `master`. La migrazione `0013` di S12 si eredita lungo la catena (R8
-aggiunge la `0014` sopra): per questo i piani dopo S12 fanno girare pytest su un database dei
-test loro (`spena_test_<slug>`), e `spena_test` resta per chi parte da `master`.
+il 10 da quello del 7, il 13 da quello del 10; se un anello manca, quelli dopo si fermano nella
+loro Preparazione. Il 18 parte dal ramo del 17. Il 4, l'8, il 9, l'11, il 12, il 14, il 15, il
+16, il 17, il 19 e il 20 partono da `master`. La migrazione `0013` di S12 si eredita lungo la
+catena (R8 aggiunge la `0014` sopra): per questo i piani dopo S12 fanno girare pytest su un
+database dei test loro (`spena_test_<slug>`), e `spena_test` resta per chi parte da `master`
+finché è alla `0012`. Il 16, il 17, il 18 e il 19 aggiungono migrazioni con un numero riservato
+(`0015`, `0016`, `0017` sopra la `0016`, `0018`) e partono dalla `0012`: al merge Mattia ripunta
+la `down_revision` sulla testa di `master` di quel momento, e `alembic heads` deve dire una testa
+sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 
 1. [pronto] P2 · S3, ingresso diretto in dispensa, veloce: «Scansiona» in serie con la scheda di conferma, il + che crea l'ingrediente, «Articolo aggiuntivo» e «+ un'altra confezione» in Sistema la spesa; le tre scelte A, B, C decise da Mattia il 2026-10-09 [S3] → `docs/superpowers/plans/2026-10-08-s3-ingresso-diretto.md`, ramo `night/s3-ingresso-diretto` da `master`
 2. [pronto] P2 · S12, righe della dispensa riconoscibili: emoji dell'ingrediente (elenco chiuso, 148, fino a Emoji 14.0) col ripiego sull'icona del reparto, «Cambia figura» in Anagrafica, migrazione `0013` e `decide_emoji` (da lanciare in produzione solo da Mattia dopo il deploy) [S12] → `docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`, ramo `night/s12-righe-dispensa` da `night/s3-ingresso-diretto`
@@ -32,16 +37,22 @@ test loro (`spena_test_<slug>`), e `spena_test` resta per chi parte da `master`.
 9. [pronto] P3 · Le pagine `SKIPPED` dell'import a video e rimesse in coda: sezione «Scartate (N)» nella coda, col perché e la strada per ogni pagina, «Rimetti in coda» che materializza subito; le illeggibili con «Apri la pagina» e senza rimessa (Mattia, 2026-10-09 e 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-09-scartate-in-coda.md`, ramo `night/scartate-in-coda` da `master`
 10. [pronto] P3 · R8, modifica con AI che salva una ricetta nuova: il modulo già compilato dalla proposta, il legame «Variante di «…»» che si vede (`recipes.derived_from_id`, migrazione `0014`), foto e tempi copiati dall'originale (Mattia, 2026-10-09 e 2026-10-13) [R8] → `docs/superpowers/plans/2026-10-09-r8-modifica-con-ai.md`, ramo `night/r8-modifica-con-ai` da `night/rimetti-in-lista`
 11. [pronto] P3 · H1, Expense Tracker su `llm_calls`: «Spese dell'AI» dal ☰, il totale del periodo con la divisione per sezione e l'andamento per giorno di Roma, «Questo mese» / «Ultimi 30 giorni» / «Da sempre», grafici SVG senza dipendenze, una riga per le chiamate senza costo (Mattia, 2026-10-09 e 2026-10-13) [H1] → `docs/superpowers/plans/2026-10-09-h1-spese-ai.md`, ramo `night/h1-spese-ai` da `master`
+12. [pronto] P3 · Dosi dell'import con l'aggettivo davanti o coi numeri del nome («fredda ⏎ 330 ⏎ g», «36 mesi ⏎ 50 ⏎ g»): le parole vanno nella nota della riga e la dose torna a riscalarsi; il parser legge ½ ¼ ¾ e «50 g + q.b.»; l'import pulisce all'ingresso; `clean_doses` pulisce le righe che ci sono, anche delle ricette adottate, e toglie da `units` le parole che unità non sono, decise guardando il `--dry-run` (da lanciare in produzione solo da Mattia dopo il deploy); la nota si vede nel dettaglio (Mattia, 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-13-pulizia-dosi.md`, ramo `night/pulizia-dosi` da `master`
+13. [pronto] P3 · Pulizie: controlli spenti e fuoco — i controlli fuori da `Button` smettono di sbiadire con l'`opacity`, le due caselle da 20 px diventano `Checkbox`, nessun controllo si spegne col fuoco addosso (stepper, `IngredientPicker`, `InlineField`, «Salva prodotto»), il segno d'attesa sui pulsanti di sola icona, i `<button>` del modulo della ricetta diventano `Button`, il fuoco dopo un annullamento nella coda [T3 Consegne 2–6b] → `docs/superpowers/plans/2026-10-13-pulizie-controlli.md`, ramo `night/pulizie-controlli` da `night/r8-modifica-con-ai`
+14. [pronto] P3 · Pulizie: test instabili e piccoli difetti del backend — attese più lunghe sotto carico, un client react-query dei test fatto come quello dell'app, le date dell'e2e nel giorno di Roma, via gli avvisi di Starlette, `occurrences` ricontato con una `COUNT`, il 409 delle due righe che nomina l'ingrediente, i pulsanti della coda con una decisione in volo [T3 Consegne 5–6b, Parte X] → `docs/superpowers/plans/2026-10-13-pulizie-test.md`, ramo `night/pulizie-test` da `master`
+15. [pronto] P3 · Pulizie: parole a video — «È «…»?» senza l'articolo sbagliato, la maiuscola al titolo del foglio della cottura e, solo a video, in Lista e Sistema la spesa; «non è un alimento» nella bozza AI; la nota vera delle righe da creare; scegliere dal selettore aggancia la riga nuova con lo stesso nome invece di farne due (Mattia, 2026-10-13) [T3 Consegna 6b, Parte X] → `docs/superpowers/plans/2026-10-13-pulizie-parole.md`, ramo `night/pulizie-parole` da `master`
+16. [pronto] P3 · R5, sostituisci ingrediente, precalcolato: una voce per ingrediente × dolce/salato, solo sostituti già in anagrafica, decisa subito dall'AI e segnata come tale, «Sostituisci» nel dettaglio della ricetta con la correzione per quella ricetta, la sezione «Sostituti» in Anagrafica; migrazione `0015`; `decide_substitutes` da lanciare in produzione solo da Mattia dopo il deploy (Mattia, 2026-10-13) [R5] → `docs/superpowers/plans/2026-10-13-r5-sostituti.md`, ramo `night/r5-sostituti` da `master`
+17. [pronto] P3 · S4 fetta 1, i nutrienti dell'ingrediente da CIQUAL 2025: `load_ciqual`, `ingredient_nutrition` (migrazione `0016`), `decide_ciqual` in due passi (parole francesi, poi la scelta fra candidati veri), il pilota su Gemma, «Valori nutrizionali» in Anagrafica; il file CIQUAL lo scarica e committa Mattia (Mattia, 2026-10-13) [S4] → `docs/superpowers/plans/2026-10-13-s4-ciqual.md`, ramo `night/s4-ciqual` da `master`
+18. [pronto] P3 · S4 fetta 2, i grammi per ingrediente × unità e i nutrienti di una ricetta con la copertura dichiarata («q.b.» fuori, e lo si dice): `ingredient_unit_grams` (migrazione `0017`), `decide_grams`, «Pesi per unità» in Anagrafica, il pannello nel dettaglio della ricetta (Mattia, 2026-10-13) [S4] → `docs/superpowers/plans/2026-10-13-s4-grammi.md`, ramo `night/s4-grammi` da `night/s4-ciqual`
+19. [pronto] P3 · H2, l'attività da Health Connect via HC Webhook: passi, allenamenti e peso (anche dal Galaxy Watch, senza doppioni), la chiave del webhook, «Attività» dal ☰; migrazione `0018`; il collegamento sul telefono lo fa Mattia dopo il deploy (Mattia, 2026-10-13) [H2] → `docs/superpowers/plans/2026-10-13-h2-health-connect.md`, ramo `night/h2-health-connect` da `master`
+20. [pronto] P3 · Modulo della ricetta: la nota di ogni riga si legge, si corregge e si toglie; un nome nuovo che in anagrafica è un non alimentare lo dice il passo del nome mentre lo si scrive, col collegamento all'Anagrafica in un'altra scheda (Mattia, 2026-10-13) [T3 Consegna 6b, R12] → `docs/superpowers/plans/2026-10-13-modulo-nota-nome.md`, ramo `night/modulo-nota-nome` da `master`
 
 ## Da approfondire (giorno)
 
 ### Voci decise, da portare a spec e piano
-- [tbd] P3 · R5, sostituisci ingrediente, precalcolato — TBD grosso: quante coppie, costo col tetto di 1 $/giorno, dipende dalla ricetta o dalla coppia, come si corregge [R5]
-- [tbd] P3 · S4, resto: nutrienti sull'ingrediente generico (CREA, senza API) e il tasto «Stima» con l'AI — TBD: fonte, modello, ricerca web su OpenRouter e il suo costo [S4]
+- [tbd] P3 · S4 fetta 3, il tasto «Stima» sul prodotto senza valori: prima la media del suo ingrediente (CIQUAL), poi l'AI con la ricerca web, ogni valore segnato come stima e mai come lettura d'etichetta — deciso il 2026-10-13, serve il piano (e prima una misura del costo della ricerca web su OpenRouter) [S4] → spec `docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md` §8
 - [tbd] P3 · P1, creazione di un pasto per tipo, ricette adatte senza nascondere il resto — TBD: la stima calorica da foto [P1]
 - [tbd] P3 · P2, NutriScore sul periodo — TBD: la funzione non lineare, e come dichiarare i dati parziali [P2]
-- [tbd] P3 · H2, Samsung Health — TBD: ricerca su una via praticabile senza diventare partner [H2]
-- [tbd] P3 · Dosi dell'import con l'aggettivo davanti (~70) e numeri nel nome letti come dose (~90, «36 mesi»), più le unità spurie in `units`: ripulire `quantity_text` all'import e rilanciare `reparse_quantities` — TBD: tocca i dati di produzione, serve il via di Mattia [Parte X]
 
 ### Idee
 - [idea] P3 · Annullando una decisione nella coda la riga sparisce e il fuoco cade sulla pagina: portarlo alla scheda del termine tornato in coda [T3 Consegna 6b]
