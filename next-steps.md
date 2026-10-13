@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-09 (fase giorno: i sei piani scritti e `pronto`, in catena — S3, S12, tema scuro, S14, S15 — più i suggerimenti da `master`; le sette scelte rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-13 (fase giorno: altri cinque piani `pronto`, dal 7 all'11 — due in coda alla catena, tre da `master`; le domande rimaste decise da Mattia)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -14,11 +14,12 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-Una catena e un ramo a sé, da eseguire in quest'ordine (decisa nella fase giorno del 2026-10-09).
-I piani 2, 3, 5 e 6 partono ciascuno dal ramo del piano prima; se un anello manca, quelli dopo
-si fermano nella loro Preparazione. Il 4 parte da `master`. La migrazione `0013` di S12 si
-eredita lungo la catena: per questo i piani dopo S12 fanno girare pytest su un database dei test
-loro (`spena_test_<slug>`), e `spena_test` resta per chi parte da `master`.
+Una catena e quattro rami a sé, da eseguire in quest'ordine (decisa nelle fasi giorno del
+2026-10-09 e del 2026-10-13). I piani 2, 3, 5, 6 e 7 partono ciascuno dal ramo del piano prima,
+il 10 da quello del 7; se un anello manca, quelli dopo si fermano nella loro Preparazione. Il 4,
+l'8, il 9 e l'11 partono da `master`. La migrazione `0013` di S12 si eredita lungo la catena (R8
+aggiunge la `0014` sopra): per questo i piani dopo S12 fanno girare pytest su un database dei
+test loro (`spena_test_<slug>`), e `spena_test` resta per chi parte da `master`.
 
 1. [pronto] P2 · S3, ingresso diretto in dispensa, veloce: «Scansiona» in serie con la scheda di conferma, il + che crea l'ingrediente, «Articolo aggiuntivo» e «+ un'altra confezione» in Sistema la spesa; le tre scelte A, B, C decise da Mattia il 2026-10-09 [S3] → `docs/superpowers/plans/2026-10-08-s3-ingresso-diretto.md`, ramo `night/s3-ingresso-diretto` da `master`
 2. [pronto] P2 · S12, righe della dispensa riconoscibili: emoji dell'ingrediente (elenco chiuso, 148, fino a Emoji 14.0) col ripiego sull'icona del reparto, «Cambia figura» in Anagrafica, migrazione `0013` e `decide_emoji` (da lanciare in produzione solo da Mattia dopo il deploy) [S12] → `docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`, ramo `night/s12-righe-dispensa` da `night/s3-ingresso-diretto`
@@ -26,21 +27,21 @@ loro (`spena_test_<slug>`), e `spena_test` resta per chi parte da `master`.
 4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
 5. [pronto] P3 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` dal server, scelta in `sessionStorage`, una voce aggiunta dello stesso mondo lascia il mondo com'è (Mattia, 2026-10-09) [S14] → `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md`, ramo `night/s14-cibo-casa` da `night/tema-scuro-spenti`
 6. [pronto] P3 · S15, reparti della dispensa collassabili, col numero e «N finiti» / «N in scadenza» da chiusi, in `localStorage`; le tre scelte su ricerca, scadenze e reparto che torna decise da Mattia il 2026-10-09 [S15] → `docs/superpowers/plans/2026-10-08-s15-reparti-collassabili.md`, ramo `night/s15-reparti-collassabili` da `night/s14-cibo-casa`
+7. [pronto] P3 · «Rimetti in lista» anche per «quasi finito», ovunque: in Dispensa la riga gialla ha «In lista» come la rossa (`RestockLine.tsx`), nel foglio della cottura la casella c'è anche su una confezione già gialla e invariata, vuota; il titolo chiuso dei reparti di S15 resta «N finito» (Mattia, 2026-10-09 e 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-09-rimetti-in-lista.md`, ramo `night/rimetti-in-lista` da `night/s15-reparti-collassabili`
+8. [pronto] P3 · R2, secondo modo: riporzionare a partire da un ingrediente, solo vista — tocco sulla dose, «Quanto ne fai?» con l'unità accanto, lo stepper dice «≈ 1,5», la cottura registra la dose nello `snapshot`, senza migrazione (Mattia, 2026-10-09 e 2026-10-13) [R2] → `docs/superpowers/plans/2026-10-09-r2-riporziona-ingrediente.md`, ramo `night/r2-riporziona-ingrediente` da `master`
+9. [pronto] P3 · Le pagine `SKIPPED` dell'import a video e rimesse in coda: sezione «Scartate (N)» nella coda, col perché e la strada per ogni pagina, «Rimetti in coda» che materializza subito; le illeggibili con «Apri la pagina» e senza rimessa (Mattia, 2026-10-09 e 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-09-scartate-in-coda.md`, ramo `night/scartate-in-coda` da `master`
+10. [pronto] P3 · R8, modifica con AI che salva una ricetta nuova: il modulo già compilato dalla proposta, il legame «Variante di «…»» che si vede (`recipes.derived_from_id`, migrazione `0014`), foto e tempi copiati dall'originale (Mattia, 2026-10-09 e 2026-10-13) [R8] → `docs/superpowers/plans/2026-10-09-r8-modifica-con-ai.md`, ramo `night/r8-modifica-con-ai` da `night/rimetti-in-lista`
+11. [pronto] P3 · H1, Expense Tracker su `llm_calls`: «Spese dell'AI» dal ☰, il totale del periodo con la divisione per sezione e l'andamento per giorno di Roma, «Questo mese» / «Ultimi 30 giorni» / «Da sempre», grafici SVG senza dipendenze, una riga per le chiamate senza costo (Mattia, 2026-10-09 e 2026-10-13) [H1] → `docs/superpowers/plans/2026-10-09-h1-spese-ai.md`, ramo `night/h1-spese-ai` da `master`
 
 ## Da approfondire (giorno)
 
 ### Voci decise, da portare a spec e piano
-- [tbd] P3 · R2, secondo modo: riporzionare a partire da un ingrediente («io ne faccio 150 g») — TBD: solo vista o si salva [R2]
 - [tbd] P3 · R5, sostituisci ingrediente, precalcolato — TBD grosso: quante coppie, costo col tetto di 1 $/giorno, dipende dalla ricetta o dalla coppia, come si corregge [R5]
-- [tbd] P3 · R8, modifica con AI che salva una ricetta nuova — TBD: il legame con l'originale si tiene e si vede? [R8]
 - [tbd] P3 · S4, resto: nutrienti sull'ingrediente generico (CREA, senza API) e il tasto «Stima» con l'AI — TBD: fonte, modello, ricerca web su OpenRouter e il suo costo [S4]
 - [tbd] P3 · P1, creazione di un pasto per tipo, ricette adatte senza nascondere il resto — TBD: la stima calorica da foto [P1]
 - [tbd] P3 · P2, NutriScore sul periodo — TBD: la funzione non lineare, e come dichiarare i dati parziali [P2]
-- [tbd] P3 · H1, Expense Tracker su `llm_calls` — TBD: cosa mostrare [H1]
 - [tbd] P3 · H2, Samsung Health — TBD: ricerca su una via praticabile senza diventare partner [H2]
 - [tbd] P3 · Dosi dell'import con l'aggettivo davanti (~70) e numeri nel nome letti come dose (~90, «36 mesi»), più le unità spurie in `units`: ripulire `quantity_text` all'import e rilanciare `reparse_quantities` — TBD: tocca i dati di produzione, serve il via di Mattia [Parte X]
-- [tbd] P3 · Una pagina `SKIPPED` non torna mai in coda, anche dopo aver corretto la causa — TBD: quale strada la rimette `pending` [Parte X]
-- [tbd] P3 · «Rimetti in lista» nel foglio della cottura è pre-spuntata solo per «finito», in dispensa la domanda arriva anche nel giallo — TBD: decidere una volta; e dalla Consegna 5 nel foglio non si può più rimettere in lista una voce già «quasi finito» (toccare lo stato di partenza vuol dire «invariato»): decidere insieme [Parte X]
 
 ### Idee
 - [idea] P3 · Annullando una decisione nella coda la riga sparisce e il fuoco cade sulla pagina: portarlo alla scheda del termine tornato in coda [T3 Consegna 6b]
