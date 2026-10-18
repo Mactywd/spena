@@ -48,4 +48,38 @@ describe("ServingsStepper", () => {
       expect(tasto.className).toContain("size-11");
     }
   });
+
+  it("con una dose fissata dice le porzioni che fa, e − e + vanno all'intero sotto e sopra", async () => {
+    const onChange = vi.fn();
+    render(<ServingsStepper value={2} approx={1.5} onChange={onChange} />);
+
+    expect(screen.getByText("≈ 1,5")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+    expect(onChange.mock.calls).toEqual([[2], [1]]);
+  });
+
+  it("su un numero intero di porzioni equivalenti, − e + vanno al precedente e al successivo", async () => {
+    const onChange = vi.fn();
+    render(<ServingsStepper value={4} approx={2} onChange={onChange} />);
+
+    expect(screen.getByText("≈ 2")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+    expect(onChange.mock.calls).toEqual([[3], [1]]);
+  });
+
+  it("sotto una porzione il − si spegne; sopra 50 il + si spegne e il − va a 50", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<ServingsStepper value={2} approx={0.75} onChange={onChange} />);
+
+    expect(screen.getByText("≈ 0,75")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Una porzione in meno" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+
+    rerender(<ServingsStepper value={4} approx={200} onChange={onChange} />);
+    expect(screen.getByRole("button", { name: "Una porzione in più" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+    expect(onChange.mock.calls).toEqual([[1], [50]]);
+  });
 });
