@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { ShoppingListScreen } from "./ShoppingListScreen";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
@@ -44,7 +45,7 @@ const patchesOf = (spy: ReturnType<typeof stubRoutedFetch>) =>
 // senza `NoticeProvider` l'avviso di conferma (la ✕, «Era già in lista.») non avrebbe
 // dove comparire: `useNotice()` restituirebbe il no-op del contesto vuoto
 function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -292,7 +293,8 @@ describe("ShoppingListScreen", () => {
     stubRoutedFetch((_path, init) => {
       if (init?.method) return [{}, 200];
       calls += 1;
-      return calls === 1 ? [{ detail: "no" }, 500] : [ITEMS, 200];
+      // il guasto dura tre letture (la prima e i due tentativi dell'app): il «Riprova» trova la quarta
+      return calls <= 3 ? [{ detail: "no" }, 500] : [ITEMS, 200];
     });
     renderScreen();
     expect(await screen.findByText(/Non sono riuscito a caricare la lista/)).toBeDefined();

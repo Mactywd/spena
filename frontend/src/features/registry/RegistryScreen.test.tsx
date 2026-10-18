@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { RegistryScreen } from "./RegistryScreen";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import type { Ingredient, Product } from "../../domain/types";
 
 const BURRO: Ingredient = {
@@ -25,10 +25,9 @@ function stubRoutedFetch(route: (path: string) => [unknown, number]) {
   return spy;
 }
 
-// Il predicato vero di App.tsx, non un `retry: false` di comodo (prima lezione di
-// CLAUDE.md): con risposte riuscite non cambia niente.
+// il client dell'app (src/test/queryClient.ts): predicato vero, tentativi senza attesa
 function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } });
+  const client = createTestQueryClient();
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
