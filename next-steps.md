@@ -103,6 +103,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · Una fusione in Anagrafica perde la scelta CIQUAL (e, con la fetta 2, i pesi) del perdente anche quando il vincitore non ne ha: farli ereditare al vincitore dove non ha niente (deciso il 2026-10-13 di perderli, per ora) [S4]
 - [idea] P3 · `ingredients.composition_ref` («popolato in fase 3») non lo scrive nessuno: `ingredient_nutrition` l'ha sostituito, si può togliere con una migrazione [S4]
 - [idea] P3 · La ricerca in CIQUAL in Anagrafica non ignora gli accenti («pates» non trova «Pâtes» per pezzo di nome, solo per somiglianza): `unaccent`, o una colonna normalizzata [S4]
+- [idea] P3 · In «Valori nutrizionali» un valore sotto 0,005 in un'unità a due decimali si legge «0», che sembra uno zero dichiarato: meglio «< 0,01» [S4]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
