@@ -221,6 +221,26 @@ solo dove manca. Un costo scelto a mano non si tocca; se la fonte chiede di smet
 si ferma, e rilanciato riprende da dove era. Le pagine importate da qui in avanti il
 costo lo portano già.
 
+### Le figure degli ingredienti in dispensa
+
+Ogni riga della Dispensa ha a sinistra del nome la figura del suo ingrediente: un'emoji
+di un elenco chiuso (fermo a Emoji 14.0, in `backend/app/domain/emoji.py`), o, dove non
+ce n'è una, l'icona del reparto in grigio. Un ingrediente nasce senza figura; a deciderla
+è l'AI, con un comando da lanciare a mano — una volta dopo la migrazione `0013`, e poi
+quando si vuole dare una figura agli ingredienti nati dopo:
+
+```bash
+docker compose exec backend python -m app.cli.decide_emoji
+```
+
+Chiede all'AI cento nomi per volta, e scrive solo dove la figura non è ancora decisa e
+solo un'emoji dell'elenco (o «nessuna», se nessuna va bene); una risposta che non sa
+verificare la lascia da decidere. L'ultima riga dice quanti ingredienti restano, e allora
+si rilancia. Senza `OPENROUTER_API_KEY` non si rompe niente: le righe mostrano l'icona
+del reparto. Una figura sbagliata si corregge nella scheda dell'ingrediente in
+Anagrafica, «Cambia figura»; una scelta fatta lì, «Nessuna» compresa, il comando non la
+tocca più. In produzione, con `-f docker-compose.prod.yml` come ogni altro comando.
+
 ### I vettori della ricerca semantica
 
 Se tieni accesa la ricerca semantica (`INSTALL_EMBEDDINGS=1`), dopo un import esegui:

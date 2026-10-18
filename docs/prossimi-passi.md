@@ -1062,7 +1062,7 @@ quelli che contengono un risultato.
 - La domanda del TBD («un campo che fa due cose deve dire quale sta facendo») si è
   chiusa così: il campo filtra sempre, e aggiunge solo il +.
 
-## S12. Le righe della dispensa sono tutte uguali **[TBD — brainstorming]**
+## S12. Le righe della dispensa sono tutte uguali **[FATTO 2026-10-18 — sul ramo night/s12-righe-dispensa, non ancora in produzione]**
 Serve un modo di riconoscere una riga senza leggerla. Le strade proposte da Mattia
 sono una foto per tipo, un'icona o un'emoji per reparto o per ingrediente, un fondo,
 un SVG. Cosa c'è già e cosa costa:
@@ -1078,6 +1078,33 @@ un SVG. Cosa c'è già e cosa costa:
 Vincoli: un fondo colorato passa dal blocco `@theme`, con il contrasto sopra 4.5:1, e
 non deve confondersi con i colori che vogliono già dire qualcosa (le zone del cursore,
 il viola della scadenza). Da decidere insieme alla revisione di T3.
+
+**Fatto il 2026-10-18** sul ramo `night/s12-righe-dispensa` (piano
+`docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`), con le decisioni della bozza
+`docs/superpowers/specs/2026-10-06-righe-dispensa-bozza.md` §5, che superano quel che qui
+sopra si diceva dell'undo: l'emoji non lega niente a niente, e si corregge in Anagrafica.
+Ogni riga della Dispensa ha a sinistra del nome un quadratino da 28 px: l'emoji
+dell'ingrediente (`ingredients.emoji`, migrazione `0013`), o dove non c'è l'icona del
+reparto in `ink-faint`, monocroma. L'elenco è chiuso — 148 emoji fino a Emoji 14.0, in
+`backend/app/domain/emoji.py`, con la copia del frontend confrontata da un test — e la
+colonna ha tre stati: `NULL` non deciso, `""` «nessuna» decisa, un'emoji. La decide l'AI
+una volta, con `python -m app.cli.decide_emoji`, a lotti di cento nomi e solo dove è
+`NULL`; una risposta fuori elenco, o con un numero o un nome che non tornano, non si
+applica. Si corregge nella scheda dell'ingrediente in Anagrafica («Cambia figura»: la
+griglia dell'elenco e «Nessuna»), dal servizio unico `registry.py`; una scelta a mano non
+torna mai all'AI. Solo in Dispensa: Lista, Sistema la spesa e la cottura non la mostrano.
+**In produzione serve un passo a mano dopo il deploy**: il comando, una volta, finché
+non dice «nessun ingrediente in attesa».
+
+**Le scelte del piano che Mattia può voler rivedere:** l'AI che risponde «nessuna» scrive
+«nessuna» e non lascia la colonna da decidere (decisione 22); le 148 emoji
+dell'elenco e le loro famiglie; la figura in Anagrafica in una riga sua sotto le
+correzioni, con «Cambia figura», e non come quarta icona accanto al titolo; la griglia di
+riquadri da 44 px invece di un menu; «Nessuna» che si salva anche su un ingrediente che
+mostra già il ripiego, per fissarlo.
+
+**Da provare sul telefono:** le emoji del proprio telefono, a colpo d'occhio, in una
+dispensa vera di una trentina di voci; la griglia di «Cambia figura» col pollice.
 
 ## S13. Il cursore della dispensa si sposta mentre si scorre **[FATTO 2026-09-27 — provato sul telefono il 2026-09-28]**
 

@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-18 (fase notte: S3 fatto, da revisionare; una domanda per Mattia sulla serie della scansione)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte: S3 e S12 fatti, da revisionare; una domanda per Mattia sulla serie della scansione)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -109,6 +109,9 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · Una confezione in più lasciata senza scelta non entra con «Metti in dispensa», in silenzio: forse una riga che lo dica [S3]
 - [idea] P3 · Nella serie della scansione, dopo «Metti in dispensa» lo scanner si rimonta e il fuoco cade sul corpo della pagina: chi usa la tastiera o lo screen reader deve ritrovare il pannello; portarlo al campo del codice a mano dal secondo giro [S3]
 - [idea] P3 · Un codice non trovato il cui esito arriva dopo «Annulla» resta ricordato (`onUnlinkedCode` non guarda se il pannello è ancora aperto, come già prima di S3): una scelta dal catalogo successiva della stessa voce potrebbe dargli quel codice; ignorarlo a pannello chiuso [S3]
+- [idea] P3 · L'emoji dell'ingrediente anche in Lista, in Sistema la spesa e nel foglio della cottura: un campo in tre risposte (oggi solo in Dispensa, deciso da Mattia il 2026-10-07) [S12]
+- [idea] P3 · `import_gz` potrebbe nominare `decide_emoji` quando ha creato ingredienti nuovi, come nomina `decide_units` per le unità [S12]
+- [idea] P3 · Una fusione in Anagrafica tiene la figura del vincitore anche quando non ne ha una e il perdente sì: potrebbe ereditarla [S12]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -125,6 +128,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P2 · Dopo il deploy di S12: una volta `ssh hetznerserver "cd ~/sites/spena && docker compose -f docker-compose.prod.yml exec -T backend python -m app.cli.decide_emoji"`, rilanciato finché l'ultima riga dice «nessun ingrediente in attesa» (le figure degli ingredienti di produzione; ~9 chiamate all'AI), poi sul telefono le emoji del proprio telefono in una dispensa vera di una trentina di voci, e la griglia di «Cambia figura» col pollice [S12]
 - [tbd] P1 · Prove sul telefono di S3: la fotocamera vera in serie (si sente l'attesa fra un codice e l'altro?), la fotocamera negata, la tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezione» e «Articolo aggiuntivo» in corsia; dopo «Annulla» nell'avviso, rileggere lo stesso codice dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre si rinumerano; nella serie, con tante righe, lo scanner resta in vista dopo «Metti in dispensa»? [S3]
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
@@ -138,9 +142,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-- [in corso] P2 · S12, righe della dispensa riconoscibili: emoji dell'ingrediente (elenco chiuso, 148, fino a Emoji 14.0) col ripiego sull'icona del reparto, «Cambia figura» in Anagrafica, migrazione `0013` e `decide_emoji` (da lanciare in produzione solo da Mattia dopo il deploy) [S12] → `docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`, ramo `night/s12-righe-dispensa` da `night/s3-ingresso-diretto` → branch night/s12-righe-dispensa
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · S12, righe della dispensa riconoscibili: l'emoji dell'ingrediente a sinistra del nome (elenco chiuso fino a Emoji 14.0, colonna `ingredients.emoji`, migrazione 0013) col ripiego sull'icona del reparto in grigio; «Cambia figura» in Anagrafica; il comando `decide_emoji` per l'AI, da lanciare dopo il deploy [S12] → branch night/s12-righe-dispensa (da revisionare)
 - [fatto] 2026-10-18 · S3, ingresso diretto in dispensa: «Scansiona» in serie con la scheda di conferma (due tocchi per una confezione a catalogo), il + che crea l'ingrediente, la scadenza prima di entrare e «Annulla» nell'avviso; in «Sistema la spesa» «Articolo aggiuntivo» e «+ un'altra confezione»; la regia dei pannelli in `ProductResolver`, `stock_one` nel backend [S3] → branch night/s3-ingresso-diretto (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
