@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from app.domain.rules import ExpiryState, PantryStatus
+from app.domain.rules import ExpiryState, IngredientKind, PantryStatus
 
 
 class PantryItemOut(BaseModel):
@@ -12,6 +12,10 @@ class PantryItemOut(BaseModel):
     product_id: uuid.UUID | None
     ingredient_name: str
     ingredient_category: str
+    # Il mondo della voce, cibo o casa, già deciso: il selettore «Tutto / Cibo / Casa»
+    # della Dispensa (S14) lo confronta e non lo ricava dal reparto, che sarebbe una
+    # seconda copia di `kind_for_category`. La stessa forma di `ShoppingItemOut`.
+    ingredient_kind: IngredientKind
     # La figura della riga (S12): l'emoji dell'ingrediente, o `None` per il ripiego
     # sull'icona del reparto, che il client sceglie da `ingredient_category`. Un dato e
     # non un calcolo: «non deciso» e «nessuna» escono tutti e due `None`.

@@ -608,3 +608,48 @@ async def test_una_voce_appena_entrata_porta_la_figura(logged_client, db_session
 
     assert risposta.status_code == 201
     assert risposta.json()["ingredient_emoji"] == "🍅"
+
+
+# S14: «Tutto / Cibo / Casa» in dispensa. Il selettore filtra nel client su un verdetto
+# del server, come la Lista con `ShoppingItemOut.ingredient_kind`.
+
+
+async def test_ogni_voce_dice_se_e_cibo_o_casa(logged_client, db_session, dispensa):
+    """Il client non ricava il mondo dal reparto: sarebbe una seconda copia di
+    `kind_for_category`, che il giorno in cui un reparto cambia mondo resterebbe indietro
+    (bozza S14 §1). La voce appena creata lo porta già: la Dispensa la deve poter
+    mostrare nel mondo giusto senza un secondo giro."""
+    candeggina = Ingredient(name="candeggina", display_name="Candeggina",
+                            category=IngredientCategory.CASA)
+    db_session.add(candeggina)
+    db_session.add(PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.AVAILABLE))
+    await db_session.flush()
+
+    creata = await logged_client.post(
+        "/api/v1/pantry", json={"ingredient_id": str(candeggina.id)}
+    )
+    assert creata.status_code == 201
+    assert creata.json()["ingredient_kind"] == "non_food"
+
+    per_nome = {v["ingredient_name"]: v for v in (await logged_client.get("/api/v1/pantry")).json()}
+    assert per_nome["yogurt greco"]["ingredient_kind"] == "food"
+    assert per_nome["candeggina"]["ingredient_kind"] == "non_food"
+
+
+async def test_il_mondo_e_quello_scritto_sull_ingrediente(logged_client, db_session, dispensa):
+    """Il verdetto è la colonna `ingredients.kind`, letta, e non un secondo calcolo dal
+    reparto dentro la rotta. Una riga scollata a mano lo dimostra: l'UPDATE salta
+    `_deduce_kind` (che scatta solo assegnando `category`), e la rotta deve riportare
+    quel che c'è scritto. Se un giorno `_to_out` chiamasse `kind_for_category`, questo
+    test diventerebbe rosso."""
+    from sqlalchemy import update
+
+    db_session.add(PantryItem(ingredient_id=dispensa["aglio"].id, status=PantryStatus.AVAILABLE))
+    await db_session.flush()
+    await db_session.execute(
+        update(Ingredient).where(Ingredient.id == dispensa["aglio"].id).values(kind="non_food")
+    )
+    await db_session.flush()
+
+    per_nome = {v["ingredient_name"]: v for v in (await logged_client.get("/api/v1/pantry")).json()}
+    assert per_nome["aglio"]["ingredient_kind"] == "non_food"

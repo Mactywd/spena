@@ -34,6 +34,7 @@ def _to_out(item: PantryItem) -> PantryItemOut:
         product_id=item.product_id,
         ingredient_name=item.ingredient.name,
         ingredient_category=item.ingredient.category,
+        ingredient_kind=item.ingredient.kind,
         ingredient_emoji=shown_emoji(item.ingredient.emoji),
         product_name=item.product.name if item.product else None,
         product_brand=item.product.brand if item.product else None,
