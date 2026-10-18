@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte: S3 in corso)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -26,7 +26,6 @@ finché è alla `0012`. Il 16, il 17, il 18 e il 19 aggiungono migrazioni con un
 la `down_revision` sulla testa di `master` di quel momento, e `alembic heads` deve dire una testa
 sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 
-1. [pronto] P2 · S3, ingresso diretto in dispensa, veloce: «Scansiona» in serie con la scheda di conferma, il + che crea l'ingrediente, «Articolo aggiuntivo» e «+ un'altra confezione» in Sistema la spesa; le tre scelte A, B, C decise da Mattia il 2026-10-09 [S3] → `docs/superpowers/plans/2026-10-08-s3-ingresso-diretto.md`, ramo `night/s3-ingresso-diretto` da `master`
 2. [pronto] P2 · S12, righe della dispensa riconoscibili: emoji dell'ingrediente (elenco chiuso, 148, fino a Emoji 14.0) col ripiego sull'icona del reparto, «Cambia figura» in Anagrafica, migrazione `0013` e `decide_emoji` (da lanciare in produzione solo da Mattia dopo il deploy) [S12] → `docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`, ramo `night/s12-righe-dispensa` da `night/s3-ingresso-diretto`
 3. [pronto] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — grigio pieno coi token `disabled` / `on-disabled`, velo 45% / 60% col bordo `panel-edge` [T3 Consegna 1] → `docs/superpowers/plans/2026-10-08-tema-scuro-spenti.md`, ramo `night/tema-scuro-spenti` da `night/s12-righe-dispensa`
 4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
@@ -129,7 +128,7 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-_(niente)_
+- [in corso] P2 · S3, ingresso diretto in dispensa, veloce — piano `docs/superpowers/plans/2026-10-08-s3-ingresso-diretto.md` → branch night/s3-ingresso-diretto
 
 ## Fatti (recenti)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
