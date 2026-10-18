@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-18 (fase notte: S3 fatto, da revisionare)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte: S3 fatto, da revisionare; una domanda per Mattia sulla serie della scansione)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
