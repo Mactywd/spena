@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -10,7 +10,20 @@ import { IconBarcode, IconCalendarEvent, IconPlus, IconSearch, IconX } from "../
 import { useNotice } from "../../components/ui/noticeContext";
 import { DirectEntry, type EntryDoor } from "./DirectEntry";
 import { PantryRow } from "./PantryRow";
-import { expiryCounts, expirySummary, groupForDisplay, hasExpiry, itemLabel, matchesQuery } from "./pantryView";
+import {
+  expiryCounts,
+  expirySummary,
+  groupForDisplay,
+  hasBothWorlds,
+  inWorld,
+  itemLabel,
+  settleWorld,
+  visibleItems,
+  WORLD_LABELS,
+  type PantryWorld,
+} from "./pantryView";
+import { loadWorld, saveWorld } from "./pantryWorld";
+import { WorldSelector } from "./WorldSelector";
 import { fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import { ShoppingEntryCard } from "../shopping-list/ShoppingEntryCard";
@@ -110,6 +123,10 @@ export function PantryScreen() {
 
   const [query, setQuery] = useState("");
   const [expiringOnly, setExpiringOnly] = useState(false);
+  // S14: il mondo scelto, ricordato per la sessione (`pantryWorld.ts`). Si scrive a ogni
+  // cambio, anche quando è il disegno a riportarlo a «Tutto» (`settleWorld`, più giù)
+  const [world, setWorld] = useState<PantryWorld>(() => loadWorld());
+  useEffect(() => saveWorld(world), [world]);
   // L'ingresso diretto (S3): una confezione che non passa dalla lista — chi torna a
   // casa con una cosa che non aveva scritto, e il censimento della dispensa. Due porte:
   // il + col testo della barra, e «Scansiona». `null` quando è chiuso; `serial` lo fa
@@ -186,7 +203,16 @@ export function PantryScreen() {
   if (restock.isPending) busyIds.add(restock.variables.id);
   if (expiry.isPending) busyIds.add(expiry.variables.id);
 
-  const summary = expirySummary(expiryCounts(items));
+  // S14 §3 e §4: un selettore che sparisce (un mondo solo) si porta via il suo filtro, e
+  // una voce appena aggiunta dell'altro mondo porta a «Tutto», perché si veda. Nel disegno
+  // e non in un effetto, come il riepilogo qui sotto: nessun giro col filtro fantasma. Solo
+  // a dispensa caricata: la lista vuota del caricamento non è una dispensa con un mondo solo
+  const settledWorld = settleWorld(world, items, revealId);
+  if (loaded && settledWorld !== world) setWorld(settledWorld);
+  const showWorlds = hasBothWorlds(items);
+  // il riepilogo conta il mondo scelto (Mattia, 2026-10-07): su «Cibo» dice quanti cibi
+  // scadono, o col riepilogo premuto direbbe «2 in scadenza» sopra zero righe
+  const summary = expirySummary(expiryCounts(items.filter((item) => inWorld(item, world))));
   // un riepilogo che sparisce (l'ultima voce in scadenza tolta o finita) si porta via
   // il filtro: una dispensa vuota per un filtro invisibile sarebbe una bugia, e quando
   // il riepilogo torna deve tornare non premuto. Si spegne qui, durante il disegno, e
@@ -195,9 +221,7 @@ export function PantryScreen() {
   if (summary === null && expiringOnly) setExpiringOnly(false);
   // il filtro guarda la data, non il conteggio: una voce finita non conta nel
   // riepilogo ma resta in vista, col suo «In lista» (hasExpiry)
-  const visible = items
-    .filter((item) => matchesQuery(item, query))
-    .filter((item) => !expiringOnly || hasExpiry(item));
+  const visible = visibleItems(items, { world, query, expiringOnly });
 
   return (
     <Screen title="Dispensa">
@@ -228,6 +252,10 @@ export function PantryScreen() {
             onClose={() => setEntry(null)}
           />
         )}
+
+        {/* S14: sotto la barra (e sotto il pannello dell'aggiunta, quando è aperto), sopra il
+            riepilogo che conta il mondo scelto. Solo coi due mondi in dispensa */}
+        {showWorlds && <WorldSelector value={world} onChange={setWorld} />}
 
         {summary !== null && (
           <button
@@ -277,8 +305,19 @@ export function PantryScreen() {
           />
         )}
 
+        {/* S14 §4: col mondo scelto il vuoto è del mondo, non della dispensa. Il sale può stare
+            sotto «Cibo»: «Niente in dispensa» sarebbe falso, e «Aggiungi» ne farebbe un
+            doppione. La via d'uscita allarga a «Tutto» e tiene il testo; l'offerta di
+            aggiungere torna lì, se anche «Tutto» non trova niente */}
+        {loaded && visible.length === 0 && query.trim() !== "" && !expiringOnly && world !== "all" && (
+          <EmptyState
+            title={`Niente in ${WORLD_LABELS[world]} per «${query.trim()}»`}
+            action={<Button onClick={() => setWorld("all")}>Cerca in tutto</Button>}
+          />
+        )}
+
         {/* con l'aggiunta già aperta l'offerta sarebbe un doppione del pannello qui sopra */}
-        {loaded && visible.length === 0 && query.trim() !== "" && !expiringOnly && (
+        {loaded && visible.length === 0 && query.trim() !== "" && !expiringOnly && world === "all" && (
           <EmptyState
             title={`Niente in dispensa per «${query.trim()}»`}
             action={

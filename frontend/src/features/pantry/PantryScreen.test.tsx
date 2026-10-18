@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -21,6 +21,27 @@ const ITEMS = [
 ];
 
 const MELA = { id: "i2", name: "mela", display_name: "Mela", category: "frutta" };
+
+// S14: una cosa di casa, accanto al cibo di ITEMS
+const DETERSIVO = {
+  id: "p4", ingredient_id: "i4", product_id: null, ingredient_name: "detersivo per i piatti",
+  ingredient_category: "casa", ingredient_kind: "non_food", product_name: null, product_brand: null,
+  status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
+  expires_on: null, expiry: null,
+};
+const DUE_MONDI = [...ITEMS, DETERSIVO];
+
+// il mondo scelto si ricorda nella sessionStorage (S14): ogni test parte e finisce senza
+beforeEach(() => {
+  sessionStorage.clear();
+});
+afterEach(() => {
+  sessionStorage.clear();
+});
+
+function mondo(nome: "Tutto" | "Cibo" | "Casa") {
+  return within(screen.getByRole("group", { name: "Cosa mostrare" })).getByRole("button", { name: nome });
+}
 
 /** Un fetch che risponde in base al percorso: l'ingresso diretto ne attraversa tre
  * (la dispensa, la ricerca in anagrafica, la scrittura), e ogni chiamata deve
@@ -671,5 +692,196 @@ describe("PantryScreen", () => {
       expect(String(patch?.[0])).toContain("/pantry/p9");
       expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ archived: true });
     });
+  });
+});
+
+describe("PantryScreen, «Tutto / Cibo / Casa» (S14)", () => {
+  it("con un mondo solo il selettore non c'è, e vale «Tutto» anche se la sessione ricordava «Casa»", async () => {
+    sessionStorage.setItem("spena.dispensa.mondo", "non_food");
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(screen.queryByRole("group", { name: "Cosa mostrare" })).toBeNull();
+    // «Casa» su una dispensa di solo cibo l'avrebbe svuotata: è tutto a video, e la
+    // sessione ora ricorda «Tutto»
+    expect(screen.getByText("Pesca")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    await waitFor(() => expect(sessionStorage.getItem("spena.dispensa.mondo")).toBe("all"));
+  });
+
+  it("con cibo e casa, «Tutto» è premuto, e «Casa» e «Cibo» mostrano un mondo solo", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [DUE_MONDI, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("true");
+    expect(mondo("Casa").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("link", { name: "Detersivo per i piatti" })).toBeDefined();
+
+    fireEvent.click(mondo("Casa"));
+    expect(mondo("Casa").getAttribute("aria-pressed")).toBe("true");
+    expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("link", { name: "Detersivo per i piatti" })).toBeDefined();
+    expect(screen.queryByText("Total 0%")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
+    // il reparto del cibo non è chiuso: non c'è
+    expect(screen.queryByRole("heading", { name: "Latticini" })).toBeNull();
+
+    fireEvent.click(mondo("Cibo"));
+    expect(screen.getByText("Total 0%")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Detersivo per i piatti" })).toBeNull();
+  });
+
+  it("la scelta si ricorda nella sessione: riaperta la Dispensa, è ancora lì", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [DUE_MONDI, 200]));
+    const { unmount } = renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Cibo"));
+    expect(sessionStorage.getItem("spena.dispensa.mondo")).toBe("food");
+    unmount();
+
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(mondo("Cibo").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("link", { name: "Detersivo per i piatti" })).toBeNull();
+  });
+
+  it("il riepilogo delle scadenze conta il mondo scelto", async () => {
+    const detersivoInScadenza = { ...DETERSIVO, expires_on: "2026-09-28", expiry: "soon" };
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list") ? [[], 200] : [[...ITEMS, detersivoInScadenza], 200]
+    );
+    renderScreen();
+    expect(await screen.findByRole("button", { name: "2 in scadenza questa settimana" })).toBeDefined();
+    fireEvent.click(mondo("Casa"));
+    expect(screen.getByRole("button", { name: "1 in scadenza questa settimana" })).toBeDefined();
+    fireEvent.click(mondo("Cibo"));
+    expect(screen.getByRole("button", { name: "1 in scadenza questa settimana" })).toBeDefined();
+  });
+
+  it("in un mondo senza scadenze il riepilogo non c'è, e il suo filtro premuto si spegne", async () => {
+    // in DUE_MONDI scade solo la mela
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [DUE_MONDI, 200]));
+    renderScreen();
+    const summary = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    fireEvent.click(summary);
+    expect(summary.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(mondo("Casa"));
+    expect(screen.queryByRole("button", { name: /in scadenza/ })).toBeNull();
+    // il detersivo, senza scadenza, è a video: il filtro se n'è andato col suo riepilogo
+    expect(screen.getByRole("link", { name: "Detersivo per i piatti" })).toBeDefined();
+
+    fireEvent.click(mondo("Tutto"));
+    expect(
+      screen.getByRole("button", { name: "1 in scadenza questa settimana" }).getAttribute("aria-pressed")
+    ).toBe("false");
+  });
+
+  it("una ricerca che nel mondo scelto non trova niente offre «Cerca in tutto», che tiene il testo", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list") ? [[], 200] : path.includes("/ingredients") ? [[], 200] : [DUE_MONDI, 200]
+    );
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mela" } });
+
+    expect(screen.getByRole("heading", { name: "Niente in Casa per «mela»" })).toBeDefined();
+    // la mela c'è, sotto «Cibo»: «Niente in dispensa» sarebbe falso, e «Aggiungi» ne
+    // farebbe un doppione
+    expect(screen.queryByRole("heading", { name: /Niente in dispensa/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aggiungi «mela»" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cerca in tutto" }));
+    expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByLabelText("Cerca o aggiungi in dispensa")).toHaveProperty("value", "mela");
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+  });
+
+  it("togliere l'ultima cosa di casa mentre si guarda «Casa» torna a «Tutto», e il selettore se ne va", async () => {
+    let archived = false;
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (init?.method === "PATCH") {
+        archived = JSON.parse(String(init.body)).archived;
+        return [DETERSIVO, 200];
+      }
+      return [archived ? ITEMS : DUE_MONDI, 200];
+    });
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+    fireEvent.click(screen.getByRole("button", { name: "Togli detersivo per i piatti dalla dispensa" }));
+
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Cosa mostrare" })).toBeNull());
+    // non una dispensa vuota per un filtro che non si vede più: il cibo è tutto lì
+    expect(screen.getByText("Total 0%")).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Dispensa vuota" })).toBeNull();
+    expect(sessionStorage.getItem("spena.dispensa.mondo")).toBe("all");
+  });
+
+  it("una voce aggiunta dell'altro mondo porta il selettore a «Tutto», e va in vista", async () => {
+    const created = { ...ITEMS[2], id: "p9" };
+    let added = false;
+    // gesto dell'aggiunta: le risposte finte
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") {
+        added = true;
+        return [created, 201];
+      }
+      return [added ? [...DUE_MONDI, created] : DUE_MONDI, 200];
+    });
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+
+    // gesto dell'aggiunta: dal + della barra, una mela (cibo) mentre si guarda «Casa»
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    // la scheda di conferma (S3): un tocco in più
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+
+    await waitFor(() => expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1));
+    scrollSpy.mockRestore();
+  });
+
+  it("una voce aggiunta dello stesso mondo lascia il mondo com'è", async () => {
+    // deciso da Mattia il 2026-10-09 (piano S14, «Decisioni prese»): la bozza dice solo
+    // dell'altro mondo; qui il mondo resta, perché la riga nuova si vede già
+    const created = { ...ITEMS[2], id: "p9" };
+    let added = false;
+    // gesto dell'aggiunta: le risposte finte
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") {
+        added = true;
+        return [created, 201];
+      }
+      return [added ? [...DUE_MONDI, created] : DUE_MONDI, 200];
+    });
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Cibo"));
+
+    // gesto dell'aggiunta: dal + della barra, una mela (cibo) mentre si guarda «Cibo»
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    // la scheda di conferma (S3): un tocco in più
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1));
+    expect(mondo("Cibo").getAttribute("aria-pressed")).toBe("true");
+    scrollSpy.mockRestore();
   });
 });
