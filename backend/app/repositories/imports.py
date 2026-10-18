@@ -69,6 +69,29 @@ async def pending_pages(session: AsyncSession, source: str) -> list[RecipeImport
     return list(rows.scalars())
 
 
+async def count_pending_recipes_with_key(session: AsyncSession, source: str, key: str) -> int:
+    """Le ricette in attesa della fonte che nominano `key` in almeno una riga.
+
+    È il numero che `count_pending_keys` (services/recipe_import/terms.py) dà per quella
+    chiave, contato dal database: `payload->'ingredients' @> '[{"key": …}]'` è vero una
+    volta per pagina, anche se la chiave sta in due righe, e mai per una riga senza chiave.
+    Lo usa `undo_decision`, che riconta un termine solo e prima leggeva tutte le pagine in
+    attesa col loro JSONB intero (tests/repositories/test_imports_count.py tiene uguali i
+    due conti).
+    """
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(RecipeImport)
+            .where(
+                RecipeImport.source == source,
+                RecipeImport.state == ImportState.PENDING,
+                RecipeImport.payload["ingredients"].contains([{"key": key}]),
+            )
+        )
+    ).scalar_one()
+
+
 async def counts(session: AsyncSession, source: str) -> ImportCounts:
     by_state = dict(
         (

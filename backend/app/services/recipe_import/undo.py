@@ -42,10 +42,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.recipe import CookingEvent, Recipe, RecipeIngredient
 from app.db.models.recipe_import import ImportState, ImportTerm, RecipeImport, TermDecision
 from app.domain.rules import cost_in_scale
-from app.repositories.imports import pending_pages
+from app.repositories.imports import count_pending_recipes_with_key
 from app.repositories.ingredients import delete_ingredient_if_unused, forget_alias
 from app.services.recipe_import.materialize import COOKING_EVENTS_KEY
-from app.services.recipe_import.terms import count_pending_keys
 
 
 @dataclass(frozen=True)
@@ -186,11 +185,11 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     # `occurrences` si ricalcolava solo a ogni scarico (`sync_terms`): le pagine appena
     # rimesse in coda restavano fuori dal conto, e la coda diceva «1 ricetta in attesa»
     # sopra due titoli (T3, esito del giro). Si riconta il termine annullato, e solo
-    # lui, con la funzione di `sync_terms`, dopo il `flush` che ha scritto le pagine
-    # tornate `pending`. Gli altri termini di quelle pagine si riallineano al prossimo
-    # scarico, come prima.
-    counted = count_pending_keys(await pending_pages(session, term.source))
-    term.occurrences = counted.occurrences.get(term.term_key, 0)
+    # lui, con lo stesso conto di `sync_terms` fatto dal database
+    # (`count_pending_recipes_with_key`: prima si leggevano tutte le pagine in attesa per
+    # una chiave sola), dopo il `flush` che ha scritto le pagine tornate `pending`. Gli
+    # altri termini di quelle pagine si riallineano al prossimo scarico, come prima.
+    term.occurrences = await count_pending_recipes_with_key(session, term.source, term.term_key)
 
     if ingredient_id is not None:
         alias_forgotten = await forget_alias(session, ingredient_id, term.display_name)
