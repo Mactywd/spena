@@ -1,12 +1,6 @@
 import { Button } from "../../components/ui/Button";
 import type { ProductSuggestion } from "./CustomProductForm";
-
-/** Il nome di Open Food Facts accanto alla domanda, in una frase sola. */
-function describeSuggestion(suggestion: ProductSuggestion): string {
-  const what = suggestion.name ? `«${suggestion.name}»` : "senza nome";
-  const by = suggestion.brand ? `, di ${suggestion.brand}` : "";
-  return `Su Open Food Facts è ${what}${by}.`;
-}
+import { describeSuggestion } from "./wording";
 
 /**
  * La domanda prima del modulo, quando un codice nuovo al catalogo è noto a Open

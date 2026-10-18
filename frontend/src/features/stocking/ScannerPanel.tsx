@@ -7,18 +7,20 @@ import { otherIngredient } from "./wording";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { IconPencilPlus, IconSearch } from "../../components/ui/icons";
-import type { Product, ShoppingItem } from "../../domain/types";
+import type { Product } from "../../domain/types";
 
 /** Il pannello del codice a barre di una voce (spec T3 §4.3, S10): la fotocamera, il
  * codice scritto a mano con «Cerca», e ciò che il lookup risponde.
  *
  * Qui vivono, e solo qui, le guardie del codice: il prodotto di un altro ingrediente
  * che non si aggancia (il 409 della sistemazione tutto-o-niente), la cifra di controllo
- * che non torna (S20), il codice che segue o non segue la voce (S8). Il codice scritto
- * è stato di questo pannello, che nasce e muore con lui: quello di un'altra voce non
- * può restare nel campo. */
+ * che non torna (S20), il codice che segue o non segue la voce (S8). Senza ingrediente
+ * atteso (la scansione dalla Dispensa, S3) la guardia del 409 non ha niente con cui
+ * confrontare, e non serve: il prodotto trovato porta il suo ingrediente, ed è quello
+ * che entra. Il codice scritto è stato di questo pannello, che nasce e muore con lui:
+ * quello di un'altra voce non può restare nel campo. */
 export function ScannerPanel({
-  item,
+  label,
   ingredientId,
   onProduct,
   onNewCode,
@@ -26,10 +28,13 @@ export function ScannerPanel({
   onCreateByHand,
   onCancel,
 }: {
-  item: ShoppingItem;
-  /** L'ingrediente della voce, dalla lista o abbinato in questo schermo: la guardia
-   * qui sotto ci confronta il prodotto che il codice trova. */
-  ingredientId: string;
+  /** Di che cosa si legge il codice, nel titolo: il testo della voce in «Sistema la
+   * spesa», l'ingrediente dal + della Dispensa. `null` nella scansione dalla
+   * Dispensa, che parte senza: il titolo dice solo «Codice a barre». */
+  label: string | null;
+  /** L'ingrediente atteso: la guardia qui sotto ci confronta il prodotto che il
+   * codice trova. `null` nella scansione dalla Dispensa (S3). */
+  ingredientId: string | null;
   /** Il codice ha trovato un prodotto del catalogo, di questo ingrediente. */
   onProduct: (product: Product) => void;
   /** Un codice nuovo al catalogo, che si è deciso di usare: se Open Food Facts lo
@@ -73,7 +78,7 @@ export function ScannerPanel({
       // Uno nuovo al catalogo lo ricorda chi riceve `onNewCode`, quando si decide di
       // usarlo
       onUnlinkedCode(null);
-      if (product && product.ingredient_id !== ingredientId) {
+      if (product && ingredientId !== null && product.ingredient_id !== ingredientId) {
         // `GET /products/barcode/{code}` cerca per codice e basta, quindi la referenza
         // che torna può essere di un altro ingrediente. Adottarla faceva fallire con
         // 409 l'intera sistemazione — che è tutto-o-niente — comprese le voci risolte
@@ -125,7 +130,9 @@ export function ScannerPanel({
       {/* il nome della voce nel titolo: prima stava solo nel testo per lo screen reader
           del pulsante che apre il pannello, e arrivati qui non si sapeva più cosa si
           stava scansionando (S10) */}
-      <h2 className="font-semibold">Codice a barre per «{item.raw_text}»</h2>
+      <h2 className="font-semibold">
+        {label === null ? "Codice a barre" : `Codice a barre per «${label}»`}
+      </h2>
       <BarcodeScanner
         onDetected={handleDetected}
         onCancel={onCancel}
@@ -176,7 +183,7 @@ export function ScannerPanel({
           {mismatch && (
             <>
               {otherIngredient(mismatch.name, mismatch.ingredient_name)} Qui non si aggancia:
-              leggi un altro codice, cercalo a catalogo, oppure conferma «{item.raw_text}» come
+              leggi un altro codice, cercalo a catalogo, oppure conferma «{label}» come
               sfuso.
             </>
           )}

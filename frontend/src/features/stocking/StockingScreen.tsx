@@ -348,7 +348,7 @@ export function StockingScreen() {
           // un pannello per voce: il codice scritto a mano per un'altra voce non
           // sopravvive nel campo (S8)
           key={item.id}
-          item={item}
+          label={item.raw_text}
           ingredientId={ingredientId}
           onProduct={(product) => resolveFrom(open, item, { kind: "product", product })}
           onNewCode={(code, suggestion) => proceedWithNewCode(open, item, code, suggestion)}
