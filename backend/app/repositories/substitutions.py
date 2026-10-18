@@ -22,12 +22,13 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models.ingredient import Ingredient
+from app.db.models.recipe import Recipe, RecipeIngredient
 from app.db.models.substitution import IngredientSubstitution, SubstitutionOption
 from app.domain.rules import IngredientKind
 from app.domain.substitutions import (
@@ -37,6 +38,7 @@ from app.domain.substitutions import (
     SubstitutionContext,
     SubstitutionVerdict,
     clean_note,
+    recipe_context,
 )
 
 
@@ -273,3 +275,110 @@ async def store_ai_answer(
     )
     await session.flush()
     return True
+
+
+@dataclass(frozen=True)
+class Voice:
+    """Un ingrediente in un contesto: la granularità delle risposte generali."""
+
+    ingredient_id: uuid.UUID
+    name: str
+    context: SubstitutionContext
+    # le ricette non eliminate di quel contesto che lo usano: l'ordine del comando
+    recipes: int
+
+
+async def _usage(
+    session: AsyncSession, ingredient_id: uuid.UUID | None = None
+) -> dict[tuple[uuid.UUID, SubstitutionContext], Voice]:
+    """Le voci del ricettario: un ingrediente per ogni contesto in cui compare.
+
+    Si raggruppa per categoria in SQL e si piega in contesti qui, con `recipe_context`:
+    la regola del contesto resta una sola, nel dominio, invece di una seconda copia in
+    SQL che si scollerebbe (prima lezione di CLAUDE.md). Le categorie sono una ventina.
+    """
+    statement = (
+        select(RecipeIngredient.ingredient_id, Ingredient.name, Recipe.category, func.count())
+        .join(Recipe, Recipe.id == RecipeIngredient.recipe_id)
+        .join(Ingredient, Ingredient.id == RecipeIngredient.ingredient_id)
+        .where(Recipe.archived_at.is_(None), Ingredient.kind == IngredientKind.FOOD)
+        .group_by(RecipeIngredient.ingredient_id, Ingredient.name, Recipe.category)
+    )
+    if ingredient_id is not None:
+        statement = statement.where(RecipeIngredient.ingredient_id == ingredient_id)
+    voices: dict[tuple[uuid.UUID, SubstitutionContext], Voice] = {}
+    for found_id, name, category, count in (await session.execute(statement)).all():
+        context = recipe_context(category)
+        before = voices.get((found_id, context))
+        voices[(found_id, context)] = Voice(
+            found_id, name, context, count + (before.recipes if before else 0)
+        )
+    return voices
+
+
+async def pending_voices(session: AsyncSession) -> list[Voice]:
+    """Le voci senza una risposta generale che risponda, dalla più usata.
+
+    Le più usate prima: `--limit 20` mostra le risposte che contano di più, e un lancio
+    interrotto ha già coperto le ricette più frequenti.
+    """
+    usage = await _usage(session)
+    rows = (
+        await session.execute(
+            _loaded(select(IngredientSubstitution).where(IngredientSubstitution.recipe_id.is_(None)))
+        )
+    ).scalars().all()
+    answered = {
+        (row.ingredient_id, SubstitutionContext(row.context)) for row in rows if is_answered(row)
+    }
+    pending = [voice for key, voice in usage.items() if key not in answered]
+    pending.sort(key=lambda voice: (-voice.recipes, voice.name, voice.context.value))
+    return pending
+
+
+@dataclass(frozen=True)
+class ContextView:
+    context: SubstitutionContext
+    recipes: int
+    # la voce generale, solo se risponde (`is_answered`)
+    row: IngredientSubstitution | None
+
+
+@dataclass(frozen=True)
+class IngredientView:
+    contexts: tuple[ContextView, ...]
+    # le correzioni di ricetta che rispondono: «Corretto a mano in N ricette»
+    recipe_overrides: int
+
+
+async def ingredient_view(session: AsyncSession, ingredient_id: uuid.UUID) -> IngredientView:
+    """Cosa sa di sostituti la scheda di un ingrediente in Anagrafica (R5).
+
+    I contesti in cui compare in una ricetta, più quelli in cui ha una risposta anche
+    senza ricette (scritta a mano, o rimasta dopo che l'ultima ricetta è stata eliminata),
+    nell'ordine di `SubstitutionContext`: salato, poi dolce.
+    """
+    usage = await _usage(session, ingredient_id)
+    rows = (
+        await session.execute(
+            _loaded(
+                select(IngredientSubstitution).where(
+                    IngredientSubstitution.ingredient_id == ingredient_id
+                )
+            )
+        )
+    ).scalars().all()
+    general = {
+        SubstitutionContext(row.context): row
+        for row in rows
+        if row.recipe_id is None and is_answered(row)
+    }
+    contexts = []
+    for context in SubstitutionContext:
+        voice = usage.get((ingredient_id, context))
+        row = general.get(context)
+        if voice is None and row is None:
+            continue
+        contexts.append(ContextView(context, voice.recipes if voice else 0, row))
+    overrides = sum(1 for row in rows if row.recipe_id is not None and is_answered(row))
+    return IngredientView(tuple(contexts), overrides)
