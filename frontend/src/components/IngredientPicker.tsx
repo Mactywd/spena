@@ -59,9 +59,11 @@ export function IngredientPicker({
    * suo nome pesca «Pera» per «cera per pavimenti». */
   createWhen?: "empty" | "always";
   /** Chi non sa creare un ingrediente dice qui dove andare quando la ricerca non
-   * trova niente: senza, il pannello resterebbe muto sotto un campo pieno, ed è un
-   * vicolo cieco. Compare alle stesse condizioni dell'offerta di creare, che quando
-   * c'è ha la precedenza. */
+   * trova niente. Senza, compare la nota di ripiego «Nessun ingrediente somiglia a
+   * «…». Prova con un'altra parola.»: un pannello muto sotto un campo pieno è un vicolo
+   * cieco, e coi suggerimenti tagliati (spec 2026-10-06-suggerimenti-soglia) una
+   * ricerca vuota non è più rara. Compare alle stesse condizioni dell'offerta di creare,
+   * che quando c'è ha la precedenza. */
   emptyNote?: ReactNode;
   /** Il testo con cui il campo nasce: la Dispensa apre l'aggiunta con quel che era
    * scritto nella barra. Vale solo alla nascita — chi vuole ripartire da un altro
@@ -142,7 +144,14 @@ export function IngredientPicker({
         </Button>
       )}
 
-      {!onCreate && emptyNote && emptySearch && <p className="text-sm text-ink-soft">{emptyNote}</p>}
+      {/* senza chi crea, una ricerca finita e vuota dice sempre qualcosa: la nota di chi
+          usa il selettore se la passa, quella di ripiego altrimenti. Per il testo cercato,
+          mai per uno di prima (S18): `emptySearch` lo garantisce */}
+      {!onCreate && emptySearch && (
+        <p className="text-sm text-ink-soft">
+          {emptyNote ?? `Nessun ingrediente somiglia a «${debounced}». Prova con un'altra parola.`}
+        </p>
+      )}
 
       {/* la ricerca è un aiuto, non un pedaggio: il guasto va detto insieme a
           quello che resta possibile. L'ambra è il colore che nell'app vuol dire
