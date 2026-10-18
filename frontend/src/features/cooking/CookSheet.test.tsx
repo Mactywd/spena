@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { CookSheet } from "./CookSheet";
 import type { PantryItem, RecipeDetail } from "../../domain/types";
 
@@ -44,7 +45,7 @@ const PANTRY: PantryItem[] = [
 
 function renderSheet(
   onDone = vi.fn(),
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  client = createTestQueryClient(),
   items: PantryItem[] = PANTRY,
   recipe: RecipeDetail = RECIPE
 ) {
@@ -375,7 +376,7 @@ describe("CookSheet", () => {
     ));
     vi.stubGlobal("fetch", spy);
 
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createTestQueryClient();
     client.setQueryData(["pantry"], PANTRY);
     client.setQueryData(["shopping-list"], []);
     client.setQueryData(["recipe", "r1"], RECIPE);

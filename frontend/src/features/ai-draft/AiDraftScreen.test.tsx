@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { AiDraftScreen } from "./AiDraftScreen";
 import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
@@ -40,7 +41,7 @@ function aiDown() {
 }
 
 function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -616,7 +617,7 @@ describe("AiDraftScreen e il ricettario sotto lo stesso QueryClient", () => {
     });
     vi.stubGlobal("fetch", spy);
 
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createTestQueryClient();
     render(
       <QueryClientProvider client={client}>
         <MemoryRouter>
@@ -704,7 +705,7 @@ describe("«Salva nel ricettario» (T4)", () => {
       const { id } = useParams();
       return <p data-testid="dettaglio">{id}</p>;
     }
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createTestQueryClient();
     render(
       <QueryClientProvider client={client}>
         <NoticeProvider>
