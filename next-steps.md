@@ -26,7 +26,6 @@ finché è alla `0012`. Il 16, il 17, il 18 e il 19 aggiungono migrazioni con un
 la `down_revision` sulla testa di `master` di quel momento, e `alembic heads` deve dire una testa
 sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 
-2. [pronto] P2 · S12, righe della dispensa riconoscibili: emoji dell'ingrediente (elenco chiuso, 148, fino a Emoji 14.0) col ripiego sull'icona del reparto, «Cambia figura» in Anagrafica, migrazione `0013` e `decide_emoji` (da lanciare in produzione solo da Mattia dopo il deploy) [S12] → `docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`, ramo `night/s12-righe-dispensa` da `night/s3-ingresso-diretto`
 3. [pronto] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — grigio pieno coi token `disabled` / `on-disabled`, velo 45% / 60% col bordo `panel-edge` [T3 Consegna 1] → `docs/superpowers/plans/2026-10-08-tema-scuro-spenti.md`, ramo `night/tema-scuro-spenti` da `night/s12-righe-dispensa`
 4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
 5. [pronto] P3 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` dal server, scelta in `sessionStorage`, una voce aggiunta dello stesso mondo lascia il mondo com'è (Mattia, 2026-10-09) [S14] → `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md`, ramo `night/s14-cibo-casa` da `night/tema-scuro-spenti`
@@ -139,7 +138,7 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-_(niente)_
+- [in corso] P2 · S12, righe della dispensa riconoscibili: emoji dell'ingrediente (elenco chiuso, 148, fino a Emoji 14.0) col ripiego sull'icona del reparto, «Cambia figura» in Anagrafica, migrazione `0013` e `decide_emoji` (da lanciare in produzione solo da Mattia dopo il deploy) [S12] → `docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`, ramo `night/s12-righe-dispensa` da `night/s3-ingresso-diretto` → branch night/s12-righe-dispensa
 
 ## Fatti (recenti)
 - [fatto] 2026-10-18 · S3, ingresso diretto in dispensa: «Scansiona» in serie con la scheda di conferma (due tocchi per una confezione a catalogo), il + che crea l'ingrediente, la scadenza prima di entrare e «Annulla» nell'avviso; in «Sistema la spesa» «Articolo aggiuntivo» e «+ un'altra confezione»; la regia dei pannelli in `ProductResolver`, `stock_one` nel backend [S3] → branch night/s3-ingresso-diretto (da revisionare)
