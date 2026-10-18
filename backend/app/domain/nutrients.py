@@ -84,3 +84,18 @@ COLLECTED_FIELDS: frozenset[str] = frozenset(
         "potassium",
     }
 )
+
+# Le righe che una scheda mostra sempre, anche vuote: energia e macronutrienti, cioè la
+# parte B dell'Allegato XIII più le fibre — la tabella di un'etichetta. Gli altri campi
+# si mostrano solo dove c'è un valore (S4, fetta 1). Il server lo dice a ogni nutriente
+# (`main`), così il frontend non ne tiene una copia.
+MAIN_FIELDS: tuple[str, ...] = (
+    "kcal",
+    "protein",
+    "carbs",
+    "sugars",
+    "fat",
+    "saturated_fat",
+    "fiber",
+    "salt",
+)

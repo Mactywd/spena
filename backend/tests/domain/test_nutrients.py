@@ -48,3 +48,14 @@ def test_vocabulary_holds_fields_not_collected_yet():
     già nomina campi che oggi nessuna fonte riempie (S4, fuori scopo)."""
     assert "vitamin_a" in NUTRIENT_FIELDS
     assert "vitamin_a" not in COLLECTED_FIELDS
+
+
+def test_main_fields_sono_l_etichetta_nutrizionale():
+    """Le otto righe che una scheda mostra sempre, anche vuote (S4, fetta 1): la parte B
+    dell'Allegato XIII più le fibre, nell'ordine del vocabolario."""
+    from app.domain.nutrients import MAIN_FIELDS
+
+    assert MAIN_FIELDS == (
+        "kcal", "protein", "carbs", "sugars", "fat", "saturated_fat", "fiber", "salt",
+    )
+    assert list(NUTRIENT_FIELDS)[: len(MAIN_FIELDS)] == list(MAIN_FIELDS)
