@@ -132,6 +132,27 @@ describe("il nome si scrive una volta", () => {
       .toBe("Zafferano non in anagrafica, sarà escluso");
   });
 
+  // la bozza dice perché una riga non è agganciata: un non alimentare in anagrafica c'è,
+  // e «non in anagrafica» sarebbe falso (Parte X)
+  it("una riga che il server dice non alimentare lo dice, e resta esclusa", () => {
+    const riga = lineFromDraft(
+      bozza({ raw_name: "carta forno", ingredient_id: null, matched_name: null, confident: false, non_food: true }),
+      0
+    );
+    expect(riga.nonFood).toBe(true);
+    expect(matchNote(riga)).toBe("carta forno non è un alimento, sarà escluso");
+    expect(savableLines([riga])).toEqual([]);
+  });
+
+  it("senza `non_food` una riga sconosciuta resta «non in anagrafica»", () => {
+    const riga = lineFromDraft(
+      bozza({ raw_name: "Zafferano", ingredient_id: null, matched_name: null, confident: false }),
+      0
+    );
+    expect(riga.nonFood).toBe(false);
+    expect(matchNote(riga)).toBe("Zafferano non in anagrafica, sarà escluso");
+  });
+
   it("la nota dell'aggancio compare solo se dice qualcosa di diverso", () => {
     expect(showsMatch(lineFromIngredient(ZAFFERANO))).toBe(false);
     expect(showsMatch(valuesFromRecipe(DETAIL).lines[0])).toBe(false);

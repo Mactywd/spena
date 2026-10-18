@@ -40,6 +40,9 @@ export interface FormLine {
   // utilizzabile. Valorizzato è la ragione per cui una riga senza aggancio può
   // comunque salvarsi: il modello ha detto cos'è e in che reparto.
   proposedCategory: string | null;
+  /** Vero solo per una riga della bozza che il server dice non alimentare (`non_food`):
+   * non è agganciata e non si salva, e la nota lo dice invece di «non in anagrafica». */
+  nonFood: boolean;
   /** La nota della riga salvata, portata com'è: il modulo non la mostra e non la
    * cambia, ma una modifica non deve perderla. */
   note: string | null;
@@ -89,6 +92,7 @@ export function lineFromDraft(line: DraftIngredient, index: number): FormLine {
     // avvelena la disponibilità di ogni ricetta che lo usa.
     included: !uncertain,
     proposedCategory: attached ? null : line.proposed_category ?? null,
+    nonFood: !attached && line.non_food === true,
     note: null,
   };
 }
@@ -108,6 +112,7 @@ export function lineFromIngredient(ingredient: Ingredient): FormLine {
     quantityText: "",
     included: true,
     proposedCategory: null,
+    nonFood: false,
     note: null,
   };
 }
@@ -130,6 +135,7 @@ export function lineFromNewName(name: string, category: string): FormLine {
     quantityText: "",
     included: true,
     proposedCategory: category,
+    nonFood: false,
     note: null,
   };
 }
@@ -185,6 +191,7 @@ export function lineFromRecipe(line: RecipeIngredientLine): FormLine {
     quantityText: line.quantity_text ?? "",
     included: true,
     proposedCategory: null,
+    nonFood: false,
     note: line.note,
   };
 }
@@ -227,6 +234,9 @@ export function matchNote(line: FormLine): string {
     // il nome sta già sulla riga, sopra la nota: ripeterlo è quel che a 375px allargava
     // la pagina a 562px con un nome di 60 caratteri (e2e/ai-draft.spec.ts)
     if (line.proposedCategory !== null) return "da creare salvando";
+    // un non alimentare in anagrafica c'è: «non in anagrafica» sarebbe falso (Parte X).
+    // Le parole del 422 del salvataggio, «non è un alimento»
+    if (line.nonFood) return `${line.label} non è un alimento, sarà escluso`;
     return `${line.label} non in anagrafica, sarà escluso`;
   }
   if (line.uncertain) return `${line.matchedName}, da confermare`;
