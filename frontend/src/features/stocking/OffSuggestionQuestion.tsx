@@ -31,7 +31,9 @@ export function OffSuggestionQuestion({
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-card border border-line p-3">
-      <h2 className="font-semibold">È un «{ingredientName}»?</h2>
+      {/* senza articolo: «È un «zucchina»?» non si accordava, e un articolo giusto per ogni
+          nome lo saprebbe solo un dizionario (giro del 2026-10-07) */}
+      <h2 className="font-semibold">È «{ingredientName}»?</h2>
       <p className="text-ink">{describeSuggestion(suggestion)}</p>
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={onYes}>

@@ -862,7 +862,8 @@ describe("StockingScreen", () => {
       renderScreen();
       await readSpaghettiOnYogurt();
 
-      expect(await screen.findByRole("heading", { name: "È un «yogurt greco»?" })).toBeDefined();
+      // senza articolo: «È un «zucchina»?» non si accordava (giro del 2026-10-07)
+      expect(await screen.findByRole("heading", { name: "È «yogurt greco»?" })).toBeDefined();
       expect(
         screen.getByText("Su Open Food Facts è «Spaghetti n.5», di Barilla.")
       ).toBeDefined();
@@ -878,7 +879,7 @@ describe("StockingScreen", () => {
 
       await userEvent.click(await screen.findByRole("button", { name: "No, è un'altra cosa" }));
 
-      expect(screen.queryByRole("heading", { name: "È un «yogurt greco»?" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "È «yogurt greco»?" })).toBeNull();
       expect(screen.queryByRole("heading", { name: /Nuovo prodotto/ })).toBeNull();
       expect(screen.getByRole("button", { name: /Codice.*yogurt greco/i })).toBeDefined();
       expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/ })).toBeDefined();
