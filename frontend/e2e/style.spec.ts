@@ -3309,3 +3309,90 @@ for (const tema of ["light", "dark"] as const) {
     });
   });
 }
+
+// --- S14: «Tutto / Cibo / Casa» in dispensa ---
+
+test("S14 a 375px: «Tutto / Cibo / Casa» coi due mondi in dispensa — bersagli da 44, niente di lato, ricordato ricaricando, leggibile nei due temi", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: la prima cosa qui è una
+  // `page.request`, quindi l'attesa va messa a mano
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+
+  // il seme non popola la dispensa: una voce per mondo, creata qui e tolta nel `finally`.
+  // «finocchio» e «ammorbidente» non li nomina nessun altro file della suite
+  const create: string[] = [];
+  async function inDispensa(nome: string) {
+    const trovati = (await (
+      await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)
+    ).json()) as { id: string; name: string }[];
+    const ingrediente = trovati.find((voce) => voce.name === nome);
+    expect(ingrediente, `«${nome}» non è nel seme`).toBeDefined();
+    const risposta = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: ingrediente!.id },
+    });
+    expect(risposta.ok()).toBe(true);
+    const voce = (await risposta.json()) as { id: string; ingredient_kind: string };
+    create.push(voce.id);
+    return voce;
+  }
+
+  try {
+    expect((await inDispensa("finocchio")).ingredient_kind).toBe("food");
+    expect((await inDispensa("ammorbidente")).ingredient_kind).toBe("non_food");
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/dispensa");
+    const mondi = page.getByRole("group", { name: "Cosa mostrare" });
+    await expect(mondi).toBeVisible();
+    for (const nome of ["Tutto", "Cibo", "Casa"]) {
+      const box = await mondi.getByRole("button", { name: nome, exact: true }).boundingBox();
+      expect(box, `«${nome}» non c'è`).not.toBeNull();
+      expect(box!.height, `«${nome}» è più basso di 44 px`).toBeGreaterThanOrEqual(44);
+    }
+    await expect(mondi.getByRole("button", { name: "Tutto", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    const casa = mondi.getByRole("button", { name: "Casa", exact: true });
+    await casa.click();
+    await expect(casa).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("li", { hasText: "ammorbidente" })).toBeVisible();
+    await expect(page.locator("li", { hasText: "finocchio" })).toHaveCount(0);
+
+    await page.waitForLoadState("networkidle");
+    const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+    const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+    expect(scrollWidth, "la Dispensa col selettore scorre di lato").toBeLessThanOrEqual(clientWidth);
+
+    // il premuto e gli altri due, nei due temi: stati che solo questa prova apre
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `Dispensa su «Casa», tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // ricordato per la sessione (Mattia, 2026-10-07): ricaricando, la Dispensa riapre su «Casa»
+    await page.reload();
+    await expect(
+      page.getByRole("group", { name: "Cosa mostrare" }).getByRole("button", { name: "Casa", exact: true })
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("li", { hasText: "ammorbidente" })).toBeVisible();
+    await expect(page.locator("li", { hasText: "finocchio" })).toHaveCount(0);
+  } finally {
+    // `expect.soft` e non un'asserzione: un `finally` che lancia nasconderebbe l'errore
+    // vero del `try`, ma la prova risulta comunque fallita (come in `perOgniLuogo`)
+    for (const id of create) {
+      try {
+        const risposta = await page.request.patch(`/api/v1/pantry/${id}`, {
+          data: { archived: true },
+        });
+        expect.soft(risposta.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+      } catch (guasto) {
+        expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
+      }
+    }
+  }
+});
