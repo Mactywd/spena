@@ -14,6 +14,7 @@ import type { Ingredient, MergeCounts } from "../../domain/types";
 import { AliasRow } from "./AliasRow";
 import { CategoryForm } from "./CategoryForm";
 import { MergePanel } from "./MergePanel";
+import { NutritionSection } from "./NutritionSection";
 import { RenameForm } from "./RenameForm";
 import { fetchIngredientDetail } from "./api";
 import { backFrom, originFrom, productPath } from "./origin";
@@ -201,6 +202,10 @@ function IngredientCard({ id }: { id: string }) {
           </ul>
         </Card>
       )}
+
+      {/* S4: i valori dell'alimento CIQUAL, in fondo e solo per un alimento. Una voce non
+          alimentare non ha valori nutrizionali, e non li chiede */}
+      {ingredient.kind === "food" && <NutritionSection ingredientId={ingredient.id} />}
     </Screen>
   );
 }
