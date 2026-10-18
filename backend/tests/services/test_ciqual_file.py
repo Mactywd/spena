@@ -5,6 +5,8 @@ che un foglio vero fa e una tabella pulita no — una cella numerica in mezzo al
 stringhe, una cella vuota che non è scritta, un titolo sopra l'intestazione.
 """
 
+import zipfile
+
 import pytest
 
 from app.domain.ciqual import CiqualFormatError
@@ -113,3 +115,19 @@ def test_doppioni_e_righe_senza_codice_si_contano(tmp_path):
 
     assert len(letto.foods) == 1
     assert (letto.duplicate_codes, letto.skipped_rows) == (1, 1)
+
+
+def test_un_archivio_rovinato_dice_che_il_file_non_va(tmp_path):
+    """Un foglio con il flusso deflate guasto non esce come errore di zlib, ma come «il file non va»."""
+    path = fixture_xlsx(tmp_path)
+    with zipfile.ZipFile(path) as archive:
+        header_offset = archive.getinfo("xl/worksheets/sheet1.xml").header_offset
+    raw = bytearray(path.read_bytes())
+    name_length = int.from_bytes(raw[header_offset + 26 : header_offset + 28], "little")
+    extra_length = int.from_bytes(raw[header_offset + 28 : header_offset + 30], "little")
+    data_start = header_offset + 30 + name_length + extra_length
+    raw[data_start] = 0x07  # primo blocco deflate di tipo 11, non valido: zlib rifiuta
+    path.write_bytes(bytes(raw))
+
+    with pytest.raises(CiqualFormatError, match="ciqual-prova.xlsx"):
+        read_ciqual(path)

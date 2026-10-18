@@ -16,6 +16,7 @@ ricorsiva delle entità.
 
 import re
 import zipfile
+import zlib
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -131,7 +132,19 @@ def read_ciqual(path: Path) -> CiqualFile:
         return _read(path)
     except CiqualFormatError:
         raise
-    except (OSError, zipfile.BadZipFile, KeyError, IndexError, ValueError, ParseError) as exc:
+    except (
+        OSError,
+        zipfile.BadZipFile,
+        zipfile.LargeZipFile,
+        zlib.error,
+        EOFError,
+        RuntimeError,
+        NotImplementedError,
+        KeyError,
+        IndexError,
+        ValueError,
+        ParseError,
+    ) as exc:
         raise CiqualFormatError(
             f"«{path.name}» non si legge come il file XLSX di CIQUAL ({exc})"
         ) from exc
