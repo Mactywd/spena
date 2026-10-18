@@ -108,3 +108,59 @@ def render_quantity(value: Decimal, unit: UnitForms | None) -> str:
         return number
     word = (unit.singular if value == 1 else unit.plural) or unit.key
     return f"{number} {word}"
+
+
+# Il secondo modo del riporziona (R2): la dose di una riga fissata a mano, e il resto
+# che la segue. Quanto ci si può allontanare dalla ricetta: lo stesso che lo stepper
+# delle porzioni permette al massimo (da 1 a 50 porzioni su ricette che ne dicono da 1
+# a 50), cioè cinquanta volte in su o in giù. Una regola sola per i due modi; oltre, è
+# quasi sempre uno zero di troppo, e le altre righe diventerebbero dosi che non si pesano.
+ANCHOR_MAX_FACTOR = Decimal(50)
+
+# Il tetto, escluso, di quel che si può scrivere come dose. Sta sopra la dose più grande
+# che la colonna regge (99999,999) per cinquanta volte: non taglia mai una richiesta che
+# il fattore accetterebbe, ferma solo i numeri che non sono dosi.
+ANCHOR_AMOUNT_CEILING = Decimal(10_000_000)
+
+
+class AnchorOutOfRange(ValueError):
+    """La dose scritta porta la ricetta oltre `ANCHOR_MAX_FACTOR` volte la sua.
+
+    Porta i due estremi già scalati, `low` e `high`: chi la intercetta li scrive a
+    video con l'unità della riga, che questo modulo non conosce."""
+
+    def __init__(self, low: Decimal, high: Decimal) -> None:
+        super().__init__(f"fuori scala: fra {low} e {high}")
+        self.low = low
+        self.high = high
+
+
+def anchor_factor(base: Decimal, amount: Decimal) -> Decimal:
+    """Il fattore che porta la dose della ricetta (`base`, più di zero) a quella scritta.
+
+    Non arrotonda: si arrotonda una volta sola, riga per riga, in `scale_quantity`. Gli
+    estremi si confrontano già arrotondati come li si mostrerebbe, così la frase che li
+    cita non promette un numero che poi si rifiuta."""
+    low = scale_quantity(base, 1 / ANCHOR_MAX_FACTOR)
+    high = scale_quantity(base, ANCHOR_MAX_FACTOR)
+    if not low <= amount <= high:
+        raise AnchorOutOfRange(low, high)
+    return amount / base
+
+
+def equivalent_servings(servings: int, factor: Decimal) -> Decimal:
+    """Le porzioni che fa una ricetta da `servings` porzioni scalata di `factor`.
+
+    Un decimale da una porzione in su, due sotto («≈ 1,5», «≈ 0,75»): sotto l'unità un
+    decimale solo direbbe «≈ 0,8» di tre quarti. Metà in su, come `scale_quantity`."""
+    value = Decimal(servings) * factor
+    step = Decimal("0.1") if value >= 1 else Decimal("0.01")
+    return value.quantize(step, rounding=ROUND_HALF_UP).normalize()
+
+
+def decimal_text(value: Decimal) -> str:
+    """Un decimale scritto per una macchina: col punto, senza esponente né zeri di coda.
+
+    `str(Decimal("1E+3"))` è «1E+3», e `normalize()` di 50 è `5E+1`: nello storico e nelle
+    risposte va «1000» e «50»."""
+    return format(value.normalize(), "f")
