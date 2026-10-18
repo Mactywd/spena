@@ -322,7 +322,7 @@ describe("R12: un ingrediente che non c'è si aggiunge dal modulo", () => {
     expect(screen.queryByLabelText("Come si chiama in generale?")).toBeNull();
     const riga = screen.getByRole("button", { name: "Togli zucchine" }).closest("li")!;
     expect(within(riga).getByText("Zucchine")).toBeInTheDocument();
-    expect(within(riga).getByText("Non è in anagrafica: lo creo io salvando.")).toBeInTheDocument();
+    expect(within(riga).getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeInTheDocument();
     expect(within(riga).getByRole("combobox", { name: "Reparto per «zucchine»" })).toHaveValue(
       "verdura"
     );

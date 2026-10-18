@@ -118,8 +118,8 @@ export function lineFromIngredient(ingredient: Ingredient): FormLine {
 }
 
 /** R12: una riga per un ingrediente che l'anagrafica non ha, scritta a mano. È fatta
- * come le righe dell'AI non agganciate — nome e reparto, «lo creo io salvando» — e
- * l'ingrediente nasce al salvataggio, dentro la transazione della ricetta
+ * come le righe dell'AI non agganciate — nome e reparto, con la nota «Salvando lo cerco
+ * in anagrafica…» — e l'ingrediente nasce al salvataggio, dentro la transazione della ricetta
  * (`_resolve_lines` nel backend, per la creazione e per la modifica). `manual`: una
  * bozza nuova dell'AI non la porta via. */
 export function lineFromNewName(name: string, category: string): FormLine {

@@ -2583,7 +2583,7 @@ test("R12 a 375px: «Aggiungi «…»» nel modulo, il passo del nome e la riga 
 
   const togli = page.getByRole("button", { name: `Togli ${nomeLungo}` });
   const riga = page.getByRole("listitem").filter({ has: togli });
-  await expect(riga.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(riga.getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeVisible();
   await expect(page.getByLabel(`Reparto per «${nomeLungo}»`)).toHaveValue("verdura");
   await expect(page.getByLabel(`Quantità per ${nomeLungo}`)).toBeFocused();
   await page.waitForLoadState("networkidle");
@@ -2706,7 +2706,7 @@ test("il modulo della ricetta e la coda d'import si leggono nei due temi, negli 
   await leggibile("modulo col passo del nome");
 
   await page.getByRole("button", { name: "Aggiungi alla ricetta", exact: true }).click();
-  await expect(page.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(page.getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeVisible();
   await leggibile("modulo con la riga nuova");
 
   // la coda: la scheda con «Forse» e la casella, e il guasto dell'AI

@@ -129,7 +129,13 @@ function LineRow({
 
       {line.ingredientId === null && line.proposedCategory !== null && (
         <div className="flex flex-col gap-1">
-          <p className="text-xs text-ink-soft">Non è in anagrafica: lo creo io salvando.</p>
+          {/* Quel che il server fa davvero (`_resolve_lines`): cerca il nome in anagrafica, e
+              se lo trova collega quello — il reparto scelto qui allora non conta —; se no lo
+              crea in questo reparto. «Non è in anagrafica: lo creo io» era falso per un nome
+              che c'era già, offerto da «Aggiungi «…»» anche accanto ai suggerimenti */}
+          <p className="text-xs text-ink-soft">
+            Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.
+          </p>
           {/* solo i reparti del cibo: una ricetta non può nominare un non alimentare, e
               `write_recipe_ingredients` rifiuterebbe il salvataggio */}
           <CategorySelect

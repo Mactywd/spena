@@ -520,7 +520,7 @@ describe("AiDraftScreen", () => {
       },
     ]);
 
-    expect(await screen.findByText(/lo creo io salvando/i)).toBeInTheDocument();
+    expect(await screen.findByText(/se non c'è, lo creo in questo reparto/)).toBeInTheDocument();
     const categoria = screen.getByLabelText(/reparto per «speck»/i);
     expect(categoria).toHaveValue("carne");
 
