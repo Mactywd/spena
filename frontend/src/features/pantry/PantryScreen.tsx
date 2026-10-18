@@ -136,6 +136,14 @@ export function PantryScreen() {
   const [revealId, setRevealId] = useState<string | null>(null);
   const clearReveal = useCallback(() => setRevealId(null), []);
 
+  // Un tocco sul selettore, o su «Cerca in tutto», è una scelta esplicita di chi guarda: spegne
+  // la riga da portare in vista. Se restasse in sospeso (la riga non monta, per esempio perché
+  // la ricerca la filtra via), `settleWorld` riporterebbe a «Tutto» ogni tocco successivo
+  function chooseWorld(next: PantryWorld) {
+    setRevealId(null);
+    setWorld(next);
+  }
+
   function openEntry(door: EntryDoor) {
     setEntry((prev) => ({ door, serial: (prev?.serial ?? 0) + 1 }));
   }
@@ -156,8 +164,9 @@ export function PantryScreen() {
 
   /** Una confezione è entrata, da una delle due porte. La riga nuova deve potersi
    * vedere: la barra torna vuota, il riepilogo si spegne, e `revealId` la porta in
-   * vista quando arriva nell'elenco. Chi aggiunge un filtro alla Dispensa (S14, S15)
-   * lo rimette qui come deve stare perché la riga si veda. */
+   * vista quando arriva nell'elenco. Il mondo (S14) non si rimette qui: se la voce è
+   * dell'altro mondo ci pensa `settleWorld` nel disegno, guardando `revealId`. Un
+   * filtro nuovo (S15) deciderà da sé come farsi da parte. */
   function afterEntry(created: PantryItem, label: string) {
     invalidate();
     setQuery("");
@@ -255,7 +264,7 @@ export function PantryScreen() {
 
         {/* S14: sotto la barra (e sotto il pannello dell'aggiunta, quando è aperto), sopra il
             riepilogo che conta il mondo scelto. Solo coi due mondi in dispensa */}
-        {showWorlds && <WorldSelector value={world} onChange={setWorld} />}
+        {showWorlds && <WorldSelector value={world} onChange={chooseWorld} />}
 
         {summary !== null && (
           <button
@@ -312,7 +321,7 @@ export function PantryScreen() {
         {loaded && visible.length === 0 && query.trim() !== "" && !expiringOnly && world !== "all" && (
           <EmptyState
             title={`Niente in ${WORLD_LABELS[world]} per «${query.trim()}»`}
-            action={<Button onClick={() => setWorld("all")}>Cerca in tutto</Button>}
+            action={<Button onClick={() => chooseWorld("all")}>Cerca in tutto</Button>}
           />
         )}
 

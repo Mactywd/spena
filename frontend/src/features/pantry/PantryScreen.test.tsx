@@ -884,4 +884,60 @@ describe("PantryScreen, «Tutto / Cibo / Casa» (S14)", () => {
     expect(mondo("Cibo").getAttribute("aria-pressed")).toBe("true");
     scrollSpy.mockRestore();
   });
+
+  it("un tocco sul selettore spegne la riga da portare in vista: il mondo non rimbalza a «Tutto»", async () => {
+    // il caso: su «Casa» si aggiunge una mela, e prima che la dispensa riletta la contenga si
+    // scrive «det» nella barra. Quando la mela arriva il mondo va a «Tutto» (settleWorld), ma
+    // la sua riga è filtrata via dalla ricerca e non monta: nessuno spegne `revealId`
+    const created = { ...ITEMS[2], id: "p9" };
+    let added = false;
+    let releaseRefetch: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseRefetch = resolve;
+    });
+    const respond = (body: unknown, status: number) =>
+      new Response(JSON.stringify(body), { status });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown, init?: RequestInit) => {
+        const path = String(url);
+        if (path.includes("/shopping-list")) return Promise.resolve(respond([], 200));
+        if (path.includes("/ingredients")) return Promise.resolve(respond([MELA], 200));
+        if (init?.method === "POST") {
+          added = true;
+          return Promise.resolve(respond(created, 201));
+        }
+        // la dispensa riletta dopo l'aggiunta aspetta che il test la liberi
+        if (added) return gate.then(() => respond([...DUE_MONDI, created], 200));
+        return Promise.resolve(respond(DUE_MONDI, 200));
+      })
+    );
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+
+    // gesto dell'aggiunta: dal + della barra, una mela (cibo) mentre si guarda «Casa»
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+
+    // la dispensa riletta non è ancora arrivata: si scrive un testo che la mela non soddisfa
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "det" } });
+    await act(async () => {
+      releaseRefetch();
+    });
+
+    // la voce nuova è arrivata: il mondo va a «Tutto», come deve
+    await waitFor(() => expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("true"));
+    expect(screen.getByText("Detersivo per i piatti")).toBeDefined();
+
+    // un tocco su «Casa» è una scelta di chi guarda: deve restare lì
+    fireEvent.click(mondo("Casa"));
+    await waitFor(() => expect(mondo("Casa").getAttribute("aria-pressed")).toBe("true"));
+    expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("Detersivo per i piatti")).toBeDefined();
+  });
 });
