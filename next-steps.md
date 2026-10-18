@@ -139,7 +139,7 @@ fra le idee._
 - [tbd] P2 · Prove sul telefono del tema scuro (Consegna 0): barra di stato nei due temi, icona reinstallata, Inter senza rete, schermata d'avvio (probabile lampo chiaro). Nel browser passati il cambio di tema senza ricaricare e i due `theme-color`
 - [tbd] P3 · Sul server: restringere `Bash(ssh hetznerserver:*)` in `.claude/settings.local.json`; togliere `ANTHROPIC_API_KEY` dal `.env`; decidere dei due file non tracciati `.env.bak` e `imposta-password.sh` [Parte X]
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
-- [tbd] P3 · Prova sul telefono dei pulsanti spenti e del ☰ (tema scuro): il pulsante spento grigio si legge al sole e si capisce spento accanto a un secondario acceso, nei due temi; il ☰ in scuro spegne la pagina e si stacca col suo bordo. Nel browser l'e2e misura i contrasti nei due temi [T3 Consegna 1]
+- [tbd] P3 · Prova sul telefono dei pulsanti spenti e del ☰ (tema scuro): il pulsante spento grigio si legge al sole e si capisce spento accanto a un secondario acceso, nei due temi; un pulsante `ghost` in volo (il cestino della ricetta, la ✕ della riga della lista) si capisce spento anche se cambia solo il colore della scritta; il ☰ in scuro spegne la pagina e si stacca col suo bordo. Nel browser l'e2e misura i contrasti nei due temi [T3 Consegna 1]
 
 ## In corso
 _(niente)_

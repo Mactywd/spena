@@ -2327,10 +2327,14 @@ restano saltati i testi sotto un'opacità, cioè gli altri controlli spenti fuor
 `Button` (voce a parte in `next-steps.md`).
 
 **Le scelte che Mattia può voler rivedere:** il grigio dello spento anche per il pulsante
-in volo (`busy`), per tutta la durata della richiesta; il bordo del ☰ solo in scuro.
+in volo (`busy`), per tutta la durata della richiesta; il bordo del ☰ solo in scuro; un
+`ghost` spento cambia solo il colore della scritta (`ink-soft` → `ink-faint`, 1,36:1 in
+chiaro e 1,45:1 in scuro fra i due), quindi in volo si distingue poco.
 
 **Da provare sul telefono:** il pulsante spento grigio al sole, accanto a un secondario
-acceso, nei due temi; il ☰ in scuro, che la pagina si spenga e il pannello si stacchi.
+acceso, nei due temi; un `ghost` in volo (il cestino della ricetta, la ✕ della riga della
+lista), che si capisca spento col solo cambio della scritta; il ☰ in scuro, che la pagina si
+spenga e il pannello si stacchi.
 
 Suite alla fine: 606 test in jsdom (50 file), typecheck, lint e build puliti; 29 e2e
 verdi, di cui 9 nuovi in `e2e/style.spec.ts`: fondo della pagina, contrasto di ogni testo
