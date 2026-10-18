@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-18 (fase notte: i suggerimenti tagliati, sul ramo night/suggerimenti-soglia)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte: i suggerimenti tagliati, sul ramo night/suggerimenti-soglia; due domande dalla revisione finale)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -52,6 +52,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [tbd] P3 · S4 fetta 3, il tasto «Stima» sul prodotto senza valori: prima la media del suo ingrediente (CIQUAL), poi l'AI con la ricerca web, ogni valore segnato come stima e mai come lettura d'etichetta — deciso il 2026-10-13, serve il piano (e prima una misura del costo della ricerca web su OpenRouter) [S4] → spec `docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md` §8
 - [tbd] P3 · P1, creazione di un pasto per tipo, ricette adatte senza nascondere il resto — TBD: la stima calorica da foto [P1]
 - [tbd] P3 · P2, NutriScore sul periodo — TBD: la funzione non lineare, e come dichiarare i dati parziali [P2]
+- [tbd] P2 · Da decidere PRIMA di fare il merge di `night/suggerimenti-soglia`: due chiamanti che vivono sui risultati approssimati ora ricevono l'elenco tagliato. (1) «Sistema la spesa» precompila la ricerca con tutto il testo della voce: quando è più lungo del nome dell'ingrediente, nessun nome lo contiene e la somiglianza resta sotto 0,30, quindi l'elenco è vuoto accanto ad «Aggiungi «…»» (per esempio «pasta barilla integrale» contro pasta 0,250, «pane in cassetta grande» contro pane 0,208; prima Pasta veniva suggerita): non è un vicolo cieco, ma spinge verso un ingrediente doppio. (2) La ricerca dell'Anagrafica nasconde i quasi-doppioni appena c'è un riscontro (cercando «zucchina» non si vede più una «zuchina» sbagliata, 0,700), mentre quella schermata esiste per trovare e unire i doppioni. TBD: le strade — (a) contare come riscontro anche il testo digitato che contiene un nome o un alias intero ai confini di parola; (b) far chiedere a questi due chiamanti l'elenco non tagliato; (c) accettare e provare sul telefono [T3, esito del giro; revisione finale night/suggerimenti-soglia]
 
 ### Idee
 - [idea] P3 · Annullando una decisione nella coda la riga sparisce e il fuoco cade sulla pagina: portarlo alla scheda del termine tornato in coda [T3 Consegna 6b]
@@ -98,7 +99,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · Una voce già in lista (in attesa o spuntata) che entra dall'ingresso diretto: la lista continua a chiederla. La scheda di conferma potrebbe dire «è anche in lista» con «Toglila» — fuori dalla bozza di S3, da valutare dopo l'uso [S3, bozza 2026-10-06]
 - [idea] P3 · La foto del prodotto (`products.image_url`) nella scheda del prodotto e nella scheda di conferma di S3, dove è grande e una sola; porta con sé la domanda delle immagini chieste a Open Food Facts (rete, privacy, senza rete) [S12, bozza 2026-10-06]
 - [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
-- [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
+- [idea] P3 · Code dei suggerimenti tagliati, nessuna blocca il merge: `measure_suggestions` non ha due famiglie di prove che mostrerebbero in produzione i costi del taglio — il testo più lungo del nome, e singolare/plurale (sul seme «oliva» mostra solo «olio di oliva» e nasconde Olive 0,500; «gelati» mostra solo «gelatina») —; i suoi «refusi» sui primi sei caratteri possono finire con uno spazio («aceta »); nessun test prova che il suo `SET TRANSACTION READ ONLY` rifiuti una scrittura; `fold_for_match` non normalizza in NFC; il lato database della piega non riduce gli spazi doppi (un alias «sott' olio» non combacerebbe con «sott'olio») [revisione finale night/suggerimenti-soglia]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
