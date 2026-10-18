@@ -34,11 +34,15 @@ from app.repositories.llm_calls import record_llm_call
 from app.services.llm import LlmCallSite, LlmUnavailable, LlmUsage, complete_json
 
 # Cento nomi per chiamata (bozza §3.A: «a lotti di un centinaio di nomi»). Una risposta
-# è `{"n": …, "nome": …, "emoji": …}` per nome, ~20 token: duemila per lotto, la metà
-# del tetto qui sotto. Sui ~900 ingredienti di produzione sono nove chiamate, qualche
-# decina di migliaia di token in tutto: molto sotto il tetto di 1 $/giorno.
+# è `{"n": …, "nome": …, "emoji": …}` per nome, ~20 token: duemila per lotto di media,
+# ma un nome lungo o un'emoji che il tokenizzatore spezza in più pezzi portano cento
+# risposte oltre i 4000. Il tetto è 8000 perché una risposta troncata è JSON rotto,
+# quindi «AI non disponibile», e ogni rilancio ricadrebbe sullo stesso primo lotto senza
+# mai passare oltre. Un tetto alto non costa niente: si pagano solo i token generati.
+# Sui ~900 ingredienti di produzione sono nove chiamate, qualche decina di migliaia di
+# token in tutto: molto sotto il tetto di 1 $/giorno.
 EMOJI_BATCH = 100
-EMOJI_MAX_TOKENS = 4000
+EMOJI_MAX_TOKENS = 8000
 
 # La parola con cui l'AI dice «nessuna figura dell'elenco va bene». Non è un'emoji, e
 # `canonical_emoji` la rifiuta: si traduce in `NO_EMOJI` qui, e solo qui.
@@ -157,6 +161,13 @@ async def decide_ingredient_emoji(
 
         answered: set[int] = set()
         for answer in esito.data.get("emoji") or []:
+            # un elemento che non è un oggetto (una stringa, un numero) è una risposta
+            # che non si può verificare: si conta rifiutata e si prosegue. Senza, un
+            # `AttributeError` farebbe cadere il comando e perdere la riga `ok=True`
+            # del lotto in `llm_calls`
+            if not isinstance(answer, dict):
+                refused += 1
+                continue
             n = answer.get("n")
             row = asked.get(n) if type(n) is int else None
             name = str(answer.get("nome") or "").strip().casefold()

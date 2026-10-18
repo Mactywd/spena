@@ -112,6 +112,28 @@ async def test_un_numero_non_chiesto_un_nome_che_non_torna_e_un_doppione_non_si_
     assert await _figura(db_session, voci["sedano"]) is None
 
 
+async def test_una_risposta_che_non_e_un_oggetto_si_conta_rifiutata_e_il_giro_prosegue(
+    db_session,
+):
+    """Un elemento che è una stringa o un numero non ha `.get`: prima faceva cadere il
+    comando con un `AttributeError`, e la chiamata già pagata non finiva in `llm_calls`."""
+    voci = await _voci(db_session, ("carota", "verdura", None), ("sedano", "verdura", None))
+    finto = FakeLlm({"emoji": [
+        "carota",                                       # una stringa al posto dell'oggetto
+        7,                                              # un numero
+        {"n": 1, "nome": "carota", "emoji": "🥕"},      # questa è valida
+    ]})
+
+    esito = await decide_ingredient_emoji(db_session, client=finto)
+
+    assert (esito.applied, esito.refused, esito.pending) == (1, 2, 1)
+    assert esito.unavailable is None
+    assert await _figura(db_session, voci["carota"]) == "🥕"
+    assert await _figura(db_session, voci["sedano"]) is None
+    chiamate = (await db_session.execute(select(LlmCall.ok))).scalars().all()
+    assert chiamate == [True]
+
+
 async def test_senza_selettore_di_variante_si_scrive_la_forma_dell_elenco(db_session):
     voci = await _voci(db_session, ("peperoncino", "spezie", None))
     finto = FakeLlm(_risposta((1, "peperoncino", "\U0001F336")))
