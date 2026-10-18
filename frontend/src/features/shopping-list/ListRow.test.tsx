@@ -90,4 +90,15 @@ describe("ListRow", () => {
     renderRow({}, { failed: true });
     expect(screen.getByRole("alert").textContent).toContain("riprova");
   });
+
+  // la maiuscola solo a video, come Dispensa e ricette (spec T3 §4.7; Mattia, 2026-10-13):
+  // il testo salvato resta com'è scritto, e anche i nomi accessibili, che lo mettono in
+  // mezzo a una frase («Togli cosa verde dalla lista»)
+  it("il testo scritto in minuscolo si legge con la maiuscola; i nomi accessibili restano com'è scritto", () => {
+    renderRow({ ingredient_id: null, ingredient_name: null, raw_text: "cosa verde" });
+    expect(screen.getByText("Cosa verde")).toBeDefined();
+    expect(screen.queryByText("cosa verde")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "cosa verde" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Togli cosa verde dalla lista" })).toBeDefined();
+  });
 });

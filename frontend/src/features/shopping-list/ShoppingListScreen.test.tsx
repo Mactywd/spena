@@ -89,7 +89,7 @@ describe("ShoppingListScreen", () => {
   it("mostra le voci non abbinate col testo che hai scritto", async () => {
     stubRoutedFetch(() => [ITEMS, 200]);
     renderScreen();
-    expect(await screen.findByText("cosa verde")).toBeDefined();
+    expect(await screen.findByText("Cosa verde")).toBeDefined();
   });
 
   it("la scheda d'ingresso conta quel che è nel carrello", async () => {
@@ -164,7 +164,7 @@ describe("ShoppingListScreen", () => {
     });
     renderScreen();
     fireEvent.click(await screen.findByRole("button", { name: "Togli pomodoro dalla lista" }));
-    await screen.findByText("pomodori");
+    await screen.findByText("Pomodori");
     fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
     expect(await screen.findByText("Era già in lista.")).toBeDefined();
     expect(patchesOf(spy)).toEqual([["/shopping-list/s1", { status: "archived" }]]);
@@ -227,7 +227,7 @@ describe("ShoppingListScreen", () => {
     await act(async () => {});
     expect(spy.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
     releaseGet(new Response(JSON.stringify(ITEMS.filter((i) => i.id !== "s1")), { status: 200 }));
-    await waitFor(() => expect(screen.queryByText("pomodoro")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Pomodoro")).toBeNull());
   });
 
   it("una modifica rifiutata lo dice accanto alla voce giusta, e la voce resta", async () => {
@@ -271,7 +271,7 @@ describe("ShoppingListScreen", () => {
           : [ITEMS, 200]
     );
     renderScreen();
-    await screen.findByText("pomodoro");
+    await screen.findByText("Pomodoro");
     await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "pomodoro{Enter}");
     expect(await screen.findByText("Era già in lista.")).toBeDefined();
     // guarda il filo barra reale → schermo → POST (S18): il testo va com'è, a
@@ -302,6 +302,6 @@ describe("ShoppingListScreen", () => {
     // e scrivere resta possibile
     expect(screen.getByLabelText("Aggiungi alla lista")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
-    expect(await screen.findByText("pomodoro")).toBeDefined();
+    expect(await screen.findByText("Pomodoro")).toBeDefined();
   });
 });
