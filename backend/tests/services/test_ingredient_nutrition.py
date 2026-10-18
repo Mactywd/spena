@@ -122,6 +122,22 @@ async def test_l_ai_scrive_solo_dove_non_c_e_niente(db_session):
     assert tuple(await _riga(db_session, voci["pomodori"])) == (None, "ai")
 
 
+async def test_l_ai_non_scrive_su_un_ingrediente_sparito_o_non_alimentare(db_session):
+    """L'elenco da decidere si legge una volta per giro: nel frattempo un ingrediente può
+    sparire o diventare un non alimentare. Niente riga e niente errore, il giro va avanti."""
+    voci = await _mondo(db_session)
+    voci["pomodori"].kind = "non_food"
+    await db_session.flush()
+
+    assert await apply_ai_choice(db_session, voci["pomodori"].id, "90002") is False
+    assert await apply_ai_choice(db_session, voci["detersivo"].id, None) is False
+    assert await apply_ai_choice(db_session, uuid.uuid4(), "90001") is False
+
+    assert await _riga(db_session, voci["pomodori"]) is None
+    assert await _riga(db_session, voci["detersivo"]) is None
+    assert await apply_ai_choice(db_session, voci["pomodoro"].id, "90001") is True
+
+
 async def test_la_fusione_perde_la_scelta_del_perdente_e_tiene_quella_del_vincitore(db_session):
     """Deciso da Mattia il 2026-10-13 (spec §12): il perdente si cancella, e la sua scelta
     con lui; il vincitore tiene la sua. Il giro dopo dell'AI non ha niente da rifare qui."""

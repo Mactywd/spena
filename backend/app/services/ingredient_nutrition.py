@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import String, delete, func, literal, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -130,10 +130,21 @@ async def apply_ai_choice(
 
     Il controllo sta nella INSERT stessa: una scelta fatta a mano mentre il comando
     aspettava la risposta non si sovrascrive.
+
+    Scrive solo se l'ingrediente esiste ancora ed è un alimento: il comando legge l'elenco
+    degli ingredienti da decidere una volta per giro, e nel frattempo uno può essere stato
+    eliminato, fuso in un altro o reso non alimentare dall'Anagrafica. Senza questa guardia
+    la INSERT romperebbe la chiave esterna (il giro finirebbe in un errore) oppure lascerebbe
+    una riga `ai` su un non alimento. Così non scrive niente e risponde `False`.
     """
+    alive_food = select(
+        literal(ingredient_id),
+        literal(code, type_=String),
+        literal(NutritionDecider.AI.value, type_=String),
+    ).where(Ingredient.id == ingredient_id, Ingredient.kind == IngredientKind.FOOD)
     result = await session.execute(
         pg_insert(IngredientNutrition)
-        .values(ingredient_id=ingredient_id, ciqual_code=code, decided_by=NutritionDecider.AI)
+        .from_select(["ingredient_id", "ciqual_code", "decided_by"], alive_food)
         .on_conflict_do_nothing(index_elements=[IngredientNutrition.ingredient_id])
     )
     return result.rowcount == 1
