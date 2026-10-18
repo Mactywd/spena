@@ -305,6 +305,8 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "sale" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi «sale»" }));
     expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toBeDefined();
+    // subito, prima dell'attesa della ricerca: il vuoto non offre il suo «Aggiungi»
+    expect(screen.queryByRole("button", { name: "Aggiungi «sale»" })).toBeNull();
     // dopo l'attesa della ricerca (180 ms) l'anagrafica non ha «sale» e il pannello offre
     // di crearlo (S3): quel «Aggiungi «sale»» è il suo, e il vuoto non ne offre un secondo
     await screen.findByRole("button", { name: "Aggiungi «sale»" });
