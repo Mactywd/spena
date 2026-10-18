@@ -96,3 +96,41 @@ class UndoOut(BaseModel):
     # R10: le ricette tue che contengono il termine, lasciate come sono
     adopted_untouched: int = 0
     ingredient_kept_for_adopted: bool = False
+
+
+# Perché una pagina è scartata, in un codice (spec 2026-10-09-scartate-in-coda §3.1): i
+# valori di `SkipCause` in `app/services/recipe_import/materialize.py`. Le parole le
+# scrive la schermata.
+SkipCauseName = Literal["unreadable", "all_ignored", "non_food", "other"]
+
+
+class SkippedPageOut(BaseModel):
+    id: uuid.UUID
+    url: str
+    # il titolo della ricetta; None per una pagina illeggibile, che non ne ha
+    title: str | None
+    cause: SkipCauseName
+    non_food_name: str | None
+    # falso per una pagina illeggibile: rimetterla in coda non cambierebbe niente
+    requeueable: bool
+    # le cotture registrate che aspettano nel `payload` la ricetta di questa pagina
+    waiting_cooking_events: int
+
+
+class SkippedPagesOut(BaseModel):
+    total: int
+    pages: list[SkippedPageOut]
+
+
+class RequeueOut(BaseModel):
+    """Com'è finita la pagina rimessa in coda: entrata, di nuovo scartata, o in attesa
+    di termini ancora da decidere."""
+
+    outcome: Literal["imported", "skipped", "waiting"]
+    title: str | None
+    url: str
+    recipe_id: uuid.UUID | None
+    cooking_relinked: int
+    cause: SkipCauseName | None
+    non_food_name: str | None
+    waiting_terms: list[str]
