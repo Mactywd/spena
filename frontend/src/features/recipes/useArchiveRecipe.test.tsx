@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
+import { QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { useArchiveRecipe, withoutRecipe } from "./useArchiveRecipe";
 import type { RecipePage } from "./api";
@@ -26,9 +27,7 @@ function pagine(): InfiniteData<RecipePage> {
 }
 
 function nuovoClient() {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  return createTestQueryClient();
 }
 
 type Rotta = (path: string, init?: RequestInit) => [unknown, number];

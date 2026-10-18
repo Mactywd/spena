@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { RecipeBookScreen } from "./RecipeBookScreen";
-import { UnauthorizedError } from "../../api/client";
 
 // `kind` c'è perché c'è nella risposta vera, e perché i filtri ricordati scartano un
 // ingrediente che non ce l'ha: senza, il test del ricordo mentirebbe
@@ -36,11 +36,8 @@ function riga(id: string, title: string, extra: Record<string, unknown> = {}) {
   return { ...RESULTS[1], id, title, missing: 0, cookable: true, missing_names: [], ...extra };
 }
 
-function renderScreen(queryCache?: QueryCache) {
-  const client = new QueryClient({
-    queryCache,
-    defaultOptions: { queries: { retry: false } },
-  });
+function renderScreen(onUnauthorized?: () => void) {
+  const client = createTestQueryClient(onUnauthorized);
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -427,13 +424,14 @@ describe("RecipeBookScreen", () => {
     // di questo schermo catturava il 401 in un .catch locale: l'utente leggeva
     // "ricerca fallita" e restava su uno schermo che non avrebbe mai più
     // funzionato, perché la sessione era finita e nessuno glielo diceva.
-    const onError = vi.fn();
+    // Il client è quello dell'app: la sua QueryCache chiama `onUnauthorized` solo per un
+    // `UnauthorizedError`, quindi la chiamata prova anche il tipo dell'errore.
+    const onUnauthorized = vi.fn();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
 
-    renderScreen(new QueryCache({ onError }));
+    renderScreen(onUnauthorized);
 
-    await waitFor(() => expect(onError).toHaveBeenCalled());
-    expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalled());
   });
 
   it("«Nuova» in alto porta al modulo di sempre; l'AI non è più l'ingresso", async () => {

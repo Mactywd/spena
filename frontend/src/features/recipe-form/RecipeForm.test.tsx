@@ -2,12 +2,12 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { RecipeForm } from "./RecipeForm";
 import { lineFromDraft, valuesFromRecipe, type RecipeFormValues } from "./formModel";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import type { RecipeBody, RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
@@ -51,9 +51,7 @@ function renderForm(
   // quel che torna non conta qui: `onSaved` è vuoto, e il corpo mandato lo legge il test
   save = vi.fn((_body: RecipeBody) => Promise.resolve(DETAIL))
 ) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-  });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>

@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { ImportQueueScreen } from "./ImportQueueScreen";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { ImportTerm } from "../../domain/types";
 
@@ -35,13 +35,9 @@ const TERMINI: ImportTerm[] = [
 
 const STATO_NORMALE = { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 };
 
-// Il predicato vero di App.tsx, non un `retry: false` di comodo: CLAUDE.md lo dice
-// verbatim (primo punto) — un client che si costruisce da sé non prova niente sul
-// client vero. Con successi ovunque (il caso della quasi totalità dei test di
-// questo file) non cambia niente: il predicato conta solo quando una query fallisce
-// per davvero, ed è lì che deve essere questo e non un altro.
+// il client dell'app (src/test/queryClient.ts): predicato vero, tentativi senza attesa
 function renderScreen(
-  client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } }),
+  client = createTestQueryClient(),
   path = "/ricette/importa"
 ) {
   return render(
@@ -894,13 +890,10 @@ describe("un termine messo a fuoco con ?termine=", () => {
   });
 
   it("un guasto nel leggere il termine non si spaccia per «non c'è», e offre «Riprova»", async () => {
-    // il predicato vero, senza l'attesa fra un tentativo e l'altro: il test guarda cosa
-    // si dice dopo i tentativi, non quanto durano
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: defaultQueryRetryPredicate, retryDelay: 0 } },
-    });
+    // il client dell'app: il predicato vero, senza l'attesa fra un tentativo e l'altro; il
+    // test guarda cosa si dice dopo i tentativi, non quanto durano
     const spy = renderQueue({
-      path: "/ricette/importa?termine=t9", focused: [{ detail: "guasto" }, 500], client,
+      path: "/ricette/importa?termine=t9", focused: [{ detail: "guasto" }, 500],
     });
 
     expect(await screen.findByText(/Non sono riuscito a leggere quel termine/)).toBeInTheDocument();
