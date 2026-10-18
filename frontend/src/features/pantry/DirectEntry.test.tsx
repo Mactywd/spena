@@ -30,7 +30,7 @@ const LENTICCHIE_COOP: Product = {
 const CODE = "8001234567890";
 const CREATED: PantryItem = {
   id: "n1", ingredient_id: "i1", product_id: null, ingredient_name: "yogurt greco",
-  ingredient_category: "latticini", product_name: null, product_brand: null, status: "available",
+  ingredient_category: "latticini", ingredient_kind: "food", product_name: null, product_brand: null, status: "available",
   fill_percent: null, note: null, added_at: "2026-10-08T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null,
 };
 const UNKNOWN = { found: false, origin: "unknown", product: null, suggestion: null, valid_checksum: true };

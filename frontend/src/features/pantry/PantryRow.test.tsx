@@ -6,7 +6,7 @@ import type { PantryItem } from "../../domain/types";
 
 const BASE: PantryItem = {
   id: "p1", ingredient_id: "i1", product_id: "pr1", ingredient_name: "yogurt greco",
-  ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
+  ingredient_category: "latticini", ingredient_kind: "food", product_name: "Total 0%", product_brand: "Fage",
   status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
   expires_on: null, expiry: null, ingredient_emoji: null,
 };

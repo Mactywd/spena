@@ -7,15 +7,15 @@ import { PantryScreen } from "./PantryScreen";
 
 const ITEMS = [
   { id: "p1", ingredient_id: "i1", product_id: "pr1", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Total 0%", product_brand: "Fage",
     status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
     expires_on: null, expiry: null },
   { id: "p2", ingredient_id: "i1", product_id: "pr2", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Pesca", product_brand: "Carrefour",
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Pesca", product_brand: "Carrefour",
     status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
     expires_on: null, expiry: null },
   { id: "p3", ingredient_id: "i2", product_id: null, ingredient_name: "mela",
-    ingredient_category: "frutta", product_name: null, product_brand: null,
+    ingredient_category: "frutta", ingredient_kind: "food", product_name: null, product_brand: null,
     status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
     expires_on: "2026-09-28", expiry: "soon" },
 ];

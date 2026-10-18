@@ -37,6 +37,76 @@ export function hasExpiry(item: PantryItem): boolean {
   return item.expiry !== null;
 }
 
+/** Il mondo che la Dispensa mostra (S14): tutto, solo il cibo, solo le cose di casa.
+ * «Casa» è `non_food`, cioè i reparti `casa` e `igiene`; quale voce stia dove lo dice il
+ * server (`ingredient_kind`), non questo file. */
+export type PantryWorld = "all" | "food" | "non_food";
+
+/** L'ordine dei pulsanti del selettore. */
+export const WORLDS: readonly PantryWorld[] = ["all", "food", "non_food"];
+
+/** I nomi a video, decisi da Mattia il 2026-10-07: «Casa» e non «Non alimentari», che a
+ * 375 px non ci sta. Servono anche al vuoto del mondo («Niente in Casa per «…»»). */
+export const WORLD_LABELS: Record<PantryWorld, string> = {
+  all: "Tutto",
+  food: "Cibo",
+  non_food: "Casa",
+};
+
+/** Se la voce sta nel mondo scelto. Un confronto su un verdetto del server e non un
+ * calcolo: il mondo discende dal reparto in `kind_for_category`, nel backend, e una
+ * seconda copia qui resterebbe indietro il giorno in cui un reparto cambia mondo. */
+export function inWorld(item: PantryItem, world: PantryWorld): boolean {
+  return world === "all" || item.ingredient_kind === world;
+}
+
+/** Se in dispensa ci sono voci dei due mondi: solo allora il selettore serve (bozza S14
+ * §3). Con un mondo solo, ogni scelta diversa da «Tutto» potrebbe solo svuotare la
+ * pagina. Contano tutte le voci che arrivano, finite comprese: sono a video. */
+export function hasBothWorlds(items: PantryItem[]): boolean {
+  return (
+    items.some((item) => item.ingredient_kind === "food") &&
+    items.some((item) => item.ingredient_kind === "non_food")
+  );
+}
+
+/** Quel che chi guarda ha chiesto alla Dispensa: il mondo, il testo della barra, il
+ * riepilogo delle scadenze premuto. */
+export interface PantryView {
+  world: PantryWorld;
+  query: string;
+  expiringOnly: boolean;
+}
+
+/** Le voci a video, coi filtri in un ordine solo (bozza S14 §4): mondo, ricerca (S11),
+ * in scadenza. Il raggruppamento per reparto viene dopo (`groupForDisplay`), e un reparto
+ * senza voci del mondo scelto sparisce intero: non è chiuso, non c'è. */
+export function visibleItems(items: PantryItem[], view: PantryView): PantryItem[] {
+  return items
+    .filter((item) => inWorld(item, view.world))
+    .filter((item) => matchesQuery(item, view.query))
+    .filter((item) => !view.expiringOnly || hasExpiry(item));
+}
+
+/** Il mondo da applicare davvero, dato quello scelto. Torna «Tutto» in due casi:
+ * - il selettore non c'è più (un mondo solo): una dispensa vuota per un filtro che non si
+ *   vede sarebbe una bugia, come per il riepilogo delle scadenze che sparisce;
+ * - la voce appena aggiunta (`revealId`) è dell'altro mondo: deve potersi vedere, come
+ *   dopo un'aggiunta la barra si svuota e il riepilogo si spegne.
+ * Una voce appena aggiunta dello stesso mondo si vede già, e il mondo resta. Una che non
+ * è ancora arrivata nell'elenco non cambia niente: se ne riparla quando arriva. */
+export function settleWorld(
+  world: PantryWorld,
+  items: PantryItem[],
+  revealId: string | null
+): PantryWorld {
+  if (world === "all") return world;
+  if (!hasBothWorlds(items)) return "all";
+  const revealed = revealId === null ? undefined : items.find((item) => item.id === revealId);
+  if (revealed !== undefined && !inWorld(revealed, world)) return "all";
+  return world;
+}
+
 export function expiryCounts(items: PantryItem[]): { soon: number; expired: number } {
   let soon = 0;
   let expired = 0;

@@ -22,23 +22,23 @@ const RECIPE: RecipeDetail = {
 
 const PANTRY: PantryItem[] = [
   { id: "p1", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-    ingredient_category: "cereali", product_name: null, product_brand: null,
+    ingredient_category: "cereali", ingredient_kind: "food", product_name: null, product_brand: null,
     status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   { id: "p2", ingredient_id: "i2", product_id: "pr1", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Total 0%", product_brand: "Fage",
     status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   { id: "p3", ingredient_id: "i2", product_id: "pr2", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Pesca", product_brand: "Carrefour",
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Pesca", product_brand: "Carrefour",
     status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   // un secondo sacco di pasta senza codice a barre, quello che "sistema la spesa"
   // produce di routine: non ha né prodotto né marca, e si distingue dal primo solo
   // per la nota, lo stato e la data d'ingresso
   { id: "p4", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-    ingredient_category: "cereali", product_name: null, product_brand: null,
+    ingredient_category: "cereali", ingredient_kind: "food", product_name: null, product_brand: null,
     status: "low", fill_percent: null, note: "quella aperta", added_at: "2026-09-01T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   // già finita e mai archiviata: GET /pantry la restituisce ancora
   { id: "p5", ingredient_id: "i2", product_id: "pr3", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Greco 2%", product_brand: "Lidl",
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Greco 2%", product_brand: "Lidl",
     status: "finished", fill_percent: null, note: null, added_at: "2026-09-10T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
 ];
 
@@ -89,7 +89,7 @@ describe("CookSheet", () => {
     // dispensa, e deve comparire sia nella riga sia nel nome del controllo.
     const bag = (id: string, addedAt: string): PantryItem => ({
       id, ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-      ingredient_category: "cereali", product_name: null, product_brand: null,
+      ingredient_category: "cereali", ingredient_kind: "food", product_name: null, product_brand: null,
       status: "available", fill_percent: null, note: null, added_at: addedAt, expires_on: null, expiry: null, ingredient_emoji: null,
     });
     renderSheet(vi.fn(), undefined, [
@@ -314,7 +314,7 @@ describe("CookSheet", () => {
     show([
       ...PANTRY,
       { id: "p6", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-        ingredient_category: "cereali", product_name: "Penne rigate", product_brand: "Barilla",
+        ingredient_category: "cereali", ingredient_kind: "food", product_name: "Penne rigate", product_brand: "Barilla",
         status: "available", fill_percent: null, note: null, added_at: "2026-09-12T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
     ]);
 

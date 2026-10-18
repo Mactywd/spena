@@ -54,6 +54,9 @@ export interface PantryItem {
   product_id: string | null;
   ingredient_name: string;
   ingredient_category: string;
+  /** Il mondo della voce, deciso dal server (`ingredients.kind`): il selettore «Tutto /
+   * Cibo / Casa» della Dispensa (S14) lo confronta, non lo ricava dal reparto. */
+  ingredient_kind: "food" | "non_food";
   product_name: string | null;
   product_brand: string | null;
   status: PantryStatus;
