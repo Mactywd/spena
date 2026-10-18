@@ -17,7 +17,8 @@ import type { Product } from "../../domain/types";
  * che non torna (S20), il codice che segue o non segue la voce (S8). Senza ingrediente
  * atteso (la scansione dalla Dispensa, S3) la guardia del 409 non ha niente con cui
  * confrontare, e non serve: il prodotto trovato porta il suo ingrediente, ed è quello
- * che entra. Il codice scritto è stato di questo pannello, che nasce e muore con lui:
+ * che entra. Con l'ingrediente atteso (la voce di «Sistema la spesa») il prodotto è
+ * invece quello della voce, ed è per questo che la guardia c'è. Il codice scritto è stato di questo pannello, che nasce e muore con lui:
  * quello di un'altra voce non può restare nel campo. */
 export function ScannerPanel({
   label,
@@ -35,10 +36,14 @@ export function ScannerPanel({
   /** L'ingrediente atteso: la guardia qui sotto ci confronta il prodotto che il
    * codice trova. `null` nella scansione dalla Dispensa (S3). */
   ingredientId: string | null;
-  /** Il codice ha trovato un prodotto del catalogo, di questo ingrediente. */
+  /** Il codice ha trovato un prodotto del catalogo: dell'ingrediente atteso, se c'è
+   * (la guardia ha già scartato gli altri), altrimenti di qualunque ingrediente, che
+   * il prodotto stesso porta con sé (scansione dalla Dispensa, S3). */
   onProduct: (product: Product) => void;
   /** Un codice nuovo al catalogo, che si è deciso di usare: se Open Food Facts lo
-   * conosce prima si chiede se è l'ingrediente della voce (S20), se no il modulo. */
+   * conosce prima si chiede se è l'ingrediente della voce (S20), se no il modulo.
+   * Senza ingrediente atteso (scansione dalla Dispensa) l'ingrediente non c'è ancora:
+   * lo chiede chi riceve il codice, non questo pannello. */
   onNewCode: (code: string, suggestion: ProductSuggestion | null) => void;
   /** Il codice letto resta alla voce (S8), o se ne va (`null`). */
   onUnlinkedCode: (code: string | null) => void;

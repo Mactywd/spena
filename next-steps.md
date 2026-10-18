@@ -49,6 +49,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 ## Da approfondire (giorno)
 
 ### Voci decise, da portare a spec e piano
+- [tbd] P2 · S3, la serie della scansione e la riga nuova portata in vista: dopo ogni «Metti in dispensa» la pagina scorre fino alla riga nuova (`revealId`, decisione 2 di Mattia) e il pannello dello scanner, che sta sopra le righe, esce dallo schermo; con una dispensa lunga, a ogni codice bisogna risalire. TBD: nella serie saltare il `revealId` finché il pannello resta aperto (l'avviso «In dispensa: …» conferma già) e portare in vista l'ultima riga alla ✕? Va deciso con i piani S14/S15, che si agganciano ad `afterEntry` [S3]
 - [tbd] P3 · S4 fetta 3, il tasto «Stima» sul prodotto senza valori: prima la media del suo ingrediente (CIQUAL), poi l'AI con la ricerca web, ogni valore segnato come stima e mai come lettura d'etichetta — deciso il 2026-10-13, serve il piano (e prima una misura del costo della ricerca web su OpenRouter) [S4] → spec `docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md` §8
 - [tbd] P3 · P1, creazione di un pasto per tipo, ricette adatte senza nascondere il resto — TBD: la stima calorica da foto [P1]
 - [tbd] P3 · P2, NutriScore sul periodo — TBD: la funzione non lineare, e come dichiarare i dati parziali [P2]
@@ -107,6 +108,8 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · Dopo «Annulla» nell'avviso «In dispensa: …», rileggere lo stesso codice nella serie dice ancora «L'hai appena messo in dispensa…»: la nota dovrebbe sparire con l'annullamento [S3]
 - [idea] P3 · Nell'ingresso diretto, chiudere il pannello con la ✕ mentre «Metti in dispensa» è in volo: se la scrittura poi fallisce non lo dice nessuno (la scheda non c'è più); un avviso d'errore quando il pannello è già chiuso [S3]
 - [idea] P3 · Una confezione in più lasciata senza scelta non entra con «Metti in dispensa», in silenzio: forse una riga che lo dica [S3]
+- [idea] P3 · Nella serie della scansione, dopo «Metti in dispensa» lo scanner si rimonta e il fuoco cade sul corpo della pagina: chi usa la tastiera o lo screen reader deve ritrovare il pannello; portarlo al campo del codice a mano dal secondo giro [S3]
+- [idea] P3 · Un codice non trovato il cui esito arriva dopo «Annulla» resta ricordato (`onUnlinkedCode` non guarda se il pannello è ancora aperto, come già prima di S3): una scelta dal catalogo successiva della stessa voce potrebbe dargli quel codice; ignorarlo a pannello chiuso [S3]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -123,7 +126,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
-- [tbd] P1 · Prove sul telefono di S3: la fotocamera vera in serie (si sente l'attesa fra un codice e l'altro?), la fotocamera negata, la tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezione» e «Articolo aggiuntivo» in corsia; dopo «Annulla» nell'avviso, rileggere lo stesso codice dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre si rinumerano [S3]
+- [tbd] P1 · Prove sul telefono di S3: la fotocamera vera in serie (si sente l'attesa fra un codice e l'altro?), la fotocamera negata, la tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezione» e «Articolo aggiuntivo» in corsia; dopo «Annulla» nell'avviso, rileggere lo stesso codice dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre si rinumerano; nella serie, con tante righe, lo scanner resta in vista dopo «Metti in dispensa»? [S3]
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
 - [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)

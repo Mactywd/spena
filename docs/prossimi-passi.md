@@ -542,7 +542,7 @@ accetta già `expires_on`, quindi all'ingresso diretto resta solo da mostrarlo.
 
 ↳ la scansione dello scontrino è la fase 2 della spec madre e **non esiste ancora**:
 questa voce la tira dentro. Va deciso se la parità si fa subito senza scontrino e si
-completa dopo, o se aspetta.
+completa dopo, o se aspetta (deciso il 2026-10-07: vedi sotto).
 
 **Chiesto di nuovo da Mattia il 2026-09-27, e con un accento preciso: deve essere
 *veloce*.** Oggi per mettere in dispensa qualcosa con il suo codice a barre bisogna
@@ -553,7 +553,7 @@ non crea un ingrediente nuovo, e quando fallisce dice «scrivilo in lista e sist
 da lì». Servono dalla dispensa, senza passare per la lista: **scansione** e
 **inserimento a mano**, con la creazione di ingrediente e prodotto quando mancano. La
 richiesta fa pendere la domanda qui sopra verso la parità subito, senza scontrino;
-resta da confermare nella spec. Chi la scrive non deve copiare i pezzi di
+resta da confermare nella spec (deciso il 2026-10-07: vedi sotto). Chi la scrive non deve copiare i pezzi di
 `StockingScreen.tsx` (scanner, catalogo, `CustomProductForm`) in un secondo schermo:
 vanno estratti e usati da entrambi, altrimenti le guardie di uno (il controllo
 ingrediente/prodotto prima del 409, il codice che non sopravvive a una voce
@@ -591,7 +591,7 @@ l'altro, perché `BarcodeScanner` si riaccende a ogni giro), la fotocamera negat
 tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezione» e
 «Articolo aggiuntivo» in corsia; dopo «Annulla» nell'avviso, rileggere lo stesso codice
 dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre
-si rinumerano.
+si rinumerano; nella serie, con tante righe in dispensa, ogni «Metti in dispensa» porta in vista la riga nuova e lo scanner esce dallo schermo (vedi la voce `tbd` in `next-steps.md`).
 
 ## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE 2026-09-24 — solo il livello prodotto]**
 Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero
