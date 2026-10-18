@@ -114,6 +114,8 @@ async def test_una_voce_non_alimentare_non_si_aggancia_alla_bozza(db_session, mo
         riga = draft.ingredients[0]
         assert riga.ingredient_id is None
         assert riga.confident is False
+        # e dice perché: il modulo scrive «non è un alimento», non «non in anagrafica»
+        assert riga.non_food is True
     finally:
         get_settings.cache_clear()
 
@@ -125,6 +127,7 @@ async def test_una_voce_alimentare_continua_ad_agganciarsi_alla_bozza(db_session
     pasta = next(i for i in draft.ingredients if i.raw_name == "pasta")
     assert pasta.ingredient_id is not None
     assert pasta.confident is True
+    assert pasta.non_food is False
 
 
 async def test_api_failure_raises_llm_unavailable(db_session, anagrafica):
@@ -332,3 +335,31 @@ def test_lo_schema_chiede_il_costo():
     assert "cost" in DRAFT_SCHEMA["required"]
     assert DRAFT_SCHEMA["properties"]["cost"] == {"type": ["integer", "null"]}
     assert '"cost"' in SYSTEM_PROMPT
+
+
+async def test_una_somiglianza_incerta_con_un_non_alimentare_non_lo_dice(db_session):
+    """`non_food` dice solo una coincidenza certa (nome o alias esatto): una somiglianza
+    con «carta forno» non autorizza a dire che «carta forn» non è un alimento. La riga resta
+    staccata (com'è oggi per ogni non alimentare) e «non in anagrafica»."""
+    from app.services.ingredient_match import match_name
+
+    db_session.add(
+        Ingredient(name="carta forno", display_name="Carta forno",
+                   category=IngredientCategory.CASA)
+    )
+    await db_session.flush()
+    somiglianza = await match_name(db_session, "carta forn")
+    # la premessa: c'è una somiglianza, e non è certa. Se cade, scegli un altro refuso
+    assert somiglianza.ingredient_id is not None
+    assert somiglianza.certain is False
+
+    finto = FakeLlm({
+        "title": "Torta", "description": None, "instructions": "1. cuoci", "servings": 2,
+        "ingredients": [
+            {"name": "carta forn", "role": "secondary", "quantity_text": "1 foglio",
+             "category": "casa"}
+        ],
+    })
+    riga = (await draft_recipe(db_session, "torta", client=finto)).ingredients[0]
+    assert riga.ingredient_id is None
+    assert riga.non_food is False

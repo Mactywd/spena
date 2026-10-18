@@ -17,6 +17,7 @@ class DraftIngredientOut(BaseModel):
     matched_name: str | None
     confident: bool
     proposed_category: str | None = None
+    non_food: bool = False
 
 
 class DraftOut(BaseModel):
