@@ -35,6 +35,7 @@ class LlmCallSite(StrEnum):
     TERM_COLLAPSE = "term_collapse"
     RECIPE_DRAFT = "recipe_draft"
     UNIT_FORMS = "unit_forms"
+    INGREDIENT_EMOJI = "ingredient_emoji"
 
 
 @dataclass(frozen=True)
