@@ -60,6 +60,7 @@ export {
   IconArrowsTransferDown,
   IconArrowsJoin2,
   IconBarcodeOff,
+  IconMoodSmile,
 } from "@tabler/icons-react";
 // reparti
 export {

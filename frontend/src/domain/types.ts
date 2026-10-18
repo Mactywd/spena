@@ -304,6 +304,9 @@ export interface IngredientUsage {
 }
 
 export interface IngredientDetail extends Ingredient {
+  /** La figura delle sue righe in Dispensa (S12): un'emoji, o `null` per l'icona del
+   * reparto. Solo nella scheda: la ricerca non la porta. */
+  emoji: string | null;
   aliases: AliasEntry[];
   products: ProductBrief[];
   usage: IngredientUsage;
@@ -362,7 +365,8 @@ export type RegistryRefusal =
         | "empty_name"
         | "unknown_category"
         | "still_used"
-        | "bad_checksum";
+        | "bad_checksum"
+        | "unknown_emoji";
       detail: string;
     };
 
