@@ -39,6 +39,13 @@
   /* il velo dietro un pannello: scuro in entrambi i temi, perché deve spegnere la
      pagina, non schiarirla */
   --color-scrim: #0b0f0d;
+  /* Il bordo sinistro del pannello del ☰. In scuro la pagina è già quasi nera, il velo
+     non ha dove scendere, e il pannello `card` resta a 1,2:1 da ciò che copre: lo stacca
+     un segno, non una superficie (bozza del tema scuro, 2026-10-06, §4.2) — 3,29:1 e
+     3,20:1 contro la pagina e la scheda velate, theme.test.ts. In chiaro vale quanto
+     `card` e non si vede: lì il pannello si stacca col suo bianco. Non è `notch-off`,
+     che vuol dire «tacca spenta». */
+  --color-panel-edge: #ffffff;
 
   /* 4,86:1 sulla pagina e 4,56:1 sulla sua tinta: il verde di prima, #14804f, come
      testo stava a 4,48:1 e 4,21:1, sotto la soglia */
@@ -47,6 +54,17 @@
   /* il testo sopra un fondo pieno ha un token suo, e non è `text-white`: in scuro il
      verde si schiarisce, e il bianco sopra non si leggerebbe più */
   --color-on-brand: #ffffff;
+
+  /* Il pulsante spento, di ogni variante con un fondo pieno (bozza del tema scuro,
+     2026-10-06, decisa il 2026-10-07): un grigio pieno e non un'`opacity`, che
+     componeva fondo e scritta con quel che c'era dietro — il primario stava a 1,8:1 in
+     chiaro, e in scuro era un verde torbido. Grigio perché «spento» è grigio in ogni
+     app, come la tacca spenta: un verde attenuato direbbe ancora «azione principale».
+     `on-disabled` vale quanto `ink-soft` ma ha un nome suo, perché il testo su un fondo
+     pieno usa il suo `on-*`: se il fondo cambia, la scritta lo segue. 5,33:1 sul fondo,
+     e il fondo non sparisce contro pagina e scheda (≥1,2:1, theme.test.ts). */
+  --color-disabled: #d8dfdb;
+  --color-on-disabled: #4e5a52;
 
   /* `low` ha un colore suo e non una sfumatura del verde: è l'unico stato che
      cambia la risposta alla domanda «questa ricetta si può cucinare?» (la regola
@@ -91,6 +109,15 @@
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Quanto il velo del ☰ spegne la pagina: 45% in chiaro, 60% in scuro (nel blocco qui
+   sotto). Non è un colore e non sta in `@theme`: `AppHeader` la legge con
+   `bg-scrim/(--scrim-alpha)`. Sta qui, prima del blocco scuro, e non nel `:root` di
+   `--safe-bottom` più in basso: a parità di selettore vince l'ultima dichiarazione, e
+   da lì il 45% coprirebbe anche il 60% del tema scuro (theme.test.ts lo controlla). */
+:root {
+  --scrim-alpha: 45%;
+}
+
 /* Il tema scuro: le stesse variabili, altri valori. Tailwind scrive ogni classe come
    `var(--color-…)`, quindi ridefinire la variabile qui cambia `bg-page` e `text-brand`
    dappertutto senza che una schermata lo sappia. I valori non sono il chiaro rovesciato:
@@ -106,9 +133,13 @@
     --color-line: #2c342f;
     --color-notch-off: #69736d;
     --color-scrim: #000000;
+    --color-panel-edge: #5a645e;
+    --scrim-alpha: 60%;
     --color-brand: #3cb878;
     --color-brand-tint: #16301f;
     --color-on-brand: #06170e;
+    --color-disabled: #2a332d;
+    --color-on-disabled: #b4beb8;
     --color-low: #e0a63a;
     --color-low-tint: #33260d;
     --color-on-low: #1f1503;
