@@ -2960,3 +2960,151 @@ test("Sistema la spesa a 375px: «+ un'altra confezione» e «Articolo aggiuntiv
     }
   }
 });
+
+// --- S12: le righe della dispensa riconoscibili ---
+//
+// Le due prove mettono in dispensa una voce con `page.request` e la tolgono nel `finally`.
+// L'unica traccia che restano sullo stack è «melanzana» decisa «Nessuna» (`""`): identica a
+// video a prima e letta da nessuna prova (l'intestazione del file dice che non lascia niente
+// dietro di sé).
+
+/** Un ingrediente del seme, per nome, dalla ricerca vera. */
+async function dalSeme(page: Page, nome: string): Promise<{ id: string; name: string }> {
+  const risposta = await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`);
+  expect(risposta.ok()).toBe(true);
+  const trovati = (await risposta.json()) as { id: string; name: string }[];
+  const voce = trovati.find((trovato) => trovato.name === nome);
+  expect(voce, `«${nome}» non è nel seme`).toBeDefined();
+  return voce!;
+}
+
+/** Una voce sfusa in dispensa, messa con `page.request`; chi la chiede la toglie nel suo
+ * `finally` con `togliDallaDispensa`. */
+async function inDispensa(page: Page, ingredientId: string): Promise<string> {
+  const risposta = await page.request.post("/api/v1/pantry", { data: { ingredient_id: ingredientId } });
+  expect(risposta.ok()).toBe(true);
+  return ((await risposta.json()) as { id: string }).id;
+}
+
+async function togliDallaDispensa(page: Page, voceId: string) {
+  await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+}
+
+test("S12 a 375px: la figura a sinistra del nome, il ripiego del reparto si legge nei due temi, e il nome più lungo del seme va a capo senza spingere fuori tacche e ✕", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta, e la prima cosa qui è una
+  // `page.request`: l'attesa va messa a mano
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // il nome più lungo del seme, e nessun altro file della suite lo nomina. Il seme non
+  // decide figure, quindi la riga mostra il ripiego: lo spruzzino di «casa», in grigio
+  const detersivo = await dalSeme(page, "detersivo per la lavatrice");
+  const voceId = await inDispensa(page, detersivo.id);
+  try {
+    await page.goto("/dispensa");
+    const togli = page.getByRole("button", { name: "Togli detersivo per la lavatrice dalla dispensa" });
+    const riga = page.getByRole("listitem").filter({ has: togli });
+    await riga.scrollIntoViewIfNeeded();
+
+    const figura = riga.locator("[data-figure]");
+    await expect(figura).toHaveAttribute("data-figure", "reparto");
+    await expect(figura).toHaveAttribute("aria-hidden", "true");
+    await expect(figura.locator("svg.tabler-icon-spray")).toHaveCount(1);
+    const boxFigura = (await figura.boundingBox())!;
+    expect(boxFigura.width).toBe(28);
+    expect(boxFigura.height).toBe(28);
+
+    // a sinistra del nome, e il nome va a capo invece di spingere le tacche
+    const nome = riga.getByRole("link", { name: "Detersivo per la lavatrice" });
+    const boxNome = (await nome.boundingBox())!;
+    expect(boxFigura.x + boxFigura.width, "la figura e il nome si sovrappongono").toBeLessThanOrEqual(
+      boxNome.x
+    );
+    expect(boxNome.height, "il nome lungo non va a capo: la prova non misura niente").toBeGreaterThan(44);
+    for (const tacca of await riga.getByRole("radio").all()) {
+      await expect(tacca).toBeInViewport({ ratio: 1 });
+    }
+    await expect(togli).toBeInViewport({ ratio: 1 });
+
+    // la scadenza comincia sotto il nome, non sotto la figura
+    const scadenza = riga.getByRole("button", { name: "+ scadenza per detersivo per la lavatrice" });
+    const boxScadenza = (await scadenza.boundingBox())!;
+    expect(Math.abs(boxScadenza.x - boxNome.x), "la scadenza non è allineata al nome").toBeLessThanOrEqual(1);
+
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      await senzaScorrimentoLaterale(page, `la dispensa, tema ${tema}`);
+
+      // il ripiego è un segno (WCAG 1.4.11): `ink-faint` sul quadratino `page`, ≥ 3:1
+      const misura = await contrastoAVideo(figura);
+      const token = tema === "light" ? tokenDelTema : tokenDelTemaScuro;
+      expect(misura.colore, `il ripiego non è ink-faint, tema ${tema}`).toBe(token("ink-faint"));
+      expect(misura.fondo, `il quadratino non è page, tema ${tema}`).toBe(token("page"));
+      test.info().annotations.push({
+        type: "contrasto",
+        description: `ripiego della figura su page, ${tema}: ${misura.rapporto.toFixed(2)}:1`,
+      });
+      expect(misura.rapporto, `il ripiego su --color-page, tema ${tema}`).toBeGreaterThanOrEqual(3);
+      expect(await testiIlleggibili(page), `dispensa, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    await togliDallaDispensa(page, voceId);
+  }
+});
+
+test("S12: la figura si sceglie in Anagrafica e compare nella riga della Dispensa; «Nessuna» torna all'icona del reparto", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // «melanzana»: anche la prova del + della Dispensa (S3) la nomina, ma non scrive niente;
+  // questa archivia la sua voce nel `finally`
+  const melanzana = await dalSeme(page, "melanzana");
+  const voceId = await inDispensa(page, melanzana.id);
+  const figuraInDispensa = () =>
+    page
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("button", { name: "Togli melanzana dalla dispensa" }) })
+      .locator("[data-figure]");
+
+  /** Dalla scheda dell'ingrediente: «Cambia figura», la scelta, «Salva la figura». La
+   * prima volta misura anche la griglia aperta: a 375 px non scorre di lato, e ogni
+   * testo si legge nei due temi. */
+  async function scegli(voce: string, misura: boolean) {
+    await page.goto(`/anagrafica/ingrediente/${melanzana.id}`);
+    await page.getByRole("button", { name: "Cambia figura", exact: true }).click();
+    const gruppo = page.getByRole("group", { name: "Figura in dispensa" });
+    // si tocca il riquadro che si vede, non il radio nascosto: è quel che fa il pollice
+    await gruppo.locator("label").filter({ hasText: voce }).click();
+    await expect(gruppo.getByRole("radio", { name: voce, exact: true })).toBeChecked();
+    if (misura) {
+      await senzaScorrimentoLaterale(page, "la griglia di «Cambia figura»");
+      await leggibileNeiDueTemi(page, "«Cambia figura»");
+      // i riquadri sono bersagli da pollice
+      const riquadro = (await gruppo.locator("label").filter({ hasText: "🥕" }).boundingBox())!;
+      expect(riquadro.width).toBeGreaterThanOrEqual(44);
+      expect(riquadro.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.getByRole("button", { name: "Salva la figura", exact: true }).click();
+    await expect(gruppo).toHaveCount(0);
+  }
+
+  try {
+    await scegli("🍆", true);
+    await expect(page.getByText("In dispensa", { exact: true })).toBeVisible();
+    await page.goto("/dispensa");
+    await expect(figuraInDispensa()).toHaveAttribute("data-figure", "emoji");
+    await expect(figuraInDispensa()).toHaveText("🍆");
+
+    await scegli("Nessuna: l'icona del reparto", false);
+    await expect(page.getByText("In dispensa: l'icona del reparto", { exact: true })).toBeVisible();
+    await page.goto("/dispensa");
+    await expect(figuraInDispensa()).toHaveAttribute("data-figure", "reparto");
+    await expect(figuraInDispensa().locator("svg.tabler-icon-carrot")).toHaveCount(1);
+  } finally {
+    await togliDallaDispensa(page, voceId);
+  }
+});
