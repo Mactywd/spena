@@ -44,10 +44,13 @@ export function CiqualPicker({
   });
   const refusal = registryRefusal(save.error);
   const results = term.length >= 2 ? search.data : undefined;
+  // la scelta vale solo fra i risultati mostrati: cambiata la ricerca, un alimento che
+  // non c'è più nell'elenco non si salva
+  const selected = results?.some((food) => food.code === chosen) ? chosen : null;
   const reason =
-    chosen === null
+    selected === null
       ? "Scegli un alimento dall'elenco."
-      : chosen === current
+      : selected === current
         ? "È già il suo alimento: scegline un altro."
         : undefined;
 
@@ -89,8 +92,11 @@ export function CiqualPicker({
                   type="radio"
                   name={radioName}
                   value={food.code}
-                  checked={chosen === food.code}
-                  onChange={() => setChosen(food.code)}
+                  checked={selected === food.code}
+                  onChange={() => {
+                    save.reset();
+                    setChosen(food.code);
+                  }}
                   aria-label={food.name_fr}
                   aria-describedby={food.group_fr ? groupId : undefined}
                   className="size-5 shrink-0 accent-brand"
@@ -115,7 +121,8 @@ export function CiqualPicker({
           busy={save.isPending && save.variables !== null}
           unavailableReason={reason}
           onClick={() => {
-            if (chosen !== null) save.mutate(chosen);
+            if (save.isPending) return;
+            if (selected !== null) save.mutate(selected);
           }}
         >
           Salva l'alimento
@@ -123,7 +130,10 @@ export function CiqualPicker({
         <Button
           variant="secondary"
           busy={save.isPending && save.variables === null}
-          onClick={() => save.mutate(null)}
+          onClick={() => {
+            if (save.isPending) return;
+            save.mutate(null);
+          }}
         >
           Nessun alimento adatto
         </Button>

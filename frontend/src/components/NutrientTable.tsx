@@ -21,7 +21,7 @@ export function NutrientTable({ caption, rows }: { caption: string; rows: Nutrie
       {extra.length > 0 && (
         <details className="mt-1">
           {/* il sommario è il bersaglio: 44 px, come ogni altro */}
-          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-brand">
+          <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-brand">
             Vitamine e minerali ({extra.length})
           </summary>
           <table className="w-full text-sm">

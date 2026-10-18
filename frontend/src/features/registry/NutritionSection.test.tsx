@@ -167,6 +167,28 @@ describe("NutritionSection", () => {
     );
   });
 
+  it("cambiata la ricerca, un alimento non più nell'elenco non si salva", async () => {
+    const spy = stub(
+      rotte(DA_DECIDERE, (path) => (path.includes("/ciqual/foods?q=tomx") ? [[TROVATI[1]], 200] : undefined))
+    );
+    renderSection();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Scegli l'alimento" }));
+    const campo = screen.getByLabelText("Cerca nella tabella CIQUAL");
+    await userEvent.type(campo, "tom");
+    await userEvent.click(await screen.findByRole("radio", { name: "Tomate, crue" }));
+    expect(screen.getByRole("button", { name: "Salva l'alimento" })).not.toHaveAttribute("aria-disabled", "true");
+
+    await userEvent.type(campo, "x");
+    await waitFor(() => expect(screen.queryByRole("radio", { name: "Tomate, crue" })).toBeNull());
+    expect(await screen.findByRole("radio", { name: "Tomate, concentré" })).not.toBeChecked();
+    const salva = screen.getByRole("button", { name: "Salva l'alimento" });
+    expect(salva).toHaveAttribute("aria-disabled", "true");
+    expect(salva).toHaveAccessibleDescription("Scegli un alimento dall'elenco.");
+    await userEvent.click(salva);
+    expect(chiamate(spy, "PUT", "/ingredients/i-pomodoro/nutrition")).toHaveLength(0);
+  });
+
   it("«Nessun alimento adatto» manda la PUT con il codice vuoto", async () => {
     const spy = stub(rotte(DA_DECIDERE, (_path, init) => (init?.method === "PUT" ? [NESSUNO, 200] : undefined)));
     renderSection();
