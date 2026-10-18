@@ -276,11 +276,40 @@ describe("buttonClasses", () => {
     expect(classes).toContain("rounded-[10px]");
   });
 
+  // Lo spento è un colore pieno per tema e non un'`opacity` (bozza del tema scuro,
+  // 2026-10-06, decisa il 2026-10-07): l'`opacity` 0,4 portava la scritta di ogni variante
+  // sotto 4,5:1, in chiaro fino a 1,8:1. Qui si prova quali classi; che vincano davvero su
+  // `bg-brand` nel CSS compilato lo misura e2e/style.spec.ts, perché jsdom non lo calcola.
+  function offClasses(variant: ButtonVariant, prefix: "disabled:" | "aria-disabled:"): string[] {
+    return buttonClasses(variant)
+      .split(/\s+/)
+      .filter((c) => c.startsWith(prefix))
+      .map((c) => c.slice(prefix.length))
+      .sort();
+  }
+
+  it("nessuna variante si spegne con l'opacità", () => {
+    for (const variant of variants) {
+      expect(buttonClasses(variant), variant).not.toMatch(/opacity/);
+    }
+  });
+
   it("lo spento in volo si vede come lo spento vero, in ogni variante", () => {
     for (const variant of variants) {
-      const classes = buttonClasses(variant).split(/\s+/);
-      expect(classes, variant).toContain("disabled:opacity-40");
-      expect(classes, variant).toContain("aria-disabled:opacity-40");
+      expect(offClasses(variant, "disabled:").length, variant).toBeGreaterThan(0);
+      expect(offClasses(variant, "aria-disabled:"), variant).toEqual(offClasses(variant, "disabled:"));
+    }
+  });
+
+  it("primario e ambra spenti hanno il grigio pieno e la sua scritta", () => {
+    for (const variant of ["primary", "warn"] as const) {
+      expect(offClasses(variant, "disabled:"), variant).toEqual(["bg-disabled", "text-on-disabled"]);
+    }
+  });
+
+  it("le varianti senza fondo pieno, spente, scrivono in ink-faint", () => {
+    for (const variant of ["secondary", "ghost", "danger"] as const) {
+      expect(offClasses(variant, "disabled:"), variant).toEqual(["text-ink-faint"]);
     }
   });
 });
