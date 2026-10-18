@@ -357,7 +357,7 @@ async def _check_category(
         return
     if category not in await recipe_categories(session):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"«{category}» non è una categoria del ricettario: scegline una dall'elenco, "
             "o nessuna.",
         )
@@ -381,7 +381,7 @@ async def _writing_recipe(session: AsyncSession):
     except NonFoodInRecipe as exc:
         await session.rollback()
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"«{exc.display_name}» non è un alimento: una ricetta non può averlo fra "
             "gli ingredienti. Toglilo dalla riga, poi salva.",
         ) from exc

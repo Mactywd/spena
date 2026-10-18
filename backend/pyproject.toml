@@ -32,6 +32,15 @@ asyncio_default_fixture_loop_scope = "session"
 # è stata creata la connessione
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+# Una costante deprecata di Starlette è un errore, non un avviso: gli 8 avvisi per
+# `HTTP_422_UNPROCESSABLE_ENTITY` li stampava ogni suite e non li leggeva nessuno
+# (tests/test_no_deprecated_status.py guarda anche le righe che nessun test attraversa).
+# Il filtro si ferma ad `app`: starlette.testclient avvisa da sé, all'import, che usa
+# `httpx` invece di `httpx2` (non installato); quell'avviso è della libreria e non va
+# trasformato in errore, altrimenti la raccolta di tests/test_startup.py cade.
+filterwarnings = [
+    "error::starlette.exceptions.StarletteDeprecationWarning:app",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
