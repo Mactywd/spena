@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -795,5 +795,89 @@ describe("riporzionare da un ingrediente (R2, secondo modo)", () => {
     expect(screen.queryByRole("button", { name: "Riprova" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Torna alle dosi della ricetta" }));
     expect(await screen.findByText("180 g")).toBeInTheDocument();
+  });
+
+  /** Come `stubAnchored`, ma la risposta alla dose la dà il test, quando vuole. */
+  function stubDeferred() {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        const indirizzo = String(url);
+        if (indirizzo.includes("/pantry")) return json(PANTRY);
+        if (indirizzo.includes("anchor=")) {
+          await gate;
+          return json(ANCORATA);
+        }
+        return json(DETAIL);
+      })
+    );
+    return release;
+  }
+
+  it("una riscala annullata mentre la risposta è in volo non cambia la vista", async () => {
+    const release = stubDeferred();
+    renderScreen();
+    const pasta = await screen.findByRole("button", { name: "180 g: riscala da pasta" });
+    await userEvent.click(pasta);
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "135");
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(pasta).toHaveFocus();
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(screen.getByText("180 g")).toBeInTheDocument();
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.queryByText("≈ 1,5")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(pasta).toHaveFocus();
+  });
+
+  it("una riscala superata dall'apertura di un'altra riga lascia quel campo com'è, col suo testo", async () => {
+    const release = stubDeferred();
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "180 g: riscala da pasta" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "135");
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "400 g: riscala da pomodoro" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "250");
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const campo = screen.getByRole("textbox", { name: "Quanto ne fai?" });
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(campo).toHaveValue("250");
+    expect(campo).toHaveFocus();
+    expect(within(screen.getByText("Pomodoro").closest("li")!).getByRole("textbox")).toBe(campo);
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.getByText("180 g")).toBeInTheDocument();
+  });
+
+  it("una riscala superata dallo stepper non ne disfa la scelta", async () => {
+    const release = stubDeferred();
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "180 g: riscala da pasta" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "135");
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.queryByText("≈ 1,5")).toBeNull();
   });
 });

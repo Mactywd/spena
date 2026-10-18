@@ -70,6 +70,14 @@ function RecipeHero({ recipe }: { recipe: RecipeDetail }) {
   );
 }
 
+/** Com'è finita una richiesta di riscalare da una dose (R2): la vista è cambiata, il
+ * server l'ha rifiutata (e dice perché), oppure nel frattempo chi la chiedeva ha fatto
+ * altro e la risposta non conta più. */
+type AnchorOutcome =
+  | { kind: "applied" }
+  | { kind: "refused"; problem: string }
+  | { kind: "dropped" };
+
 /** Una riga d'ingrediente: il pallino dello stato, il nome, la dose.
  *
  * Il verdetto non si calcola qui: `availability` e `satisfied` arrivano dal server, che
@@ -93,8 +101,9 @@ function IngredientRow({
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
-  /** Riscala da questa riga: `null` se è fatto, o il perché se no. */
-  onAnchor: (amount: string) => Promise<string | null>;
+  /** Riscala da questa riga: se è fatto, se il server ha rifiutato (col perché), o se
+   * nel frattempo il campo è stato chiuso o superato e la risposta non conta più. */
+  onAnchor: (amount: string) => Promise<AnchorOutcome>;
 }) {
   // la dose toccabile riprende il fuoco quando il campo si chiude, da «Annulla» o da una
   // riscala riuscita: il campo che lo aveva si smonta, e il fuoco cadrebbe sul `body`
@@ -142,9 +151,12 @@ function IngredientRow({
           unit={line.anchor_unit}
           initial={anchoredAmount?.replace(".", ",") ?? ""}
           onSubmit={async (amount) => {
-            const problem = await onAnchor(amount);
-            if (problem === null) doseRef.current?.focus();
-            return problem;
+            const outcome = await onAnchor(amount);
+            // il fuoco torna alla dose solo se la vista è davvero cambiata: se il campo
+            // era già chiuso, o ce n'è un altro aperto, il fuoco sta dove l'ha messo chi
+            // scrive. `null` anche per «dropped»: il campo che aspetta è già smontato
+            if (outcome.kind === "applied") doseRef.current?.focus();
+            return outcome.kind === "refused" ? outcome.problem : null;
           }}
           onCancel={() => {
             onClose();
@@ -167,6 +179,16 @@ export function RecipeDetailScreen() {
   const [scale, setScale] = useState<RecipeScale | null>(null);
   // la riga il cui campo «Quanto ne fai?» è aperto: uno alla volta
   const [anchorField, setAnchorField] = useState<string | null>(null);
+  // quante volte il campo aperto è cambiato (aperto, chiuso, passato a un'altra riga, o
+  // la vista cambiata da un altro gesto): una richiesta di riscalare ricorda quella che
+  // c'era quando è partita, e se al ritorno non è più la stessa non tocca la vista. Una
+  // numerazione e non il nome della riga: chiudere e riaprire la stessa riga è un altro
+  // campo, e la risposta del primo non è più sua
+  const fieldEpoch = useRef(0);
+  function changeAnchorField(next: string | null) {
+    fieldEpoch.current += 1;
+    setAnchorField(next);
+  }
 
   const queryClient = useQueryClient();
   const notice = useNotice();
@@ -241,23 +263,30 @@ export function RecipeDetailScreen() {
   // rifiuto avrebbe mandato lo schermo intero nel ramo d'errore. La risposta finisce
   // nella cache con la chiave della query qui sopra, che la trova già pronta (e la
   // rilegge in sottofondo, come ogni dato vecchio).
-  async function anchorOn(ingredientId: string, amount: string): Promise<string | null> {
+  async function anchorOn(ingredientId: string, amount: string): Promise<AnchorOutcome> {
     const next: RecipeScale = { anchor: ingredientId, amount };
+    // «Annulla» resta attivo mentre la richiesta è in volo (il server può metterci
+    // qualche secondo): chi ha annullato, aperto un'altra riga o toccato lo stepper ha
+    // già scelto, e una risposta arrivata dopo non deve disfare la sua scelta. La
+    // risposta resta in cache, innocua
+    const epoch = fieldEpoch.current;
     try {
       await queryClient.fetchQuery({
         queryKey: ["recipe", id, next],
         queryFn: () => fetchRecipe(id, next),
       });
     } catch (error) {
+      if (fieldEpoch.current !== epoch) return { kind: "dropped" };
       if (error instanceof ApiError && error.status === 422) {
         const detail = (error.body as { detail?: unknown } | null)?.detail;
-        if (typeof detail === "string") return detail;
+        if (typeof detail === "string") return { kind: "refused", problem: detail };
       }
-      return "Non sono riuscito a riscalare. Riprova.";
+      return { kind: "refused", problem: "Non sono riuscito a riscalare. Riprova." };
     }
-    setAnchorField(null);
+    if (fieldEpoch.current !== epoch) return { kind: "dropped" };
+    changeAnchorField(null);
     setScale(next);
-    return null;
+    return { kind: "applied" };
   }
 
   if (isRecipeLoading) return <p className="p-4 text-ink-soft">Carico…</p>;
@@ -438,7 +467,7 @@ export function RecipeDetailScreen() {
               }
               approx={anchor?.equivalent_servings ?? null}
               onChange={(next) => {
-                setAnchorField(null);
+                changeAnchorField(null);
                 setScale({ servings: next });
               }}
             />
@@ -452,7 +481,7 @@ export function RecipeDetailScreen() {
                 <Button
                   variant="ghost"
                   onClick={() => {
-                    setAnchorField(null);
+                    changeAnchorField(null);
                     setScale(null);
                   }}
                 >
@@ -478,8 +507,8 @@ export function RecipeDetailScreen() {
                           : null
                       }
                       open={anchorField === line.ingredient_id}
-                      onOpen={() => setAnchorField(line.ingredient_id)}
-                      onClose={() => setAnchorField(null)}
+                      onOpen={() => changeAnchorField(line.ingredient_id)}
+                      onClose={() => changeAnchorField(null)}
                       onAnchor={(amount) => anchorOn(line.ingredient_id, amount)}
                     />
                   ))}
