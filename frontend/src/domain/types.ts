@@ -269,6 +269,44 @@ export interface UndoResult {
   ingredient_kept_for_adopted: boolean;
 }
 
+/** Perché una pagina dell'import è scartata, in un codice: le parole le scrive la
+ * schermata (`features/recipe-import/skippedWords.ts`). Spec 2026-10-09-scartate-in-coda
+ * §3.1. */
+export type SkipCause = "unreadable" | "all_ignored" | "non_food" | "other";
+
+export interface SkippedPage {
+  id: string;
+  url: string;
+  /** Il titolo della ricetta; `null` per una pagina illeggibile, che non ne ha. */
+  title: string | null;
+  cause: SkipCause;
+  /** La voce non alimentare, solo per `non_food` (e non sempre: un nome lunghissimo può
+   * essere stato tagliato via dal limite del motivo). */
+  non_food_name: string | null;
+  /** Se «Rimetti in coda» può cambiare qualcosa: falso per una pagina illeggibile. */
+  requeueable: boolean;
+  /** Le cotture registrate che aspettano la ricetta di questa pagina. */
+  waiting_cooking_events: number;
+}
+
+export interface SkippedPages {
+  total: number;
+  pages: SkippedPage[];
+}
+
+/** Com'è finita una pagina rimessa in coda. `recipe_id` solo se è entrata; `cause` e
+ * `non_food_name` solo se è di nuovo scartata; `waiting_terms` solo se aspetta. */
+export interface RequeueResult {
+  outcome: "imported" | "skipped" | "waiting";
+  title: string | null;
+  url: string;
+  recipe_id: string | null;
+  cooking_relinked: number;
+  cause: SkipCause | null;
+  non_food_name: string | null;
+  waiting_terms: string[];
+}
+
 // L'esito di un rientro in lista. `added` falso non è un errore: la voce era già da
 // comprare, e dirlo è diverso dal far credere di aver aggiunto qualcosa.
 export interface RestockResult {
