@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -33,7 +33,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 5. [pronto] P3 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` dal server, scelta in `sessionStorage`, una voce aggiunta dello stesso mondo lascia il mondo com'è (Mattia, 2026-10-09) [S14] → `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md`, ramo `night/s14-cibo-casa` da `night/tema-scuro-spenti`
 6. [pronto] P3 · S15, reparti della dispensa collassabili, col numero e «N finiti» / «N in scadenza» da chiusi, in `localStorage`; le tre scelte su ricerca, scadenze e reparto che torna decise da Mattia il 2026-10-09 [S15] → `docs/superpowers/plans/2026-10-08-s15-reparti-collassabili.md`, ramo `night/s15-reparti-collassabili` da `night/s14-cibo-casa`
 7. [pronto] P3 · «Rimetti in lista» anche per «quasi finito», ovunque: in Dispensa la riga gialla ha «In lista» come la rossa (`RestockLine.tsx`), nel foglio della cottura la casella c'è anche su una confezione già gialla e invariata, vuota; il titolo chiuso dei reparti di S15 resta «N finito» (Mattia, 2026-10-09 e 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-09-rimetti-in-lista.md`, ramo `night/rimetti-in-lista` da `night/s15-reparti-collassabili`
-8. [in corso] P3 · R2, secondo modo: riporzionare a partire da un ingrediente, solo vista — tocco sulla dose, «Quanto ne fai?» con l'unità accanto, lo stepper dice «≈ 1,5», la cottura registra la dose nello `snapshot`, senza migrazione (Mattia, 2026-10-09 e 2026-10-13) [R2] → `docs/superpowers/plans/2026-10-09-r2-riporziona-ingrediente.md`, ramo `night/r2-riporziona-ingrediente` da `master`
 9. [pronto] P3 · Le pagine `SKIPPED` dell'import a video e rimesse in coda: sezione «Scartate (N)» nella coda, col perché e la strada per ogni pagina, «Rimetti in coda» che materializza subito; le illeggibili con «Apri la pagina» e senza rimessa (Mattia, 2026-10-09 e 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-09-scartate-in-coda.md`, ramo `night/scartate-in-coda` da `master`
 10. [pronto] P3 · R8, modifica con AI che salva una ricetta nuova: il modulo già compilato dalla proposta, il legame «Variante di «…»» che si vede (`recipes.derived_from_id`, migrazione `0014`), foto e tempi copiati dall'originale (Mattia, 2026-10-09 e 2026-10-13) [R8] → `docs/superpowers/plans/2026-10-09-r8-modifica-con-ai.md`, ramo `night/r8-modifica-con-ai` da `night/rimetti-in-lista`
 11. [pronto] P3 · H1, Expense Tracker su `llm_calls`: «Spese dell'AI» dal ☰, il totale del periodo con la divisione per sezione e l'andamento per giorno di Roma, «Questo mese» / «Ultimi 30 giorni» / «Da sempre», grafici SVG senza dipendenze, una riga per le chiamate senza costo (Mattia, 2026-10-09 e 2026-10-13) [H1] → `docs/superpowers/plans/2026-10-09-h1-spese-ai.md`, ramo `night/h1-spese-ai` da `master`
@@ -101,6 +100,9 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `search_ingredients` non protegge il testo cercato nel `LIKE`: un `%` o un `_` digitati fanno da jolly (`backend/app/repositories/ingredients.py`) [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
+- [idea] P3 · R2 riscala nell'unità della riga: «ne faccio 1 kg» su una riga in grammi va scritto 1000. Una conversione fra g/kg e ml/l sarebbe semplice, le altre sono di S4 [R2]
+- [idea] P3 · R2, la dose che si tocca nel dettaglio sta 4 px più a sinistra delle dosi che non si toccano (`-mr-3` su un pulsante `px-4`, misurato nel browser a 375 px); `-mr-4` le allineerebbe ma fa sporgere il pulsante di 4 px dalla riga: da guardare a occhio [R2]
+- [idea] P3 · Nel piano di R2 la seconda prova di `riporziona.spec.ts` guardava le righe subito dopo l'Invio, col campo ancora aperto (tre pulsanti nella riga, Playwright in modalità stretta): sul ramo aspetta «Riscalata da farro: 80 g.»; i piani futuri che riscrivono prove simili aspettino la vista nuova prima di contare i pulsanti [R2]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -117,6 +119,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P2 · Prove sul telefono di R2, secondo modo: la tastiera dei numeri che si apre da sola dopo il tocco sulla dose, la virgola, il tocco sulla dose sottolineata col pollice, il tasto «fatto» che riscala. Nel browser passati il rifiuto oltre le 50 volte, «≈ 1,5» con − / +, la ricetta senza porzioni con «Torna alle dosi della ricetta», la cottura che manda la dose, il contrasto nei due temi
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
 - [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)
@@ -132,6 +135,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · R2, secondo modo: si riscala dalla dose di un ingrediente toccando la dose («Quanto ne fai?»), lo stepper dice «≈ 1,5» e − / + tornano alle porzioni intere, «Torna alle dosi della ricetta»; oltre 50 volte un 422 con la frase; la cottura registra la dose nello `snapshot`, senza migrazione [R2] → branch night/r2-riporziona-ingrediente (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
