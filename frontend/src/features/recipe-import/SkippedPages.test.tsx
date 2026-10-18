@@ -235,6 +235,51 @@ describe("SkippedPages", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(frase);
   });
 
+  it("un 409 dice che l'elenco era vecchio: lo si rilegge, e la riga stantia se ne va", async () => {
+    let tolta = false;
+    const spy = stubFetch((path, method) => {
+      if (path.includes("/requeue") && method === "POST") {
+        tolta = true;
+        return [{ detail: "Questa pagina non è più scartata: l'elenco era vecchio." }, 409];
+      }
+      if (path.includes("/imports/pages/skipped"))
+        return [{ total: 2, pages: tolta ? [ACQUA] : [TORTA, ACQUA] }, 200];
+      return [{}, 404];
+    });
+    const elencoChiesto = () =>
+      spy.mock.calls.filter(([url]) => String(url).includes("/imports/pages/skipped")).length;
+    renderSkipped();
+    await apri();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Rimetti in coda «Torta alla panna»" })
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Questa pagina non è più scartata: l'elenco era vecchio."
+    );
+    // l'elenco è stato riletto (due richieste) e la riga che non c'è più è sparita
+    await waitFor(() => expect(elencoChiesto()).toBe(2));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Rimetti in coda «Torta alla panna»" })).toBeNull()
+    );
+    // il messaggio del 409 resta, parola per parola
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Questa pagina non è più scartata: l'elenco era vecchio."
+    );
+  });
+
+  it("un guasto (500) non rilegge l'elenco", async () => {
+    const spy = stubElenco([{ detail: "errore" }, 500]);
+    renderSkipped();
+    await apri();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Rimetti in coda «Torta alla panna»" })
+    );
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(
+      spy.mock.calls.filter(([url]) => String(url).includes("/imports/pages/skipped"))
+    ).toHaveLength(1);
+  });
+
   it("«Mostra altre» porta le pagine che mancano, e poi sparisce", async () => {
     const spy = stubFetch((path) => {
       if (path.includes("offset=2")) return [{ total: 3, pages: [ACQUA] }, 200];

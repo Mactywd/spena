@@ -126,7 +126,15 @@ export function SkippedPages({ count }: { count: number }) {
       queryClient.invalidateQueries({ queryKey: ["import-terms"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
     },
-    onError: (error) => setRequeueError(requeueErrorMessage(error)),
+    onError: (error) => {
+      setRequeueError(requeueErrorMessage(error));
+      // Un 409 dice che la pagina non è più scartata: l'elenco era vecchio. Lo si rilegge
+      // (insieme al numero, sotto lo stesso prefisso), così il messaggio è vero e la riga
+      // stantia se ne va. Un guasto (5xx, rete) no: rileggere a ogni errore girerebbe a vuoto.
+      if (error instanceof ApiError && error.status === 409) {
+        queryClient.invalidateQueries({ queryKey: ["import-status"] });
+      }
+    },
   });
 
   if (count === 0) return null;
