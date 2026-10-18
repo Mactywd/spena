@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MatchPanel } from "./MatchPanel";
 import type { Ingredient, ShoppingItem } from "../../domain/types";
 
@@ -33,9 +34,7 @@ const creations = (spy: ReturnType<typeof stubRoutedFetch>) =>
 function renderPanel() {
   const onMatched = vi.fn();
   const onCancel = vi.fn();
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <MatchPanel item={ITEM} onMatched={onMatched} onCancel={onCancel} />

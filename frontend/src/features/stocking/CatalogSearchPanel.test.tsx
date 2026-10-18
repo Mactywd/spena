@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { CatalogSearchPanel } from "./CatalogSearchPanel";
 import type { Product } from "../../domain/types";
 
@@ -33,7 +34,7 @@ function stubSearch(found: Product[] | "down") {
 
 function renderPanel() {
   const props = { onPicked: vi.fn(), onCreateByHand: vi.fn(), onCancel: vi.fn() };
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <CatalogSearchPanel itemLabel="yogurt greco" ingredientId="i1" {...props} />

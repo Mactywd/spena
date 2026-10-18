@@ -1,15 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { StockingScreen } from "./StockingScreen";
-import { UnauthorizedError } from "../../api/client";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 
 const CHECKED = [
@@ -54,12 +49,8 @@ const OTHER_INGREDIENT_PRODUCT = {
 
 // come in App.tsx: l'avviso unico sta sopra il router, e sopravvive al passaggio in
 // Dispensa che segue «Metti in dispensa» (T4)
-function renderScreen(client?: QueryClient) {
-  const queryClient =
-    client ??
-    new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
+function renderScreen(onUnauthorized?: () => void) {
+  const queryClient = createTestQueryClient(onUnauthorized);
   return render(
     <QueryClientProvider client={queryClient}>
       <NoticeProvider>
@@ -366,24 +357,19 @@ describe("StockingScreen", () => {
   });
 
   it("un 401 sulla ricerca a catalogo arriva alla QueryCache, come ogni altra ricerca", async () => {
-    const onError = vi.fn();
+    // Il client è quello dell'app: la sua QueryCache chiama `onUnauthorized` solo per un
+    // `UnauthorizedError`, quindi la chiamata prova anche il tipo dell'errore.
+    const onUnauthorized = vi.fn();
     stubRoutedFetch((path) =>
       path.includes("/products/search") ? [{ detail: "fuori" }, 401] : [CHECKED]
     );
-    const client = new QueryClient({
-      queryCache: new QueryCache({ onError }),
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
 
-    renderScreen(client);
+    renderScreen(onUnauthorized);
     await userEvent.click(
       await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
     );
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalled());
-    expect(
-      onError.mock.calls.some(([error]) => error instanceof UnauthorizedError)
-    ).toBe(true);
+    await vi.waitFor(() => expect(onUnauthorized).toHaveBeenCalled());
   });
 
   it("non manda in dispensa nulla se non hai confermato niente", async () => {
@@ -451,21 +437,18 @@ describe("StockingScreen", () => {
 
   it("un 401 sul lookup passa dalla MutationCache, come ogni altra chiamata", async () => {
     // fuori da react-query, una sessione scaduta qui non riportava all'accesso
-    const onError = vi.fn();
-    const client = new QueryClient({
-      mutationCache: new MutationCache({ onError }),
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
+    // la MutationCache è quella dell'app, e chiama `onUnauthorized` solo per un
+    // `UnauthorizedError`
+    const onUnauthorized = vi.fn();
     stubRoutedFetch((path) =>
       path.includes("/products/barcode/") ? ["", 401] : [CHECKED]
     );
 
-    renderScreen(client);
+    renderScreen(onUnauthorized);
     await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
     await userEvent.type(screen.getByLabelText("Codice a barre"), "52010{Enter}");
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalled());
-    expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
+    await vi.waitFor(() => expect(onUnauthorized).toHaveBeenCalled());
   });
 
   it("il campo del codice non conserva il codice della voce precedente", async () => {
