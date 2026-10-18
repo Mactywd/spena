@@ -76,6 +76,10 @@ export function AnchorField({
           setText(event.target.value);
           setRefusal(null);
         }}
+        // ferma mentre la richiesta è in volo: una correzione scritta adesso si perderebbe
+        // in silenzio quando la prima risposta chiude il campo. `readOnly` e non
+        // `disabled`: quest'ultimo toglie il fuoco alla casella
+        readOnly={pending}
         inputMode="decimal"
         autoComplete="off"
         enterKeyHint="done"

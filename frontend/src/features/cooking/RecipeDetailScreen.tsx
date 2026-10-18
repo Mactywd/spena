@@ -319,7 +319,15 @@ export function RecipeDetailScreen() {
       return (
         <div className="flex flex-col items-start gap-3 p-4">
           <Alert>Non riesco più a riscalare da quella dose: la ricetta è cambiata.</Alert>
-          <Button onClick={() => setScale(null)}>Torna alle dosi della ricetta</Button>
+          <Button
+            onClick={() => {
+              // anche il campo aperto e una riscala in volo cadono: tornano alla ricetta
+              changeAnchorField(null);
+              setScale(null);
+            }}
+          >
+            Torna alle dosi della ricetta
+          </Button>
         </div>
       );
     }
@@ -558,7 +566,13 @@ export function RecipeDetailScreen() {
                 // «non ancora», col perché scritto sotto (regola del Piano 1): un
                 // pulsante grigio e muto non si spiega da sé
                 unavailableReason={isPantryLoading ? "Carico la dispensa…" : undefined}
-                onClick={() => setCooking(true)}
+                onClick={() => {
+                  // il foglio copre la ricetta: il campo aperto si chiude e una riscala
+                  // in volo si lascia cadere, o la vista cambierebbe sotto il foglio e
+                  // chi cuoce manderebbe un'ancora da una vista mai vista cambiare
+                  changeAnchorField(null);
+                  setCooking(true);
+                }}
               >
                 Cucina
               </Button>

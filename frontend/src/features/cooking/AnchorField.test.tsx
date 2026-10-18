@@ -97,4 +97,14 @@ describe("AnchorField", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(riscala).toHaveAttribute("aria-disabled", "true");
   });
+
+  it("in volo la casella è ferma: una correzione non si perde in silenzio", async () => {
+    const onSubmit = vi.fn(() => new Promise<string | null>(() => {}));
+    const { campo, riscala } = renderField({ onSubmit });
+    await userEvent.type(campo, "150");
+    await userEvent.click(riscala);
+    await userEvent.type(campo, "9");
+    expect(campo).toHaveValue("150");
+    expect(campo).toHaveAttribute("readonly");
+  });
 });

@@ -880,4 +880,40 @@ describe("riporzionare da un ingrediente (R2, secondo modo)", () => {
     expect(screen.queryByText(/Riscalata da/)).toBeNull();
     expect(screen.queryByText("≈ 1,5")).toBeNull();
   });
+
+  it("«Cucina» chiude il campo e lascia cadere la riscala in volo: chiuso il foglio, la vista è quella di prima", async () => {
+    const release = stubDeferred();
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "180 g: riscala da pasta" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "135");
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cucina" }));
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    // la risposta è arrivata sotto il foglio: non ha cambiato la vista che il foglio copre
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+
+    const cucina = await screen.findByRole("button", { name: "Cucina" });
+    await vi.waitFor(() => expect(cucina).toHaveFocus());
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.queryByText("≈ 1,5")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByText("180 g")).toBeInTheDocument();
+  });
+
+  it("«Cucina» con il campo aperto: chiuso il foglio, il campo non c'è più", async () => {
+    stubAnchored(() => json(ANCORATA));
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "180 g: riscala da pasta" }));
+    expect(screen.getByRole("textbox", { name: "Quanto ne fai?" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cucina" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+
+    const cucina = await screen.findByRole("button", { name: "Cucina" });
+    await vi.waitFor(() => expect(cucina).toHaveFocus());
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
 });

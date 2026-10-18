@@ -29,7 +29,9 @@ _RESTOCK_REASON = {
     PantryStatus.LOW: ShoppingReason.LOW_WHILE_COOKING,
 }
 
-# il fattore nello storico: sei decimali bastano a ricostruire ogni dose, che ne ha tre
+# il fattore nello storico: un appunto da rileggere, a sei decimali. Non ricostruisce ogni
+# dose (su una base grande l'arrotondamento si vede): la verità è la quantità fissata, che
+# l'ancora conserva a parte
 FACTOR_PRECISION = Decimal("0.000001")
 
 
@@ -123,7 +125,8 @@ async def cook(
         # le righe e le loro unità si caricano qui, come fa il dettaglio: `session.get`
         # non le porta se la ricetta è già nella sessione senza di esse
         loaded = await get_recipe(session, recipe_id)
-        assert loaded is not None  # l'abbiamo appena letta, nella stessa transazione
+        if loaded is None:  # l'abbiamo appena letta; se sparisce, la route risponde 404
+            raise KeyError(recipe_id)
         record["anchor"] = anchor_record(loaded, *anchor)
     event = CookingEvent(
         recipe_id=recipe_id, cooked_at=now, servings=servings, snapshot=record,

@@ -179,7 +179,7 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
   });
 
   it("dopo porzioni cambiate nel dettaglio e un costo cambiato sul server, il modulo parte dal costo salvato", async () => {
-    // Il dettaglio a 3 porzioni ha la chiave ["recipe", id, 3], e la copia a 1× in cache
+    // Il dettaglio a 3 porzioni ha la chiave ["recipe", id, { servings: 3 }], e la copia a 1× in cache
     // è quella letta all'apertura. Se nel frattempo il costo cambia sul server (da un
     // altro telefono), la PUT rimpiazza la ricetta intera: un modulo costruito sulla
     // copia vecchia rimanderebbe il costo di prima, zitto. Il costo dal dettaglio non si
