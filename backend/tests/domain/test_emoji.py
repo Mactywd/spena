@@ -61,9 +61,11 @@ def test_l_elenco_non_ha_doppioni():
 
 
 def test_l_elenco_e_fermo_a_emoji_14():
-    """Le figure della 15.0 e della 15.1 che riguardano la cucina restano fuori, e con
-    loro ogni sequenza ZWJ (U+200D): fino alla 14.0 nessuna figura di cibo, bevande o
-    casa ne usa una, dalla 15.1 il lime e il fungo marrone sì."""
+    """Le figure della 15.0 che riguardano la cucina restano fuori (U+1FADA zenzero,
+    U+1FADB baccello, U+1FAAD ventaglio pieghevole, U+1FAAE pettine), e con loro ogni
+    sequenza ZWJ (U+200D): fino alla 14.0 nessuna figura di cibo, bevande o casa ne usa
+    una, dalla 15.1 il lime e il fungo marrone sì — sono sequenze ZWJ, e le prende
+    questo controllo, non la lista delle vietate."""
     vietate = {"\U0001FADA", "\U0001FADB", "\U0001FAAD", "\U0001FAAE"}
     for voce in INGREDIENT_EMOJI:
         assert "‍" not in voce, voce

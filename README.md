@@ -236,8 +236,13 @@ docker compose exec backend python -m app.cli.decide_emoji
 Chiede all'AI cento nomi per volta, e scrive solo dove la figura non è ancora decisa e
 solo un'emoji dell'elenco (o «nessuna», se nessuna va bene); una risposta che non sa
 verificare la lascia da decidere. L'ultima riga dice quanti ingredienti restano, e allora
-si rilancia. Senza `OPENROUTER_API_KEY` non si rompe niente: le righe mostrano l'icona
-del reparto. Una figura sbagliata si corregge nella scheda dell'ingrediente in
+si rilancia; ma se quel numero non scende fra due lanci, quelli restano col ripiego del
+reparto (o se ne sceglie la figura a mano in Anagrafica) e rilanciare ancora non serve.
+Se l'AI non risponde, il comando lo dice con una riga «figure non disponibili (…)», col
+perché fra parentesi: i lotti già decisi prima del guasto restano scritti (ogni lotto si
+salva appena finito), e il guasto ferma solo quelli dopo. Se quella riga torna identica a
+ogni lancio, il perché è lì. Senza `OPENROUTER_API_KEY` non si rompe niente: le righe
+mostrano l'icona del reparto. Una figura sbagliata si corregge nella scheda dell'ingrediente in
 Anagrafica, «Cambia figura»; una scelta fatta lì, «Nessuna» compresa, il comando non la
 tocca più. In produzione, con `-f docker-compose.prod.yml` come ogni altro comando.
 

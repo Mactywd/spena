@@ -1094,7 +1094,12 @@ applica. Si corregge nella scheda dell'ingrediente in Anagrafica («Cambia figur
 griglia dell'elenco e «Nessuna»), dal servizio unico `registry.py`; una scelta a mano non
 torna mai all'AI. Solo in Dispensa: Lista, Sistema la spesa e la cottura non la mostrano.
 **In produzione serve un passo a mano dopo il deploy**: il comando, una volta, finché
-non dice «nessun ingrediente in attesa».
+non dice «nessun ingrediente in attesa». Se il numero degli «ingredienti restano da
+decidere» non scende fra due lanci, quelli restano col ripiego del reparto (o si sceglie
+la figura a mano in Anagrafica): non serve rilanciare ancora. Se la riga «figure non
+disponibili (…)» si ripete identica a ogni lancio dopo che i primi lotti erano passati, il
+perché è fra parentesi; i lotti decisi prima del guasto restano scritti, e a non scrivere
+niente è solo il lotto del guasto e quelli dopo.
 
 **Le scelte del piano che Mattia può voler rivedere:** l'AI che risponde «nessuna» scrive
 «nessuna» e non lascia la colonna da decidere (decisione 22); le 148 emoji
