@@ -14,6 +14,7 @@ export function ActionBar({
   onChange,
   onAdd,
   leadingIcon: Leading,
+  secondaryAction,
 }: {
   inputLabel: string;
   placeholder: string;
@@ -22,6 +23,9 @@ export function ActionBar({
   onChange: (value: string) => void;
   onAdd: (text: string) => void;
   leadingIcon?: IconComponent;
+  /** Un secondo pulsante accanto al +, di sola icona e della stessa misura: «Scansiona»
+   * in Dispensa (S3). Non manda il modulo: il testo scritto non c'entra. */
+  secondaryAction?: { icon: IconComponent; label: string; onClick: () => void };
 }) {
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -51,6 +55,16 @@ export function ActionBar({
           className={`text-base ${Leading ? "pl-10" : ""}`}
         />
       </div>
+      {secondaryAction && (
+        <Button
+          type="button"
+          variant="secondary"
+          shape="square"
+          icon={secondaryAction.icon}
+          label={secondaryAction.label}
+          onClick={secondaryAction.onClick}
+        />
+      )}
       <Button type="submit" variant="primary" shape="square" icon={IconPlus} label={addLabel} />
     </form>
   );
