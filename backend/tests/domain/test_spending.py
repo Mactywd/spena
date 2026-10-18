@@ -82,7 +82,8 @@ def test_i_giorni_senza_spesa_valgono_zero():
 
 
 @pytest.mark.parametrize(
-    ("parte", "totale", "quota"), [(0.004, 0.025, 0.16), (0.0, 0.025, 0.0), (0.01, 0.0, 0.0)]
+    ("parte", "totale", "quota"),
+    [(0.004, 0.025, 0.16), (0.0, 0.025, 0.0), (0.01, 0.0, 0.0), (0.0001, 2.5, 0.0001)],
 )
 def test_la_quota_del_totale(parte, totale, quota):
     assert share(parte, totale) == quota

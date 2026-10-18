@@ -100,4 +100,10 @@ def share(part: float, total: float) -> float:
     """La quota del totale, 0–1. Con un totale a zero non c'è niente da dividere."""
     if total <= 0:
         return 0.0
-    return round(part / total, SHARE_DIGITS)
+    rounded = round(part / total, SHARE_DIGITS)
+    if part > 0 and rounded == 0:
+        # Una sezione con qualche chiamata economica è pur sempre qualcosa: a 0 il
+        # frontend non disegnerebbe la barra e direbbe «0%», cioè zero chiamate. La
+        # quota minima rappresentabile lo fa dire «< 1%» con la barra minima.
+        return 10**-SHARE_DIGITS
+    return rounded
