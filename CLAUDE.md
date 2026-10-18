@@ -87,7 +87,11 @@ The rule narrows to exactly that (decided 2026-09-17, built since): recipes — 
 only recipes — carry structured quantities too. A recipe ingredient has
 `quantity_value` and `quantity_unit_id` beside `quantity_text`, both nullable,
 filled on a best-effort basis by the parser in `backend/app/domain/quantities.py`.
-`quantity_text` stays the truth shown at 1× and is never rewritten; the structured
+`quantity_text` stays the truth shown at 1× and is never rewritten — with one
+exception, decided by Mattia on 2026-10-13: a dose still in the import's shape (a
+newline or a tab in it, as GialloZafferano writes them) is cleaned once, its words
+before the number moved to the line's `note` (`clean_dose`, run by the import and by
+`python -m app.cli.clean_doses`); a dose without that shape is never touched. The structured
 pair is what a rescale reads, and a line the parser could not fill — `q.b.` foremost
 — simply does not scale, declared as such rather than guessed. **The pantry keeps
 the rule whole on amounts**: no quantities and no units there, which is where the rule

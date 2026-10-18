@@ -90,8 +90,10 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
 class RecipeIngredient(UUIDMixin, Base):
     """Il ruolo è il pezzo che rende utile lo stato "quasi finito".
 
-    `quantity_text` è la dose come l'ha scritta la fonte: non si riscrive mai e non
-    si perde mai, ed è quel che si mostra a 1×. Dal 2026-09-20 non è più l'unica
+    `quantity_text` è la dose come l'ha scritta la fonte: non si perde mai, ed è quel
+    che si mostra a 1×. Si riscrive in un caso solo (Mattia, 2026-10-13): una dose
+    ancora nella forma dell'import, con gli a capo di GialloZafferano, si pulisce una
+    volta e le parole davanti al numero passano in `note` (`clean_dose`). Dal 2026-09-20 non è più l'unica
     cosa che si sa della dose: `quantity_value` e `quantity_unit_id` accanto sono
     *ricavate* da quel testo dal parser di `app/domain/quantities.py`, e servono
     solo a riporzionare — annullabili entrambe, perché «q.b.» non si scala e dirlo
