@@ -19,7 +19,7 @@ from app.repositories.ingredients import (
     create_ingredient,
     find_by_name,
     ingredient_usage,
-    search_ingredients,
+    suggest_ingredients,
 )
 from app.schemas.ingredient import (
     AliasCreate,
@@ -49,7 +49,10 @@ async def search(
     kind: IngredientKind | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> list[IngredientOut]:
-    found = await search_ingredients(session, q, limit, kind=kind)
+    # i suggerimenti tagliati: chi contiene il testo, e gli altri solo se nessuno lo
+    # contiene. La ricerca coi suoi sfumati resta `search_ingredients`, per `match_name`
+    # e per i vicini dell'AI (spec 2026-10-06-suggerimenti-soglia, decisione 3)
+    found = await suggest_ingredients(session, q, limit, kind=kind)
     return [IngredientOut.model_validate(i) for i in found]
 
 
