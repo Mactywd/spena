@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -60,13 +60,10 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · Lista e Sistema la spesa mostrano il testo della voce com'è stato scritto, anche in minuscolo (di proposito: è il testo di chi l'ha scritto) — da confermare con Mattia [T3 Consegna 6b]
 - [idea] P3 · Nel modulo, un nome nuovo che coincide con un non alimentare dell'anagrafica si scopre solo salvando (422 con la frase): il selettore cerca solo cibo, quindi non lo mostra prima [T3 Consegna 6b, R12]
 - [idea] P3 · La casella della Lista (`ListRow.tsx`) è ancora un quadratino da 20 px: `Checkbox` è pronta [T3 Consegna 6b]
-- [idea] P3 · Il 409 «Due righe puntano allo stesso ingrediente» non dice quale: nominarlo, così non si cercano le due righe (backend) [T3 Consegna 6b]
-- [idea] P3 · Nella coda d'import nessun test di schermo prova i pulsanti di una voce mentre una decisione è in volo [T3 Consegna 6b]
 - [idea] P3 · Lo stepper delle porzioni spegne il «−» con `disabled` quando arriva a 1: premuto da tastiera, il fuoco finisce sul `body` (la stessa forma della ✕ di Lista); `unavailableReason` lo terrebbe, ma con una frase in più sotto lo stepper [T3 Consegna 5]
 - [idea] P3 · Nel foglio della cottura una riga cambiata si distingue da una intatta solo per la posizione della tacca: valutare un segno in più per «hai dichiarato qualcosa qui». [T3 Consegna 5]
 - [idea] P3 · «Elimina» di sola icona non mostra niente mentre archivia (prima diceva «Elimino…»): `Button` potrebbe disegnare un segno di attesa sui pulsanti di sola icona `busy`. [T3 Consegna 5]
 - [idea] P3 · Se il ricaricamento della dispensa dopo «Ho cucinato» fallisce, «Cucina» lascia il posto all'avviso e il fuoco cade sulla pagina. [T3 Consegna 5]
-- [idea] P3 · Oltre a `ShoppingListScreen.test.tsx`, anche `IngredientScreen.test.tsx` è fallito una volta nella suite intera mentre girava l'e2e: le attese troppo corte sotto carico sono più d'una. [T3 Consegna 5]
 - [idea] P3 · Con la piscina delle parole piena e un filtro che scarta tutti i candidati, il ricettario dice «Nessuna ricetta»: ricette fuori dalla piscina potrebbero rispondere. Stesso limite già scritto in `recipe_search.py`, ma qui lo zero non è qualificato [T3 Consegna 4]
 - [idea] P3 · Una categoria ricordata che il pannello non può mostrare (le categorie non si caricano, o quella categoria non c'è più): il filtro vale e «Filtri» dice «1 attivo», ma il menu mostra «Tutte». Non è un vicolo cieco («Azzera» c'è), ma il pannello dice il falso [T3 Consegna 4]
 - [idea] P3 · Un aggiornamento di sfondo fallito della prima pagina (per esempio dopo un'eliminazione) sostituisce l'elenco già a video con l'errore: meglio tenere le righe e dire che l'aggiornamento non è riuscito [T3 Consegna 4]
@@ -75,19 +72,14 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `skipped_reason` non affiora da nessuna rotta né schermata [Parte X]
 - [idea] P3 · «Deciso nella coda» porta a una coda che mostra solo le 50 decisioni più recenti: filtro per termine o annulla dalla scheda [Parte X]
 - [idea] P3 · Cercare nell'elenco delle decisioni della coda [T3, esito del giro]
-- [idea] P3 · I test di schermata si costruiscono il client react-query con `retry: false` e non provano il retry vero dell'app [Parte X]
 - [idea] P3 · Estrarre da `PantryRow.tsx` la domanda del rientro in lista, poi la scadenza [Parte X]
 - [idea] P3 · Due confezioni dello stesso prodotto non si distinguono, né in dispensa né nel foglio della cottura [T3, esito del giro]
 - [idea] P3 · Tecniche e preparazioni di base mescolate alle ricette; procedimento diviso in passi; i minuti dai dati grezzi; «N dosi su M non si riscalano» che dice quali — fuori dal ridisegno, spec §5 [T3]
 - [idea] P3 · Un layout da desktop (oggi una colonna da 448 px) [T3]
 - [idea] P3 · Una schermata per correggere i plurali di `units` (oggi `decide_units --imposta` da riga di comando basta) [Parte X]
 - [idea] P3 · `IngredientPicker` spegne campo e suggerimenti con `disabled` mentre la scelta è in volo (dalla Consegna 6a «Aggiungi «…»» usa `busy`): lo stesso fuoco perso della ✕ di Lista, in una forma diversa [T3 Consegna 2]
-- [idea] P3 · L'annullamento riconta `occurrences` caricando tutte le pagine in attesa col loro JSONB intero, per contare una chiave sola, moltiplicato nel ciclo di merge dell'anagrafica: va bene finché l'annullamento è raro, ma un conteggio SQL dovrebbe restare identico a `count_pending_keys` [S9/T3]
-- [idea] P3 · La suite del backend stampa 8 `StarletteDeprecationWarning` per `HTTP_422_UNPROCESSABLE_ENTITY` (preesistente, non tracciato) [Parte X]
 - [idea] P3 · `InlineField.tsx` (nome, marca e codice del prodotto) ha ancora `<button disabled>`: dopo un salvataggio riuscito il «Salva» si spegne e il fuoco cade sulla pagina. Il motivo sotto un pulsante che sta nella riga del campo non ci sta, e «invariato» è lo stato di ogni campo a riposo — decidere la forma [T3 Consegna 6a]
 - [idea] P3 · `CustomProductForm.tsx` («Salva prodotto») spegne ancora con `disabled`: passarlo alla regola dei pulsanti (`unavailableReason` col perché) [T3 Consegna 6a]
-- [idea] P3 · Una prova e2e di `style.spec.ts` («il campo data si vede…») calcola la data con `toISOString()`, in UTC: fra mezzanotte e le 2 ora italiana manda il giorno sbagliato e fallisce («tra 4 gg» invece di «tra 5 gg»). Calcolarla nel giorno di Europe/Rome, come il backend [T3 Consegna 6a]
-- [idea] P3 · `ShoppingListScreen.test.tsx` è fallito in alcune corse della suite intera sotto carico, ogni volta su un'asserzione diversa, e passa da solo e nelle corse successive: un'attesa troppo corta da trovare [T3 Consegna 6a]
 - [idea] P3 · `Button` con `disabled` e `unavailableReason` insieme non è definito: il `disabled` nativo toglie il fuoco e il perché resta irraggiungibile da tastiera. Oggi nessun chiamante lo fa; far vincere `unavailableReason` o scriverlo nel JSDoc [T3 Consegna 6a]
 - [idea] P3 · In `MergePanel.tsx` «Cambia» è un `Button` dentro un `<p class="flex">`: oggi ha solo `busy`, ma se un giorno prende un `unavailableReason` il perché diventa un `<p>` dentro un `<p>`. Cambiare il contenitore in `<div>` [T3 Consegna 6a]
 - [idea] P3 · Nel modulo della ricetta, dopo «Aggiungi «pasta»» scegliere anche «Pasta» dai suggerimenti fa due righe (`attach` non confronta con le righe nuove): al salvataggio arriva il 409 delle due righe. Si esce togliendone una, ma confonde: `attach` dovrebbe riconoscere la riga nuova con lo stesso nome. [T3 Consegna 6b]
@@ -100,6 +92,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `search_ingredients` non protegge il testo cercato nel `LIKE`: un `%` o un `_` digitati fanno da jolly (`backend/app/repositories/ingredients.py`) [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
+- [idea] P3 · La suite del backend stampa ancora un avviso di Starlette che viene da una libreria: `starlette.testclient` chiede `httpx2` al posto di `httpx` («Using httpx with starlette.testclient is deprecated»). Per questo il `filterwarnings` delle pulizie è ristretto ai moduli di `app` (`…StarletteDeprecationWarning:app`), e con lo `stacklevel` di Starlette prende solo gli usi a livello di modulo: la guardia vera è `tests/test_no_deprecated_status.py`. Toglierlo vuol dire una dipendenza nuova (`httpx2`): decide Mattia [Parte X]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -128,9 +121,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-- [in corso] P3 · Pulizie: i test instabili, un client react-query solo per app e test, e piccoli difetti del backend — piano `docs/superpowers/plans/2026-10-13-pulizie-test.md` → branch night/pulizie-test [Parte X]
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · Pulizie dei test e del backend: attese di Testing Library a 4 s e prove a 15 s (la Lista e l'Anagrafica cadevano sotto carico); un client react-query solo per l'app e i test (`createAppQueryClient`, `createTestQueryClient` con i tentativi veri senza attesa), e una prova che nessun test se ne faccia uno; le date dell'e2e nel giorno di Roma; `HTTP_422_UNPROCESSABLE_CONTENT` e gli avvisi di Starlette come errori; l'annullamento riconta `occurrences` con una `COUNT`; il 409 delle due righe nomina l'ingrediente; i test della coda con una decisione in volo [Parte X, T3] → branch night/pulizie-test (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
