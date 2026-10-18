@@ -31,7 +31,7 @@ export function OffSuggestionQuestion({
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-card border border-line p-3">
-      {/* senza articolo: «È un «zucchina»?» non si accordava, e un articolo giusto per ogni
+      {/* senza articolo: l'«un» della domanda di prima non si accordava con «zucchina», e un articolo giusto per ogni
           nome lo saprebbe solo un dizionario (giro del 2026-10-07) */}
       <h2 className="font-semibold">È «{ingredientName}»?</h2>
       <p className="text-ink">{describeSuggestion(suggestion)}</p>

@@ -862,7 +862,7 @@ describe("StockingScreen", () => {
       renderScreen();
       await readSpaghettiOnYogurt();
 
-      // senza articolo: «È un «zucchina»?» non si accordava (giro del 2026-10-07)
+      // senza articolo: l'«un» della domanda di prima non si accordava con «zucchina» (giro del 2026-10-07)
       expect(await screen.findByRole("heading", { name: "È «yogurt greco»?" })).toBeDefined();
       expect(
         screen.getByText("Su Open Food Facts è «Spaghetti n.5», di Barilla.")
