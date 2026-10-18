@@ -7,6 +7,7 @@ e senza questi import vedrebbe uno schema vuoto, quindi il primo
 
 from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.llm_call import LlmCall
+from app.db.models.nutrition import CiqualFood, IngredientNutrition
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
 from app.db.models.recipe import CookingEvent, Recipe, RecipeIngredient
@@ -15,10 +16,12 @@ from app.db.models.shopping import ShoppingListItem
 from app.db.models.unit import Unit
 
 __all__ = [
+    "CiqualFood",
     "CookingEvent",
     "ImportTerm",
     "Ingredient",
     "IngredientAlias",
+    "IngredientNutrition",
     "LlmCall",
     "PantryItem",
     "Product",
