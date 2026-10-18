@@ -197,4 +197,12 @@ describe("StockingRow", () => {
     expect(retry.textContent).toBe("Riprova");
     expect(retry.querySelector(".sr-only")).toBeNull();
   });
+
+  it("quel che lo schermo mette dopo sta dentro la voce, sotto la sua scadenza (S3)", () => {
+    renderRow({ after: <p>confezione in più</p> });
+    const dopo = screen.getByText("confezione in più");
+    expect(dopo.closest("li")).toBe(screen.getByText("mele").closest("li"));
+    const scadenza = screen.getByRole("button", { name: "+ scadenza per mele" });
+    expect(scadenza.compareDocumentPosition(dopo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

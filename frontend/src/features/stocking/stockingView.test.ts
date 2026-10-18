@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stockEntries, stockNotice, type Resolution } from "./stockingView";
+import { itemsLeft, stockEntries, stockNotice, type Resolution } from "./stockingView";
 import type { Product, ShoppingItem } from "../../domain/types";
 
 function item(id: string, ingredientId: string | null): ShoppingItem {
@@ -76,16 +76,51 @@ describe("stockEntries", () => {
     const [entry] = stockEntries([item("s1", "i1")], { s1: { kind: "loose" } }, ownIngredient, expiry);
     expect(entry.expires_on).toBe(sent);
   });
+
+  it("una voce con più confezioni manda una riga per confezione, ognuna con la sua scadenza e il suo codice (S3)", () => {
+    const packagesOf = (row: ShoppingItem) => (row.id === "s1" ? ["s1", "s1+1"] : [row.id]);
+    const resolved: Record<string, Resolution> = {
+      s1: { kind: "loose" },
+      "s1+1": { kind: "product", product: FAGE, barcode: "8001234567890" },
+    };
+    expect(
+      stockEntries([item("s1", "i1")], resolved, ownIngredient, { "s1+1": "2026-10-20" }, packagesOf)
+    ).toEqual([
+      { shopping_item_id: "s1", ingredient_id: "i1", product_id: null, expires_on: null, barcode: null },
+      { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1", expires_on: "2026-10-20",
+        barcode: "8001234567890" },
+    ]);
+  });
+
+  it("una confezione senza scelta non parte, le altre della stessa voce sì", () => {
+    const packagesOf = () => ["s1", "s1+1", "s1+2"];
+    const resolved: Record<string, Resolution> = { "s1+1": { kind: "loose" } };
+    expect(ids(stockEntries([item("s1", "i1")], resolved, ownIngredient, {}, packagesOf))).toEqual(["s1"]);
+  });
+});
+
+describe("itemsLeft", () => {
+  it("conta le voci senza nessuna confezione mandata, non le confezioni", () => {
+    const items = [item("s1", "i1"), item("s2", "i2"), item("s3", "i3")];
+    const resolved: Record<string, Resolution> = { s1: { kind: "loose" }, "s1+1": { kind: "loose" } };
+    const sent = stockEntries(items, resolved, ownIngredient, {}, (row) =>
+      row.id === "s1" ? ["s1", "s1+1"] : [row.id]
+    );
+    expect(sent).toHaveLength(2);
+    expect(itemsLeft(items, sent)).toBe(2);
+  });
 });
 
 describe("stockNotice", () => {
   it.each([
-    [4, 7, "4 in dispensa · 3 restano in lista"],
-    [4, 4, "4 in dispensa"],
-    [1, 1, "1 in dispensa"],
-    [1, 2, "1 in dispensa · 1 resta in lista"],
-    [2, 5, "2 in dispensa · 3 restano in lista"],
-  ] as const)("%i mandate su %i nel carrello → «%s»", (sent, checked, text) => {
-    expect(stockNotice(sent, checked)).toBe(text);
+    [4, 3, "4 in dispensa · 3 restano in lista"],
+    [4, 0, "4 in dispensa"],
+    [1, 0, "1 in dispensa"],
+    [1, 1, "1 in dispensa · 1 resta in lista"],
+    [2, 3, "2 in dispensa · 3 restano in lista"],
+    // più confezioni che voci (S3): tre vasetti da due voci, e una voce rimasta
+    [3, 1, "3 in dispensa · 1 resta in lista"],
+  ] as const)("%i mandate, %i voci rimaste in lista → «%s»", (sent, left, text) => {
+    expect(stockNotice(sent, left)).toBe(text);
   });
 });

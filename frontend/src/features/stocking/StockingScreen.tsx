@@ -4,10 +4,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { fetchShoppingList, patchShoppingItem } from "../shopping-list/api";
 import { groupForDisplay } from "../shopping-list/listView";
 import { MatchPanel } from "./MatchPanel";
+import { PackageRow } from "./PackageRow";
 import { ProductResolver } from "./ProductResolver";
 import { StockingRow } from "./StockingRow";
 import { stockItems } from "./api";
 import {
+  itemsLeft,
   stockEntries,
   stockNotice,
   type FocusTarget,
@@ -126,6 +128,11 @@ export function StockingScreen() {
   // altro). I pannelli di una confezione hanno la stessa guardia dentro ProductResolver
   const openPanel = useRef<Panel | null>(null);
   const panelSerial = useRef(0);
+  // Le confezioni in più di ogni voce (S3 §10.2), in ordine; la prima ha la chiave della
+  // voce e non sta qui. Chiavi mai riusate: togliendone una, la scelta di un'altra non
+  // le passa sopra
+  const [extraPackages, setExtraPackages] = useState<Record<string, string[]>>({});
+  const packageSerial = useRef(0);
   // dove rimettere il fuoco quando la riga di una confezione rinasce (vedi StockingRow)
   const [returnFocus, setReturnFocus] = useState<{ key: string; target: FocusTarget } | null>(
     null
@@ -188,14 +195,14 @@ export function StockingScreen() {
   });
 
   const stock = useMutation({
-    mutationFn: ({ sent }: { sent: StockEntry[]; checked: number }) => stockItems(sent),
-    onSuccess: (_created, { sent, checked }) => {
+    mutationFn: ({ sent }: { sent: StockEntry[]; left: number }) => stockItems(sent),
+    onSuccess: (_created, { sent, left }) => {
       // la lista della spesa tiene in cache le stesse voci: senza invalidare questo
       // prefisso, tornando a "Lista" le voci appena sistemate restano spuntate
       queryClient.invalidateQueries({ queryKey: ["shopping-list"] });
       // prima di cambiare schermata: l'avviso vive in NoticeProvider, sopra il router
       // (App.tsx), e arriva in Dispensa (T4)
-      notice({ text: stockNotice(sent.length, checked) });
+      notice({ text: stockNotice(sent.length, left) });
       navigate("/dispensa");
     },
   });
@@ -263,13 +270,43 @@ export function StockingScreen() {
     );
   }
 
+  function packagesOf(item: ShoppingItem): string[] {
+    return [item.id, ...(extraPackages[item.id] ?? [])];
+  }
+
+  /** «+ un'altra confezione»: una riga nuova sotto la voce, con le sue tre strade; il
+   * fuoco va alla prima. */
+  function addPackage(item: ShoppingItem) {
+    packageSerial.current += 1;
+    const key = `${item.id}+${packageSerial.current}`;
+    setExtraPackages((prev) => ({ ...prev, [item.id]: [...(prev[item.id] ?? []), key] }));
+    stock.reset();
+    setReturnFocus({ key, target: "scanner" });
+  }
+
+  /** La ✕ di una confezione in più: via lei, la sua scelta, la sua data, il suo codice,
+   * e il suo pannello se era aperto. Il fuoco torna alla voce. */
+  function removePackage(item: ShoppingItem, key: string) {
+    setExtraPackages((prev) => ({
+      ...prev,
+      [item.id]: (prev[item.id] ?? []).filter((other) => other !== key),
+    }));
+    setResolved((prev) => without(prev, key));
+    setExpiry((prev) => without(prev, key));
+    setRememberedCode((prev) => without(prev, key));
+    const open = openPanel.current;
+    if (open?.kind === "resolver" && open.packageKey === key) setOpen(null);
+    stock.reset();
+    setReturnFocus({ key: item.id, target: resolved[item.id] ? "change" : "scanner" });
+  }
+
   // una fonte per il corpo della richiesta e per il numero sul pulsante (decisione 4)
-  const entries = stockEntries(items, resolved, ingredientOf, expiry);
+  const entries = stockEntries(items, resolved, ingredientOf, expiry, packagesOf);
 
   function submitStock() {
     // la guardia al posto di `disabled`: il pulsante resta dov'è il fuoco
     if (entries.length === 0 || stock.isPending) return;
-    stock.mutate({ sent: entries, checked: items.length });
+    stock.mutate({ sent: entries, left: itemsLeft(items, entries) });
   }
 
   function renderMatch(item: ShoppingItem, open: MatchPanelState) {
@@ -333,6 +370,11 @@ export function StockingScreen() {
   }
 
   function renderRow(item: ShoppingItem) {
+    const keys = packagesOf(item);
+    const extras = keys.slice(1);
+    // «+ un'altra confezione» quando ogni confezione che c'è ha la sua scelta: su una
+    // voce risolta (bozza §10.2), senza impilare confezioni vuote
+    const canAddPackage = ingredientOf(item) !== null && keys.every((key) => key in resolved);
     return (
       <StockingRow
         key={item.id}
@@ -350,6 +392,41 @@ export function StockingScreen() {
         onOpen={(trigger) => openPanelFor(item, item.id, trigger)}
         onLoose={() => resolve(item.id, { kind: "loose" })}
         onChange={() => changeResolution(item.id)}
+        after={
+          extras.length > 0 || canAddPackage ? (
+            <div className="flex flex-col pl-3">
+              {extras.map((key, index) => (
+                <PackageRow
+                  key={key}
+                  name={item.raw_text}
+                  index={index + 2}
+                  resolution={resolved[key]}
+                  expiry={expiry[key]}
+                  onExpiry={(value) => writeExpiry(key, value)}
+                  returnFocusTo={returnFocusFor(key, item)}
+                  onFocusReturned={clearReturnFocus}
+                  onOpen={(trigger) => openPanelFor(item, key, trigger)}
+                  onLoose={() => resolve(key, { kind: "loose" })}
+                  onChange={() => changeResolution(key)}
+                  onRemove={() => removePackage(item, key)}
+                >
+                  {panelFor(item, key)}
+                </PackageRow>
+              ))}
+              {canAddPackage && (
+                <button
+                  type="button"
+                  onClick={() => addPackage(item)}
+                  className="flex min-h-11 items-center self-start text-xs font-medium text-ink-faint"
+                >
+                  {/* come «+ scadenza»: piccolo, e il nome della voce solo per chi
+                      ascolta, con lo spazio fuori dallo `sr-only` (Chromium lo mangia) */}
+                  + un'altra confezione <span className="sr-only">di {item.raw_text}</span>
+                </button>
+              )}
+            </div>
+          ) : undefined
+        }
       >
         {panelFor(item, item.id)}
       </StockingRow>

@@ -39,6 +39,7 @@ export function StockingRow({
   onLoose,
   onChange,
   children,
+  after,
 }: {
   item: ShoppingItem;
   resolution: Resolution | undefined;
@@ -61,6 +62,9 @@ export function StockingRow({
   /** Il pannello aperto, sotto la riga e dentro la voce: prima stavano tutti in fondo
    * alla pagina, fuori vista (S10). */
   children?: ReactNode;
+  /** In fondo alla voce, dopo la sua scadenza: le confezioni in più e «+ un'altra
+   * confezione» (S3 §10.2). */
+  after?: ReactNode;
 }) {
   const ref = useRef<HTMLLIElement>(null);
   const name = item.raw_text;
@@ -165,6 +169,7 @@ export function StockingRow({
       {/* resta raggiungibile anche a voce risolta: la data riguarda il lotto che entra,
           non come è stato scelto il prodotto */}
       <ExpiryField name={name} value={expiry} onChange={onExpiry} />
+      {after}
     </li>
   );
 }

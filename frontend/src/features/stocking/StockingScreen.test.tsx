@@ -1398,4 +1398,97 @@ describe("StockingScreen", () => {
       expect(screen.queryByText(/in lista/)).toBeNull();
     });
   });
+
+  describe("più confezioni per una voce (S3 §10.2)", () => {
+    it("non c'è finché la voce non è risolta", async () => {
+      stubRoutedFetch(() => [CHECKED]);
+      renderScreen();
+      await screen.findByText("mele");
+      expect(screen.queryByRole("button", { name: /un'altra confezione/ })).toBeNull();
+    });
+
+    it("su una voce risolta aggiunge una confezione con le sue tre strade, e il pulsante conta le confezioni", async () => {
+      const spy = stubRoutedFetch((path) =>
+        path.endsWith("/shopping-list/stock") ? [{ created: 2 }, 201] : [CHECKED]
+      );
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "+ un'altra confezione di mele" }));
+      const toolbar = screen.getByRole("toolbar", { name: "Come entra in dispensa: mele, confezione 2" });
+      // il fuoco va alla prima strada della confezione nuova
+      expect(document.activeElement).toBe(
+        within(toolbar).getByRole("button", { name: "Codice a barre per mele, confezione 2" })
+      );
+      await userEvent.click(
+        within(toolbar).getByRole("button", { name: "Sfuso, senza marca: mele, confezione 2" })
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 2" }));
+      await vi.waitFor(() =>
+        expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
+          { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null, barcode: null },
+          { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null, barcode: null },
+        ])
+      );
+    });
+
+    it("ogni confezione ha la sua scelta e la sua scadenza", async () => {
+      const spy = stubRoutedFetch((path) => {
+        if (path.includes("/products/search")) return [[FAGE]];
+        if (path.endsWith("/shopping-list/stock")) return [{ created: 2 }, 201];
+        return [CHECKED];
+      });
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*yogurt greco/i }));
+      await userEvent.click(screen.getByRole("button", { name: "+ un'altra confezione di yogurt greco" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "Cerca a catalogo per yogurt greco, confezione 2" })
+      );
+      // il catalogo della confezione è quello della voce: lo stesso ingrediente
+      expect(screen.getByRole("heading", { name: "Cerca a catalogo per «yogurt greco»" })).toBeDefined();
+      await userEvent.click(await screen.findByRole("option", { name: /Total 0%/ }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "+ scadenza per yogurt greco, confezione 2" })
+      );
+      fireEvent.change(screen.getByLabelText("Scadenza di yogurt greco, confezione 2"), {
+        target: { value: "2026-10-20" },
+      });
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 2" }));
+      await vi.waitFor(() =>
+        expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
+          { shopping_item_id: "s1", ingredient_id: "i1", product_id: null, expires_on: null, barcode: null },
+          { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1", expires_on: "2026-10-20",
+            barcode: null },
+        ])
+      );
+    });
+
+    it("la ✕ toglie la confezione e la sua scelta, e il fuoco torna alla voce", async () => {
+      stubRoutedFetch(() => [CHECKED]);
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "+ un'altra confezione di mele" }));
+      await userEvent.click(screen.getByRole("button", { name: "Sfuso, senza marca: mele, confezione 2" }));
+      expect(screen.getByRole("button", { name: "Metti in dispensa 2" })).toBeDefined();
+
+      await userEvent.click(screen.getByRole("button", { name: "Togli la confezione 2 di mele" }));
+      expect(screen.queryByText("Confezione 2")).toBeNull();
+      expect(screen.getByRole("button", { name: "Metti in dispensa 1" })).toBeDefined();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Cambia la scelta per mele" })
+      );
+    });
+
+    it("l'avviso in Dispensa conta le confezioni entrate e le voci rimaste", async () => {
+      stubRoutedFetch((path) =>
+        path.endsWith("/shopping-list/stock") ? [{ created: 2 }, 201] : [[...CHECKED, ...UNMATCHED]]
+      );
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "+ un'altra confezione di mele" }));
+      await userEvent.click(screen.getByRole("button", { name: "Sfuso, senza marca: mele, confezione 2" }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 2" }));
+      expect(await screen.findByRole("heading", { name: "Dispensa" })).toBeDefined();
+      expect(screen.getByText("2 in dispensa · 2 restano in lista")).toBeDefined();
+    });
+  });
 });
