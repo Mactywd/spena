@@ -70,6 +70,7 @@ describe("AppHeader", () => {
       "href", "/ricette/importa"
     );
     expect(within(menu).getByRole("link", { name: "Anagrafica" })).toHaveAttribute("href", "/anagrafica");
+    expect(within(menu).getByRole("link", { name: "Spese dell'AI" })).toHaveAttribute("href", "/spese-ai");
   });
 
   it("aperto, il fuoco entra nel pannello; Esc lo chiude e il fuoco torna al ☰", async () => {
@@ -87,7 +88,7 @@ describe("AppHeader", () => {
   it("il fuoco resta dentro: dopo l'ultima voce si torna alla prima, e al contrario", async () => {
     renderHeader();
     await userEvent.click(screen.getByRole("button", { name: "Apri il menu" }));
-    const ultima = screen.getByRole("link", { name: "Anagrafica" });
+    const ultima = screen.getByRole("link", { name: "Spese dell'AI" });
     const prima = screen.getByRole("button", { name: "Chiudi il menu" });
 
     ultima.focus();

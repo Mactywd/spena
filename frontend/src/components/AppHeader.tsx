@@ -4,12 +4,15 @@ import { Link, useLocation } from "react-router-dom";
 import { BrandMark } from "./ui/BrandMark";
 import { IconMenu2, IconX } from "./ui/icons";
 
-// L'indice completo (D3, T1): le sezioni che la barra in basso non porta. Pasti,
-// Spese, Profilo e Connettori si aggiungeranno qui quando esisteranno.
+// L'indice completo (D3, T1): le sezioni che la barra in basso non porta. «Spese
+// dell'AI» (H1) è la prima sezione secondaria, in fondo; Pasti, Profilo e Connettori si
+// aggiungeranno qui quando esisteranno. «dell'AI» perché sotto «Sistema la spesa» un
+// «Spese» da solo si leggerebbe come lo scontrino.
 const INDEX = [
   { to: "/sistema", label: "Sistema la spesa" },
   { to: "/ricette/importa", label: "Ingredienti da abbinare" },
   { to: "/anagrafica", label: "Anagrafica" },
+  { to: "/spese-ai", label: "Spese dell'AI" },
 ];
 
 const FOCUSABLE = "a[href], button:not([disabled])";
