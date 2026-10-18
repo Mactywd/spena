@@ -9,7 +9,9 @@ import { ApiError } from "../api/client";
 // diventa mai vero e ogni ramo d'errore dell'app resta irraggiungibile — lo schermo
 // resta su "Carico…" senza dire niente, che è il vicolo cieco che le regole di casa
 // vietano.
-const NOT_RETRIED = new Set([401, 404]);
+// E un 422: la domanda è sbagliata (la dose oltre le 50 volte di R2), e rifatta uguale
+// resta sbagliata — ritentarla faceva aspettare tre secondi la frase che dice cosa fare.
+const NOT_RETRIED = new Set([401, 404, 422]);
 
 export const defaultQueryRetryPredicate = (count: number, error: unknown) =>
   count < 2 && !(error instanceof ApiError && NOT_RETRIED.has(error.status));

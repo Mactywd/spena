@@ -130,7 +130,7 @@ export function RecipeDetailScreen() {
     refetch: refetchRecipe,
   } = useQuery({
     queryKey: ["recipe", id, servings],
-    queryFn: () => fetchRecipe(id, servings ?? undefined),
+    queryFn: () => fetchRecipe(id, servings ? { servings } : undefined),
     // le porzioni stanno nella chiave, quindi ogni tocco dello stepper è una chiave
     // nuova e senza cache: senza questo, `isLoading` torna vero e lo schermo intero
     // viene sostituito da «Carico…» a metà della rilettura — il pulsante sparisce da

@@ -20,13 +20,13 @@ const DETAIL: RecipeDetail = {
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null,
   cook_minutes: null, category: "Primi piatti", cost: 2, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 4, source_ref: "https://esempio.invalid/pasta",
-  scaled_to: null, unscalable_lines: 0, dose_lines: 1, owned_by_import: true,
+  scaled_to: null, unscalable_lines: 0, dose_lines: 1, anchor: null, owned_by_import: true,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "320 g",
-      quantity_display: "320 g", quantity_scaled: false, note: "al dente",
+      quantity_display: "320 g", quantity_scaled: false, anchorable: true, anchor_unit: "g", note: "al dente",
       availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "basilico", role: "secondary", quantity_text: null,
-      quantity_display: null, quantity_scaled: false, note: null,
+      quantity_display: null, quantity_scaled: false, anchorable: false, anchor_unit: null, note: null,
       availability: "missing", satisfied: false },
   ],
 };

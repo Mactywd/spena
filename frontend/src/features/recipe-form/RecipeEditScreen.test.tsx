@@ -14,13 +14,13 @@ const DETAIL: RecipeDetail = {
   missing: 1, cookable: false, missing_names: ["Basilico"], image_url: null,
   prep_minutes: null, cook_minutes: null, category: null, cost: null, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 2, source_ref: null, scaled_to: null,
-  unscalable_lines: 0, dose_lines: 1, owned_by_import: false,
+  unscalable_lines: 0, dose_lines: 1, anchor: null, owned_by_import: false,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
-      quantity_display: "180 g", quantity_scaled: false, note: null,
+      quantity_display: "180 g", quantity_scaled: false, anchorable: true, anchor_unit: "g", note: null,
       availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "basilico", role: "primary", quantity_text: null,
-      quantity_display: null, quantity_scaled: false, note: null,
+      quantity_display: null, quantity_scaled: false, anchorable: false, anchor_unit: null, note: null,
       availability: "missing", satisfied: false },
   ],
 };

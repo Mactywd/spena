@@ -9,13 +9,13 @@ const RECIPE: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, cost: null, archived_at: null, main_department: null, instructions: "Cuoci.", servings: 2, source_ref: null,
-  scaled_to: null, unscalable_lines: 0, dose_lines: 1, owned_by_import: false,
+  scaled_to: null, unscalable_lines: 0, dose_lines: 1, anchor: null, owned_by_import: false,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
-      quantity_display: "180 g", quantity_scaled: false,
+      quantity_display: "180 g", quantity_scaled: false, anchorable: true, anchor_unit: "g",
       note: null, availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "yogurt greco", role: "secondary",
-      quantity_text: "q.b.", quantity_display: "q.b.", quantity_scaled: false,
+      quantity_text: "q.b.", quantity_display: "q.b.", quantity_scaled: false, anchorable: false, anchor_unit: null,
       note: null, availability: "available", satisfied: true },
   ],
 };
@@ -287,6 +287,26 @@ describe("CookSheet", () => {
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
     expect(JSON.parse(spy.mock.calls[0][1].body).servings).toBe(RECIPE.servings);
+  });
+
+  it("riscalata da una dose, manda la dose e non le porzioni (R2)", async () => {
+    // «≈ 1,5» non è un numero di porzioni uscito dalla pentola: la cottura registra la
+    // dose fissata, e il server ricalcola il resto
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet(vi.fn(), undefined, PANTRY, {
+      ...RECIPE,
+      anchor: { ingredient_id: "i1", amount: "135", equivalent_servings: 1.5 },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+
+    const corpo = JSON.parse(spy.mock.calls[0][1].body);
+    expect(corpo.anchor).toBe("i1");
+    expect(corpo.amount).toBe("135");
+    expect("servings" in corpo).toBe(false);
   });
 
   it("una voce sparita dalla dispensa a foglio aperto non entra nel payload", async () => {

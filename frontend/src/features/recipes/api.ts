@@ -101,8 +101,18 @@ export function fetchSearchMode() {
   return apiFetch<{ semantic: boolean }>("/recipes/search-mode");
 }
 
-export function fetchRecipe(id: string, servings?: number) {
-  const query = servings ? `?servings=${servings}` : "";
+/** Come si chiede la ricetta: per porzioni, o da una dose fissata su una riga (R2,
+ * secondo modo). Un modo alla volta: il server rifiuta i due insieme. `amount` va col
+ * punto. */
+export type RecipeScale = { servings: number } | { anchor: string; amount: string };
+
+export function fetchRecipe(id: string, scale?: RecipeScale) {
+  let query = "";
+  if (scale !== undefined && "servings" in scale) {
+    query = `?servings=${scale.servings}`;
+  } else if (scale !== undefined) {
+    query = `?anchor=${encodeURIComponent(scale.anchor)}&amount=${encodeURIComponent(scale.amount)}`;
+  }
   return apiFetch<RecipeDetail>(`/recipes/${id}${query}`);
 }
 
@@ -136,6 +146,9 @@ export function cookRecipe(
   id: string,
   body: {
     servings?: number;
+    // R2, secondo modo: la dose fissata, al posto di `servings`
+    anchor?: string;
+    amount?: string;
     transitions: { pantry_item_id: string; to_status: string; restock: boolean }[];
   }
 ) {

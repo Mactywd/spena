@@ -15,23 +15,23 @@ const DETAIL: RecipeDetail = {
   // quattro righe su cinque portano una dose: «basilico» non ne ha nessuna, ed è la
   // riga che tiene onesto il denominatore — il conto delle dosi non è il conto degli
   // ingredienti, e il server manda il primo
-  unscalable_lines: 0, dose_lines: 4,
+  unscalable_lines: 0, dose_lines: 4, anchor: null,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
-      quantity_display: "180 g", quantity_scaled: false,
+      quantity_display: "180 g", quantity_scaled: false, anchorable: true, anchor_unit: "g",
       note: null, availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "pomodoro", role: "primary", quantity_text: "400 g",
-      quantity_display: "400 g", quantity_scaled: false,
+      quantity_display: "400 g", quantity_scaled: false, anchorable: true, anchor_unit: "g",
       note: null, availability: "low", satisfied: false },
     { ingredient_id: "i3", ingredient_name: "aglio", role: "secondary", quantity_text: "q.b.",
-      quantity_display: "q.b.", quantity_scaled: false,
+      quantity_display: "q.b.", quantity_scaled: false, anchorable: false, anchor_unit: null,
       note: null, availability: "low", satisfied: true },
     // senza una riga che manca, metà di statusNote non è coperta da niente
     { ingredient_id: "i4", ingredient_name: "basilico", role: "secondary", quantity_text: null,
-      quantity_display: null, quantity_scaled: false,
+      quantity_display: null, quantity_scaled: false, anchorable: false, anchor_unit: null,
       note: null, availability: "missing", satisfied: false },
     { ingredient_id: "i5", ingredient_name: "olio", role: "secondary", quantity_text: "q.b.",
-      quantity_display: "q.b.", quantity_scaled: false,
+      quantity_display: "q.b.", quantity_scaled: false, anchorable: false, anchor_unit: null,
       note: null, availability: "available", satisfied: true },
   ],
 };
