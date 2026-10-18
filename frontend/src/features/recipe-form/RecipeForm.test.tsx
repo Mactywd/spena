@@ -182,6 +182,7 @@ describe("la categoria", () => {
     "se le categorie non arrivano lo dice, e la ricetta si salva lo stesso",
     async () => {
       // un 500 si ritenta due volte col predicato vero: da qui il tempo lungo
+      // — dal 2026-10-13 i tentativi non aspettano, e il tempo lungo resta solo come margine
       stubCategories([{ detail: "giù" }, 500]);
       const { save } = renderForm(valuesFromRecipe(DETAIL));
 

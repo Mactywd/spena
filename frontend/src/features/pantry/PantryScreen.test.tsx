@@ -39,15 +39,22 @@ function stubRoutedFetch(route: (path: string, init?: RequestInit) => [unknown, 
 // avrebbe dove comparire: `useNotice()` restituirebbe il no-op del contesto vuoto
 function renderScreen() {
   const client = createTestQueryClient();
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <NoticeProvider>
-          <PantryScreen />
-        </NoticeProvider>
-      </MemoryRouter>
-    </QueryClientProvider>
-  );
+  // il client si restituisce perché un guasto di una lettura secondaria si prova
+  // solo guardandolo arrivare: con i tentativi veri la query resta in attesa
+  // finché non li ha finiti, e un'asserzione negativa prima di allora guarda il
+  // caricamento e non l'errore
+  return {
+    ...render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <NoticeProvider>
+            <PantryScreen />
+          </NoticeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    ),
+    client,
+  };
 }
 
 describe("PantryScreen", () => {
@@ -402,9 +409,12 @@ describe("PantryScreen", () => {
     stubRoutedFetch((path) =>
       path.includes("/shopping-list") ? [{ detail: "giù" }, 500] : [ITEMS, 200]
     );
-    renderScreen();
+    const { client } = renderScreen();
 
     await screen.findByText("Total 0%"); // la dispensa è arrivata
+    // la lista è fallita davvero (3 tentativi), non è ancora in volo: solo allora
+    // la scheda ha ricevuto `failed` e la sua nota generica è quella da provare
+    await waitFor(() => expect(client.getQueryState(["shopping-list"])?.status).toBe("error"));
     const link = screen.getByRole("link", { name: /Sistema la spesa/ });
     expect(link.getAttribute("href")).toBe("/sistema");
     expect(link).not.toHaveClass("bg-low-tint");

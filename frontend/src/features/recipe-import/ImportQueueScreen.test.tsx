@@ -341,7 +341,8 @@ describe("coda di revisione dell'import", () => {
 
       // Con il predicato vero (sopra) un 500 permanente si vede solo dopo i due
       // tentativi che quel predicato concede, non al primo giro: il timeout più
-      // lungo copre quell'attesa reale, non la nasconde.
+      // lungo copre quell'attesa reale, non la nasconde — dal 2026-10-13 i tentativi
+      // non aspettano, e il tempo lungo resta solo come margine.
       expect(await screen.findByRole("alert", {}, { timeout: 8000 })).toHaveTextContent(
         /ricettario/i
       );

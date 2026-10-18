@@ -71,10 +71,10 @@ describe("App", () => {
   });
 
   it("una ricetta che non c'è più lo dice subito, senza ritentare, e riporta al ricettario", async () => {
-    // Sul QueryClient vero dell'app, come la prova sul 500 qui sopra: gli schermi si
-    // provavano coi tentativi spenti, e un 404 ritentato non lo vedrebbero mai. Qui sì: con
-    // i ritentativi il messaggio arriverebbe dopo le attese di 1 s e 2 s, fuori dal
-    // secondo che `findBy` aspetta
+    // Sul client vero dell'app, come la prova sul 500 qui sopra (i test di schermata
+    // usano lo stesso client, quindi il predicato vero): un 404 ritentato si
+    // tradirebbe dal numero di chiamate, e il `toHaveLength(1)` sulle chiamate a
+    // `/recipes/r-sparita` qui sotto è ciò che lo prova, non l'attesa di `findBy`
     const fetchMock = vi.fn((url: string) =>
       Promise.resolve(
         String(url).includes("/recipes/r-sparita")

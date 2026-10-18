@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ApiError, UnauthorizedError } from "../api/client";
 import { defaultQueryRetryPredicate } from "./queryRetry";
 
-// Il predicato vero, quello che App.tsx dà al suo QueryClient: i test di schermata si
-// costruivano il client coi tentativi spenti e non lo vedevano mai (prima lezione di
-// CLAUDE.md). `count` è il numero di tentativi già falliti oltre al primo.
+// Il predicato vero, quello che App.tsx dà al suo QueryClient: i test di schermata usano
+// il client dell'app, quindi lo attraversano anch'essi (prima lezione di CLAUDE.md).
+// `count` è il numero di tentativi già falliti oltre al primo.
 describe("defaultQueryRetryPredicate", () => {
   it.each([
     ["un 500", new ApiError("errore 500", 500)],
