@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { fetchShoppingList, patchShoppingItem } from "../shopping-list/api";
+import { addShoppingItem, fetchShoppingList, patchShoppingItem } from "../shopping-list/api";
 import { groupForDisplay } from "../shopping-list/listView";
+import { IngredientChooser } from "./IngredientChooser";
 import { MatchPanel } from "./MatchPanel";
 import { PackageRow } from "./PackageRow";
 import { ProductResolver } from "./ProductResolver";
@@ -18,13 +19,14 @@ import {
   type StockEntry,
 } from "./stockingView";
 import { ApiError } from "../../api/client";
+import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorState } from "../../components/ui/ErrorState";
 import { Screen } from "../../components/ui/Screen";
 import { Section } from "../../components/ui/Section";
 import { buttonClasses } from "../../components/ui/buttonClasses";
-import { IconPackageImport } from "../../components/ui/icons";
+import { IconPackageImport, IconPlus } from "../../components/ui/icons";
 import { useNotice } from "../../components/ui/noticeContext";
 import type { Ingredient, ShoppingItem } from "../../domain/types";
 
@@ -142,6 +144,8 @@ export function StockingScreen() {
   // la sezione «Senza reparto» e rinasce in un'altra, e il pulsante che lo aveva sparisce
   // con la vecchia. La richiesta aspetta la voce riletta, che porta il suo ingrediente,
   // e scatta dove la riga rinasce; la riga non ruba il fuoco a chi è già altrove.
+  // Lo usa anche «Articolo aggiuntivo»: la voce nuova arriva con la rilettura, e il fuoco
+  // la aspetta allo stesso modo.
   const [refocusAfterMatch, setRefocusAfterMatch] = useState<string | null>(null);
   const clearReturnFocus = useCallback(() => {
     setReturnFocus(null);
@@ -204,6 +208,29 @@ export function StockingScreen() {
       // (App.tsx), e arriva in Dispensa (T4)
       notice({ text: stockNotice(sent.length, left) });
       navigate("/dispensa");
+    },
+  });
+
+  // «Articolo aggiuntivo» (S3 §10.1, forma a): una cosa comprata che in lista non
+  // c'era. Diventa una voce di lista nata spuntata, con le rotte di oggi, e si sistema
+  // qui come le altre: la sistemazione resta tutto-o-niente, e la rotta `stock` non cambia
+  const [extraOpen, setExtraOpen] = useState(false);
+  const addExtra = useMutation({
+    mutationFn: async (ingredient: Ingredient) => {
+      // il testo della voce è il nome dell'ingrediente, come se l'avessi scritto. Un
+      // ingrediente già in lista non si doppia (S18): il backend risponde con la voce che
+      // c'era — da comprare, la si spunta, perché è stata comprata (A, deciso da Mattia il 2026-10-09);
+      // già spuntata, è già qui
+      const added = await addShoppingItem(ingredient.display_name, ingredient.id);
+      if (added.status === "checked") return added;
+      return patchShoppingItem(added.id, { status: "checked" });
+    },
+    onSuccess: (item) => {
+      setExtraOpen(false);
+      // il fuoco va alla prima icona della voce quando la lista riletta la porta: lo
+      // stesso percorso di un abbinamento (S19)
+      setRefocusAfterMatch(item.id);
+      return queryClient.invalidateQueries({ queryKey: ["shopping-list"] });
     },
   });
 
@@ -483,6 +510,47 @@ export function StockingScreen() {
               ))}
 
               <div className="flex flex-col gap-2 pt-1">
+                {/* in fondo, prima di «Metti in dispensa»: si aggiunge quel che manca,
+                    poi si mette tutto in dispensa. Solo con qualcosa da sistemare (C, deciso
+                    da Mattia il 2026-10-09): a schermo vuoto la strada è la Lista, o la Dispensa */}
+                {extraOpen ? (
+                  <div className="flex flex-col gap-3 rounded-card border border-line bg-card p-3">
+                    <h2 className="font-semibold">Articolo aggiuntivo</h2>
+                    <IngredientChooser
+                      label="Cosa hai comprato?"
+                      failureNote="Puoi comunque aggiungerlo."
+                      initialTerm=""
+                      busy={addExtra.isPending}
+                      onChosen={(ingredient) => {
+                        if (!addExtra.isPending) addExtra.mutate(ingredient);
+                      }}
+                      before={
+                        <p className="text-sm text-ink-soft">
+                          Entra in lista già spuntato, e lo sistemi qui come le altre voci.
+                        </p>
+                      }
+                      after={
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            addExtra.reset();
+                            setExtraOpen(false);
+                          }}
+                          className="self-start"
+                        >
+                          Annulla
+                        </Button>
+                      }
+                    />
+                    {addExtra.isError && (
+                      <Alert>Non sono riuscito ad aggiungerlo alla spesa da sistemare. Riprova.</Alert>
+                    )}
+                  </div>
+                ) : (
+                  <Button icon={IconPlus} onClick={() => setExtraOpen(true)} className="self-start">
+                    Articolo aggiuntivo
+                  </Button>
+                )}
                 {stock.isError && (
                   <div className="flex flex-col items-start gap-2">
                     <p role="alert" className="text-sm text-danger">

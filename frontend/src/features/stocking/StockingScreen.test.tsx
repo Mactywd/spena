@@ -1491,4 +1491,97 @@ describe("StockingScreen", () => {
       expect(screen.getByText("2 in dispensa · 2 restano in lista")).toBeDefined();
     });
   });
+
+  describe("«Articolo aggiuntivo» (S3 §10.1)", () => {
+    const PANE = { id: "i5", name: "pane", display_name: "Pane", category: "cereali", kind: "food" };
+    const PANE_IN_LISTA = {
+      id: "s9", raw_text: "Pane", ingredient_id: "i5", ingredient_name: "pane",
+      ingredient_category: "cereali", ingredient_kind: "food", status: "pending", reason: "manual",
+      created_at: "2026-10-08T10:00:00Z",
+    };
+
+    function writes(spy: ReturnType<typeof stubRoutedFetch>) {
+      return spy.mock.calls
+        .filter(([, init]) => ["POST", "PATCH"].includes(String((init as RequestInit)?.method)))
+        .map(([url, init]) => [
+          String(url),
+          (init as RequestInit).method,
+          JSON.parse(String((init as RequestInit).body)),
+        ]);
+    }
+
+    async function chooseExtra(term: string, option: string) {
+      await userEvent.click(await screen.findByRole("button", { name: "Articolo aggiuntivo" }));
+      await userEvent.type(screen.getByRole("textbox", { name: "Cosa hai comprato?" }), term);
+      await userEvent.click(await screen.findByRole("option", { name: option }));
+    }
+
+    it("mette in lista una voce già spuntata, che compare fra le altre col fuoco sulla sua prima icona", async () => {
+      let checked = false;
+      const spy = stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[PANE]];
+        if (path.endsWith("/shopping-list") && init?.method === "POST") {
+          return [{ ...PANE_IN_LISTA, added: true }, 201];
+        }
+        if (path.endsWith("/shopping-list/s9") && init?.method === "PATCH") {
+          checked = true;
+          return [{ ...PANE_IN_LISTA, status: "checked" }];
+        }
+        return [checked ? [...CHECKED, { ...PANE_IN_LISTA, status: "checked" }] : CHECKED];
+      });
+      renderScreen();
+      await chooseExtra("pan", "Pane");
+
+      await vi.waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("button", { name: "Codice a barre per Pane" })
+        )
+      );
+      expect(writes(spy)).toEqual([
+        ["/api/v1/shopping-list", "POST", { raw_text: "Pane", ingredient_id: "i5" }],
+        ["/api/v1/shopping-list/s9", "PATCH", { status: "checked" }],
+      ]);
+      expect(screen.queryByRole("textbox", { name: "Cosa hai comprato?" })).toBeNull();
+    });
+
+    it("un ingrediente già spuntato non si doppia e non si rispunta: la sua voce prende il fuoco", async () => {
+      const MELA = { id: "i2", name: "mela", display_name: "Mela", category: "frutta", kind: "food" };
+      const spy = stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[MELA]];
+        if (path.endsWith("/shopping-list") && init?.method === "POST") {
+          return [{ ...CHECKED[1], ingredient_kind: "food", added: false }];
+        }
+        return [CHECKED];
+      });
+      renderScreen();
+      await chooseExtra("mel", "Mela");
+      await vi.waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("button", { name: "Codice a barre per mele" })
+        )
+      );
+      expect(writes(spy).map(([, method]) => method)).toEqual(["POST"]);
+    });
+
+    it("se non riesce lo dice, e la scelta resta lì da rifare", async () => {
+      stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[PANE]];
+        if (path.endsWith("/shopping-list") && init?.method === "POST") return [{ detail: "giù" }, 500];
+        return [CHECKED];
+      });
+      renderScreen();
+      await chooseExtra("pan", "Pane");
+      expect(
+        await screen.findByText("Non sono riuscito ad aggiungerlo alla spesa da sistemare. Riprova.")
+      ).toBeDefined();
+      expect(screen.getByRole("textbox", { name: "Cosa hai comprato?" })).toBeDefined();
+    });
+
+    it("a lista vuota non c'è: lo schermo vuoto porta alla Lista", async () => {
+      stubRoutedFetch(() => [[]]);
+      renderScreen();
+      await screen.findByRole("heading", { name: "Niente da sistemare" });
+      expect(screen.queryByRole("button", { name: "Articolo aggiuntivo" })).toBeNull();
+    });
+  });
 });
