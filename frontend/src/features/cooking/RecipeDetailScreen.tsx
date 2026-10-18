@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { fetchRecipe, setRecipeArchived } from "../recipes/api";
+import { fetchRecipe, setRecipeArchived, type RecipeScale } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { ApiError } from "../../api/client";
 import { AddMissingButton } from "./AddMissingButton";
+import { AnchorField } from "./AnchorField";
 import { CookSheet } from "./CookSheet";
 import { ServingsStepper } from "./ServingsStepper";
 import { Alert } from "../../components/ui/Alert";
@@ -77,20 +78,79 @@ function RecipeHero({ recipe }: { recipe: RecipeDetail }) {
  * come un secondario quasi finito, ma a questa ricetta non basta — e sta scritto,
  * piccolo, accanto al nome (Mattia). Il nome del pallino resta quello del vocabolario
  * (`STATUS_LABELS`); «non basta» lo sente anche chi ascolta, perché è testo. */
-function IngredientRow({ line }: { line: RecipeIngredientLine }) {
+function IngredientRow({
+  line,
+  anchoredAmount,
+  open,
+  onOpen,
+  onClose,
+  onAnchor,
+}: {
+  line: RecipeIngredientLine;
+  /** La dose fissata su questa riga, se è lei l'ancora (R2), come la manda il server. */
+  anchoredAmount: string | null;
+  /** Se il campo «Quanto ne fai?» di questa riga è aperto: uno alla volta. */
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  /** Riscala da questa riga: `null` se è fatto, o il perché se no. */
+  onAnchor: (amount: string) => Promise<string | null>;
+}) {
+  // la dose toccabile riprende il fuoco quando il campo si chiude, da «Annulla» o da una
+  // riscala riuscita: il campo che lo aveva si smonta, e il fuoco cadrebbe sul `body`
+  const doseRef = useRef<HTMLButtonElement>(null);
   return (
-    <li className="flex items-center gap-2.5 px-3 py-2.5">
-      <StatusDot availability={line.availability} />
-      <span className="min-w-0 flex-1">
-        {/* la maiuscola solo a video (spec T3 §4.7): apre la riga, non è dentro una
-            frase né in un nome accessibile */}
-        <span>{capitalizeFirst(line.ingredient_name)}</span>
-        {line.availability === "low" && !line.satisfied && (
-          <span className="ml-2 text-xs font-medium text-low">non basta</span>
-        )}
-      </span>
-      {line.quantity_display && (
-        <span className="shrink-0 text-sm text-ink-faint">{line.quantity_display}</span>
+    <li className="px-3 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <StatusDot availability={line.availability} />
+        <span className="min-w-0 flex-1">
+          {/* la maiuscola solo a video (spec T3 §4.7): apre la riga, non è dentro una
+              frase né in un nome accessibile */}
+          <span>{capitalizeFirst(line.ingredient_name)}</span>
+          {line.availability === "low" && !line.satisfied && (
+            <span className="ml-2 text-xs font-medium text-low">non basta</span>
+          )}
+        </span>
+        {line.quantity_display &&
+          (line.anchorable ? (
+            // R2, secondo modo: una dose che si riscala si tocca. Un pulsante leggero,
+            // sottolineato a puntini (il segno che si tocca), alto 44 px senza alzare la
+            // riga (`-my-2.5` restituisce il `py-2.5` della riga); `-mr-3` riporta il testo
+            // verso il bordo, dove stanno le dosi che non si toccano. La dose fissata in
+            // grassetto dentro un `<strong>`: una seconda classe di colore o di peso sul
+            // pulsante litigherebbe con quella di `ghost` nel CSS compilato
+            <Button
+              ref={doseRef}
+              variant="ghost"
+              accessibleName={`${line.quantity_display}: riscala da ${line.ingredient_name}`}
+              aria-expanded={open}
+              onClick={open ? onClose : onOpen}
+              className="-my-2.5 -mr-3 shrink-0 underline decoration-dotted underline-offset-4"
+            >
+              {anchoredAmount !== null ? (
+                <strong className="font-semibold text-ink">{line.quantity_display}</strong>
+              ) : (
+                line.quantity_display
+              )}
+            </Button>
+          ) : (
+            <span className="shrink-0 text-sm text-ink-faint">{line.quantity_display}</span>
+          ))}
+      </div>
+      {open && (
+        <AnchorField
+          unit={line.anchor_unit}
+          initial={anchoredAmount?.replace(".", ",") ?? ""}
+          onSubmit={async (amount) => {
+            const problem = await onAnchor(amount);
+            if (problem === null) doseRef.current?.focus();
+            return problem;
+          }}
+          onCancel={() => {
+            onClose();
+            doseRef.current?.focus();
+          }}
+        />
       )}
     </li>
   );
@@ -100,9 +160,13 @@ export function RecipeDetailScreen() {
   const { id = "" } = useParams();
   const [cooking, setCooking] = useState(false);
 
-  // le porzioni chieste: è una vista, non si salva. Uscire dalla ricetta se ne
-  // dimentica, ed è quel che vuole chi sta guardando cosa cucinare stasera.
-  const [servings, setServings] = useState<number | null>(null);
+  // come si vuole vedere la ricetta: per porzioni, o da una dose fissata su una riga
+  // (R2, secondo modo). Un modo alla volta, ed è una vista: non si salva, e uscire
+  // dalla ricetta se ne dimentica — è quel che vuole chi guarda cosa cucinare stasera.
+  // `null` è la ricetta com'è.
+  const [scale, setScale] = useState<RecipeScale | null>(null);
+  // la riga il cui campo «Quanto ne fai?» è aperto: uno alla volta
+  const [anchorField, setAnchorField] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const notice = useNotice();
@@ -129,8 +193,8 @@ export function RecipeDetailScreen() {
     isError: isRecipeError,
     refetch: refetchRecipe,
   } = useQuery({
-    queryKey: ["recipe", id, servings],
-    queryFn: () => fetchRecipe(id, servings ? { servings } : undefined),
+    queryKey: ["recipe", id, scale],
+    queryFn: () => fetchRecipe(id, scale ?? undefined),
     // le porzioni stanno nella chiave, quindi ogni tocco dello stepper è una chiave
     // nuova e senza cache: senza questo, `isLoading` torna vero e lo schermo intero
     // viene sostituito da «Carico…» a metà della rilettura — il pulsante sparisce da
@@ -171,6 +235,31 @@ export function RecipeDetailScreen() {
     cookRef.current?.focus();
   }, [sheetOpen]);
 
+  // R2, secondo modo: si chiede prima la ricetta riscalata, e solo se il server la dà
+  // la vista cambia. Un 422 (oltre le 50 volte) resta così sotto il campo, con la
+  // frase del server, e la ricetta resta com'era: cambiare vista e scoprire dopo il
+  // rifiuto avrebbe mandato lo schermo intero nel ramo d'errore. La risposta finisce
+  // nella cache con la chiave della query qui sopra, che la trova già pronta (e la
+  // rilegge in sottofondo, come ogni dato vecchio).
+  async function anchorOn(ingredientId: string, amount: string): Promise<string | null> {
+    const next: RecipeScale = { anchor: ingredientId, amount };
+    try {
+      await queryClient.fetchQuery({
+        queryKey: ["recipe", id, next],
+        queryFn: () => fetchRecipe(id, next),
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 422) {
+        const detail = (error.body as { detail?: unknown } | null)?.detail;
+        if (typeof detail === "string") return detail;
+      }
+      return "Non sono riuscito a riscalare. Riprova.";
+    }
+    setAnchorField(null);
+    setScale(next);
+    return null;
+  }
+
   if (isRecipeLoading) return <p className="p-4 text-ink-soft">Carico…</p>;
 
   // un caricamento fallito non è una ricetta vuota: dirlo sarebbe una bugia su
@@ -186,6 +275,22 @@ export function RecipeDetailScreen() {
           <Link to="/ricette" className={buttonClasses("secondary")}>
             Torna al ricettario
           </Link>
+        </div>
+      );
+    }
+    // Una vista riscalata già accettata che il server ora rifiuta: la ricetta è stata
+    // modificata altrove e la dose è uscita dalle 50 volte. «Riprova» rifarebbe la stessa
+    // domanda; l'uscita è la ricetta com'è.
+    if (
+      recipeError instanceof ApiError &&
+      recipeError.status === 422 &&
+      scale !== null &&
+      "anchor" in scale
+    ) {
+      return (
+        <div className="flex flex-col items-start gap-3 p-4">
+          <Alert>Non riesco più a riscalare da quella dose: la ricetta è cambiata.</Alert>
+          <Button onClick={() => setScale(null)}>Torna alle dosi della ricetta</Button>
         </div>
       );
     }
@@ -234,6 +339,14 @@ export function RecipeDetailScreen() {
   ].filter((group) => group.lines.length > 0);
   // quali righe mancano lo dice il server (`satisfied`): qui si filtra, non si giudica
   const missing = recipe.ingredients.filter((line) => !line.satisfied);
+  // la dose fissata, se la vista è riscalata da un ingrediente (R2). `?? null`: una
+  // risposta di un backend vecchio, in cache nel service worker, non ha il campo
+  const anchor = recipe.anchor ?? null;
+  const anchorLine =
+    anchor === null
+      ? null
+      : (recipe.ingredients.find((line) => line.ingredient_id === anchor.ingredient_id) ??
+        null);
 
   return (
     <div className="px-4 pt-2 pb-4">
@@ -311,12 +424,42 @@ export function RecipeDetailScreen() {
         </div>
       ) : (
         <>
-          {/* sempre, anche senza porzioni: allora dice perché è fermo */}
+          {/* sempre, anche senza porzioni: allora dice perché è fermo. Con una dose
+              fissata dice le porzioni che fa, «≈ 1,5», e toccarlo torna alle porzioni
+              intere (R2: un modo alla volta) */}
           <div className="pt-3">
             <ServingsStepper
-              value={recipe.servings === null ? null : (servings ?? recipe.servings)}
-              onChange={setServings}
+              value={
+                recipe.servings === null
+                  ? null
+                  : scale !== null && "servings" in scale
+                    ? scale.servings
+                    : recipe.servings
+              }
+              approx={anchor?.equivalent_servings ?? null}
+              onChange={(next) => {
+                setAnchorField(null);
+                setScale({ servings: next });
+              }}
             />
+            {anchorLine !== null && (
+              // da quale dose è riscalata, e l'uscita: sulle ricette senza porzioni − e +
+              // sono spenti, e sarebbe l'unica strada per tornare indietro
+              <div className="flex flex-wrap items-center gap-x-2 pt-1">
+                <p className="text-sm text-ink-soft">
+                  Riscalata da {anchorLine.ingredient_name}: {anchorLine.quantity_display}.
+                </p>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setAnchorField(null);
+                    setScale(null);
+                  }}
+                >
+                  Torna alle dosi della ricetta
+                </Button>
+              </div>
+            )}
           </div>
 
           {groups.map(({ label, lines }) => (
@@ -326,7 +469,19 @@ export function RecipeDetailScreen() {
               <Card pad={false}>
                 <ul>
                   {lines.map((line) => (
-                    <IngredientRow key={line.ingredient_id} line={line} />
+                    <IngredientRow
+                      key={line.ingredient_id}
+                      line={line}
+                      anchoredAmount={
+                        anchor !== null && anchor.ingredient_id === line.ingredient_id
+                          ? anchor.amount
+                          : null
+                      }
+                      open={anchorField === line.ingredient_id}
+                      onOpen={() => setAnchorField(line.ingredient_id)}
+                      onClose={() => setAnchorField(null)}
+                      onAnchor={(amount) => anchorOn(line.ingredient_id, amount)}
+                    />
                   ))}
                 </ul>
               </Card>
