@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-18 (fase notte: S3 e S12 fatti, da revisionare; una domanda per Mattia sulla serie della scansione)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte: S3, S12 e tema scuro fatti, da revisionare; una domanda per Mattia sulla serie della scansione)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -139,11 +139,13 @@ fra le idee._
 - [tbd] P2 · Prove sul telefono del tema scuro (Consegna 0): barra di stato nei due temi, icona reinstallata, Inter senza rete, schermata d'avvio (probabile lampo chiaro). Nel browser passati il cambio di tema senza ricaricare e i due `theme-color`
 - [tbd] P3 · Sul server: restringere `Bash(ssh hetznerserver:*)` in `.claude/settings.local.json`; togliere `ANTHROPIC_API_KEY` dal `.env`; decidere dei due file non tracciati `.env.bak` e `imposta-password.sh` [Parte X]
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
+- [tbd] P3 · Prova sul telefono dei pulsanti spenti e del ☰ (tema scuro): il pulsante spento grigio si legge al sole e si capisce spento accanto a un secondario acceso, nei due temi; il ☰ in scuro spegne la pagina e si stacca col suo bordo. Nel browser l'e2e misura i contrasti nei due temi [T3 Consegna 1]
 
 ## In corso
-- [in corso] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — grigio pieno coi token `disabled` / `on-disabled`, velo 45% / 60% col bordo `panel-edge` [T3 Consegna 1] → `docs/superpowers/plans/2026-10-08-tema-scuro-spenti.md`, ramo `night/tema-scuro-spenti` da `night/s12-righe-dispensa` → branch night/tema-scuro-spenti
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · Tema scuro: il pulsante spento è grigio pieno (`disabled` / `on-disabled`) in ogni variante e in volo, niente più `opacity`; il velo del ☰ al 45% / 60% col bordo `panel-edge` in scuro; l'e2e misura anche i pulsanti spenti [T3 Consegna 1] → branch night/tema-scuro-spenti (da revisionare)
 - [fatto] 2026-10-18 · S12, righe della dispensa riconoscibili: l'emoji dell'ingrediente a sinistra del nome (elenco chiuso fino a Emoji 14.0, colonna `ingredients.emoji`, migrazione 0013) col ripiego sull'icona del reparto in grigio; «Cambia figura» in Anagrafica; il comando `decide_emoji` per l'AI, da lanciare dopo il deploy [S12] → branch night/s12-righe-dispensa (da revisionare)
 - [fatto] 2026-10-18 · S3, ingresso diretto in dispensa: «Scansiona» in serie con la scheda di conferma (due tocchi per una confezione a catalogo), il + che crea l'ingrediente, la scadenza prima di entrare e «Annulla» nell'avviso; in «Sistema la spesa» «Articolo aggiuntivo» e «+ un'altra confezione»; la regia dei pannelli in `ProductResolver`, `stock_one` nel backend [S3] → branch night/s3-ingresso-diretto (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30

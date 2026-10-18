@@ -2312,6 +2312,26 @@ scuro: ≥3:1 (WCAG 1.4.11, è un segno e non un testo, non la
 soglia 4,5:1 di un testo). Gli altri due — il pulsante primario spento, il velo del ☰ —
 restano aperti, e non toccano la Dispensa.
 
+**Il primo e il terzo si chiudono il 2026-10-18**, sul ramo `night/tema-scuro-spenti`,
+non ancora in produzione (bozza `docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md`,
+decisa il 2026-10-07). Il pulsante spento non usa più `opacity`, che lo portava a 1,8:1 in
+chiaro e a un verde torbido in scuro: `primary` e `warn` spenti hanno un grigio pieno
+(`--color-disabled`, `#d8dfdb` / `#2a332d`) con la scritta `on-disabled` (5,33:1 e
+6,83:1); `secondary`, `ghost` e `danger` spenti scrivono in `ink-faint`. Vale per
+`disabled`, `busy` e `unavailableReason`, e per i `<button>` scritti a mano con
+`buttonClasses`. Il velo del ☰ è al 45% in chiaro e al 60% in scuro (`--scrim-alpha`), e il
+pannello ha un bordo sinistro `panel-edge` (`#5a645e` in scuro, invisibile in chiaro):
+pannello o bordo stanno sopra 3:1 contro la pagina e le schede velate, nei due temi
+(`theme.test.ts`). L'e2e misura ora anche la scritta dei pulsanti spenti, in ogni luogo;
+restano saltati i testi sotto un'opacità, cioè gli altri controlli spenti fuori da
+`Button` (voce a parte in `next-steps.md`).
+
+**Le scelte che Mattia può voler rivedere:** il grigio dello spento anche per il pulsante
+in volo (`busy`), per tutta la durata della richiesta; il bordo del ☰ solo in scuro.
+
+**Da provare sul telefono:** il pulsante spento grigio al sole, accanto a un secondario
+acceso, nei due temi; il ☰ in scuro, che la pagina si spenga e il pannello si stacchi.
+
 Suite alla fine: 606 test in jsdom (50 file), typecheck, lint e build puliti; 29 e2e
 verdi, di cui 9 nuovi in `e2e/style.spec.ts`: fondo della pagina, contrasto di ogni testo
 e nome di ogni pulsante in chiaro e in scuro, su ogni rotta (le otto fisse, il dettaglio,
