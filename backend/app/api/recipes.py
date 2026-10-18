@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.db.models.recipe import Recipe
-from app.domain.quantities import UnitForms, render_quantity, scale_quantity
+from app.domain.quantities import UnitForms, render_quantity, scale_quantity, with_qb_tail
 from app.domain.rules import (
     Availability,
     IngredientRole,
@@ -104,7 +104,11 @@ async def _to_out(
                 if ri.unit
                 else None
             )
-            display = render_quantity(scale_quantity(ri.quantity_value, factor), forms)
+            # «50 g + q.b.» riscalata è «100 g + q.b.»: il q.b. resta scritto accanto
+            display = with_qb_tail(
+                render_quantity(scale_quantity(ri.quantity_value, factor), forms),
+                ri.quantity_text,
+            )
             scaled = True
         else:
             display = ri.quantity_text
