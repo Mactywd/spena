@@ -113,6 +113,23 @@ def test_map_columns_rifiuta_un_unita_diversa_da_quella_del_vocabolario():
         map_columns(sbagliata)
 
 
+@pytest.mark.parametrize("kj_prima", [True, False])
+def test_map_columns_l_energia_in_kj_accanto_a_quella_in_kcal_non_rifiuta_il_file(kj_prima):
+    """Nel CIQUAL vero l'energia compare due volte con lo stesso nome, in kJ e in kcal: si
+    usa la colonna nell'unità giusta e quella in kJ resta fra le non usate, qualunque
+    sia l'ordine."""
+    kj = "Energie, Règlement UE N° 1169/2011 (kJ/100 g)"
+    kcal = INTESTAZIONE[5]
+    coppia = [kj, kcal] if kj_prima else [kcal, kj]
+    intestazione = [*INTESTAZIONE[:5], *coppia, *INTESTAZIONE[6:]]
+
+    colonne = map_columns(intestazione)
+
+    assert colonne.nutrients["kcal"] == intestazione.index(kcal)
+    assert colonne.unused == (kj, "Eau (g/100 g)")
+    assert "kcal" not in colonne.absent
+
+
 def test_map_columns_rifiuta_un_file_senza_codice():
     with pytest.raises(CiqualFormatError, match="alim_code"):
         map_columns([colonna for colonna in INTESTAZIONE if colonna != "alim_code"])

@@ -165,8 +165,10 @@ def map_columns(headers: list[str | None]) -> ColumnMap:
     """Quale colonna è quale. Solleva `CiqualFormatError` se il file non va."""
     wanted = {name: key for key, names in CIQUAL_NAMES.items() for name in names}
     identity: dict[str, int] = {}
-    nutrients: dict[str, int] = {}
-    unused: list[str] = []
+    # (posizione, intestazione) delle colonne di costituente che nessuna chiave usa
+    skipped: list[tuple[int, str]] = []
+    # chiave → le colonne con quel nome, nell'ordine del file: (posizione, intestazione, unità)
+    candidates: dict[str, list[tuple[int, str, str]]] = {}
     for index, header in enumerate(headers):
         if header is None:
             continue
@@ -180,15 +182,27 @@ def map_columns(headers: list[str | None]) -> ColumnMap:
         name, unit = split
         key = wanted.get(name)
         if key is None:
-            unused.append(plain)
+            skipped.append((index, plain))
             continue
+        candidates.setdefault(key, []).append((index, plain, unit))
+    # Nel CIQUAL l'energia compare due volte con lo stesso nome, in kJ e in kcal, una
+    # accanto all'altra: una colonna nell'unità sbagliata si rifiuta solo se il file non ne
+    # ha una nell'unità giusta per la stessa chiave. Se c'è, quella sbagliata è una colonna
+    # non usata e si usa la prima in unità giusta.
+    nutrients: dict[str, int] = {}
+    for key, columns in candidates.items():
         field = NUTRIENT_FIELDS[key]
-        if unit != normalize_unit(field.unit):
+        right = normalize_unit(field.unit)
+        found = next((index for index, _, unit in columns if unit == right), None)
+        if found is None:
+            _, plain, unit = columns[0]
             raise CiqualFormatError(
                 f"la colonna «{plain}» è in {unit}, ma «{field.label}» si conta in "
                 f"{field.unit}: il file non è quello atteso"
             )
-        nutrients.setdefault(key, index)
+        nutrients[key] = found
+        skipped.extend((index, plain) for index, plain, unit in columns if unit != right)
+    unused = [plain for _, plain in sorted(skipped)]
     missing = [column for column in (CODE_COLUMN, NAME_COLUMN) if column not in identity]
     if missing:
         raise CiqualFormatError(
