@@ -221,6 +221,26 @@ solo dove manca. Un costo scelto a mano non si tocca; se la fonte chiede di smet
 si ferma, e rilanciato riprende da dove era. Le pagine importate da qui in avanti il
 costo lo portano già.
 
+### I sostituti degli ingredienti
+
+«Sostituisci», dentro una ricetta, legge una risposta salvata per ingrediente e contesto
+(dolce o salato): uno o più sostituti, «si può omettere», «insostituibile». Le decide
+l'AI, una voce per chiamata, e le scrive solo dove non c'è una risposta:
+
+```bash
+docker compose exec backend python -m app.cli.decide_substitutes --dry-run
+docker compose exec backend python -m app.cli.decide_substitutes --limit 20
+docker compose exec backend python -m app.cli.decide_substitutes
+```
+
+Il primo non chiama nessuno: dice quante voci mancano e, dopo un lancio vero, quanto
+costerebbe il resto con la media pagata. Il secondo chiede le venti più usate e stampa
+una riga per voce, da guardare prima del resto. L'ultima riga dice sempre quante voci
+restano. Senza il comando non si rompe niente: una voce che manca si chiede all'AI la
+prima volta che qualcuno tocca «Sostituisci». Le risposte si correggono in Anagrafica,
+nella scheda dell'ingrediente, e per una ricetta sola dalla ricetta («Non va bene qui»);
+una correzione a mano il comando non la tocca mai.
+
 ### I vettori della ricerca semantica
 
 Se tieni accesa la ricerca semantica (`INSTALL_EMBEDDINGS=1`), dopo un import esegui:

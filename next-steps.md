@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-19 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -41,7 +41,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 13. [pronto] P3 · Pulizie: controlli spenti e fuoco — i controlli fuori da `Button` smettono di sbiadire con l'`opacity`, le due caselle da 20 px diventano `Checkbox`, nessun controllo si spegne col fuoco addosso (stepper, `IngredientPicker`, `InlineField`, «Salva prodotto»), il segno d'attesa sui pulsanti di sola icona, i `<button>` del modulo della ricetta diventano `Button`, il fuoco dopo un annullamento nella coda [T3 Consegne 2–6b] → `docs/superpowers/plans/2026-10-13-pulizie-controlli.md`, ramo `night/pulizie-controlli` da `night/r8-modifica-con-ai`
 14. [pronto] P3 · Pulizie: test instabili e piccoli difetti del backend — attese più lunghe sotto carico, un client react-query dei test fatto come quello dell'app, le date dell'e2e nel giorno di Roma, via gli avvisi di Starlette, `occurrences` ricontato con una `COUNT`, il 409 delle due righe che nomina l'ingrediente, i pulsanti della coda con una decisione in volo [T3 Consegne 5–6b, Parte X] → `docs/superpowers/plans/2026-10-13-pulizie-test.md`, ramo `night/pulizie-test` da `master`
 15. [pronto] P3 · Pulizie: parole a video — «È «…»?» senza l'articolo sbagliato, la maiuscola al titolo del foglio della cottura e, solo a video, in Lista e Sistema la spesa; «non è un alimento» nella bozza AI; la nota vera delle righe da creare; scegliere dal selettore aggancia la riga nuova con lo stesso nome invece di farne due (Mattia, 2026-10-13) [T3 Consegna 6b, Parte X] → `docs/superpowers/plans/2026-10-13-pulizie-parole.md`, ramo `night/pulizie-parole` da `master`
-16. [in corso] P3 · R5, sostituisci ingrediente, precalcolato: una voce per ingrediente × dolce/salato, solo sostituti già in anagrafica, decisa subito dall'AI e segnata come tale, «Sostituisci» nel dettaglio della ricetta con la correzione per quella ricetta, la sezione «Sostituti» in Anagrafica; migrazione `0015`; `decide_substitutes` da lanciare in produzione solo da Mattia dopo il deploy (Mattia, 2026-10-13) [R5] → `docs/superpowers/plans/2026-10-13-r5-sostituti.md`, ramo `night/r5-sostituti` da `master`
 17. [pronto] P3 · S4 fetta 1, i nutrienti dell'ingrediente da CIQUAL 2025: `load_ciqual`, `ingredient_nutrition` (migrazione `0016`), `decide_ciqual` in due passi (parole francesi, poi la scelta fra candidati veri), il pilota su Gemma, «Valori nutrizionali» in Anagrafica; il file CIQUAL lo scarica e committa Mattia (Mattia, 2026-10-13) [S4] → `docs/superpowers/plans/2026-10-13-s4-ciqual.md`, ramo `night/s4-ciqual` da `master`
 18. [pronto] P3 · S4 fetta 2, i grammi per ingrediente × unità e i nutrienti di una ricetta con la copertura dichiarata («q.b.» fuori, e lo si dice): `ingredient_unit_grams` (migrazione `0017`), `decide_grams`, «Pesi per unità» in Anagrafica, il pannello nel dettaglio della ricetta (Mattia, 2026-10-13) [S4] → `docs/superpowers/plans/2026-10-13-s4-grammi.md`, ramo `night/s4-grammi` da `night/s4-ciqual`
 19. [pronto] P3 · H2, l'attività da Health Connect via HC Webhook: passi, allenamenti e peso (anche dal Galaxy Watch, senza doppioni), la chiave del webhook, «Attività» dal ☰; migrazione `0018`; il collegamento sul telefono lo fa Mattia dopo il deploy (Mattia, 2026-10-13) [H2] → `docs/superpowers/plans/2026-10-13-h2-health-connect.md`, ramo `night/h2-health-connect` da `master`
@@ -101,9 +100,12 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `search_ingredients` non protegge il testo cercato nel `LIKE`: un `%` o un `_` digitati fanno da jolly (`backend/app/repositories/ingredients.py`) [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
+- [idea] P3 · Le correzioni dei sostituti di una ricetta importata potrebbero viaggiare nel `payload` come le cotture (`cooking_event_ids`), così l'import che rifà la ricetta le rimette: oggi si perdono (deciso da Mattia il 2026-10-13, opzione (a) della spec R5 §10) [R5]
+- [idea] P3 · Un elenco delle voci dei sostituti decise dall'AI da rivedere, fuori dalla scheda dell'ingrediente (oggi si rivedono ingrediente per ingrediente) [R5]
+- [idea] P3 · «Chiedi all'AI» nella sezione «Sostituti» dell'Anagrafica, per una voce senza risposta (oggi la chiede il primo «Sostituisci» in una ricetta, o il comando) [R5]
 
 ## Bloccati
-- [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
+- [bloccato] P3 · R6, cucinabili con sostituti — attende: il merge di R5 (`night/r5-sostituti`); la regola è nella spec R5 §8
 - [bloccato] P3 · H3, Profilo — attende: la spec di P2, che dice cosa serve
 - [bloccato] P3 · P3, pianificare più giorni — attende: P2 e S4 (deciso il 2026-09-24 di non partire prima); aperti anche i profili di budget [P3]
 - [bloccato] P3 · M1, motore di suggerimento — attende: pasti, nutrienti e sostituti (P2, S4, R5)
@@ -117,6 +119,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P3 · Dopo il deploy di R5: al merge ripuntare la `down_revision` della `0015` sulla testa di `master` (`alembic heads` = una testa) e, se H1 è dentro, `"ingredient_substitutes": "Sostituti degli ingredienti"` in `CALL_SITE_LABELS`; poi in produzione `decide_substitutes --dry-run`, `--limit 20` (guardare le venti righe e la spesa), di nuovo `--dry-run` per la stima, e il resto (comandi nel piano R5, «Dopo il deploy»). Sul telefono: l'icona in fondo alla riga col pollice, il pannello sotto la riga, il selettore con la tastiera aperta [R5]
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
 - [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)
@@ -132,6 +135,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-19 · R5, sostituisci ingrediente: risposte per ingrediente × {dolce, salato} decise dall'AI (`decide_substitutes`, a lotti, `--limit`/`--dry-run`) o al primo tocco, l'icona «Sostituisci» in fondo a ogni riga col pannello sotto, «Non va bene qui» per la ricetta, la sezione «Sostituti» in Anagrafica con le voci dell'AI da rivedere, la fusione che sposta tutto; migrazione `0015` [R5] → branch night/r5-sostituti (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
