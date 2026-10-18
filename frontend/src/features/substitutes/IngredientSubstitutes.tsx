@@ -173,7 +173,15 @@ function ContextCard({
               Va bene così
             </Button>
           )}
-          <Button ref={actionRef} accessibleName={`Correggi: ${where}`} onClick={() => setEditing(true)}>
+          <Button
+            ref={actionRef}
+            accessibleName={`Correggi: ${where}`}
+            onClick={() => {
+              // l'errore di un «Va bene così» fallito non deve sopravvivere alla correzione
+              confirm.reset();
+              setEditing(true);
+            }}
+          >
             Correggi
           </Button>
         </div>

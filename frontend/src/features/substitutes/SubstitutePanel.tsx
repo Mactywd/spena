@@ -33,7 +33,20 @@ export function SubstitutePanel({
   const queryClient = useQueryClient();
   const key = substitutionKey(recipeId, ingredientId);
   const [editing, setEditing] = useState(false);
-  const query = useQuery({ queryKey: key, queryFn: () => loadLineSubstitution(recipeId, ingredientId) });
+  // Il `queryFn` è `loadLineSubstitution`: senza una risposta salvata chiama l'AI, che si
+  // paga. Una chiamata per tocco (§6), quindi niente rilanci da soli — né al ritorno sulla
+  // finestra, né alla rete che torna, né un nuovo tentativo dopo un 5xx (la stessa cura di
+  // `MergePanel`, F13): ognuno sarebbe una chiamata a pagamento che nessuno ha chiesto. Il
+  // recupero è «Riprova». Niente `staleTime` e niente `refetchOnMount: false`: riaprire il
+  // pannello è proprio il tocco su «Sostituisci», ed è ciò che raccoglie un cambio di
+  // categoria della ricetta o della dispensa.
+  const query = useQuery({
+    queryKey: key,
+    queryFn: () => loadLineSubstitution(recipeId, ingredientId),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 0,
+  });
   const reset = useMutation({
     mutationFn: () => resetLineSubstitution(recipeId, ingredientId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: key }),
@@ -55,7 +68,24 @@ export function SubstitutePanel({
   }
 
   let body: ReactNode;
-  if (query.isPending) {
+  if (editing && query.data !== undefined) {
+    // l'editor viene prima dell'errore: un rilancio in background fallito non deve
+    // portarsi via quel che l'utente sta scrivendo
+    body = (
+      <SubstituteEditor
+        legend={`Al posto di ${ingredientName}, in questa ricetta:`}
+        saveLabel="Salva per questa ricetta"
+        initialVerdict={query.data.verdict}
+        initialSubstitutes={query.data.substitutes}
+        save={(answer) => saveLineSubstitution(recipeId, ingredientId, answer)}
+        onSaved={(saved: LineSubstitution) => {
+          queryClient.setQueryData(key, saved);
+          closeEditor();
+        }}
+        onCancel={closeEditor}
+      />
+    );
+  } else if (query.isPending) {
     body = (
       <p role="status" className="text-sm text-ink-soft">
         {`Cerco cosa usare al posto di ${ingredientName}…`}
@@ -77,21 +107,6 @@ export function SubstitutePanel({
           </Button>
         )}
       </div>
-    );
-  } else if (editing) {
-    body = (
-      <SubstituteEditor
-        legend={`Al posto di ${ingredientName}, in questa ricetta:`}
-        saveLabel="Salva per questa ricetta"
-        initialVerdict={query.data.verdict}
-        initialSubstitutes={query.data.substitutes}
-        save={(answer) => saveLineSubstitution(recipeId, ingredientId, answer)}
-        onSaved={(saved: LineSubstitution) => {
-          queryClient.setQueryData(key, saved);
-          closeEditor();
-        }}
-        onCancel={closeEditor}
-      />
     );
   } else if (query.data.verdict === null) {
     body = (

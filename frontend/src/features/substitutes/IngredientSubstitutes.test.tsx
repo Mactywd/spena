@@ -75,6 +75,26 @@ describe("IngredientSubstitutes", () => {
     });
   });
 
+  it("l'errore di un «Va bene così» fallito non sopravvive a una correzione salvata", async () => {
+    const corretta: IngredientSubstitutions = {
+      ...SCHEDA, contexts: [{ ...SCHEDA.contexts[0], decided_by: "human" }, SCHEDA.contexts[1]],
+    };
+    let puts = 0;
+    stubRoutedFetch((_path, method) => {
+      if (method !== "PUT") return [SCHEDA, 200];
+      puts += 1;
+      return puts === 1 ? [{ detail: "boom" }, 500] : [corretta, 200];
+    });
+    renderSection();
+    await userEvent.click(await screen.findByRole("button", { name: "Va bene così: nei piatti salati" }));
+    expect(await screen.findByText("Non sono riuscito a salvare. Riprova.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Correggi: nei piatti salati" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salva" }));
+    expect(await screen.findByText("Scelto a mano.")).toBeInTheDocument();
+    expect(screen.queryByText("Non sono riuscito a salvare. Riprova.")).toBeNull();
+  });
+
   it("«Scrivi tu» scrive la voce dolce", async () => {
     const scritta: IngredientSubstitutions = {
       ...SCHEDA,

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, focusManager, onlineManager } from "@tanstack/react-query";
 import { SubstitutePanel } from "./SubstitutePanel";
 import type { LineSubstitution } from "./types";
 
@@ -38,13 +38,14 @@ function callsTo(spy: ReturnType<typeof stubRoutedFetch>, method: string, path: 
   );
 }
 
-function renderPanel() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPanel(defaults: { retry: number | false; retryDelay?: number } = { retry: false }) {
+  const client = new QueryClient({ defaultOptions: { queries: defaults } });
   render(
     <QueryClientProvider client={client}>
       <SubstitutePanel recipeId="r1" ingredientId="i-pasta" ingredientName="pasta" />
     </QueryClientProvider>
   );
+  return client;
 }
 
 afterEach(() => {
@@ -84,6 +85,52 @@ describe("SubstitutePanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Scrivi tu" }));
     expect(screen.getByRole("group", { name: "Al posto di pasta, in questa ricetta:" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Un altro ingrediente" })).toBeChecked();
+  });
+
+  it("senza una risposta non richiama l'AI da sola: né al fuoco, né alla rete, né dopo un guasto", async () => {
+    // il client di produzione ritenta; il pannello deve spegnerlo lui, non il client del test
+    let guasto = false;
+    const spy = stubRoutedFetch((_path, method) =>
+      method === "POST" ? (guasto ? [{ detail: "boom" }, 500] : [{ ...VUOTA, ai_failed: true }, 200]) : [VUOTA, 200]
+    );
+    renderPanel({ retry: 3, retryDelay: 1 });
+    expect(await screen.findByText("Nessun suggerimento ancora.")).toBeInTheDocument();
+    expect(callsTo(spy, "POST", `${LINE}/ask`)).toHaveLength(1);
+
+    try {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(callsTo(spy, "POST", `${LINE}/ask`)).toHaveLength(1);
+      expect(callsTo(spy, "GET", LINE)).toHaveLength(1);
+    } finally {
+      focusManager.setFocused(undefined);
+      onlineManager.setOnline(true);
+    }
+
+    // un 5xx dell'AI non si ritenta da solo: una sola chiamata, poi «Riprova»
+    guasto = true;
+    await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
+    expect(await screen.findByText("Non sono riuscito a leggere i sostituti.")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(callsTo(spy, "POST", `${LINE}/ask`)).toHaveLength(2);
+  });
+
+  it("un rilancio in background fallito non porta via il modulo aperto", async () => {
+    let guasto = false;
+    stubRoutedFetch((_path, method) => (guasto && method === "GET" ? [{ detail: "boom" }, 500] : [GENERALE, 200]));
+    const client = renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Non va bene qui" }));
+    const nota = screen.getByRole("textbox", { name: "Nota per riso" });
+    await userEvent.type(nota, " molto");
+
+    guasto = true;
+    await client.invalidateQueries({ queryKey: ["substitution"] });
+    await waitFor(() => expect(client.getQueryState(["substitution", "r1", "i-pasta"])?.status).toBe("error"));
+    expect(screen.getByRole("textbox", { name: "Nota per riso" })).toHaveValue("cottura più lunga molto");
+    expect(screen.queryByText("Non sono riuscito a leggere i sostituti.")).not.toBeInTheDocument();
   });
 
   it("«si può omettere» è una frase", async () => {
