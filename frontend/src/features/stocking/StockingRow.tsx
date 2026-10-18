@@ -1,19 +1,19 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { ExpiryField } from "./ExpiryField";
+import { ResolutionNote } from "./ResolutionNote";
+import { useReturnFocus } from "./useReturnFocus";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { IconToolbar } from "../../components/ui/IconToolbar";
 import {
   IconBarcode,
-  IconCalendarPlus,
   IconLink,
   IconListSearch,
   IconRefresh,
   IconReplace,
   IconScale,
-  IconX,
 } from "../../components/ui/icons";
 import { revealAtTop } from "../../lib/revealAtTop";
-import { EXPIRY_INPUT_MAX } from "../pantry/expiryLabels";
 import type { FocusTarget, PanelTrigger, Resolution } from "./stockingView";
 import type { ShoppingItem } from "../../domain/types";
 
@@ -63,20 +63,7 @@ export function StockingRow({
   children?: ReactNode;
 }) {
   const ref = useRef<HTMLLIElement>(null);
-  const expiryButton = useRef<HTMLButtonElement>(null);
-  // la ✕ ed Esc chiudono il campo: il fuoco torna a «+ scadenza» invece di cadere sul
-  // `body` insieme al campo che sparisce
-  const refocusExpiry = useRef(false);
-  // «+ scadenza» porta il fuoco nel campo. Non `autoFocus`: la riga rinasce a ogni
-  // pannello aperto o chiuso (decisione 21, il campo resta aperto), e a ogni rinascita il
-  // campo si riprendeva il fuoco — quello di «Annulla» finiva nella data di un'altra voce
-  // invece che sul pulsante che aveva aperto il pannello (misurato nell'e2e). Solo il
-  // tocco lo chiede, e una riga appena nata non l'ha avuto
-  const expiryInput = useRef<HTMLInputElement>(null);
-  const focusExpiryInput = useRef(false);
-  const expiryId = useId();
   const name = item.raw_text;
-  const expiryOpen = expiry !== undefined;
 
   // `scroll-mt-16` sulla `<li>` dice dove fermarsi: l'intestazione fissa (h-12) più un
   // respiro, come in Dispensa
@@ -84,36 +71,7 @@ export function StockingRow({
     if (focused && ref.current) revealAtTop(ref.current);
   }, [focused]);
 
-  // La vista cambia forma aprendo e chiudendo un pannello, e questa riga rinasce: il
-  // pulsante che aveva il fuoco non c'è più. Lo schermo dice dove rimetterlo; `Button`
-  // non passa `ref`, quindi lo si cerca per il `data-trigger` dello span che lo avvolge.
-  // Solo se il fuoco è caduto sulla pagina: è sempre così quando il pulsante che lo
-  // aveva è sparito, e una richiesta arrivata in ritardo (la rilettura dopo un
-  // abbinamento) non lo toglie a chi è già andato altrove
-  useEffect(() => {
-    if (!returnFocusTo || !ref.current) return;
-    const lost = document.activeElement === null || document.activeElement === document.body;
-    if (lost) {
-      ref.current.querySelector<HTMLElement>(`[data-trigger="${returnFocusTo}"] button`)?.focus();
-    }
-    onFocusReturned();
-  }, [returnFocusTo, onFocusReturned]);
-
-  useEffect(() => {
-    if (!expiryOpen && refocusExpiry.current) {
-      refocusExpiry.current = false;
-      expiryButton.current?.focus();
-    }
-    if (expiryOpen && focusExpiryInput.current) {
-      focusExpiryInput.current = false;
-      expiryInput.current?.focus();
-    }
-  }, [expiryOpen]);
-
-  function closeExpiry() {
-    refocusExpiry.current = true;
-    onExpiry(undefined);
-  }
+  useReturnFocus(ref, returnFocusTo, onFocusReturned);
 
   return (
     <li ref={ref} className="scroll-mt-16 py-1">
@@ -123,18 +81,7 @@ export function StockingRow({
             restano circa 170px (S16, in Lista) */}
         <div className="min-w-0 flex-1 break-words">
           <p className="font-medium">{name}</p>
-          {resolution && (
-            <p className="text-xs text-ink-soft">
-              {resolution.kind === "loose" ? (
-                "Sfuso"
-              ) : (
-                <>
-                  <span>{resolution.product.name}</span>
-                  {resolution.product.brand && <span> · {resolution.product.brand}</span>}
-                </>
-              )}
-            </p>
-          )}
+          {resolution && <ResolutionNote resolution={resolution} />}
         </div>
         {resolution ? (
           // «Cambia» non è più un'azione principale: un'icona, grigia (spec §4.3)
@@ -215,63 +162,9 @@ export function StockingRow({
         </div>
       )}
 
-      {/* Dietro un tocco, sempre: dieci campi vuoti sarebbero rumore permanente sullo
-          schermo più denso dell'app, per chi la scadenza non la scrive mai. Resta
-          raggiungibile anche a voce risolta: la data riguarda il lotto che entra, non
-          come è stato scelto il prodotto */}
-      {expiryOpen ? (
-        <div className="flex items-end gap-1 pb-1">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            {/* un'etichetta che si vede (dal giro): prima era solo per lo screen reader */}
-            <label htmlFor={expiryId} className="text-xs text-ink-soft">
-              Scadenza <span className="sr-only">di {name}</span>
-            </label>
-            <input
-              ref={expiryInput}
-              id={expiryId}
-              type="date"
-              max={EXPIRY_INPUT_MAX}
-              value={expiry}
-              onChange={(e) => onExpiry(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  // la data si manda con «Metti in dispensa», non c'è niente da
-                  // confermare; e senza `preventDefault` l'Invio arrivava al pulsante che
-                  // riprendeva il fuoco (la lezione della Consegna 1)
-                  e.preventDefault();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  closeExpiry();
-                }
-              }}
-            />
-          </div>
-          <Button
-            variant="ghost"
-            icon={IconX}
-            label={`Togli la data di scadenza per ${name}`}
-            onClick={closeExpiry}
-          />
-        </div>
-      ) : (
-        <button
-          ref={expiryButton}
-          type="button"
-          onClick={() => {
-            focusExpiryInput.current = true;
-            onExpiry("");
-          }}
-          className="flex min-h-11 items-center gap-1 text-xs font-medium text-ink-faint"
-        >
-          <IconCalendarPlus aria-hidden="true" className="size-4" stroke={1.8} />
-          {/* qui lo `sr-only` resta: «+ scadenza» da solo non dice di quale voce, e il
-              nome per {name} serve solo a chi ascolta. Lo spazio prima sta fuori dallo
-              `sr-only`, non dentro: dentro, Chromium lo mangia insieme al resto del testo
-              nascosto e «+ scadenza per X» arriva allo screen reader come «+ scadenzaper
-              X», appiccicati */}
-          + scadenza <span className="sr-only">per {name}</span>
-        </button>
-      )}
+      {/* resta raggiungibile anche a voce risolta: la data riguarda il lotto che entra,
+          non come è stato scelto il prodotto */}
+      <ExpiryField name={name} value={expiry} onChange={onExpiry} />
     </li>
   );
 }
