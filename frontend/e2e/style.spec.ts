@@ -2732,3 +2732,19 @@ test("nessuna parola tecnica a video: né «backend», né «dataset», né «au
   await page.waitForLoadState("networkidle");
   expect(await page.locator("body").innerText(), "dettaglio").not.toMatch(tecniche);
 });
+
+test("la nota di ripiego dei suggerimenti si legge nei due temi", async ({ page }) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.goto("/ricette");
+  await page.getByRole("button", { name: /^Filtri/ }).click();
+  await page.getByLabel("Contiene ingredienti").fill("tamarindo");
+  await expect(
+    page.getByText("Nessun ingrediente somiglia a «tamarindo». Prova con un'altra parola.")
+  ).toBeVisible();
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `filtri con la nota di ripiego, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+});
