@@ -15,6 +15,7 @@ import { AliasRow } from "./AliasRow";
 import { CategoryForm } from "./CategoryForm";
 import { MergePanel } from "./MergePanel";
 import { RenameForm } from "./RenameForm";
+import { IngredientSubstitutes } from "../substitutes/IngredientSubstitutes";
 import { fetchIngredientDetail } from "./api";
 import { backFrom, originFrom, productPath } from "./origin";
 import { aliasVanishedText, mergeDoneText, usageText } from "./wording";
@@ -200,6 +201,11 @@ function IngredientCard({ id }: { id: string }) {
             ))}
           </ul>
         </Card>
+      )}
+
+      {/* R5: i sostituti, solo per il cibo — un non alimentare non sta in una ricetta */}
+      {ingredient.kind === "food" && (
+        <IngredientSubstitutes ingredientId={ingredient.id} ingredientName={ingredient.name} />
       )}
     </Screen>
   );
