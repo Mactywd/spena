@@ -35,6 +35,8 @@ class LlmCallSite(StrEnum):
     TERM_COLLAPSE = "term_collapse"
     RECIPE_DRAFT = "recipe_draft"
     UNIT_FORMS = "unit_forms"
+    CIQUAL_TERMS = "ciqual_terms"
+    CIQUAL_MATCH = "ciqual_match"
 
 
 @dataclass(frozen=True)
