@@ -9,6 +9,7 @@ quando non si ricava non si inventa.
 import re
 from dataclasses import dataclass
 from decimal import Decimal, DivisionByZero, InvalidOperation, ROUND_HALF_UP
+from enum import StrEnum
 
 # tre decimali bastano a un terzo, e `Numeric` invece di `Float` perché un giorno
 # queste righe si sommeranno per la nutrizione
@@ -132,6 +133,108 @@ def with_qb_tail(display: str, text: str | None) -> str:
         return display
     tails = [" ".join(piece.split()) for piece in text.split("+") if _QB.match(piece)]
     return " + ".join([display, *tails])
+
+
+# --- La pulizia delle dosi dell'import (spec 2026-10-13-pulizia-dosi-design.md) -------
+
+# La lunghezza di `recipe_ingredients.note`. Il modello non la importa da qui (la colonna
+# c'era prima): la tiene allineata `test_note_max_chars_e_la_colonna`.
+NOTE_MAX_CHARS = 300
+
+# Una dose «nella forma dell'import»: GialloZafferano la scrive con gli a capo e le
+# tabulazioni del suo HTML («fredda\n\t\t\t330\n\t\t\tg»). Il campo del modulo è una riga
+# sola, quindi una dose senza è scritta a mano, o è già pulita, e non si tocca: la
+# decisione 3 di Mattia (2026-10-13) resa misurabile.
+_IMPORT_WHITESPACE = re.compile(r"[\n\r\t]")
+_STARTS_A_DOSE = re.compile(rf"^[\d{_FRACTION_CHARS}]")
+
+
+class DoseShape(StrEnum):
+    """Che cosa la pulizia ha trovato in una dose: il comando conta per forma."""
+
+    UNCHANGED = "unchanged"  # non ha la forma dell'import: non si tocca
+    SPACES = "spaces"  # solo a capo e tabulazioni
+    WORDS_BEFORE = "words_before"  # parole davanti alla dose, ora nella nota
+    NUMBER_IN_NAME = "number_in_name"  # «36 mesi ⏎ 50 ⏎ g»: la nota comincia con un numero
+    NOTE_QB = "note_qb"  # «secco ⏎⏎ q.b.»: una nota e «q.b.»
+
+
+@dataclass(frozen=True)
+class CleanDose:
+    quantity_text: str | None
+    note: str | None
+    shape: DoseShape
+
+
+def clean_dose(text: str | None) -> CleanDose:
+    """La dose dell'import ripulita: le parole davanti nella nota, gli spazi a uno.
+
+    Non legge numeri e non sa di unità: separa e basta. Leggere resta di
+    `parse_quantity`, che sulla dose pulita trova il numero in testa.
+    """
+    if text is None or not _IMPORT_WHITESPACE.search(text):
+        return CleanDose(text, None, DoseShape.UNCHANGED)
+    doses: list[str] = []
+    notes: list[str] = []
+    # le dosi unite da `merge_quantities` si puliscono pezzo per pezzo
+    for piece in text.split("+"):
+        dose, note = _split_note(piece)
+        if dose:
+            doses.append(dose)
+        if note:
+            notes.append(note)
+    quantity = " + ".join(doses) or None
+    return CleanDose(quantity, merge_notes(*notes), _shape(quantity, notes))
+
+
+def _split_note(piece: str) -> tuple[str, str | None]:
+    lines = [" ".join(line.split()) for line in piece.splitlines()]
+    lines = [line for line in lines if line]
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if _STARTS_A_DOSE.match(line) or _QB.match(line)
+    ]
+    if not starts:
+        return (" ".join(lines), None)
+    # l'ultima riga che comincia come una dose: in «36 mesi ⏎ 50 ⏎ g» anche la prima
+    # comincia con un numero, ma è il nome
+    first = starts[-1]
+    before = " ".join(lines[:first])
+    if not any(char.isalpha() for char in before):
+        # «2 ⏎ 1/2 ⏎ cucchiai»: davanti solo numeri, è tutta dose. Una nota fatta di
+        # numeri sarebbe un'invenzione, e il parser dirà da sé che non la legge
+        return (" ".join(lines), None)
+    return (" ".join(lines[first:]), _unwrap(before))
+
+
+def _unwrap(note: str) -> str:
+    """«(da pulire)» → «da pulire»: in una nota le parentesi della fonte non servono."""
+    if note.startswith("(") and note.endswith(")") and note.count("(") == note.count(")") == 1:
+        return note[1:-1].strip()
+    return note
+
+
+def _shape(quantity: str | None, notes: list[str]) -> DoseShape:
+    if not notes:
+        return DoseShape.SPACES
+    if any(note[:1].isdigit() for note in notes):
+        return DoseShape.NUMBER_IN_NAME
+    if quantity is not None and all(_QB.match(piece) for piece in quantity.split("+")):
+        return DoseShape.NOTE_QB
+    return DoseShape.WORDS_BEFORE
+
+
+def merge_notes(*notes: str | None) -> str | None:
+    """Più note sulla stessa riga diventano una: nell'ordine, senza ripetersi, con «; »
+    fra l'una e l'altra, dentro i caratteri della colonna. La prima resta davanti: chi
+    chiama ci mette la nota già scritta."""
+    kept: list[str] = []
+    for note in notes:
+        cleaned = note.strip() if note else ""
+        if cleaned and cleaned not in kept:
+            kept.append(cleaned)
+    return "; ".join(kept)[:NOTE_MAX_CHARS] or None
 
 
 def scale_quantity(value: Decimal, factor: Decimal) -> Decimal:
