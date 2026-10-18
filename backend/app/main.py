@@ -5,7 +5,17 @@ from fastapi import Depends, FastAPI
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from app.api import auth, cooking, imports, ingredients, pantry, products, recipes, shopping
+from app.api import (
+    auth,
+    cooking,
+    imports,
+    ingredients,
+    pantry,
+    products,
+    recipes,
+    shopping,
+    spending,
+)
 from app.core.config import get_settings
 from app.core.security import (
     PASSWORD_HASH_HOWTO,
@@ -67,6 +77,7 @@ app.include_router(shopping.router)
 app.include_router(recipes.router)
 app.include_router(cooking.router)
 app.include_router(imports.router)
+app.include_router(spending.router)
 
 
 @app.get("/api/v1/health")
