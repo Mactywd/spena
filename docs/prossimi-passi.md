@@ -532,7 +532,7 @@ zone non è ricopiata nel frontend — e i due stati sono scritti per esteso inv
 «diverso da disponibile», così un eventuale quarto stato dovrà essere deciso e non
 ereditato per caso.
 
-## S3. Ingresso diretto in dispensa, alla pari di «sistema la spesa» **[D]**
+## S3. Ingresso diretto in dispensa, alla pari di «sistema la spesa» **[FATTO 2026-10-18 — ramo night/s3-ingresso-diretto, non ancora in produzione]**
 Oggi i due schermi non offrono le stesse strade. L'ingresso diretto deve dare tutte
 quelle che dà l'altro: scegliere fra i prodotti già scansionati, scansionare un
 codice a barre, **scansionare uno scontrino**, o inserire a mano.
@@ -558,6 +558,40 @@ resta da confermare nella spec. Chi la scrive non deve copiare i pezzi di
 vanno estratti e usati da entrambi, altrimenti le guardie di uno (il controllo
 ingrediente/prodotto prima del 409, il codice che non sopravvive a una voce
 diversa) mancheranno nell'altro. È la prima lezione di `CLAUDE.md`.
+
+**Fatto il 2026-10-18** (bozza `docs/superpowers/specs/2026-10-06-ingresso-diretto-bozza.md`,
+piano `docs/superpowers/plans/2026-10-08-s3-ingresso-diretto.md`), parità subito e senza
+scontrino, come deciso da Mattia il 2026-10-07. In Dispensa, accanto al +, **«Scansiona»**:
+un prodotto a catalogo entra con due tocchi — il codice e «Metti in dispensa» nella scheda
+di conferma, che ha già il fuoco —, e il pannello torna allo scanner per la confezione
+dopo (in serie; lo stesso prodotto riletto lo dice); un codice nuovo chiede di che
+ingrediente è, poi il modulo, con l'uscita sfusa e quella dal catalogo. Il **+** crea
+l'ingrediente che manca, e la scheda sfusa offre codice e catalogo. La scadenza si scrive
+nella scheda; l'avviso «In dispensa: …» ha «Annulla». In «Sistema la spesa»
+**«Articolo aggiuntivo»** (una voce di lista nata spuntata) e **«+ un'altra confezione»**
+dello stesso ingrediente, con la sua scelta, la sua data e il suo pannello: «Metti in
+dispensa N» conta le confezioni. Le guardie non si sono copiate: la regia dei pannelli è
+uscita da `StockingScreen` in `ProductResolver` (l'esito tardivo, il codice che segue di
+S8, la `key` del modulo), la scelta o creazione dell'ingrediente da `MatchPanel` in
+`IngredientChooser`, e nel backend `stock_one` è la sola copia di «voce, poi codice», per
+la sistemazione e per `POST /pantry` (che ora prende `expires_on` e `barcode`). Due
+confezioni della stessa voce con ingredienti diversi: 422.
+
+**Le scelte del piano che Mattia può voler rivedere:** «Scansiona» come quadrato di sola
+icona; «Cambia» nella scheda che torna indietro di un passo; nella scansione, «Annulla»
+che torna allo scanner e il campo dell'ingrediente che parte vuoto; la riga di una
+confezione in più (rientrata, «Confezione 2», con la sua ✕); «+ un'altra confezione» solo
+quando tutte le confezioni hanno la loro scelta; l'avviso che conta confezioni entrate e
+voci rimaste. E le tre decise da Mattia il 2026-10-09: A (un articolo aggiuntivo già da
+comprare in lista si spunta), B («Cerca a catalogo» anche dopo un codice nuovo nella
+scansione), C («Articolo aggiuntivo» solo con qualcosa da sistemare).
+
+**Da provare sul telefono:** la fotocamera vera in serie (l'attesa fra un codice e
+l'altro, perché `BarcodeScanner` si riaccende a ogni giro), la fotocamera negata, la
+tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezione» e
+«Articolo aggiuntivo» in corsia; dopo «Annulla» nell'avviso, rileggere lo stesso codice
+dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre
+si rinumerano.
 
 ## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE 2026-09-24 — solo il livello prodotto]**
 Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero

@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-18 (fase notte: S3 in corso)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte: S3 fatto, da revisionare)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -100,6 +100,13 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `search_ingredients` non protegge il testo cercato nel `LIKE`: un `%` o un `_` digitati fanno da jolly (`backend/app/repositories/ingredients.py`) [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
+- [idea] P3 · In serie la fotocamera si riaccende a ogni codice (`BarcodeScanner` la rilascia al primo letto): se sul telefono l'attesa si sente, tenerla accesa fra un codice e l'altro [S3]
+- [idea] P3 · Dopo S3 la prop `emptyNote` di `IngredientPicker` non ha più chiamanti (la usava solo l'aggiunta della Dispensa): toglierla, dopo il merge del piano dei suggerimenti, che tocca lo stesso file [S3]
+- [idea] P3 · La riga di una confezione in più (`PackageRow`) ripete la barra delle tre icone e «Cambia» di `StockingRow`: estrarre un pezzo comune, ora che la riga della voce non è più congelata [S3]
+- [idea] P3 · `IngredientChooser` (via `IngredientPicker`) spegne il campo con `disabled` nativo mentre crea l'ingrediente, contro la regola `aria-disabled`: dopo il merge del piano dei suggerimenti, che tocca `IngredientPicker`, passarlo ad `aria-disabled` [S3]
+- [idea] P3 · Dopo «Annulla» nell'avviso «In dispensa: …», rileggere lo stesso codice nella serie dice ancora «L'hai appena messo in dispensa…»: la nota dovrebbe sparire con l'annullamento [S3]
+- [idea] P3 · Nell'ingresso diretto, chiudere il pannello con la ✕ mentre «Metti in dispensa» è in volo: se la scrittura poi fallisce non lo dice nessuno (la scheda non c'è più); un avviso d'errore quando il pannello è già chiuso [S3]
+- [idea] P3 · Una confezione in più lasciata senza scelta non entra con «Metti in dispensa», in silenzio: forse una riga che lo dica [S3]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -116,6 +123,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P1 · Prove sul telefono di S3: la fotocamera vera in serie (si sente l'attesa fra un codice e l'altro?), la fotocamera negata, la tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezione» e «Articolo aggiuntivo» in corsia; dopo «Annulla» nell'avviso, rileggere lo stesso codice dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre si rinumerano [S3]
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
 - [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)
@@ -128,9 +136,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-- [in corso] P2 · S3, ingresso diretto in dispensa, veloce — piano `docs/superpowers/plans/2026-10-08-s3-ingresso-diretto.md` → branch night/s3-ingresso-diretto
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · S3, ingresso diretto in dispensa: «Scansiona» in serie con la scheda di conferma (due tocchi per una confezione a catalogo), il + che crea l'ingrediente, la scadenza prima di entrare e «Annulla» nell'avviso; in «Sistema la spesa» «Articolo aggiuntivo» e «+ un'altra confezione»; la regia dei pannelli in `ProductResolver`, `stock_one` nel backend [S3] → branch night/s3-ingresso-diretto (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
