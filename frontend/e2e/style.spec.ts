@@ -2732,3 +2732,80 @@ test("nessuna parola tecnica a video: né «backend», né «dataset», né «au
   await page.waitForLoadState("networkidle");
   expect(await page.locator("body").innerText(), "dettaglio").not.toMatch(tecniche);
 });
+
+// R5: i sostituti nei due temi, a 375 px. Nessuna scrittura: le risposte dell'AI si
+// fingono deviando le letture, perché lo stack e2e non ha la chiave. La ricetta è quella
+// di `ricettaDiProva`, che toglie da sé quel che mette.
+test("i sostituti a 375px: il pannello, il modulo e la sezione in Anagrafica si leggono nei due temi", async ({ page }) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const risposta = {
+      ingredient_id: ricetta.ids.carciofo, ingredient_name: "carciofo", context: "salato",
+      scope: "general", verdict: "substitutes", decided_by: "ai", ai_failed: false,
+      substitutes: [
+        { ingredient_id: ricetta.ids.radicchio, name: "radicchio", note: "cotto a parte",
+          availability: "available", satisfied: true },
+        { ingredient_id: ricetta.ids.porro, name: "porro", note: null, availability: "low", satisfied: false },
+      ],
+    };
+    await page.route(
+      new RegExp(`/api/v1/recipes/${ricetta.id}/substitutes/${ricetta.ids.carciofo}$`),
+      (route) => route.fulfill({ json: risposta })
+    );
+    await page.goto(`/ricette/${ricetta.id}`);
+    await page.getByRole("button", { name: "Sostituisci carciofo" }).click();
+    await expect(page.getByText("Suggerito dall'AI per i piatti salati.")).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il pannello dei sostituti, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    for (const nome of ["Sostituisci carciofo", "Non va bene qui"]) {
+      const scatola = (await page.getByRole("button", { name: nome }).boundingBox())!;
+      expect(scatola.height, nome).toBeGreaterThanOrEqual(44);
+      expect(scatola.width, nome).toBeGreaterThanOrEqual(44);
+    }
+
+    // il modulo aperto: le pastiglie, le note, i pulsanti
+    await page.getByRole("button", { name: "Non va bene qui" }).click();
+    await expect(page.getByRole("radio", { name: "Un altro ingrediente" })).toBeChecked();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il modulo dei sostituti, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "il modulo dei sostituti");
+
+    // in Anagrafica: una voce dell'AI da rivedere, una senza risposta, le correzioni
+    await page.route(
+      new RegExp(`/api/v1/ingredients/${ricetta.ids.carciofo}/substitutes$`),
+      (route) =>
+        route.fulfill({
+          json: {
+            ingredient_id: ricetta.ids.carciofo, recipe_overrides: 2,
+            contexts: [
+              { context: "salato", recipes: 12, verdict: "omit", decided_by: "ai", substitutes: [] },
+              { context: "dolce", recipes: 1, verdict: null, decided_by: null, substitutes: [] },
+            ],
+          },
+        })
+    );
+    await page.goto(`/anagrafica/ingrediente/${ricetta.ids.carciofo}`);
+    await expect(page.getByText("Deciso dall'AI: da rivedere.")).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la sezione dei sostituti, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    for (const nome of ["Va bene così: nei piatti salati", "Correggi: nei piatti salati", "Scrivi tu: nei dolci"]) {
+      expect((await page.getByRole("button", { name: nome }).boundingBox())!.height, nome).toBeGreaterThanOrEqual(44);
+    }
+    await senzaScorrimentoLaterale(page, "la sezione dei sostituti");
+  } finally {
+    await ricetta.pulisci();
+  }
+});
