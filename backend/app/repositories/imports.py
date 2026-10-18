@@ -157,6 +157,10 @@ async def get_term(session: AsyncSession, term_id: uuid.UUID) -> ImportTerm | No
     return await session.get(ImportTerm, term_id)
 
 
+async def get_page(session: AsyncSession, page_id: uuid.UUID) -> RecipeImport | None:
+    return await session.get(RecipeImport, page_id)
+
+
 async def waiting_titles(
     session: AsyncSession, source: str, keys: list[str], per_term: int = 3
 ) -> dict[str, list[str]]:
