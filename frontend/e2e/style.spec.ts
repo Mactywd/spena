@@ -115,6 +115,8 @@ test("le tacche della dispensa sono bersagli da pollice", async ({ page }) => {
   await page.getByLabel("Cerca o aggiungi in dispensa").fill("cipoll");
   await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Cipolla\b/ }).click();
+  // la scheda di conferma dell'ingresso diretto (S3): un tocco in più
+  await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
 
   // la riga di QUESTA voce, non la prima dello schermo: la dispensa può contenere
   // anche quel che ha lasciato il resto della suite
@@ -742,6 +744,8 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   await page.getByLabel("Cerca o aggiungi in dispensa").fill("carot");
   await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Carota\b/ }).click();
+  // la scheda di conferma dell'ingresso diretto (S3): un tocco in più
+  await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
 
   const riga = page.locator("li", { hasText: "carota" });
 
@@ -862,6 +866,8 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
   await page.getByLabel("Cerca o aggiungi in dispensa").fill("mascarp");
   await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Mascarpone\b/ }).click();
+  // la scheda di conferma dell'ingresso diretto (S3): un tocco in più
+  await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
   await expect(page.locator("li", { hasText: "mascarpone" })).toBeVisible();
 
   await page.getByRole("link", { name: "Ricette", exact: true }).click();
@@ -2731,4 +2737,226 @@ test("nessuna parola tecnica a video: né «backend», né «dataset», né «au
   await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
   await page.waitForLoadState("networkidle");
   expect(await page.locator("body").innerText(), "dettaglio").not.toMatch(tecniche);
+});
+
+// --- S3: l'ingresso diretto in dispensa, e le confezioni in «Sistema la spesa» ---
+
+/** Ogni testo della pagina sopra 4,5:1 nei due temi, nello stato che la prova ha aperto:
+ * gli stati di S3 non li apre nessun altro giro di questo file. */
+async function leggibileNeiDueTemi(page: Page, dove: string) {
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `${dove}, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+}
+
+/** Pulsanti della stessa riga: ognuno almeno 44×44, e tutti alla stessa altezza. */
+async function bersagliInFila(page: Page, nomi: string[]) {
+  const scatole: { x: number; y: number; width: number; height: number }[] = [];
+  for (const nome of nomi) {
+    const scatola = await page.getByRole("button", { name: nome, exact: true }).boundingBox();
+    expect(scatola, nome).not.toBeNull();
+    expect(scatola!.width, nome).toBeGreaterThanOrEqual(44);
+    expect(scatola!.height, nome).toBeGreaterThanOrEqual(44);
+    scatole.push(scatola!);
+  }
+  for (const scatola of scatole.slice(1)) {
+    expect(Math.abs(scatola.y - scatole[0].y), `${nomi.join(", ")}: vanno a capo`).toBeLessThan(1);
+  }
+}
+
+test("l'ingresso diretto a 375px: «Scansiona», la scheda in due tocchi, la serie e «Annulla» nell'avviso", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // Una confezione vera da leggere: il seme non ha prodotti. Sotto «lenticchie», che
+  // nessun altro file nomina, con un codice che cambia a ogni esecuzione. In fondo si
+  // tolgono la voce (se «Annulla» non l'ha già tolta) e il prodotto: il file non lascia
+  // niente dietro di sé
+  const trovate = (await (
+    await page.request.get("/api/v1/ingredients/search?q=lenticchie")
+  ).json()) as { id: string; name: string }[];
+  const lenticchie = trovate.find((voce) => voce.name === "lenticchie");
+  expect(lenticchie, "«lenticchie» non è nel seme").toBeDefined();
+  const codice = String(Date.now());
+  const nome = `Lenticchie e2e ${codice}`;
+  const creato = await page.request.post("/api/v1/products", {
+    data: { ingredient_id: lenticchie!.id, name: nome, brand: "Marca e2e", barcode: codice },
+  });
+  expect(creato.ok()).toBe(true);
+  const prodottoId = ((await creato.json()) as { id: string }).id;
+
+  try {
+    await page.goto("/dispensa");
+    // «Scansiona» accanto al +: un bersaglio da pollice, sulla stessa riga
+    await bersagliInFila(page, ["Scansiona", "Aggiungi in dispensa"]);
+    await page.getByRole("button", { name: "Scansiona", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Codice a barre", exact: true })).toBeVisible();
+    await senzaScorrimentoLaterale(page, "lo scanner della Dispensa");
+    await leggibileNeiDueTemi(page, "lo scanner della Dispensa");
+
+    // primo tocco: il codice letto (qui scritto: la fotocamera non c'è)
+    const campo = page.getByLabel("Codice a barre", { exact: true });
+    await campo.fill(codice);
+    await campo.press("Enter");
+    const metti = page.getByRole("button", { name: "Metti in dispensa", exact: true });
+    await expect(metti).toBeFocused();
+    await expect(page.getByText(nome, { exact: true })).toBeVisible();
+    await expect(page.getByText("Marca e2e · lenticchie", { exact: true })).toBeVisible();
+    await bersagliInFila(page, [`Cambia: ${nome}`]);
+    // la scadenza aperta, perché si misuri anche il campo; poi richiusa
+    await page.getByRole("button", { name: `+ scadenza per ${nome}`, exact: true }).click();
+    await expect(page.getByLabel(`Scadenza di ${nome}`)).toBeVisible();
+    await senzaScorrimentoLaterale(page, "la scheda di conferma");
+    await leggibileNeiDueTemi(page, "la scheda di conferma, col campo della data");
+    await page
+      .getByRole("button", { name: `Togli la data di scadenza per ${nome}`, exact: true })
+      .click();
+
+    // secondo tocco
+    await metti.click();
+    const avviso = page.getByRole("status").filter({ hasText: `In dispensa: Marca e2e ${nome}` });
+    await expect(avviso).toBeVisible();
+    await expect(page.locator("li", { hasText: nome })).toBeVisible();
+    // in serie: lo scanner è di nuovo lì, pronto per il codice dopo
+    await expect(page.getByRole("heading", { name: "Codice a barre", exact: true })).toBeVisible();
+    await expect(campo).toHaveValue("");
+
+    // «Annulla» nell'avviso (che dura sei secondi) toglie la voce appena entrata
+    await avviso.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(page.locator("li", { hasText: nome })).toHaveCount(0);
+
+    // lo stesso codice riletto: la scheda lo dice, invece di scriverlo due volte
+    await campo.fill(codice);
+    await campo.press("Enter");
+    await expect(
+      page.getByText("L'hai appena messo in dispensa: se è un'altra confezione, mettila pure.")
+    ).toBeVisible();
+    await leggibileNeiDueTemi(page, "la scheda con la nota della serie");
+    await page.getByRole("button", { name: "Chiudi l'aggiunta", exact: true }).click();
+    await expect(metti).toHaveCount(0);
+  } finally {
+    // prima le voci, poi il prodotto (come `perOgniLuogo`): ogni passo è un `expect.soft`,
+    // che non lancia e non salta il passo dopo, ma segna la prova fallita
+    try {
+      const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
+        id: string;
+        product_id: string | null;
+      }[];
+      for (const voce of dispensa.filter((riga) => riga.product_id === prodottoId)) {
+        const risposta = await page.request.patch(`/api/v1/pantry/${voce.id}`, {
+          data: { archived: true },
+        });
+        expect.soft(risposta.ok(), `pulizia: la voce ${voce.id} non si è archiviata`).toBe(true);
+      }
+    } catch (guasto) {
+      expect.soft(false, `pulizia: non sono riuscito a rileggere la dispensa (${guasto})`).toBe(true);
+    }
+    try {
+      const risposta = await page.request.delete(`/api/v1/products/${prodottoId}`);
+      expect.soft(risposta.ok(), `pulizia: il prodotto ${prodottoId} non si è eliminato`).toBe(true);
+    } catch (guasto) {
+      expect
+        .soft(false, `pulizia: non sono riuscito a eliminare il prodotto ${prodottoId} (${guasto})`)
+        .toBe(true);
+    }
+  }
+});
+
+test("il + della Dispensa a 375px: la scheda sfusa con le strade del codice e del catalogo, nei due temi", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // niente si scrive: la scheda si apre, si misura e si chiude. «melanzana» non la nomina
+  // nessun altro file
+  await page.goto("/dispensa");
+  await page.getByLabel("Cerca o aggiungi in dispensa").fill("melanz");
+  await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
+  await page.getByRole("option", { name: /^Melanzana\b/ }).click();
+  const metti = page.getByRole("button", { name: "Metti in dispensa", exact: true });
+  await expect(metti).toBeFocused();
+  await expect(page.getByText("Sfuso, senza marca · melanzana", { exact: true })).toBeVisible();
+  await bersagliInFila(page, ["Codice a barre per Melanzana", "Cerca a catalogo per Melanzana"]);
+  await bersagliInFila(page, ["Cambia: Melanzana"]);
+  await senzaScorrimentoLaterale(page, "la scheda sfusa");
+  await leggibileNeiDueTemi(page, "la scheda sfusa");
+
+  // «Codice»: lo scanner con l'ingrediente atteso; il suo «Annulla» torna alla scheda
+  await page.getByRole("button", { name: "Codice a barre per Melanzana", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Codice a barre per «Melanzana»" })).toBeVisible();
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  await expect(metti).toBeVisible();
+  // «Annulla» della scheda chiude, e niente è entrato
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  await expect(metti).toHaveCount(0);
+  await expect(page.locator("li", { hasText: "melanzana" })).toHaveCount(0);
+});
+
+test("Sistema la spesa a 375px: «+ un'altra confezione» e «Articolo aggiuntivo», nei due temi", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // una voce nel carrello con un ingrediente che nessun altro file nomina, creata con
+  // l'API e tolta in fondo; niente entra in dispensa
+  const trovati = (await (
+    await page.request.get("/api/v1/ingredients/search?q=kiwi")
+  ).json()) as { id: string; name: string }[];
+  const kiwi = trovati.find((voce) => voce.name === "kiwi");
+  expect(kiwi, "«kiwi» non è nel seme").toBeDefined();
+  const risposta = await page.request.post("/api/v1/shopping-list", {
+    data: { raw_text: "kiwi", ingredient_id: kiwi!.id },
+  });
+  // 201: una voce che c'era già (S18) risponde 200 ed è di qualcun altro
+  expect(risposta.status(), "«kiwi» era già in lista").toBe(201);
+  const voceId = ((await risposta.json()) as { id: string }).id;
+
+  try {
+    const spunta = await page.request.patch(`/api/v1/shopping-list/${voceId}`, {
+      data: { status: "checked" },
+    });
+    expect(spunta.ok()).toBe(true);
+    await page.goto("/sistema");
+
+    await page.getByRole("button", { name: "Sfuso, senza marca: kiwi", exact: true }).click();
+    await page.getByRole("button", { name: "+ un'altra confezione di kiwi", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Codice a barre per kiwi, confezione 2", exact: true })
+    ).toBeFocused();
+    await bersagliInFila(page, [
+      "Codice a barre per kiwi, confezione 2",
+      "Cerca a catalogo per kiwi, confezione 2",
+      "Sfuso, senza marca: kiwi, confezione 2",
+      "Togli la confezione 2 di kiwi",
+    ]);
+    await page.getByRole("button", { name: "+ scadenza per kiwi, confezione 2", exact: true }).click();
+    await expect(page.getByLabel("Scadenza di kiwi, confezione 2")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Metti in dispensa 1", exact: true })).toBeVisible();
+    await senzaScorrimentoLaterale(page, "Sistema la spesa con due confezioni");
+    await leggibileNeiDueTemi(page, "Sistema la spesa con due confezioni");
+
+    await page.getByRole("button", { name: "Articolo aggiuntivo", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Articolo aggiuntivo" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Cosa hai comprato?" })).toBeFocused();
+    await senzaScorrimentoLaterale(page, "«Articolo aggiuntivo» aperto");
+    await leggibileNeiDueTemi(page, "«Articolo aggiuntivo» aperto");
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Articolo aggiuntivo", exact: true })).toBeVisible();
+  } finally {
+    try {
+      const archiviata = await page.request.patch(`/api/v1/shopping-list/${voceId}`, {
+        data: { status: "archived" },
+      });
+      expect.soft(archiviata.ok(), `pulizia: la voce ${voceId} non si è archiviata`).toBe(true);
+    } catch (guasto) {
+      expect
+        .soft(false, `pulizia: non sono riuscito ad archiviare la voce ${voceId} (${guasto})`)
+        .toBe(true);
+    }
+  }
 });
