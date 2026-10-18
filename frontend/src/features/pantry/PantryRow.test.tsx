@@ -8,7 +8,7 @@ const BASE: PantryItem = {
   id: "p1", ingredient_id: "i1", product_id: "pr1", ingredient_name: "yogurt greco",
   ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
   status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
-  expires_on: null, expiry: null,
+  expires_on: null, expiry: null, ingredient_emoji: null,
 };
 
 function renderRow(over: Partial<PantryItem> = {}, props: Partial<Parameters<typeof PantryRow>[0]> = {}) {
@@ -45,6 +45,24 @@ describe("PantryRow", () => {
   it("una voce senza prodotto dice «sfuso»", () => {
     renderRow({ product_id: null, product_name: null, product_brand: null });
     expect(screen.getByText("sfuso")).toBeDefined();
+  });
+
+  it("la figura sta prima del nome: l'emoji dell'ingrediente, nascosta a chi ascolta (S12)", () => {
+    renderRow({ ingredient_emoji: "🥛" });
+    const figura = document.querySelector("[data-figure]") as HTMLElement;
+    expect(figura.dataset.figure).toBe("emoji");
+    expect(figura.textContent).toBe("🥛");
+    expect(figura.getAttribute("aria-hidden")).toBe("true");
+    // il nome accessibile del link non cambia, e la figura viene prima di lui
+    const nome = screen.getByRole("link", { name: "Yogurt greco" });
+    expect(figura.compareDocumentPosition(nome) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("senza emoji, la figura è l'icona del reparto (S12)", () => {
+    renderRow();
+    const figura = document.querySelector("[data-figure]") as HTMLElement;
+    expect(figura.dataset.figure).toBe("reparto");
+    expect(figura.querySelector("svg.tabler-icon-cheese")).not.toBeNull();
   });
 
   it("il nome porta alla scheda del prodotto se c'è, e ci porta da dispensa", () => {

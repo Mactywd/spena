@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert } from "../../components/ui/Alert";
+import { IngredientFigure } from "../../components/IngredientFigure";
 import { Button } from "../../components/ui/Button";
 import { StockGauge } from "../../components/ui/StockGauge";
 import { IconListCheck, IconShoppingCartPlus, IconX } from "../../components/ui/icons";
@@ -110,8 +111,17 @@ export function PantryRow({
     // `scroll-mt-16`: l'intestazione fissa (h-12) più un respiro, come nel dettaglio ricetta
     <li ref={ref} className="scroll-mt-16">
       <div className="flex items-center gap-1">
+        {/* La figura (S12): l'emoji dell'ingrediente o l'icona del reparto, per
+            riconoscere la riga senza leggerla. 28 px più `mr-1` e il `gap-1` della
+            riga: il nome comincia 36 px più in là, e la scadenza sotto rientra
+            altrettanto */}
+        <IngredientFigure
+          emoji={item.ingredient_emoji}
+          category={item.ingredient_category}
+          className="mr-1"
+        />
         {/* Il prodotto sta su una riga sola, tagliato coi puntini: accanto alle tacche
-            restano 135px a 375px di larghezza, e i nomi veri («Deodorante per Ambienti
+            restano 99px a 375px di larghezza (135 prima della figura di S12), e i nomi veri («Deodorante per Ambienti
             Vaniglia e Gelsomino») andavano a capo fino a tre righe, con la scadenza
             spinta sotto e il «·» rimasto solo. Il nome intero è nella scheda del
             prodotto, dove porta il link. */}
@@ -120,7 +130,7 @@ export function PantryRow({
               della riga usano `label`, in mezzo a una frase, e restano com'è */}
           <Link
             to={registryPath(item)}
-            className="flex min-h-11 items-end pb-0.5 font-medium underline decoration-line underline-offset-4"
+            className="flex min-h-11 items-end pb-0.5 font-medium break-words underline decoration-line underline-offset-4"
           >
             {capitalizeFirst(item.ingredient_name)}
           </Link>
@@ -136,8 +146,9 @@ export function PantryRow({
         />
       </div>
       {/* La scadenza ha la sua riga, larga quanto la voce: sempre allo stesso posto, e
-          il campo data ha lo spazio che accanto alle tacche non avrebbe. */}
-      <div className="flex min-h-11 items-start text-xs text-ink-faint">
+          il campo data ha lo spazio che accanto alle tacche non avrebbe. Rientra di 36 px
+          (pl-9) per cominciare sotto il nome e non sotto la figura (S12). */}
+      <div className="flex min-h-11 items-start pl-9 text-xs text-ink-faint">
         {editingExpiry ? (
           <span className="pt-0.5">
             <label htmlFor={`expiry-${item.id}`} className="sr-only">

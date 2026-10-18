@@ -67,6 +67,10 @@ export interface PantryItem {
   expires_on: string | null;
   /** Il verdetto, già preso dal server: la soglia dei sette giorni non vive qui. */
   expiry: ExpiryState | null;
+  /** La figura della riga (S12): l'emoji dell'ingrediente, `null` per il ripiego
+   * sull'icona del reparto. La decide il server (l'AI o una persona in Anagrafica): qui
+   * si mostra e basta. */
+  ingredient_emoji: string | null;
 }
 
 export interface ShoppingItem {

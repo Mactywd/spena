@@ -68,7 +68,13 @@ const PAIRS: [string, string][] = [
 // (WCAG 1.4.11): la soglia è 3:1, non 4,5:1. La tacca spenta di `StockGauge` è la
 // ragione per cui c'è: a 1,3:1 (`line` su `card`) le tacche non si capivano toccabili,
 // che è il rischio più grosso della spec T3 (§7).
-const MARK_PAIRS: [string, string][] = [["notch-off", "card"]];
+const MARK_PAIRS: [string, string][] = [
+  ["notch-off", "card"],
+  // il ripiego della figura di una riga in Dispensa (S12): l'icona del reparto in
+  // `ink-faint` sul quadratino `page`. Come testo sta già sopra 4,5:1 (PAIRS); qui si
+  // dice che per lei la soglia è quella di un segno
+  ["ink-faint", "page"],
+];
 
 describe("i token del colore", () => {
   it("ogni token chiaro ha il suo valore scuro, e viceversa", () => {

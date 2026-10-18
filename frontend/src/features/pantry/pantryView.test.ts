@@ -25,6 +25,7 @@ function item(over: Partial<PantryItem>): PantryItem {
     added_at: "2026-09-11T10:00:00Z",
     expires_on: null,
     expiry: null,
+    ingredient_emoji: null,
     ...over,
   };
 }
