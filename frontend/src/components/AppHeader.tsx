@@ -133,19 +133,24 @@ export function AppHeader() {
             {/* il tocco fuori chiude: il velo è un bersaglio, non una decorazione. Fuori
                 dall'albero accessibile, perché per chi non lo vede la chiusura è Esc o
                 «Chiudi il menu». `scrim` e non `ink`: in scuro `ink` è chiaro, e il
-                velo schiarirebbe la pagina invece di spegnerla */}
+                velo schiarirebbe la pagina invece di spegnerla. L'alfa è del tema
+                (`--scrim-alpha` in index.css, 45% e 60%): in scuro la pagina è già quasi
+                nera, e al 40% di prima il velo non la spegneva */}
             <div
               data-menu-backdrop=""
               aria-hidden="true"
               onClick={close}
-              className="absolute inset-0 bg-scrim/40"
+              className="absolute inset-0 bg-scrim/(--scrim-alpha)"
             />
+            {/* il bordo sinistro stacca il pannello dalla pagina velata in scuro, dove
+                `card` contro il quasi nero resta a 1,2:1 (`panel-edge`, index.css); in
+                chiaro vale quanto `card`, e non si vede */}
             <div
               ref={panelRef}
               role="dialog"
               aria-modal="true"
               aria-label="Menu"
-              className="absolute inset-y-0 right-0 flex w-72 max-w-[85vw] flex-col bg-card px-4 pt-1 pb-[calc(1rem+var(--safe-bottom))]"
+              className="absolute inset-y-0 right-0 flex w-72 max-w-[85vw] flex-col border-l border-panel-edge bg-card px-4 pt-1 pb-[calc(1rem+var(--safe-bottom))]"
             >
               <div className="flex min-h-11 items-center justify-between">
                 <span className="font-semibold tracking-tight">Menu</span>
