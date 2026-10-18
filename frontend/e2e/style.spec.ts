@@ -2735,3 +2735,22 @@ test("nessuna parola tecnica a video: né «backend», né «dataset», né «au
   await page.waitForLoadState("networkidle");
   expect(await page.locator("body").innerText(), "dettaglio").not.toMatch(tecniche);
 });
+
+// --- Pulizie del 2026-10-13: le parole a video ---
+
+test("nel foglio della cottura una confezione senza prodotto si legge con la maiuscola", async ({ page }) => {
+  // «porro» del seme entra in dispensa senza prodotto (ricettaDiProva): il titolo della sua
+  // confezione è il nome dell'ingrediente, e apre la riga (spec T3 §4.7)
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.goto(`/ricette/${ricetta.id}`);
+    await page.getByRole("button", { name: "Cucina", exact: true }).click();
+    const porro = page.getByRole("radiogroup", { name: /porro/ });
+    await expect(porro).toBeVisible();
+    const riga = page.getByRole("listitem").filter({ has: porro });
+    await expect(riga.getByText("Porro", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  } finally {
+    await ricetta.pulisci();
+  }
+});
