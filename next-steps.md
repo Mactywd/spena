@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -36,7 +36,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 8. [pronto] P3 · R2, secondo modo: riporzionare a partire da un ingrediente, solo vista — tocco sulla dose, «Quanto ne fai?» con l'unità accanto, lo stepper dice «≈ 1,5», la cottura registra la dose nello `snapshot`, senza migrazione (Mattia, 2026-10-09 e 2026-10-13) [R2] → `docs/superpowers/plans/2026-10-09-r2-riporziona-ingrediente.md`, ramo `night/r2-riporziona-ingrediente` da `master`
 9. [pronto] P3 · Le pagine `SKIPPED` dell'import a video e rimesse in coda: sezione «Scartate (N)» nella coda, col perché e la strada per ogni pagina, «Rimetti in coda» che materializza subito; le illeggibili con «Apri la pagina» e senza rimessa (Mattia, 2026-10-09 e 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-09-scartate-in-coda.md`, ramo `night/scartate-in-coda` da `master`
 10. [pronto] P3 · R8, modifica con AI che salva una ricetta nuova: il modulo già compilato dalla proposta, il legame «Variante di «…»» che si vede (`recipes.derived_from_id`, migrazione `0014`), foto e tempi copiati dall'originale (Mattia, 2026-10-09 e 2026-10-13) [R8] → `docs/superpowers/plans/2026-10-09-r8-modifica-con-ai.md`, ramo `night/r8-modifica-con-ai` da `night/rimetti-in-lista`
-11. [in corso] P3 · H1, Expense Tracker su `llm_calls`: «Spese dell'AI» dal ☰, il totale del periodo con la divisione per sezione e l'andamento per giorno di Roma, «Questo mese» / «Ultimi 30 giorni» / «Da sempre», grafici SVG senza dipendenze, una riga per le chiamate senza costo (Mattia, 2026-10-09 e 2026-10-13) [H1] → `docs/superpowers/plans/2026-10-09-h1-spese-ai.md`, ramo `night/h1-spese-ai` da `master`
 12. [pronto] P3 · Dosi dell'import con l'aggettivo davanti o coi numeri del nome («fredda ⏎ 330 ⏎ g», «36 mesi ⏎ 50 ⏎ g»): le parole vanno nella nota della riga e la dose torna a riscalarsi; il parser legge ½ ¼ ¾ e «50 g + q.b.»; l'import pulisce all'ingresso; `clean_doses` pulisce le righe che ci sono, anche delle ricette adottate, e toglie da `units` le parole che unità non sono, decise guardando il `--dry-run` (da lanciare in produzione solo da Mattia dopo il deploy); la nota si vede nel dettaglio (Mattia, 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-13-pulizia-dosi.md`, ramo `night/pulizia-dosi` da `master`
 13. [pronto] P3 · Pulizie: controlli spenti e fuoco — i controlli fuori da `Button` smettono di sbiadire con l'`opacity`, le due caselle da 20 px diventano `Checkbox`, nessun controllo si spegne col fuoco addosso (stepper, `IngredientPicker`, `InlineField`, «Salva prodotto»), il segno d'attesa sui pulsanti di sola icona, i `<button>` del modulo della ricetta diventano `Button`, il fuoco dopo un annullamento nella coda [T3 Consegne 2–6b] → `docs/superpowers/plans/2026-10-13-pulizie-controlli.md`, ramo `night/pulizie-controlli` da `night/r8-modifica-con-ai`
 14. [pronto] P3 · Pulizie: test instabili e piccoli difetti del backend — attese più lunghe sotto carico, un client react-query dei test fatto come quello dell'app, le date dell'e2e nel giorno di Roma, via gli avvisi di Starlette, `occurrences` ricontato con una `COUNT`, il 409 delle due righe che nomina l'ingrediente, i pulsanti della coda con una decisione in volo [T3 Consegne 5–6b, Parte X] → `docs/superpowers/plans/2026-10-13-pulizie-test.md`, ramo `night/pulizie-test` da `master`
@@ -101,6 +100,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `search_ingredients` non protegge il testo cercato nel `LIKE`: un `%` o un `_` digitati fanno da jolly (`backend/app/repositories/ingredients.py`) [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
+- [idea] P3 · H1: il dettaglio di un giorno per sezione (oggi le colonne non si toccano: a 375 px sarebbero bersagli da 10 px) [H1]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -117,6 +117,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P3 · Prove di H1 coi dati veri e sul telefono: «Da sempre» parte dal 17 settembre 2026 e il totale torna con l'attività dell'app su OpenRouter; i tre pulsanti del periodo col pollice; decidere se tenere la riga delle chiamate senza costo sotto il totale. Nel browser passati il ☰, le cifre seminate, la sezione sconosciuta col suo nome, il contrasto nei due temi, i 375 px
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
 - [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)
@@ -132,6 +133,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · H1, «Spese dell'AI» dal ☰: il totale del periodo («Questo mese», «Ultimi 30 giorni», «Da sempre», giorni di Roma), le barre per sezione e le colonne per giorno da `llm_calls`; le fallite senza costo contate e fuori dal totale [H1] → branch night/h1-spese-ai (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
