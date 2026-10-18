@@ -1,10 +1,5 @@
 import { useState } from "react";
-import {
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AiDraftScreen } from "./features/ai-draft/AiDraftScreen";
 import { LoginScreen } from "./features/auth/LoginScreen";
@@ -22,33 +17,15 @@ import { StockingScreen } from "./features/stocking/StockingScreen";
 import { AppHeader } from "./components/AppHeader";
 import { TabBar } from "./components/TabBar";
 import { NoticeProvider } from "./components/ui/NoticeProvider";
-import { UnauthorizedError } from "./api/client";
-import { defaultQueryRetryPredicate } from "./lib/queryRetry";
+import { createAppQueryClient } from "./lib/queryClient";
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(true);
 
-  // creato una volta sola: ricostruirlo a ogni render svuoterebbe la cache
-  const [queryClient] = useState(() => {
-    // un 401 da qualsiasi chiamata riporta all'accesso, senza schermate rotte.
-    // Servono entrambe le cache: le query leggono, ma spuntare una voce, cambiare
-    // uno stato in dispensa e cucinare una ricetta sono mutazioni, e una sessione
-    // scaduta a metà di una di quelle lascerebbe la schermata ferma su dati vecchi
-    // senza dire perché.
-    const bounceToLogin = (error: unknown) => {
-      if (error instanceof UnauthorizedError) setAuthenticated(false);
-    };
-
-    return new QueryClient({
-      queryCache: new QueryCache({ onError: bounceToLogin }),
-      mutationCache: new MutationCache({ onError: bounceToLogin }),
-      defaultOptions: {
-        queries: {
-          retry: defaultQueryRetryPredicate,
-        },
-      },
-    });
-  });
+  // creato una volta sola: ricostruirlo a ogni render svuoterebbe la cache. Com'è fatto
+  // (i 401 che riportano all'accesso, i tentativi) sta in lib/queryClient.ts, dove lo
+  // prendono anche i test
+  const [queryClient] = useState(() => createAppQueryClient(() => setAuthenticated(false)));
 
   if (!authenticated) return <LoginScreen onSuccess={() => setAuthenticated(true)} />;
 
