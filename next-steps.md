@@ -27,7 +27,6 @@ la `down_revision` sulla testa di `master` di quel momento, e `alembic heads` de
 sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 
 4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
-5. [pronto] P3 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` dal server, scelta in `sessionStorage`, una voce aggiunta dello stesso mondo lascia il mondo com'è (Mattia, 2026-10-09) [S14] → `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md`, ramo `night/s14-cibo-casa` da `night/tema-scuro-spenti`
 6. [pronto] P3 · S15, reparti della dispensa collassabili, col numero e «N finiti» / «N in scadenza» da chiusi, in `localStorage`; le tre scelte su ricerca, scadenze e reparto che torna decise da Mattia il 2026-10-09 [S15] → `docs/superpowers/plans/2026-10-08-s15-reparti-collassabili.md`, ramo `night/s15-reparti-collassabili` da `night/s14-cibo-casa`
 7. [pronto] P3 · «Rimetti in lista» anche per «quasi finito», ovunque: in Dispensa la riga gialla ha «In lista» come la rossa (`RestockLine.tsx`), nel foglio della cottura la casella c'è anche su una confezione già gialla e invariata, vuota; il titolo chiuso dei reparti di S15 resta «N finito» (Mattia, 2026-10-09 e 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-09-rimetti-in-lista.md`, ramo `night/rimetti-in-lista` da `night/s15-reparti-collassabili`
 8. [pronto] P3 · R2, secondo modo: riporzionare a partire da un ingrediente, solo vista — tocco sulla dose, «Quanto ne fai?» con l'unità accanto, lo stepper dice «≈ 1,5», la cottura registra la dose nello `snapshot`, senza migrazione (Mattia, 2026-10-09 e 2026-10-13) [R2] → `docs/superpowers/plans/2026-10-09-r2-riporziona-ingrediente.md`, ramo `night/r2-riporziona-ingrediente` da `master`
@@ -142,7 +141,7 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono dei pulsanti spenti e del ☰ (tema scuro): il pulsante spento grigio si legge al sole e si capisce spento accanto a un secondario acceso, nei due temi; un pulsante `ghost` in volo (il cestino della ricetta, la ✕ della riga della lista) si capisce spento anche se cambia solo il colore della scritta; il ☰ in scuro spegne la pagina e si stacca col suo bordo. Nel browser l'e2e misura i contrasti nei due temi [T3 Consegna 1]
 
 ## In corso
-_(niente)_
+- [in corso] P3 · S14, «Tutto / Cibo / Casa» in dispensa — piano `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md` → branch night/s14-cibo-casa [S14]
 
 ## Fatti (recenti)
 - [fatto] 2026-10-18 · Tema scuro: il pulsante spento è grigio pieno (`disabled` / `on-disabled`) in ogni variante e in volo, niente più `opacity`; il velo del ☰ al 45% / 60% col bordo `panel-edge` in scuro; l'e2e misura anche i pulsanti spenti [T3 Consegna 1] → branch night/tema-scuro-spenti (da revisionare)
