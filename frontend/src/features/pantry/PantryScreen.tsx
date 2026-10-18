@@ -1,22 +1,20 @@
 import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { IngredientPicker } from "../../components/IngredientPicker";
-import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorState } from "../../components/ui/ErrorState";
 import { Screen } from "../../components/ui/Screen";
 import { Section } from "../../components/ui/Section";
 import { ActionBar } from "../../components/ui/ActionBar";
-import { IconCalendarEvent, IconPlus, IconSearch, IconX } from "../../components/ui/icons";
+import { IconBarcode, IconCalendarEvent, IconPlus, IconSearch, IconX } from "../../components/ui/icons";
 import { useNotice } from "../../components/ui/noticeContext";
+import { DirectEntry, type EntryDoor } from "./DirectEntry";
 import { PantryRow } from "./PantryRow";
 import { expiryCounts, expirySummary, groupForDisplay, hasExpiry, itemLabel, matchesQuery } from "./pantryView";
-import { addPantryItem, fetchPantry, patchPantryItem, restockPantryItem } from "./api";
+import { fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import { ShoppingEntryCard } from "../shopping-list/ShoppingEntryCard";
-import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
+import type { PantryItem, PantryStatus } from "../../domain/types";
 
 export function PantryScreen() {
   const queryClient = useQueryClient();
@@ -110,35 +108,49 @@ export function PantryScreen() {
     onError: (_error, item) => markFailed(item.id),
   });
 
-  // Spec §4 e §8.3: l'ingresso diretto, cioè senza passare dalla lista. Serve a chi
-  // torna a casa con una cosa che non aveva scritto, e a censire la dispensa la
-  // prima volta; senza, l'unica strada era inventare una voce di lista, spuntarla e
-  // sistemarla. Entra `available` e sfusa: lo stato si corregge col controllo qui
-  // accanto, la marca si aggancia dove c'è un codice da leggere.
-  const [addFailed, setAddFailed] = useState(false);
-
   const [query, setQuery] = useState("");
   const [expiringOnly, setExpiringOnly] = useState(false);
-  // il testo con cui si è aperta l'aggiunta; `null` quando è chiusa
-  const [adding, setAdding] = useState<string | null>(null);
+  // L'ingresso diretto (S3): una confezione che non passa dalla lista — chi torna a
+  // casa con una cosa che non aveva scritto, e il censimento della dispensa. Due porte:
+  // il + col testo della barra, e «Scansiona». `null` quando è chiuso; `serial` lo fa
+  // rinascere quando si riapre con un testo nuovo
+  const [entry, setEntry] = useState<{ door: EntryDoor; serial: number } | null>(null);
   // la voce appena aggiunta, da portare in vista quando arriva nell'elenco
   const [revealId, setRevealId] = useState<string | null>(null);
   const clearReveal = useCallback(() => setRevealId(null), []);
 
-  const add = useMutation({
-    mutationFn: (ingredient: Ingredient) => addPantryItem(ingredient.id),
-    onMutate: () => setAddFailed(false),
-    onSuccess: (created, ingredient) => {
-      invalidate();
-      setAdding(null);
-      // la barra torna vuota e il riepilogo si spegne: la riga nuova deve potersi vedere
-      setQuery("");
-      setExpiringOnly(false);
-      setRevealId(created.id);
-      notice({ text: `In dispensa: ${ingredient.display_name}` });
-    },
-    onError: () => setAddFailed(true),
-  });
+  function openEntry(door: EntryDoor) {
+    setEntry((prev) => ({ door, serial: (prev?.serial ?? 0) + 1 }));
+  }
+
+  // L'annulla di un ingresso: archivia la voce appena creata, come la ✕ di una riga.
+  // Vive nell'avviso, che è dell'app: se fallisce, un avviso nuovo lo dice e offre di
+  // riprovare — la voce è in dispensa davvero, e perderla qui sarebbe il vicolo cieco
+  function undoEntry(created: PantryItem, label: string) {
+    patchPantryItem(created.id, { archived: true }).then(
+      () => queryClient.invalidateQueries({ queryKey: ["pantry"] }),
+      () =>
+        notice({
+          text: `Non sono riuscito a togliere ${label} dalla dispensa.`,
+          action: { label: "Riprova", onClick: () => undoEntry(created, label) },
+        })
+    );
+  }
+
+  /** Una confezione è entrata, da una delle due porte. La riga nuova deve potersi
+   * vedere: la barra torna vuota, il riepilogo si spegne, e `revealId` la porta in
+   * vista quando arriva nell'elenco. Chi aggiunge un filtro alla Dispensa (S14, S15)
+   * lo rimette qui come deve stare perché la riga si veda. */
+  function afterEntry(created: PantryItem, label: string) {
+    invalidate();
+    setQuery("");
+    setExpiringOnly(false);
+    setRevealId(created.id);
+    notice({
+      text: `In dispensa: ${label}`,
+      action: { label: "Annulla", onClick: () => undoEntry(created, label) },
+    });
+  }
 
   // il rientro in lista tocca la lista, non la dispensa: si invalida quella chiave,
   // altrimenti tornando in Lista il numero della scheda d'ingresso resta vecchio
@@ -199,55 +211,22 @@ export function PantryScreen() {
           leadingIcon={IconSearch}
           value={query}
           onChange={setQuery}
-          onAdd={(text) => {
-            setAddFailed(false);
-            setAdding(text);
+          onAdd={(text) => openEntry({ kind: "plus", text })}
+          // la seconda porta (S3): la confezione in mano, il codice da leggere
+          secondaryAction={{
+            icon: IconBarcode,
+            label: "Scansiona",
+            onClick: () => openEntry({ kind: "scan" }),
           }}
         />
 
-        {adding !== null && (
-          <div className="flex flex-col gap-2 rounded-2xl bg-card p-3">
-            <div className="flex items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <IngredientPicker
-                  key={adding}
-                  label="Ingrediente da mettere in dispensa"
-                  initialTerm={adding}
-                  autoFocus
-                  failureNote="Riprova, oppure scrivilo in lista e sistemalo da lì."
-                  // la dispensa non crea ingredienti: quel che l'anagrafica non ha passa
-                  // dalla lista, che prende anche il testo libero — la stessa via
-                  // d'uscita di `failureNote`, con la strada a portata di dito
-                  emptyNote={
-                    <>
-                      Non è in anagrafica: scrivilo in{" "}
-                      <Link to="/lista" className="inline-flex min-h-11 items-center font-medium text-brand">
-                        lista
-                      </Link>{" "}
-                      e sistemalo da lì.
-                    </>
-                  }
-                  onPick={(ingredient) => add.mutate(ingredient)}
-                  disabled={add.isPending}
-                />
-              </div>
-              <Button
-                variant="ghost"
-                icon={IconX}
-                label="Chiudi l'aggiunta"
-                onClick={() => {
-                  setAddFailed(false);
-                  setAdding(null);
-                }}
-              />
-            </div>
-            <p className="text-xs text-ink-faint">Entra come disponibile e senza marca.</p>
-            {/* accanto al controllo che ha fallito, e la scelta non si perde: si
-                rifà toccando di nuovo l'ingrediente */}
-            {addFailed && (
-              <Alert>Non sono riuscito ad aggiungere la voce in dispensa. Riprova.</Alert>
-            )}
-          </div>
+        {entry !== null && (
+          <DirectEntry
+            key={entry.serial}
+            door={entry.door}
+            onEntered={afterEntry}
+            onClose={() => setEntry(null)}
+          />
         )}
 
         {summary !== null && (
@@ -303,13 +282,10 @@ export function PantryScreen() {
           <EmptyState
             title={`Niente in dispensa per «${query.trim()}»`}
             action={
-              adding === null && (
+              entry === null && (
                 <Button
                   icon={IconPlus}
-                  onClick={() => {
-                    setAddFailed(false);
-                    setAdding(query.trim());
-                  }}
+                  onClick={() => openEntry({ kind: "plus", text: query.trim() })}
                 >
                   {`Aggiungi «${query.trim()}»`}
                 </Button>

@@ -136,9 +136,9 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Niente in dispensa per «sale»")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi «sale»" }));
     expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toHaveProperty("value", "sale");
-    // l'anagrafica non ha «sale»: il pannello non resta muto, dice dove andare
-    expect(await screen.findByText(/Non è in anagrafica/)).toBeDefined();
-    expect(screen.getByRole("link", { name: "lista" }).getAttribute("href")).toBe("/lista");
+    // l'anagrafica non ha «sale»: la Dispensa lo crea lì (S3), e non rimanda più alla lista
+    expect(await screen.findByRole("button", { name: "Aggiungi «sale»" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "lista" })).toBeNull();
   });
 
   it("il + apre l'aggiunta con il testo della barra, e scegliere mette in dispensa", async () => {
@@ -165,11 +165,16 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    // la scheda di conferma (S3): un tocco in più, e lì si scrive la scadenza
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
     expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
     const post = fetchSpy.mock.calls.find(([, init]) => init?.method === "POST");
-    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ ingredient_id: "i2", status: "available" });
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+      ingredient_id: "i2", product_id: null, status: "available", expires_on: null, barcode: null,
+    });
     // l'aggiunta si chiude e la barra torna vuota
     expect(screen.queryByLabelText("Ingrediente da mettere in dispensa")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Metti in dispensa" })).toBeNull();
     expect(screen.getByLabelText("Cerca o aggiungi in dispensa")).toHaveProperty("value", "");
     // la riga nuova arriva e va in vista una volta sola: `onRevealed` spegne `revealId`
     // subito dopo, e un secondo giro non deve richiamare lo scorrimento
@@ -189,6 +194,7 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
     expect(await screen.findByText("Non sono riuscito ad aggiungere la voce in dispensa. Riprova.")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Chiudi l'aggiunta" }));
 
@@ -211,8 +217,9 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
     expect(await screen.findByText("Non sono riuscito ad aggiungere la voce in dispensa. Riprova.")).toBeDefined();
-    expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Metti in dispensa" })).toBeDefined();
   });
 
   it("il nome del campo dell'aggiunta è quello che si legge (WCAG 2.5.3)", async () => {
@@ -298,7 +305,10 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "sale" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi «sale»" }));
     expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Aggiungi «sale»" })).toBeNull();
+    // dopo l'attesa della ricerca (180 ms) l'anagrafica non ha «sale» e il pannello offre
+    // di crearlo (S3): quel «Aggiungi «sale»» è il suo, e il vuoto non ne offre un secondo
+    await screen.findByRole("button", { name: "Aggiungi «sale»" });
+    expect(screen.getAllByRole("button", { name: "Aggiungi «sale»" })).toHaveLength(1);
   });
 
   it("un riepilogo che sparisce e poi torna, torna non premuto", async () => {
@@ -624,5 +634,40 @@ describe("PantryScreen", () => {
     expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     const other = screen.getByText("Pesca").closest("li")!;
     expect(within(other).queryByRole("alert")).toBeNull();
+  });
+
+  it("«Scansiona» apre lo scanner sotto la barra, con le righe a video, e la ✕ lo chiude (S3)", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(screen.getByRole("button", { name: "Scansiona" }));
+    expect(screen.getByRole("heading", { name: "Codice a barre" })).toBeDefined();
+    expect(screen.getByText("Total 0%")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Chiudi l'aggiunta" }));
+    expect(screen.queryByRole("heading", { name: "Codice a barre" })).toBeNull();
+  });
+
+  it("«Annulla» nell'avviso toglie la voce appena entrata (S3)", async () => {
+    const created = { ...ITEMS[2], id: "p9" };
+    const spy = stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") return [created, 201];
+      if (init?.method === "PATCH") return [created, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    await vi.waitFor(() => {
+      const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(String(patch?.[0])).toContain("/pantry/p9");
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ archived: true });
+    });
   });
 });
