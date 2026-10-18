@@ -2872,8 +2872,9 @@ test("il + della Dispensa a 375px: la scheda sfusa con le strade del codice e de
 }) => {
   await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
   await page.setViewportSize({ width: 375, height: 812 });
-  // niente si scrive: la scheda si apre, si misura e si chiude. «melanzana» non la nomina
-  // nessun altro file
+  // niente si scrive: la scheda si apre, si misura e si chiude. «melanzana» la nomina
+  // anche la prova S12 della figura scelta in Anagrafica, che la lascia in dispensa
+  // archiviata e con la figura «Nessuna»
   await page.goto("/dispensa");
   await page.getByLabel("Cerca o aggiungi in dispensa").fill("melanz");
   await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
@@ -2987,7 +2988,10 @@ async function inDispensa(page: Page, ingredientId: string): Promise<string> {
 }
 
 async function togliDallaDispensa(page: Page, voceId: string) {
-  await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+  const risposta = await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+  // soft: una pulizia che fallisce lascia una voce in dispensa per le prove dopo, ma non
+  // deve coprire con il suo errore l'asserzione che stava cadendo nel `try`
+  expect.soft(risposta.ok(), "la voce non è stata tolta dalla dispensa").toBe(true);
 }
 
 test("S12 a 375px: la figura a sinistra del nome, il ripiego del reparto si legge nei due temi, e il nome più lungo del seme va a capo senza spingere fuori tacche e ✕", async ({
@@ -3001,6 +3005,11 @@ test("S12 a 375px: la figura a sinistra del nome, il ripiego del reparto si legg
   // decide figure, quindi la riga mostra il ripiego: lo spruzzino di «casa», in grigio
   const detersivo = await dalSeme(page, "detersivo per la lavatrice");
   const voceId = await inDispensa(page, detersivo.id);
+  // «bagnoschiuma»: una parola sola, più larga della colonna del nome (99px a 375px dopo la
+  // figura). Il nome lungo sopra va a capo fra le parole e non prova questo caso: una
+  // parola lunga non andava a capo, e sbordava sulla prima tacca
+  const bagnoschiuma = await dalSeme(page, "bagnoschiuma");
+  const bagnoId = await inDispensa(page, bagnoschiuma.id);
   try {
     await page.goto("/dispensa");
     const togli = page.getByRole("button", { name: "Togli detersivo per la lavatrice dalla dispensa" });
@@ -3050,8 +3059,29 @@ test("S12 a 375px: la figura a sinistra del nome, il ripiego del reparto si legg
       expect(await testiIlleggibili(page), `dispensa, tema ${tema}`).toEqual([]);
     }
     await page.emulateMedia({ colorScheme: "light" });
+
+    // una parola più larga della colonna: il suo testo finisce a sinistra della prima
+    // tacca. Si misura il testo con un Range, non il box del Link: il Link è un contenitore
+    // flex e può essere stretto mentre il testo che contiene lo sborda
+    const rigaBagno = page.getByRole("listitem").filter({
+      has: page.getByRole("button", { name: "Togli bagnoschiuma dalla dispensa" }),
+    });
+    await rigaBagno.scrollIntoViewIfNeeded();
+    const finePerTesto = await rigaBagno
+      .getByRole("link", { name: "Bagnoschiuma" })
+      .evaluate((link) => {
+        const intervallo = link.ownerDocument.createRange();
+        intervallo.selectNodeContents(link);
+        return intervallo.getBoundingClientRect().right;
+      });
+    const primaTacca = (await rigaBagno.getByRole("radio").first().boundingBox())!;
+    expect(
+      finePerTesto,
+      "il nome di una parola lunga sborda sulla prima tacca"
+    ).toBeLessThanOrEqual(primaTacca.x);
   } finally {
     await togliDallaDispensa(page, voceId);
+    await togliDallaDispensa(page, bagnoId);
   }
 });
 

@@ -127,10 +127,16 @@ export function PantryRow({
             prodotto, dove porta il link. */}
         <div className="min-w-0 flex-1">
           {/* la maiuscola solo a video (spec T3 §4.7): i nomi accessibili dei controlli
-              della riga usano `label`, in mezzo a una frase, e restano com'è */}
+              della riga usano `label`, in mezzo a una frase, e restano com'è.
+              `wrap-anywhere` e non `break-words`: il Link è `flex`, il suo testo è un
+              elemento flex anonimo con `min-width: auto`, cioè la parola più lunga. Con
+              `overflow-wrap: break-word` quel minimo non scende, e una parola più larga
+              della colonna (99px a 375px dopo la figura: «Ammorbidente», «Bagnoschiuma»)
+              sbordava sulla prima tacca; con `anywhere` il minimo si abbassa e la parola
+              va a capo dove serve */}
           <Link
             to={registryPath(item)}
-            className="flex min-h-11 items-end pb-0.5 font-medium break-words underline decoration-line underline-offset-4"
+            className="flex min-h-11 items-end pb-0.5 font-medium wrap-anywhere underline decoration-line underline-offset-4"
           >
             {capitalizeFirst(item.ingredient_name)}
           </Link>
