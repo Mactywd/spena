@@ -3224,7 +3224,7 @@ for (const tema of ["light", "dark"] as const) {
             });
             return 0.2126 * r + 0.7152 * g + 0.0722 * b;
           };
-          const esiti: { dove: string; variante: string; opacita: string; fondo: string | null; colore: string; rapporto: number }[] = [];
+          const esiti: { dove: string; variante: string; sotto: string; opacita: string; fondo: string | null; colore: string; rapporto: number }[] = [];
           // "" è la pagina (il contenitore è trasparente, dietro c'è il `body`); `bg-card`
           // è una scheda, una classe che l'app usa e che quindi è nel CSS compilato
           for (const sotto of ["", "bg-card"]) {
@@ -3250,6 +3250,7 @@ for (const tema of ["light", "dark"] as const) {
                 esiti.push({
                   dove: `${variante} ${modo} su ${sotto || "page"}`,
                   variante,
+                  sotto,
                   opacita: stile.opacity as string,
                   fondo,
                   colore: stile.color as string,
@@ -3274,6 +3275,14 @@ for (const tema of ["light", "dark"] as const) {
       for (const m of misure.filter((m) => m.variante === "primary" || m.variante === "warn")) {
         expect(m.fondo, m.dove).toBe(tokenIn(tema, "disabled"));
         expect(m.colore, m.dove).toBe(tokenIn(tema, "on-disabled"));
+      }
+      // Il fondo trovato è proprio quello previsto, non uno qualunque: senza questo, se
+      // `bg-card` sparisse dal CSS compilato il caso «scheda» misurerebbe in silenzio contro
+      // la pagina e il contrasto resterebbe verde. Il secondario ha la sua scheda addosso;
+      // ghost e pericolo non hanno fondo e vedono quello del contenitore.
+      for (const m of misure.filter((m) => m.variante !== "primary" && m.variante !== "warn")) {
+        const atteso = m.variante === "secondary" || m.sotto === "bg-card" ? "card" : "page";
+        expect(m.fondo, `${m.dove}: il fondo dev'essere ${atteso}`).toBe(tokenIn(tema, atteso));
       }
     });
 
