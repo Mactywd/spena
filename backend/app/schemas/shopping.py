@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.db.models.shopping import ShoppingStatus
 
@@ -52,3 +52,15 @@ class StockEntryIn(BaseModel):
 
 class StockRequest(BaseModel):
     entries: list[StockEntryIn] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _one_ingredient_per_item(self) -> "StockRequest":
+        # Più confezioni per voce sì (S3 §10.2), ma dello stesso ingrediente: la voce
+        # ne ha uno, e `stock_items` lo riscrive a ogni riga — con due diversi
+        # vincerebbe l'ultimo, in silenzio. L'interfaccia non manda mai questa
+        # coppia; se arriva, è un client sbagliato, e si rifiuta prima di scrivere.
+        seen: dict[uuid.UUID, uuid.UUID] = {}
+        for entry in self.entries:
+            if seen.setdefault(entry.shopping_item_id, entry.ingredient_id) != entry.ingredient_id:
+                raise ValueError("le confezioni di una voce sono dello stesso ingrediente")
+        return self

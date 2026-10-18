@@ -10,12 +10,12 @@ from app.db.models.pantry import PantryItem
 from app.domain.rules import Availability, expiry_state, today_in_pantry
 from app.repositories.pantry import (
     ProductIngredientMismatch,
-    add_pantry_item,
     archive_item,
     availability_map,
     list_pantry,
     set_expiry,
     set_status,
+    stock_one,
     unarchive_item,
 )
 from app.schemas.pantry import PantryItemCreate, PantryItemOut, PantryItemPatch, RestockOut
@@ -61,9 +61,10 @@ async def create(
     payload: PantryItemCreate, session: AsyncSession = Depends(get_session)
 ) -> PantryItemOut:
     try:
-        item = await add_pantry_item(
+        item = await stock_one(
             session, ingredient_id=payload.ingredient_id, product_id=payload.product_id,
-            status=payload.status, note=payload.note,
+            status=payload.status, note=payload.note, expires_on=payload.expires_on,
+            barcode=payload.barcode,
         )
         await session.commit()
     except ProductIngredientMismatch as exc:

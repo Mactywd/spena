@@ -493,3 +493,83 @@ async def test_le_voci_della_stessa_spesa_restano_nello_stesso_ordine(
     for _ in range(3):
         risposta = await logged_client.get("/api/v1/pantry")
         assert [v["id"] for v in risposta.json()] == atteso
+
+
+# S3: l'ingresso diretto porta la scadenza e il codice letto, come la sistemazione, e
+# passa dalla stessa funzione (`stock_one`): l'ordine «voce, poi codice» è la guardia
+# di S8, e una seconda copia resterebbe indietro al primo difetto corretto.
+
+
+async def test_l_ingresso_diretto_porta_la_scadenza(logged_client, dispensa):
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["pomodoro"].id), "expires_on": "2026-10-20",
+    })
+    assert response.status_code == 201
+    assert response.json()["expires_on"] == "2026-10-20"
+
+
+async def test_l_ingresso_diretto_da_il_codice_al_prodotto_che_non_ne_ha(
+    logged_client, db_session, dispensa
+):
+    """Scelto a catalogo dopo un codice ignoto (S8): la prossima scansione lo trova."""
+    product = Product(ingredient_id=dispensa["yogurt"].id, name="Total 0%", brand="Fage",
+                      source="custom")
+    db_session.add(product)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(product.id),
+        "barcode": "8001234567890",
+    })
+    assert response.status_code == 201
+    await db_session.refresh(product)
+    assert product.barcode == "8001234567890"
+
+
+async def test_l_ingresso_diretto_non_riscrive_il_codice_di_un_prodotto(
+    logged_client, db_session, dispensa
+):
+    product = Product(ingredient_id=dispensa["yogurt"].id, name="Total 0%", brand="Fage",
+                      barcode="52010", source="custom")
+    db_session.add(product)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(product.id),
+        "barcode": "8001234567890",
+    })
+    assert response.status_code == 201
+    await db_session.refresh(product)
+    assert product.barcode == "52010"
+
+
+async def test_un_codice_senza_prodotto_non_si_lega_a_niente(logged_client, db_session, dispensa):
+    """Lo sfuso non ha un prodotto a cui darlo: la voce entra, il codice resta di nessuno."""
+    from sqlalchemy import select
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["pomodoro"].id), "barcode": "8001234567890",
+    })
+    assert response.status_code == 201
+    assert response.json()["product_id"] is None
+    legato = await db_session.scalar(select(Product).where(Product.barcode == "8001234567890"))
+    assert legato is None
+
+
+async def test_il_prodotto_di_un_altro_ingrediente_resta_409_e_non_prende_il_codice(
+    logged_client, db_session, dispensa
+):
+    product = Product(ingredient_id=dispensa["pomodoro"].id, name="Pomodori pelati",
+                      source="custom")
+    db_session.add(product)
+    # commit e non flush: la rotta, sul 409, fa rollback, e nella sessione di test il
+    # rollback porterebbe via anche il prodotto non ancora confermato
+    await db_session.commit()
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(product.id),
+        "barcode": "8001234567890",
+    })
+    assert response.status_code == 409
+    await db_session.refresh(product)
+    assert product.barcode is None

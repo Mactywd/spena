@@ -30,6 +30,14 @@ class PantryItemCreate(BaseModel):
     product_id: uuid.UUID | None = None
     status: PantryStatus = PantryStatus.AVAILABLE
     note: str | None = Field(default=None, max_length=300)
+    # S3: l'ingresso diretto scrive la scadenza con la confezione in mano (D5), come la
+    # sistemazione
+    expires_on: date | None = None
+    # il codice letto prima di scegliere il prodotto a catalogo (S8). Senza max_length
+    # per la stessa ragione di StockEntryIn: un codice che non entra in colonna non si
+    # lega e basta (give_barcode_if_missing), mentre un 422 qui respingerebbe la voce
+    # per un di più
+    barcode: str | None = None
 
 
 # Niente `fill_percent`: dal 2026-09-29 non si scrive più (D1 in docs/prossimi-passi.md).
