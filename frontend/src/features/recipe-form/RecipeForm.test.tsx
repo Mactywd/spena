@@ -398,4 +398,41 @@ describe("R12: un ingrediente che non c'è si aggiunge dal modulo", () => {
     expect(screen.getByRole("option", { name: /Zucchero/ })).toBeInTheDocument();
     expect(offerta).toBeInTheDocument();
   });
+
+  // Dopo «Aggiungi «farro»» scegliere anche «Farro» dai suggerimenti faceva due righe, e
+  // il salvataggio tornava col 409 delle due righe (T3 Consegna 6b): ora aggancia la riga
+  it("dopo «Aggiungi «farro»», scegliere «Farro» dai suggerimenti aggancia quella riga invece di farne due", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              String(url).includes("/ingredients/search")
+                ? [{ id: "i7", name: "farro", display_name: "Farro", category: "cereali", kind: "food" }]
+                : []
+            ),
+            { status: 200 }
+          )
+        )
+      )
+    );
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.click(await offri("farro"));
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi alla ricetta" }));
+    await userEvent.type(screen.getByLabelText("Quantità per farro"), "160 g");
+    await userEvent.type(screen.getByLabelText("Aggiungi un ingrediente"), "farro");
+    await userEvent.click(await screen.findByRole("option", { name: /Farro/ }));
+
+    expect(screen.getAllByRole("button", { name: /^Togli farro$/i })).toHaveLength(1);
+    await salva();
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          expect.objectContaining({ ingredient_id: "i7", quantity_text: "160 g" }),
+        ]),
+      })
+    );
+  });
 });

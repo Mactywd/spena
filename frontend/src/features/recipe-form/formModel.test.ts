@@ -4,6 +4,7 @@ import {
   EMPTY_FORM,
   addNewLine,
   applyDraft,
+  attachIngredient,
   lineFromDraft,
   lineFromIngredient,
   lineFromNewName,
@@ -221,5 +222,44 @@ describe("R12: le righe di un nome nuovo", () => {
     // era «non in anagrafica, sarà escluso»: col reparto, parte salvando
     expect(conZafferano.lines[1].proposedCategory).toBe("spezie");
     expect(savableLines(conZafferano.lines).map((line) => line.key)).toContain(ignota.key);
+  });
+});
+
+describe("attachIngredient: scegliere un ingrediente dal selettore", () => {
+  const FARRO: Ingredient = {
+    id: "i7", name: "farro", display_name: "Farro", category: "cereali", kind: "food",
+  };
+
+  it("dopo «Aggiungi «farro»», scegliere «Farro» aggancia quella riga: una sola, con la sua dose", () => {
+    const nuova = { ...lineFromNewName("farro", "cereali"), quantityText: "160 g", role: "secondary" as const };
+    const righe = attachIngredient([nuova], FARRO);
+    expect(righe).toHaveLength(1);
+    expect(righe[0]).toMatchObject({
+      key: nuova.key, label: "farro", ingredientId: "i7", matchedName: "farro",
+      proposedCategory: null, included: true, quantityText: "160 g", role: "secondary",
+    });
+  });
+
+  it("una riga dell'AI «non in anagrafica» con lo stesso nome si aggancia anche lei", () => {
+    const ai = lineFromDraft(
+      bozza({ raw_name: "Zafferano", ingredient_id: null, matched_name: null, confident: false }),
+      0
+    );
+    const righe = attachIngredient([ai], ZAFFERANO);
+    expect(righe).toHaveLength(1);
+    expect(righe[0]).toMatchObject({ ingredientId: "i9", included: true, proposedCategory: null });
+    expect(savableLines(righe)).toHaveLength(1);
+  });
+
+  it("un nome diverso fa una riga nuova", () => {
+    const righe = attachIngredient([lineFromNewName("orzo", "cereali")], FARRO);
+    expect(righe.map((riga) => riga.label)).toEqual(["orzo", "Farro"]);
+  });
+
+  it("una riga che lo indica già si include e basta", () => {
+    const esclusa = { ...lineFromIngredient(FARRO), included: false };
+    const righe = attachIngredient([esclusa], FARRO);
+    expect(righe).toHaveLength(1);
+    expect(righe[0].included).toBe(true);
   });
 });

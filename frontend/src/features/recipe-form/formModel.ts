@@ -178,6 +178,43 @@ export function addNewLine(
   return { lines: [...lines, line], key: line.key };
 }
 
+/** Aggancia l'ingrediente scelto dal selettore del modulo. Due righe sullo stesso
+ * ingrediente sono un 409 del backend, e non vorrebbero dire niente:
+ * - se una riga lo indica già, la si include e basta — che è anche il modo di confermare
+ *   un aggancio incerto scegliendolo di persona;
+ * - se una riga senza aggancio porta lo stesso nome (una riga nuova di «Aggiungi «…»», o
+ *   una dell'AI «non in anagrafica»), si aggancia quella: è la stessa cosa, e salvando il
+ *   server l'avrebbe collegata a lui comunque. Tiene dose e ruolo, perde il reparto
+ *   proposto. Il confronto dei nomi è quello di `addNewLine` (T3 Consegna 6b);
+ * - altrimenti, una riga nuova. */
+export function attachIngredient(lines: FormLine[], ingredient: Ingredient): FormLine[] {
+  if (lines.some((line) => line.ingredientId === ingredient.id))
+    return lines.map((line) =>
+      line.ingredientId === ingredient.id ? { ...line, included: true } : line
+    );
+  const names = new Set(
+    [ingredient.name, ingredient.display_name].map((name) => name.trim().toLowerCase())
+  );
+  const sameName = lines.find(
+    (line) => line.ingredientId === null && names.has(comparableName(line))
+  );
+  if (sameName)
+    return lines.map((line) =>
+      line.key === sameName.key
+        ? {
+            ...line,
+            ingredientId: ingredient.id,
+            matchedName: ingredient.name,
+            uncertain: false,
+            included: true,
+            proposedCategory: null,
+            nonFood: false,
+          }
+        : line
+    );
+  return [...lines, lineFromIngredient(ingredient)];
+}
+
 export function lineFromRecipe(line: RecipeIngredientLine): FormLine {
   return {
     key: `recipe:${line.ingredient_id}`,

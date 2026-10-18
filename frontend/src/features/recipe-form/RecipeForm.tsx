@@ -14,9 +14,9 @@ import { CategoryField } from "./CategoryField";
 import { NewIngredientFields } from "../stocking/NewIngredientFields";
 import {
   addNewLine,
+  attachIngredient,
   QUANTITY_MAX,
   TITLE_MAX,
-  lineFromIngredient,
   matchNote,
   recipeBody,
   savableLines,
@@ -243,20 +243,10 @@ export function RecipeForm({
     onChange((prev) => ({ ...prev, lines: prev.lines.filter((line) => line.key !== key) }));
   }
 
+  // la regola delle righe doppie sta in `attachIngredient` (formModel.ts): una riga che
+  // c'è già si include, una senza aggancio con lo stesso nome si aggancia
   function attach(ingredient: Ingredient) {
-    onChange((prev) => {
-      // due righe sullo stesso ingrediente sono un 409 del backend, e non vorrebbero
-      // dire niente: se c'è già, la si include e basta — che è anche il modo di
-      // confermare un aggancio incerto scegliendolo di persona
-      if (prev.lines.some((line) => line.ingredientId === ingredient.id))
-        return {
-          ...prev,
-          lines: prev.lines.map((line) =>
-            line.ingredientId === ingredient.id ? { ...line, included: true } : line
-          ),
-        };
-      return { ...prev, lines: [...prev.lines, lineFromIngredient(ingredient)] };
-    });
+    onChange((prev) => ({ ...prev, lines: attachIngredient(prev.lines, ingredient) }));
   }
 
   function addNew(fields: { name: string; category: string }) {
