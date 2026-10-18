@@ -53,6 +53,8 @@ export {
   IconRestore,
   IconExternalLink,
 } from "@tabler/icons-react";
+// sostituti (R5): «Sostituisci» in fondo a ogni riga d'ingrediente della ricetta
+export { IconArrowsExchange } from "@tabler/icons-react";
 // anagrafica
 export {
   IconCursorText,

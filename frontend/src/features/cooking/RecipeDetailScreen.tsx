@@ -16,6 +16,7 @@ import { SectionHeading } from "../../components/ui/SectionHeading";
 import { StatusDot } from "../../components/ui/StatusDot";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import {
+  IconArrowsExchange,
   IconChefHat,
   IconChevronLeft,
   IconExternalLink,
@@ -29,6 +30,7 @@ import { RecipeImage } from "../recipes/RecipeImage";
 import { useArchiveRecipe } from "../recipes/useArchiveRecipe";
 import { revealAtTop } from "../../lib/revealAtTop";
 import { capitalizeFirst } from "../../lib/text";
+import { SubstitutePanel } from "../substitutes/SubstitutePanel";
 import type { CookResult, RecipeDetail, RecipeIngredientLine } from "../../domain/types";
 
 // Il numero viene dal backend, non da un conteggio fatto qui: quante voci sono
@@ -76,21 +78,46 @@ function RecipeHero({ recipe }: { recipe: RecipeDetail }) {
  * solo caso in cui il colore non dice abbastanza — un principale quasi finito è giallo
  * come un secondario quasi finito, ma a questa ricetta non basta — e sta scritto,
  * piccolo, accanto al nome (Mattia). Il nome del pallino resta quello del vocabolario
- * (`STATUS_LABELS`); «non basta» lo sente anche chi ascolta, perché è testo. */
-function IngredientRow({ line }: { line: RecipeIngredientLine }) {
+ * (`STATUS_LABELS`); «non basta» lo sente anche chi ascolta, perché è testo.
+ * In fondo, «Sostituisci» (R5): apre sotto la riga cosa usare al suo posto. */
+function IngredientRow({ line, recipeId }: { line: RecipeIngredientLine; recipeId: string }) {
+  // R5: lo stato del pannello è della riga. Due pannelli aperti insieme non si danno
+  // fastidio, e uscire dalla ricetta li chiude tutti
+  const [substituting, setSubstituting] = useState(false);
   return (
-    <li className="flex items-center gap-2.5 px-3 py-2.5">
-      <StatusDot availability={line.availability} />
-      <span className="min-w-0 flex-1">
-        {/* la maiuscola solo a video (spec T3 §4.7): apre la riga, non è dentro una
-            frase né in un nome accessibile */}
-        <span>{capitalizeFirst(line.ingredient_name)}</span>
-        {line.availability === "low" && !line.satisfied && (
-          <span className="ml-2 text-xs font-medium text-low">non basta</span>
+    <li className="px-3 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <StatusDot availability={line.availability} />
+        <span className="min-w-0 flex-1">
+          {/* la maiuscola solo a video (spec T3 §4.7): apre la riga, non è dentro una
+              frase né in un nome accessibile */}
+          <span>{capitalizeFirst(line.ingredient_name)}</span>
+          {line.availability === "low" && !line.satisfied && (
+            <span className="ml-2 text-xs font-medium text-low">non basta</span>
+          )}
+        </span>
+        {line.quantity_display && (
+          <span className="shrink-0 text-sm text-ink-faint">{line.quantity_display}</span>
         )}
-      </span>
-      {line.quantity_display && (
-        <span className="shrink-0 text-sm text-ink-faint">{line.quantity_display}</span>
+        {/* Un'icona sola (spec T3 §2: più pulsanti uguali in fila → solo icone), col nome
+            per chi ascolta. `-my-2.5` restituisce il `py-2.5` della riga: il bersaglio è
+            44 px senza alzarla; `-mr-2` lo avvicina al bordo. Il fuoco resta qui quando si
+            chiude, perché il pulsante non si smonta. */}
+        <Button
+          variant="ghost"
+          icon={IconArrowsExchange}
+          label={`Sostituisci ${line.ingredient_name}`}
+          aria-expanded={substituting}
+          onClick={() => setSubstituting((open) => !open)}
+          className="-my-2.5 -mr-2 shrink-0"
+        />
+      </div>
+      {substituting && (
+        <SubstitutePanel
+          recipeId={recipeId}
+          ingredientId={line.ingredient_id}
+          ingredientName={line.ingredient_name}
+        />
       )}
     </li>
   );
@@ -326,7 +353,7 @@ export function RecipeDetailScreen() {
               <Card pad={false}>
                 <ul>
                   {lines.map((line) => (
-                    <IngredientRow key={line.ingredient_id} line={line} />
+                    <IngredientRow key={line.ingredient_id} line={line} recipeId={recipe.id} />
                   ))}
                 </ul>
               </Card>
