@@ -2372,6 +2372,20 @@ Queste restano per il telefono.
   non somigliano più («zucch» → Zucchero prima di Zucchina). Un tocco sbagliato lega la
   voce all'ingrediente sbagliato, e poi c'è S9. Va sistemato lato server, con una soglia
   o un salto di punteggio.
+  *(Fatto il 2026-10-18, sul ramo `night/suggerimenti-soglia`, non ancora in
+  produzione — misura e decisioni in `docs/superpowers/specs/2026-10-06-suggerimenti-soglia-bozza.md`,
+  piano `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`. I suggerimenti di
+  `/ingredients/search` mostrano chi contiene il testo all'inizio di una parola, nel nome o
+  in un alias, senza accenti; gli altri solo se nessuno lo contiene, sopra
+  max(0,30; 0,8 × il primo). Il taglio vale solo per l'endpoint: `match_name` e i vicini
+  per l'AI restano sugli sfumati. `IngredientPicker` senza `onCreate` né `emptyNote` dice
+  «Nessun ingrediente somiglia a «…». Prova con un'altra parola.». Sul seme
+  (`python -m app.cli.measure_suggestions`): digitazione (1270 prove) bersaglio in lista
+  100,0 % prima e dopo, righe in media da 5,16 a 1,65, persi 0; due lettere (186 prove)
+  righe in media da 5,60 a 6,54; refusi (912 prove) bersaglio in lista da 93,0 % a 59,0 %,
+  con 310 prove perse: il prezzo dichiarato del pavimento a 0,30. «Zucch» dà ancora
+  Zucchero prima di Zucchina (decisione 5): se il giro dopo il taglio dice che sbaglia, lo
+  spareggio diventa una voce sua.)*
 - **Le conferme mancano o stanno fuori vista.** Sono T4.
 - **«Finito» ha tre colori**: rosso sul cursore, grigio sulla pastiglia, nero nel
   foglio della cottura. Il rosso è anche il colore della X e degli errori. Serve un
