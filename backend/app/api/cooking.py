@@ -25,7 +25,12 @@ async def cook_recipe(
     ]
     try:
         event = await cook(
-            session, recipe_id=recipe_id, servings=payload.servings, transitions=transitions
+            session, recipe_id=recipe_id, servings=payload.servings, transitions=transitions,
+            anchor=(
+                (payload.anchor, payload.amount)
+                if payload.anchor is not None and payload.amount is not None
+                else None
+            ),
         )
         await session.commit()
     except KeyError as exc:

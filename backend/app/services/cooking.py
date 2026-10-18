@@ -7,13 +7,18 @@ se qualcosa manca a metà strada, non resta nulla a metà.
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.pantry import PantryItem
 from app.db.models.recipe import CookingEvent, Recipe
 from app.db.models.shopping import ShoppingReason
+from app.domain.quantities import decimal_text
 from app.domain.rules import PantryStatus
+from app.repositories.recipes import get_recipe
+from app.services.rescale import AnchorRefused, find_anchor_line, resolve_anchor
 from app.services.restock import restock
 
 # il motivo con cui la voce rientra in lista dipende da come l'hai lasciata.
@@ -23,6 +28,43 @@ _RESTOCK_REASON = {
     PantryStatus.FINISHED: ShoppingReason.FINISHED_WHILE_COOKING,
     PantryStatus.LOW: ShoppingReason.LOW_WHILE_COOKING,
 }
+
+# il fattore nello storico: sei decimali bastano a ricostruire ogni dose, che ne ha tre
+FACTOR_PRECISION = Decimal("0.000001")
+
+
+def anchor_record(
+    recipe: Recipe, ingredient_id: uuid.UUID, amount: Decimal
+) -> dict[str, str | None]:
+    """Cosa si è cucinato quando si è riscalato da una dose (R2, secondo modo).
+
+    Va nello `snapshot` e non in `servings`: le porzioni sono un intero che dice
+    quante ne sono uscite dalla pentola, ed è un fatto solo quando lo si è scelto; «1,5»
+    è un derivato, e scriverlo arrotondato sarebbe falso per sempre. Il fatto vero è la
+    dose dell'ancora. Il fattore si ricalcola con la funzione del dettaglio; un'ancora
+    che adesso non vale più (riga tolta, fuori scala) non blocca la cottura: si registra
+    con `factor` nullo. Stringhe col punto e non `Decimal`: il JSONB non li sa scrivere.
+    """
+    line = find_anchor_line(recipe, ingredient_id)
+    try:
+        resolved = resolve_anchor(recipe, ingredient_id, amount)
+    except AnchorRefused:
+        resolved = None
+    return {
+        "ingredient_id": str(ingredient_id),
+        "amount": decimal_text(amount),
+        "unit": line.unit.key if line is not None and line.unit is not None else None,
+        "factor": (
+            decimal_text(resolved.factor.quantize(FACTOR_PRECISION))
+            if resolved is not None
+            else None
+        ),
+        "equivalent_servings": (
+            decimal_text(resolved.equivalent_servings)
+            if resolved is not None and resolved.equivalent_servings is not None
+            else None
+        ),
+    }
 
 
 @dataclass(frozen=True)
@@ -38,6 +80,7 @@ async def cook(
     recipe_id: uuid.UUID,
     servings: int | None,
     transitions: list[Transition],
+    anchor: tuple[uuid.UUID, Decimal] | None = None,
 ) -> CookingEvent:
     recipe = await session.get(Recipe, recipe_id)
     if recipe is None:
@@ -75,9 +118,15 @@ async def cook(
             "restocked": transition.restock,
         })
 
+    record: dict[str, Any] = {"transitions": snapshot, "restocked": restocked}
+    if anchor is not None:
+        # le righe e le loro unità si caricano qui, come fa il dettaglio: `session.get`
+        # non le porta se la ricetta è già nella sessione senza di esse
+        loaded = await get_recipe(session, recipe_id)
+        assert loaded is not None  # l'abbiamo appena letta, nella stessa transazione
+        record["anchor"] = anchor_record(loaded, *anchor)
     event = CookingEvent(
-        recipe_id=recipe_id, cooked_at=now, servings=servings,
-        snapshot={"transitions": snapshot, "restocked": restocked},
+        recipe_id=recipe_id, cooked_at=now, servings=servings, snapshot=record,
     )
     session.add(event)
     await session.flush()
