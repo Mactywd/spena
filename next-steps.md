@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-18 (fase notte: S3, S12 e tema scuro fatti, da revisionare; una domanda per Mattia sulla serie della scansione)_
+_Ultimo aggiornamento: 2026-10-19 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -52,6 +52,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [tbd] P3 · P2, NutriScore sul periodo — TBD: la funzione non lineare, e come dichiarare i dati parziali [P2]
 
 ### Idee
+- [idea] P3 · S15 con S14: una riga nascosta non spegne mai `revealId` (si spegne quando la riga monta). Con i reparti collassabili, S15 deve aprire il reparto della riga appena aggiunta o spegnere `revealId` lui; altrimenti la riga in un reparto chiuso non va in vista e `settleWorld` continua a guardarla [S15]
 - [idea] P3 · Annullando una decisione nella coda la riga sparisce e il fuoco cade sulla pagina: portarlo alla scheda del termine tornato in coda [T3 Consegna 6b]
 - [idea] P3 · Il titolo del foglio della cottura, per una confezione senza prodotto, è il nome dell'ingrediente in minuscolo: `capitalizeFirst` come nelle righe [T3 Consegna 6b]
 - [idea] P3 · La domanda di Open Food Facts in Sistema la spesa dice sempre «È un «…»?» (`OffSuggestionQuestion.tsx`): con un nome femminile esce «È un «zucchina»?». Riformulare senza articolo, per esempio «È «zucchina»?» o «Va bene come «zucchina»?» [giro nel browser 2026-10-07]
@@ -126,6 +127,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P3 · Prove sul telefono di S14: «Tutto / Cibo / Casa» col pollice; chiusa e riaperta l'app installata, la Dispensa riparte da «Tutto» (la `sessionStorage` di una PWA può durare più di quanto si pensa) [S14]
 - [tbd] P2 · Dopo il deploy di S12: una volta `ssh hetznerserver "cd ~/sites/spena && docker compose -f docker-compose.prod.yml exec -T backend python -m app.cli.decide_emoji"`, rilanciato finché l'ultima riga dice «nessun ingrediente in attesa» (le figure degli ingredienti di produzione; ~9 chiamate all'AI; se il numero degli «ingredienti restano da decidere» non scende fra due lanci, quelli restano col ripiego del reparto o si sceglie la figura a mano in Anagrafica, e non serve rilanciare ancora; se la riga «figure non disponibili (…)» si ripete identica dopo che i primi lotti erano passati, il perché è fra parentesi, e i lotti decisi prima del guasto restano scritti), poi sul telefono le emoji del proprio telefono in una dispensa vera di una trentina di voci, e la griglia di «Cambia figura» col pollice [S12]
 - [tbd] P1 · Prove sul telefono di S3: la fotocamera vera in serie (si sente l'attesa fra un codice e l'altro?), la fotocamera negata, la tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezione» e «Articolo aggiuntivo» in corsia; dopo «Annulla» nell'avviso, rileggere lo stesso codice dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre si rinumerano; nella serie, con tante righe, lo scanner resta in vista dopo «Metti in dispensa»? [S3]
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
@@ -141,9 +143,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono dei pulsanti spenti e del ☰ (tema scuro): il pulsante spento grigio si legge al sole e si capisce spento accanto a un secondario acceso, nei due temi; un pulsante `ghost` in volo (il cestino della ricetta, la ✕ della riga della lista) si capisce spento anche se cambia solo il colore della scritta; il ☰ in scuro spegne la pagina e si stacca col suo bordo. Nel browser l'e2e misura i contrasti nei due temi [T3 Consegna 1]
 
 ## In corso
-- [in corso] P3 · S14, «Tutto / Cibo / Casa» in dispensa — piano `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md` → branch night/s14-cibo-casa [S14]
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-19 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` in `PantryItemOut`, il selettore sotto la barra solo coi due mondi, ricordato in `sessionStorage`, il riepilogo delle scadenze che segue il mondo, «Cerca in tutto», a «Tutto» quando il selettore sparisce o la voce aggiunta è dell'altro mondo [S14] → branch night/s14-cibo-casa (da revisionare)
 - [fatto] 2026-10-18 · Tema scuro: il pulsante spento è grigio pieno (`disabled` / `on-disabled`) in ogni variante e in volo, niente più `opacity`; il velo del ☰ al 45% / 60% col bordo `panel-edge` in scuro; l'e2e misura anche i pulsanti spenti [T3 Consegna 1] → branch night/tema-scuro-spenti (da revisionare)
 - [fatto] 2026-10-18 · S12, righe della dispensa riconoscibili: l'emoji dell'ingrediente a sinistra del nome (elenco chiuso fino a Emoji 14.0, colonna `ingredients.emoji`, migrazione 0013) col ripiego sull'icona del reparto in grigio; «Cambia figura» in Anagrafica; il comando `decide_emoji` per l'AI, da lanciare dopo il deploy [S12] → branch night/s12-righe-dispensa (da revisionare)
 - [fatto] 2026-10-18 · S3, ingresso diretto in dispensa: «Scansiona» in serie con la scheda di conferma (due tocchi per una confezione a catalogo), il + che crea l'ingrediente, la scadenza prima di entrare e «Annulla» nell'avviso; in «Sistema la spesa» «Articolo aggiuntivo» e «+ un'altra confezione»; la regia dei pannelli in `ProductResolver`, `stock_one` nel backend [S3] → branch night/s3-ingresso-diretto (da revisionare)

@@ -1158,7 +1158,21 @@ La tastiera deve continuare a funzionare. Si prova **solo sul telefono vero**, c
 selettore data di S7: nessun test in jsdom e nessun `fill()` di Playwright riproduce un
 dito che scorre.
 
-## S14. Cibo e casa separati in dispensa **[D]**
+## S14. Cibo e casa separati in dispensa **[FATTO 2026-10-19 — night/s14-cibo-casa, non ancora in produzione]**
+
+> **Fatto** (piano `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md`, bozza
+> `docs/superpowers/specs/2026-10-06-cibo-casa-bozza.md`): il server espone
+> `ingredient_kind` in `PantryItemOut`, letto da `ingredients.kind`, e il client lo
+> confronta senza ricavarlo dal reparto. Sotto la barra della Dispensa, solo quando ci
+> sono cibo e cose di casa, tre pulsanti «Tutto / Cibo / Casa» (`WorldSelector`); la
+> scelta si ricorda in `sessionStorage` e non in `localStorage` come diceva questa voce
+> (deciso da Mattia il 2026-10-07, come i filtri del ricettario). I filtri hanno un
+> ordine solo (`visibleItems` in `pantryView.ts`: mondo, ricerca, scadenze), il
+> riepilogo delle scadenze conta il mondo scelto, una ricerca vuota nel mondo offre
+> «Cerca in tutto», e `settleWorld` riporta a «Tutto» quando il selettore sparisce o
+> quando la voce appena aggiunta è dell'altro mondo. Deciso da Mattia il 2026-10-09: una voce
+> aggiunta dello stesso mondo lascia il mondo com'è.
+
 Oggi cibo e non alimentari stanno nella stessa dispensa. Serve un modo per vedere solo
 il cibo o solo le cose di casa, per esempio un selettore «Tutto / Cibo / Casa» in cima.
 `ingredients.kind` esiste già (D4), quindi il modello non cambia. Va però esposto:
