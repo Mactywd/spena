@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -55,9 +55,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 
 ### Idee
 - [idea] P3 · Annullando una decisione nella coda la riga sparisce e il fuoco cade sulla pagina: portarlo alla scheda del termine tornato in coda [T3 Consegna 6b]
-- [idea] P3 · Il titolo del foglio della cottura, per una confezione senza prodotto, è il nome dell'ingrediente in minuscolo: `capitalizeFirst` come nelle righe [T3 Consegna 6b]
-- [idea] P3 · La domanda di Open Food Facts in Sistema la spesa dice sempre «È un «…»?» (`OffSuggestionQuestion.tsx`): con un nome femminile esce «È un «zucchina»?». Riformulare senza articolo, per esempio «È «zucchina»?» o «Va bene come «zucchina»?» [giro nel browser 2026-10-07]
-- [idea] P3 · Lista e Sistema la spesa mostrano il testo della voce com'è stato scritto, anche in minuscolo (di proposito: è il testo di chi l'ha scritto) — da confermare con Mattia [T3 Consegna 6b]
 - [idea] P3 · Nel modulo, un nome nuovo che coincide con un non alimentare dell'anagrafica si scopre solo salvando (422 con la frase): il selettore cerca solo cibo, quindi non lo mostra prima [T3 Consegna 6b, R12]
 - [idea] P3 · La casella della Lista (`ListRow.tsx`) è ancora un quadratino da 20 px: `Checkbox` è pronta [T3 Consegna 6b]
 - [idea] P3 · Il 409 «Due righe puntano allo stesso ingrediente» non dice quale: nominarlo, così non si cercano le due righe (backend) [T3 Consegna 6b]
@@ -71,7 +68,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · Una categoria ricordata che il pannello non può mostrare (le categorie non si caricano, o quella categoria non c'è più): il filtro vale e «Filtri» dice «1 attivo», ma il menu mostra «Tutte». Non è un vicolo cieco («Azzera» c'è), ma il pannello dice il falso [T3 Consegna 4]
 - [idea] P3 · Un aggiornamento di sfondo fallito della prima pagina (per esempio dopo un'eliminazione) sostituisce l'elenco già a video con l'errore: meglio tenere le righe e dire che l'aggiornamento non è riuscito [T3 Consegna 4]
 - [idea] P3 · Il «Riprova» di un'eliminazione fallita, toccato dopo essere usciti dal dettaglio, porta comunque al ricettario sostituendo la pagina corrente [T3 Consegna 4]
-- [idea] P3 · Nella bozza AI, «non in anagrafica» è la formula sbagliata per una riga non alimentare [Parte X]
 - [idea] P3 · `skipped_reason` non affiora da nessuna rotta né schermata [Parte X]
 - [idea] P3 · «Deciso nella coda» porta a una coda che mostra solo le 50 decisioni più recenti: filtro per termine o annulla dalla scheda [Parte X]
 - [idea] P3 · Cercare nell'elenco delle decisioni della coda [T3, esito del giro]
@@ -90,8 +86,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `ShoppingListScreen.test.tsx` è fallito in alcune corse della suite intera sotto carico, ogni volta su un'asserzione diversa, e passa da solo e nelle corse successive: un'attesa troppo corta da trovare [T3 Consegna 6a]
 - [idea] P3 · `Button` con `disabled` e `unavailableReason` insieme non è definito: il `disabled` nativo toglie il fuoco e il perché resta irraggiungibile da tastiera. Oggi nessun chiamante lo fa; far vincere `unavailableReason` o scriverlo nel JSDoc [T3 Consegna 6a]
 - [idea] P3 · In `MergePanel.tsx` «Cambia» è un `Button` dentro un `<p class="flex">`: oggi ha solo `busy`, ma se un giorno prende un `unavailableReason` il perché diventa un `<p>` dentro un `<p>`. Cambiare il contenitore in `<div>` [T3 Consegna 6a]
-- [idea] P3 · Nel modulo della ricetta, dopo «Aggiungi «pasta»» scegliere anche «Pasta» dai suggerimenti fa due righe (`attach` non confronta con le righe nuove): al salvataggio arriva il 409 delle due righe. Si esce togliendone una, ma confonde: `attach` dovrebbe riconoscere la riga nuova con lo stesso nome. [T3 Consegna 6b]
-- [idea] P3 · «Non è in anagrafica: lo creo io salvando.» può essere falso: con «Aggiungi «…»» sempre offerto, si può aggiungere un nome che c'è già (il server poi collega quello esistente e ignora il reparto scelto). [T3 Consegna 6b]
 - [idea] P3 · In `RecipeForm.tsx` restano due `<button>` scritti a mano: la ✕ «Togli» (con un SVG in linea: c'è `IconX`) e i due ruoli; passarli a `Button` (`aria-pressed` per i ruoli). [T3 Consegna 6b]
 
 - [idea] P3 · Altri controlli spenti fuori da `Button` usano ancora `opacity` e si leggono male (in chiaro ~1,8:1): `Checkbox` e la casella di `ListRow`, le tacche di `StockGauge`, il nome in `PantryRow` (`aria-disabled:opacity-40`), `CostPicker` (`disabled:opacity-60`), `IngredientPicker` e `OptionList` (`disabled:opacity-50`). Da portare alla regola che la bozza del tema scuro propone per `Button` [T3, bozza 2026-10-06]
@@ -128,9 +122,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-- [in corso] P3 · Pulizie: le parole a video — piano `docs/superpowers/plans/2026-10-13-pulizie-parole.md` → branch night/pulizie-parole [T3, Parte X]
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · Pulizie delle parole: «È «…»?» nella domanda di Open Food Facts; il titolo di una confezione senza prodotto nel foglio della cottura con la maiuscola; una riga della bozza AI non alimentare dice «non è un alimento» (`non_food` dal server); «Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.»; scegliere un ingrediente aggancia la riga nuova con lo stesso nome invece di farne due (`attachIngredient`); il testo delle voci della Lista e di Sistema la spesa con la maiuscola, solo a video [T3 Consegna 6b, Parte X] → branch night/pulizie-parole (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
