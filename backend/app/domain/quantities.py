@@ -23,14 +23,28 @@ PRECISION = Decimal("0.001")
 # nessun `except` di questo progetto intercetta.
 UNIT_MAX_LENGTH = 30
 
-# numero in testa (intero, decimale con virgola o punto, frazione), e subito dopo
-# la parola dell'unità se c'è. Tutto quel che segue è prosa e non ci riguarda:
-# «1 litro di brodo» è un litro, e «di brodo» sta già in quantity_text.
+# Le frazioni scritte con un carattere solo, come le scrive GialloZafferano («½
+# cucchiaino»). Solo le tre misurate in produzione il 2026-10-13: un'altra resta una
+# dose che non si legge, che è il contratto di questo parser.
+VULGAR_FRACTIONS = {"½": Decimal("0.5"), "¼": Decimal("0.25"), "¾": Decimal("0.75")}
+_FRACTION_CHARS = "".join(VULGAR_FRACTIONS)
+
+# numero in testa (intero, decimale con virgola o punto, frazione con la barra, intero
+# seguito da ½ ¼ ¾, oppure ½ ¼ ¾ da soli), e subito dopo la parola dell'unità se c'è.
+# Tutto quel che segue è prosa e non ci riguarda: «1 litro di brodo» è un litro, e «di
+# brodo» sta già in quantity_text. ½ ¼ ¾ sono «lettere» per `\w`: senza escluderle
+# dall'unità, «1 ½» sarebbe un ½ come unità.
 _DOSE = re.compile(
-    r"^\s*(?:(?P<num>\d+)\s*/\s*(?P<den>\d+)|(?P<dec>\d+(?:[.,]\d+)?))"
-    r"\s*(?P<unit>[^\W\d_]+)?",
+    rf"^\s*(?:(?P<num>\d+)\s*/\s*(?P<den>\d+)"
+    rf"|(?P<dec>\d+(?:[.,]\d+)?)(?:\s*(?P<mixed>[{_FRACTION_CHARS}]))?"
+    rf"|(?P<vulgar>[{_FRACTION_CHARS}]))"
+    rf"\s*(?P<unit>[^\W\d_{_FRACTION_CHARS}]+)?",
     re.UNICODE,
 )
+
+# Un pezzo «quanto basta»: «q.b.», «qb», «Q. B.», anche seguito da parole («q.b. per
+# spolverare»). Non si somma e non si scala: accanto a una dose, la dose resta leggibile.
+_QB = re.compile(r"^\s*q\s*\.?\s*b\b\.?", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -53,13 +67,21 @@ def parse_quantity(text: str | None) -> tuple[Decimal | None, str | None]:
     Lo stesso vale per le due cose che si capirebbero male: una dose che continua
     con un altro numero («2 1/2 cucchiai») e una parola d'unità più lunga di
     `UNIT_MAX_LENGTH`. Nessuna delle due si scala, e dirlo è meglio che scalarle.
+
+    Un pezzo «q.b.» accanto a una dose non conta: «50 g + q.b.» sono 50 g. Le
+    frazioni ½ ¼ ¾ si leggono, da sole («½ cucchiaino») e dopo un intero («1 ½»).
     """
     if not text:
         return (None, None)
 
     # `merge_quantities` unisce con « + » due dosi della stessa fonte finite sullo
     # stesso ingrediente («500 g + 50 g»). Sommare è giusto solo a unità uguale.
-    pieces = [_parse_one(piece) for piece in text.split("+")]
+    # Un pezzo «q.b.» non è una dose da sommare: «50 g + q.b.» sono 50 g che si
+    # riscalano, e il «+ q.b.» lo rimette accanto `with_qb_tail` (Mattia, 2026-10-13).
+    measured = [piece for piece in text.split("+") if not _QB.match(piece)]
+    if not measured:
+        return (None, None)
+    pieces = [_parse_one(piece) for piece in measured]
     if any(value is None for value, _ in pieces):
         return (None, None)
     units = {unit for _, unit in pieces}
@@ -76,8 +98,12 @@ def _parse_one(piece: str) -> tuple[Decimal | None, str | None]:
     try:
         if found["den"] is not None:
             value = (Decimal(found["num"]) / Decimal(found["den"])).quantize(PRECISION)
+        elif found["vulgar"] is not None:
+            value = VULGAR_FRACTIONS[found["vulgar"]]
         else:
             value = Decimal(found["dec"].replace(",", "."))
+            if found["mixed"] is not None:
+                value += VULGAR_FRACTIONS[found["mixed"]]
     except (InvalidOperation, DivisionByZero, ZeroDivisionError):
         return (None, None)
     unit = found["unit"].lower() if found["unit"] else None
@@ -94,6 +120,18 @@ def _parse_one(piece: str) -> tuple[Decimal | None, str | None]:
         # di tutta la ricetta più a valle.
         return (None, None)
     return (value, unit)
+
+
+def with_qb_tail(display: str, text: str | None) -> str:
+    """La dose riscalata, con accanto i pezzi «q.b.» che la riga scriveva.
+
+    `parse_quantity` legge «50 g + q.b.» come 50 g; riscalata, la riga direbbe «100 g»
+    e perderebbe il «q.b.». Mattia (2026-10-13): «+ q.b.» resta scritto accanto.
+    """
+    if not text:
+        return display
+    tails = [" ".join(piece.split()) for piece in text.split("+") if _QB.match(piece)]
+    return " + ".join([display, *tails])
 
 
 def scale_quantity(value: Decimal, factor: Decimal) -> Decimal:
