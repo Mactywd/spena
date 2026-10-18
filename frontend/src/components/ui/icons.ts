@@ -41,6 +41,8 @@ export {
 } from "@tabler/icons-react";
 // dispensa. Il carrello con il + vuol dire «va in lista» ovunque compaia
 export { IconShoppingCartPlus, IconCalendarEvent } from "@tabler/icons-react";
+// dispensa, i reparti che si aprono e si chiudono (S15): giù aperto, a destra chiuso
+export { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 // ricette
 export {
   IconAdjustmentsHorizontal,
