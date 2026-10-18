@@ -91,6 +91,23 @@ class RecipeIngredientOut(BaseModel):
     # quel che va mostrato: a 1× è quantity_text, riscritto solo quando si riporziona
     quantity_display: str | None
     quantity_scaled: bool
+    # R2, secondo modo: se da questa riga si può riscalare (una dose strutturata più
+    # grande di zero), e la parola dell'unità da scrivere accanto al campo («g»,
+    # «cucchiai»); `None` per un numero nudo o per una riga che non si riscala
+    anchorable: bool = False
+    anchor_unit: str | None = None
+
+
+class AnchorOut(BaseModel):
+    """La dose fissata da cui la risposta è riscalata (R2, secondo modo)."""
+
+    ingredient_id: uuid.UUID
+    # la dose come il server l'ha letta, col punto («112.5»): torna tale e quale alla
+    # cottura, per questo è una stringa e non un numero
+    amount: str
+    # le porzioni che quella dose fa, già arrotondate (`equivalent_servings` in
+    # app/domain/quantities.py); `None` se la ricetta non dice per quante porzioni è
+    equivalent_servings: float | None
 
 
 class RecipeOut(BaseModel):
@@ -127,6 +144,9 @@ class RecipeOut(BaseModel):
     # manda il server perché è il server a saperlo — `len(ingredients)` conterebbe
     # anche le righe senza `quantity_text`, che non sono dosi mancate
     dose_lines: int = 0
+    # la dose fissata, se questa risposta è riscalata da un ingrediente (R2). `scaled_to`
+    # resta del modo per porzioni: in questo modo è `None`
+    anchor: AnchorOut | None = None
     # presente vuol dire eliminata (R10): il dettaglio risponde lo stesso, perché un
     # collegamento vecchio porti a «Ripristina» e non a un 404
     archived_at: datetime | None = None
