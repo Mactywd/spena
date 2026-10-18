@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { ImportTerm, Ingredient, RecipeDraft } from "../src/domain/types.ts";
-import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
+import { buttonClasses, type ButtonVariant } from "../src/components/ui/buttonClasses.ts";
 
 /**
  * Lo stile è l'unica parte dell'app che i test in jsdom non possono vedere: Tailwind
@@ -495,8 +495,12 @@ function tokenDelTemaScuro(nome: string): string {
 }
 
 /** Ogni testo visibile della pagina, col suo contrasto contro il primo fondo dipinto
- * dietro di lui. Salta ciò che è nascosto, i controlli spenti (WCAG li esenta) e il
- * testo dentro un `aria-hidden`. Torna solo i casi sotto 4,5:1, descritti.
+ * dietro di lui. Salta ciò che è nascosto, il testo sotto un'opacità minore di 1 (i
+ * controlli spenti fuori da `Button`, che si spengono ancora così) e il testo dentro un
+ * `aria-hidden`. I pulsanti spenti si misurano come ogni altro testo: WCAG li esenta, la
+ * regola di casa no, e dal tema scuro (bozza del 2026-10-06, decisione 6) hanno un colore
+ * pieno — lasciarli fuori vorrebbe dire che il prossimo `opacity` torna senza che nessuno
+ * lo veda. Torna solo i casi sotto 4,5:1, descritti.
  *
  * Gira da `body` e non da `page.evaluate`, per il motivo di `contrastoAVideo` più
  * sotto: questo file non ha la libreria DOM, e `document` o `getComputedStyle` come
@@ -520,7 +524,7 @@ async function testiIlleggibili(page: Page): Promise<string[]> {
       const testo = n.textContent?.trim();
       const el = n.parentElement;
       if (!testo || !el) continue;
-      if (el.closest("[aria-hidden=true], [disabled], [aria-disabled=true], .sr-only")) continue;
+      if (el.closest("[aria-hidden=true], .sr-only")) continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
       let fondo: string | null = null;
@@ -944,7 +948,8 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
 // Cosa lo scanner (`testiIlleggibili`) misura e cosa no, detto esatto: prende il colore
 // calcolato del testo e quello del primo antenato con un fondo non trasparente, e ne fa
 // il rapporto WCAG. Salta il testo sotto un antenato con `opacity` minore di 1 (i
-// controlli spenti, gli elementi velati), dentro `aria-hidden`, `disabled` o `.sr-only`.
+// controlli spenti fuori da `Button`, gli elementi velati), dentro `aria-hidden` o
+// `.sr-only`; i pulsanti spenti li misura.
 // Non misura segnaposto e valori dei campi (non sono nodi di testo), né il testo sopra
 // un'immagine o un gradiente, che confronta col primo fondo pieno. Legge i colori come
 // `rgb()`/`rgba()`: un colore con l'alfa di Tailwind 4 (`text-ink/60`) si calcola in
@@ -3138,3 +3143,160 @@ test("S12: la figura si sceglie in Anagrafica e compare nella riga della Dispens
     await togliDallaDispensa(page, voceId);
   }
 });
+
+// --- Tema scuro: i pulsanti spenti e il velo del ☰ (bozza del 2026-10-06, decisa il 2026-10-07) ---
+
+/** Un token di `index.css` nel tema in prova, come `rgb(r, g, b)`. */
+function tokenIn(tema: "light" | "dark", nome: string): string {
+  return tema === "light" ? tokenDelTema(nome) : tokenDelTemaScuro(nome);
+}
+
+/** L'alfa del velo del ☰ scritta in `index.css` per il tema: `--scrim-alpha`, in un `:root`
+ * prima del blocco scuro per il chiaro e dentro il blocco scuro per lo scuro. Letta dal
+ * file come i token, per lo stesso motivo: se cambia lì, la prova misura il valore nuovo. */
+function veloDelTema(tema: "light" | "dark"): number {
+  const css = readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8");
+  const bloccoScuro = /@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([\s\S]*?)\}\s*\}/;
+  const dove = tema === "light" ? css.replace(bloccoScuro, "") : (css.match(bloccoScuro)?.[1] ?? "");
+  const percento = dove.match(/--scrim-alpha:\s*(\d+(?:\.\d+)?)%\s*;/)?.[1];
+  expect(percento, `--scrim-alpha non è scritta per il tema ${tema} in index.css`).toBeDefined();
+  return Number(percento) / 100;
+}
+
+/** L'alfa di un colore calcolato dal browser. Chromium rende un `color-mix(in oklab, …,
+ * transparent)` come `oklab(L a b / α)` e non come `rgba()` (vedi `testiIlleggibili`): si
+ * legge il numero dopo la barra, o il quarto di un `rgba()`. Un colore senza alfa è pieno. */
+function alfaDi(colore: string): number {
+  const dopoLaBarra = colore.match(/\/\s*([\d.]+)(%?)\s*\)$/);
+  if (dopoLaBarra) return Number(dopoLaBarra[1]) / (dopoLaBarra[2] ? 100 : 1);
+  const rgba = colore.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/);
+  return rgba ? Number(rgba[1]) : 1;
+}
+
+const VARIANTI: ButtonVariant[] = ["primary", "secondary", "warn", "ghost", "danger"];
+
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`spenti e velo, tema ${tema === "light" ? "chiaro" : "scuro"}`, () => {
+    test.use({ colorScheme: tema });
+
+    test("«Entra» a campo vuoto è grigio pieno, senza opacità, e la sua scritta si legge", async ({
+      page,
+    }) => {
+      // si esce come nella prova dell'accesso a 375px: aspettato l'accesso del
+      // `beforeEach` (o il suo cookie arriverebbe dopo), via il cookie, e il primo 401
+      // riporta all'accesso. «Entra» a campo vuoto è `aria-disabled` (`unavailableReason`)
+      await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+      await page.context().clearCookies();
+      await page.goto("/");
+      const entra = page.getByRole("button", { name: "Entra", exact: true });
+      await expect(entra).toHaveAttribute("aria-disabled", "true");
+      await fermo(page);
+
+      const misura = await contrastoAVideo(entra);
+      test.info().annotations.push({
+        type: "contrasto",
+        description: `«Entra» spento in ${tema}: ${misura.colore} su ${misura.fondo}, ${misura.rapporto.toFixed(2)}:1`,
+      });
+      // senza opacità, e proprio il grigio del tema: è la prova che `aria-disabled:bg-…`
+      // vince su `bg-brand` nel CSS compilato, che jsdom non vede
+      expect(misura.opacita).toBe(1);
+      expect(misura.fondo).toBe(tokenIn(tema, "disabled"));
+      expect(misura.colore).toBe(tokenIn(tema, "on-disabled"));
+      expect(misura.rapporto).toBeGreaterThanOrEqual(4.5);
+    });
+
+    test("ogni variante spenta, con `disabled` o `aria-disabled`, si legge sulla pagina e su una scheda", async ({
+      page,
+    }) => {
+      // Nessuna schermata seminata mostra spente tutte e cinque le varianti: qui si
+      // creano dei pulsanti con le classi vere di `buttonClasses`, come fa la prova del
+      // pulsante quadrato, e si tolgono subito. Il CSS è quello compilato e servito.
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+      const misure = await page.locator("body").evaluate(
+        (body, varianti: { variante: string; classi: string }[]) => {
+          const doc = body.ownerDocument;
+          const view = doc.defaultView;
+          const canali = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+          const lum = (c: string) => {
+            const [r, g, b] = canali(c).map((v) => {
+              const s = v / 255;
+              return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          };
+          const esiti: { dove: string; variante: string; opacita: string; fondo: string | null; colore: string; rapporto: number }[] = [];
+          // "" è la pagina (il contenitore è trasparente, dietro c'è il `body`); `bg-card`
+          // è una scheda, una classe che l'app usa e che quindi è nel CSS compilato
+          for (const sotto of ["", "bg-card"]) {
+            const contenitore = doc.createElement("div");
+            contenitore.className = sotto;
+            body.appendChild(contenitore);
+            for (const { variante, classi } of varianti) {
+              for (const modo of ["disabled", "aria-disabled"]) {
+                const bottone = doc.createElement("button");
+                bottone.className = classi;
+                if (modo === "disabled") bottone.disabled = true;
+                else bottone.setAttribute("aria-disabled", "true");
+                bottone.textContent = "Prova";
+                contenitore.appendChild(bottone);
+                const stile = view.getComputedStyle(bottone);
+                let fondo: string | null = null;
+                for (let nodo = bottone; nodo && fondo === null; nodo = nodo.parentElement) {
+                  const s = view.getComputedStyle(nodo);
+                  if ((canali(s.backgroundColor)[3] ?? 1) > 0) fondo = s.backgroundColor;
+                }
+                const a = lum(stile.color);
+                const b = lum(fondo ?? "rgb(255, 255, 255)");
+                esiti.push({
+                  dove: `${variante} ${modo} su ${sotto || "page"}`,
+                  variante,
+                  opacita: stile.opacity as string,
+                  fondo,
+                  colore: stile.color as string,
+                  rapporto: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+                });
+                bottone.remove();
+              }
+            }
+            contenitore.remove();
+          }
+          return esiti;
+        },
+        VARIANTI.map((variante) => ({ variante, classi: buttonClasses(variante) }))
+      );
+
+      expect(misure).toHaveLength(VARIANTI.length * 2 * 2);
+      for (const m of misure) {
+        expect(m.opacita, m.dove).toBe("1");
+        expect(m.rapporto, `${m.dove}: ${m.colore} su ${m.fondo}`).toBeGreaterThanOrEqual(4.5);
+      }
+      // primario e ambra: il grigio pieno del tema, non un verde o un'ambra spenti
+      for (const m of misure.filter((m) => m.variante === "primary" || m.variante === "warn")) {
+        expect(m.fondo, m.dove).toBe(tokenIn(tema, "disabled"));
+        expect(m.colore, m.dove).toBe(tokenIn(tema, "on-disabled"));
+      }
+    });
+
+    test("il velo del ☰ ha l'alfa del tema, e il pannello il suo bordo", async ({ page }) => {
+      // il `beforeEach` di testa preme «Entra» e non aspetta: prima la barra delle schede
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+      await page.goto("/lista");
+      await page.getByRole("button", { name: "Apri il menu" }).click();
+      const pannello = page.getByRole("dialog", { name: "Menu" });
+      await expect(pannello).toBeVisible();
+      await fermo(page);
+
+      // l'alfa e non la stringa: Chromium può dare `oklab(0 0 0 / 0.6)` invece di `rgba()`.
+      // Se l'alfa chiara di index.css stesse dopo il blocco scuro, qui in scuro si
+      // leggerebbe 0,45: è la prova della cascata (scelta 7 del piano)
+      const velo = await page
+        .locator("[data-menu-backdrop]")
+        .evaluate((el) => el.ownerDocument.defaultView.getComputedStyle(el).backgroundColor as string);
+      expect(alfaDi(velo), `il velo è ${velo}`).toBeCloseTo(veloDelTema(tema), 2);
+
+      await expect(pannello).toHaveCSS("border-left-width", "1px");
+      await expect(pannello).toHaveCSS("border-left-style", "solid");
+      await expect(pannello).toHaveCSS("border-left-color", tokenIn(tema, "panel-edge"));
+    });
+  });
+}
