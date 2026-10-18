@@ -26,7 +26,6 @@ finché è alla `0012`. Il 16, il 17, il 18 e il 19 aggiungono migrazioni con un
 la `down_revision` sulla testa di `master` di quel momento, e `alembic heads` deve dire una testa
 sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 
-3. [pronto] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — grigio pieno coi token `disabled` / `on-disabled`, velo 45% / 60% col bordo `panel-edge` [T3 Consegna 1] → `docs/superpowers/plans/2026-10-08-tema-scuro-spenti.md`, ramo `night/tema-scuro-spenti` da `night/s12-righe-dispensa`
 4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
 5. [pronto] P3 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` dal server, scelta in `sessionStorage`, una voce aggiunta dello stesso mondo lascia il mondo com'è (Mattia, 2026-10-09) [S14] → `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md`, ramo `night/s14-cibo-casa` da `night/tema-scuro-spenti`
 6. [pronto] P3 · S15, reparti della dispensa collassabili, col numero e «N finiti» / «N in scadenza» da chiusi, in `localStorage`; le tre scelte su ricerca, scadenze e reparto che torna decise da Mattia il 2026-10-09 [S15] → `docs/superpowers/plans/2026-10-08-s15-reparti-collassabili.md`, ramo `night/s15-reparti-collassabili` da `night/s14-cibo-casa`
@@ -142,7 +141,7 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-_(niente)_
+- [in corso] P3 · Tema scuro: il pulsante primario spento diventa un verde torbido; il velo del ☰ scurisce poco — grigio pieno coi token `disabled` / `on-disabled`, velo 45% / 60% col bordo `panel-edge` [T3 Consegna 1] → `docs/superpowers/plans/2026-10-08-tema-scuro-spenti.md`, ramo `night/tema-scuro-spenti` da `night/s12-righe-dispensa` → branch night/tema-scuro-spenti
 
 ## Fatti (recenti)
 - [fatto] 2026-10-18 · S12, righe della dispensa riconoscibili: l'emoji dell'ingrediente a sinistra del nome (elenco chiuso fino a Emoji 14.0, colonna `ingredients.emoji`, migrazione 0013) col ripiego sull'icona del reparto in grigio; «Cambia figura» in Anagrafica; il comando `decide_emoji` per l'AI, da lanciare dopo il deploy [S12] → branch night/s12-righe-dispensa (da revisionare)
