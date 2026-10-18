@@ -842,6 +842,86 @@ describe("coda di revisione dell'import", () => {
     await userEvent.click(crea);
     expect(spy.mock.calls.some(([url]) => String(url).includes("/decision"))).toBe(false);
   });
+
+  /** Coda, decisioni e stato come `renderQueue`, ma la decisione e l'annullamento non
+   * tornano mai: restano in volo per tutta la prova. Conta quante ne partono. */
+  function stubInVolo(decided: ImportTerm[] = []) {
+    const partite = { decisioni: 0, annullamenti: 0 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown, init?: RequestInit) => {
+        const path = String(url);
+        const method = init?.method ?? "GET";
+        const rispondi = (body: unknown, status = 200) =>
+          Promise.resolve(new Response(JSON.stringify(body), { status }));
+        if (path.includes("/decision") && method === "POST") {
+          partite.decisioni += 1;
+          return new Promise<Response>(() => {});
+        }
+        if (path.includes("/undo") && method === "POST") {
+          partite.annullamenti += 1;
+          return new Promise<Response>(() => {});
+        }
+        if (path.includes("decided_by=ai")) return rispondi(decided);
+        if (path.includes("decided_by=human")) return rispondi([]);
+        if (path.includes("/imports/terms")) return rispondi(TERMINI);
+        if (path.includes("/imports/status")) return rispondi(STATO_NORMALE);
+        return rispondi({}, 404);
+      })
+    );
+    return partite;
+  }
+
+  it("con una decisione in volo i pulsanti di ogni scheda sono spenti ma tengono il fuoco, e non si decide due volte", async () => {
+    const partite = stubInVolo();
+    renderScreen();
+
+    const ignoraAcqua = await screen.findByRole("button", { name: /^Ignora «Acqua»$/ });
+    ignoraAcqua.focus();
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() => expect(ignoraAcqua).toHaveAttribute("aria-disabled", "true"));
+    expect(ignoraAcqua).not.toBeDisabled();
+    expect(ignoraAcqua).toHaveFocus();
+    // ogni pulsante di ogni scheda, non solo quello premuto: una decisione alla volta
+    for (const nome of [
+      /Forse «pasta»/,
+      /^Ignora «Rigatoni»$/,
+      /Crea un ingrediente nuovo per «Rigatoni»/,
+      /Crea un ingrediente nuovo per «Acqua»/,
+    ]) {
+      const pulsante = screen.getByRole("button", { name: nome });
+      expect(pulsante).toHaveAttribute("aria-disabled", "true");
+      expect(pulsante).not.toBeDisabled();
+    }
+
+    await userEvent.click(ignoraAcqua);
+    await userEvent.click(screen.getByRole("button", { name: /^Ignora «Rigatoni»$/ }));
+    expect(partite.decisioni).toBe(1);
+  });
+
+  it("con un annullamento in volo ogni «Annulla» è spento ma tiene il fuoco, e non si annulla due volte", async () => {
+    const decisa = (id: string, nome: string): ImportTerm => ({
+      ...TERMINI[1], id, display_name: nome, decided_by: "ai", decided_action: "map",
+      decided_name: nome.toLowerCase(), decided_at: "2026-10-01T10:00:00Z",
+    });
+    const partite = stubInVolo([decisa("t7", "Speck"), decisa("t8", "Bottarga")]);
+    renderScreen();
+
+    const annullaSpeck = await screen.findByRole("button", { name: "Annulla la decisione su «Speck»" });
+    annullaSpeck.focus();
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() => expect(annullaSpeck).toHaveAttribute("aria-disabled", "true"));
+    expect(annullaSpeck).not.toBeDisabled();
+    expect(annullaSpeck).toHaveFocus();
+    const annullaBottarga = screen.getByRole("button", { name: "Annulla la decisione su «Bottarga»" });
+    expect(annullaBottarga).toHaveAttribute("aria-disabled", "true");
+
+    await userEvent.click(annullaBottarga);
+    await userEvent.click(annullaSpeck);
+    expect(partite.annullamenti).toBe(1);
+  });
 });
 
 describe("un termine messo a fuoco con ?termine=", () => {
