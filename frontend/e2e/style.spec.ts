@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { ImportTerm, Ingredient, RecipeDraft } from "../src/domain/types.ts";
 import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
+import { giornoDiRoma } from "./giornoDiRoma.ts";
 
 /**
  * Lo stile è l'unica parte dell'app che i test in jsdom non possono vedere: Tailwind
@@ -269,7 +270,7 @@ test("il riepilogo delle scadenze conta chi sta per scadere, ed è un bersaglio 
   expect(creata.ok()).toBe(true);
   const voceId = ((await creata.json()) as { id: string }).id;
 
-  const fraDueGiorni = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const fraDueGiorni = giornoDiRoma(2);
   const scritta = await page.request.patch(`/api/v1/pantry/${voceId}`, {
     data: { expires_on: fraDueGiorni },
   });
@@ -769,10 +770,8 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
 
   // fra tre giorni: dentro la soglia, quindi il server deve rispondere «soon» e la
   // pastiglia prendere il token nuovo. La data si calcola qui e non si scrive a
-  // mano, o il test scadrebbe da solo.
-  const fraTreGiorni = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  // mano, o il test scadrebbe da solo. Nel giorno di Roma, come il server (giornoDiRoma.ts).
+  const fraTreGiorni = giornoDiRoma(3);
   //
   // Il `blur()` dopo il `fill()` non è cerimonia: la riga scrive all'uscita dal
   // campo, non a ogni battuta, perché un `input[type="date"]` fa scattare `change`
@@ -814,9 +813,7 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   // non torna, e un pulsante `disabled` perde il fuoco senza nemmeno un blur: finiva
   // sul `body`. jsdom non toglie il fuoco a un pulsante disabilitato, quindi lo vede
   // solo un browser, e solo con una scrittura vera.
-  const fraCinqueGiorni = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  const fraCinqueGiorni = giornoDiRoma(5);
   await correggi.click();
   const salvata = page.waitForResponse(
     (risposta) => risposta.request().method() === "PATCH" && risposta.url().includes("/pantry/")
