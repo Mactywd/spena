@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { StockGauge } from "../../components/ui/StockGauge";
 import { IconCircleCheck } from "../../components/ui/icons";
+import { capitalizeFirst } from "../../lib/text";
 import type { CookResult, PantryItem, PantryStatus, RecipeDetail } from "../../domain/types";
 
 type Choice = { status: PantryStatus | "unchanged"; restock: boolean };
@@ -153,7 +154,12 @@ export function CookSheet({
                   <div className="min-w-0 flex-1">
                     {/* la marca che hai comprato è più utile del nome generico */}
                     <p>
-                      <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
+                      {/* la maiuscola solo a video, dove il nome dell'ingrediente apre la
+                          riga (spec T3 §4.7); il nome di un prodotto resta com'è scritto, e
+                          `itemLabel` — il nome dei controlli — resta in minuscolo */}
+                      <span className="font-medium">
+                        {item.product_name ?? capitalizeFirst(item.ingredient_name)}
+                      </span>
                       {item.product_brand && (
                         <span className="ml-2 text-sm text-ink-faint">{item.product_brand}</span>
                       )}
