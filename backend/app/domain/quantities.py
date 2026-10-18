@@ -200,6 +200,11 @@ def _split_note(piece: str) -> tuple[str, str | None]:
     # l'ultima riga che comincia come una dose: in «36 mesi ⏎ 50 ⏎ g» anche la prima
     # comincia con un numero, ma è il nome
     first = starts[-1]
+    # il numero della dose può essere esso stesso spezzato su più righe, «1 ⏎ ½»: una
+    # riga senza lettere accanto alla dose è dose, non nota. Si risale finché le righe
+    # non hanno lettere; la prima con una lettera (il nome, «36 mesi») ferma la salita
+    while first > 0 and not any(char.isalpha() for char in lines[first - 1]):
+        first -= 1
     before = " ".join(lines[:first])
     if not any(char.isalpha() for char in before):
         # «2 ⏎ 1/2 ⏎ cucchiai»: davanti solo numeri, è tutta dose. Una nota fatta di

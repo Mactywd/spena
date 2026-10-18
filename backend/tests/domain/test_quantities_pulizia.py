@@ -81,6 +81,19 @@ def test_with_qb_tail(display, text, expected):
         # il numero nel nome non è la dose (Parte X, «36 mesi»)
         ("36 mesi\n\t\t\t50\n\t\t\tg", "50 g", "36 mesi", DoseShape.NUMBER_IN_NAME),
         ("380/420 W\n\t\t\t410\n\t\t\tg", "410 g", "380/420 W", DoseShape.NUMBER_IN_NAME),
+        # una nota davanti a un numero spezzato su più righe: i numeri restano nella dose
+        (
+            "da grattugiare\n\t\t\t2\n\t\t\t1/2\n\t\t\tcucchiai",
+            "2 1/2 cucchiai",
+            "da grattugiare",
+            DoseShape.WORDS_BEFORE,
+        ),
+        (
+            "fredda\n\t\t\t1\n\t\t\t½\n\t\t\tcucchiai",
+            "1 ½ cucchiai",
+            "fredda",
+            DoseShape.WORDS_BEFORE,
+        ),
         # una nota e «q.b.»
         ("secco\n\n\t\t\tq.b.", "q.b.", "secco", DoseShape.NOTE_QB),
         ("per friggere\n\n\t\t\tq.b.", "q.b.", "per friggere", DoseShape.NOTE_QB),
@@ -98,6 +111,7 @@ def test_una_dose_pulita_non_si_pulisce_di_nuovo():
         "secco\n\n\t\t\tq.b.",
         "100\n\t\t\tg",
         "fredda\n\t\t\t330\n\t\t\tg + q.b.",
+        "fredda\n\t\t\t1\n\t\t\t½\n\t\t\tcucchiai",
     ]:
         pulita = clean_dose(text).quantity_text
         assert clean_dose(pulita) == CleanDose(pulita, None, DoseShape.UNCHANGED)
