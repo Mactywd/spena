@@ -12,6 +12,10 @@ class PantryItemOut(BaseModel):
     product_id: uuid.UUID | None
     ingredient_name: str
     ingredient_category: str
+    # La figura della riga (S12): l'emoji dell'ingrediente, o `None` per il ripiego
+    # sull'icona del reparto, che il client sceglie da `ingredient_category`. Un dato e
+    # non un calcolo: «non deciso» e «nessuna» escono tutti e due `None`.
+    ingredient_emoji: str | None
     product_name: str | None
     product_brand: str | None
     status: PantryStatus

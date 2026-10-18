@@ -3,6 +3,7 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models.ingredient import IngredientCategory
+from app.domain.emoji import EMOJI_MAX_LENGTH
 
 
 class IngredientOut(BaseModel):
@@ -57,6 +58,10 @@ class IngredientDetailOut(IngredientOut):
     """La scheda dell'ingrediente: cos'è, i suoi alias, i suoi prodotti, e dove è
     usato — così il peso di una correzione si vede prima di farla (spec §6.3)."""
 
+    # la figura delle sue righe in Dispensa (S12): un'emoji, o `None` per l'icona del
+    # reparto. Solo qui e non in `IngredientOut`: la ricerca e i selettori non la
+    # mostrano (decisione 3 della bozza, solo la Dispensa)
+    emoji: str | None
     aliases: list[AliasOut]
     products: list[ProductBriefOut]
     usage: IngredientUsageOut
@@ -72,10 +77,16 @@ class IngredientPatch(BaseModel):
     mano viene validato contro il tipo vero e respinto con un 422, invece di passare
     come «nessun cambiamento» in silenzio. Né il nome né il reparto di un ingrediente
     possono mai essere nulli in colonna (F17): chi manda `null` ha sbagliato, e deve
-    saperlo subito."""
+    saperlo subito. `emoji` fa eccezione: vedi il commento sul campo."""
 
     name: str = Field(default=None, min_length=1, max_length=120)  # type: ignore[assignment]
     category: IngredientCategory = Field(default=None)  # type: ignore[assignment]
+    # Qui `null` vuol dire qualcosa: «Nessuna», l'icona del reparto, decisa a mano. Per
+    # questo il campo si legge per presenza (`model_fields_set`), come la scadenza in
+    # `PantryItemPatch`, e non per valore come `name` e `category`. Che sia un'emoji
+    # dell'elenco lo verifica il servizio (`set_ingredient_emoji`), non lo schema: il
+    # rifiuto deve arrivare come gli altri rifiuti dell'anagrafica, col suo codice.
+    emoji: str | None = Field(default=None, max_length=EMOJI_MAX_LENGTH)
 
 
 class MergeIn(BaseModel):

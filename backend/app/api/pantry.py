@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.db.models.pantry import PantryItem
+from app.domain.emoji import shown_emoji
 from app.domain.rules import Availability, expiry_state, today_in_pantry
 from app.repositories.pantry import (
     ProductIngredientMismatch,
@@ -33,6 +34,7 @@ def _to_out(item: PantryItem) -> PantryItemOut:
         product_id=item.product_id,
         ingredient_name=item.ingredient.name,
         ingredient_category=item.ingredient.category,
+        ingredient_emoji=shown_emoji(item.ingredient.emoji),
         product_name=item.product.name if item.product else None,
         product_brand=item.product.brand if item.product else None,
         status=item.status,

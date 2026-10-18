@@ -36,6 +36,7 @@ from app.db.models.recipe_import import (
 )
 from app.db.models.shopping import ShoppingListItem, ShoppingStatus
 from app.domain.barcodes import has_valid_check_digit
+from app.domain.emoji import NO_EMOJI, canonical_emoji
 from app.domain.rules import IngredientKind, IngredientRole, kind_for_category
 from app.repositories.ingredients import (
     canonical_name,
@@ -76,6 +77,7 @@ class RefusalCode(StrEnum):
     STILL_USED = "still_used"
     BARCODE_TAKEN = "barcode_taken"
     BAD_CHECKSUM = "bad_checksum"
+    UNKNOWN_EMOJI = "unknown_emoji"
 
 
 class RegistryRefusal(Exception):
@@ -350,6 +352,33 @@ async def recategorize_ingredient(
                 ),
             )
     ingredient.category = str(category)
+    await session.flush()
+    return ingredient
+
+
+async def set_ingredient_emoji(
+    session: AsyncSession, ingredient_id: uuid.UUID, emoji: str | None
+) -> Ingredient:
+    """La figura delle righe di questo ingrediente in Dispensa (S12), scelta a mano.
+
+    `None` è «Nessuna»: si scrive `NO_EMOJI` e non `NULL`, perché `NULL` vuol dire «non
+    ancora deciso» e il comando dell'AI lo deciderebbe al giro dopo, riscrivendo una
+    scelta fatta a mano (bozza S12 §3.A). Un'emoji fuori dall'elenco chiuso è un rifiuto,
+    e la colonna resta com'era: la verifica è la stessa che fa il comando dell'AI
+    (`canonical_emoji`), perché la colonna ha due scrittori e una regola sola.
+    """
+    ingredient = await _ingredient(session, ingredient_id)
+    if emoji is None:
+        ingredient.emoji = NO_EMOJI
+    else:
+        canonical = canonical_emoji(emoji)
+        if canonical is None:
+            raise RegistryRefusal(
+                RefusalCode.UNKNOWN_EMOJI,
+                f"«{emoji.strip()}» non è fra le figure che l'app mostra: scegline una "
+                "dell'elenco.",
+            )
+        ingredient.emoji = canonical
     await session.flush()
     return ingredient
 

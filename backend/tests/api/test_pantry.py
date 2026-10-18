@@ -573,3 +573,38 @@ async def test_il_prodotto_di_un_altro_ingrediente_resta_409_e_non_prende_il_cod
     assert response.status_code == 409
     await db_session.refresh(product)
     assert product.barcode is None
+
+
+# --- S12: la figura dell'ingrediente, nella risposta della dispensa ---
+
+
+async def test_la_dispensa_manda_la_figura_dell_ingrediente(logged_client, db_session, dispensa):
+    """L'emoji o `null`: «non ancora deciso» e «nessuna» sono lo stesso ripiego per il
+    client, e la stringa vuota della colonna non esce dal backend."""
+    from app.domain.emoji import NO_EMOJI
+
+    dispensa["yogurt"].emoji = "🥛"
+    dispensa["pomodoro"].emoji = NO_EMOJI
+    db_session.add_all([
+        PantryItem(ingredient_id=dispensa[chiave].id, status=PantryStatus.AVAILABLE)
+        for chiave in ("yogurt", "pomodoro", "aglio")
+    ])
+    await db_session.flush()
+
+    body = (await logged_client.get("/api/v1/pantry")).json()
+
+    assert {e["ingredient_name"]: e["ingredient_emoji"] for e in body} == {
+        "yogurt greco": "🥛", "pomodoro": None, "aglio": None,
+    }
+
+
+async def test_una_voce_appena_entrata_porta_la_figura(logged_client, db_session, dispensa):
+    dispensa["pomodoro"].emoji = "🍅"
+    await db_session.flush()
+
+    risposta = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["pomodoro"].id), "status": "available",
+    })
+
+    assert risposta.status_code == 201
+    assert risposta.json()["ingredient_emoji"] == "🍅"

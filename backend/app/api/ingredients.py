@@ -13,6 +13,7 @@ from app.core.security import require_session
 from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.product import Product
 from app.db.models.recipe_import import ImportTerm
+from app.domain.emoji import shown_emoji
 from app.domain.rules import IngredientKind
 from app.repositories.ingredients import (
     add_alias,
@@ -153,6 +154,7 @@ async def _detail(session: AsyncSession, ingredient_id: uuid.UUID) -> Ingredient
     usage = await ingredient_usage(session, ingredient_id)
     return IngredientDetailOut(
         **IngredientOut.model_validate(ingredient).model_dump(),
+        emoji=shown_emoji(ingredient.emoji),
         aliases=await _aliases_out(session, ingredient_id),
         products=[ProductBriefOut.model_validate(product) for product in products],
         usage=IngredientUsageOut(**asdict(usage)),
@@ -171,7 +173,11 @@ async def update(
     ingredient_id: uuid.UUID, payload: IngredientPatch,
     session: AsyncSession = Depends(get_session),
 ) -> IngredientDetailOut | JSONResponse:
-    if payload.name is None and payload.category is None:
+    if (
+        payload.name is None
+        and payload.category is None
+        and "emoji" not in payload.model_fields_set
+    ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "niente da cambiare")
     try:
         if payload.name is not None:
@@ -180,6 +186,8 @@ async def update(
             )
         if payload.category is not None:
             await registry.recategorize_ingredient(session, ingredient_id, payload.category)
+        if "emoji" in payload.model_fields_set:
+            await registry.set_ingredient_emoji(session, ingredient_id, payload.emoji)
     except LookupError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc
