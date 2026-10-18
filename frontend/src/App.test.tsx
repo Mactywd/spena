@@ -72,7 +72,7 @@ describe("App", () => {
 
   it("una ricetta che non c'è più lo dice subito, senza ritentare, e riporta al ricettario", async () => {
     // Sul QueryClient vero dell'app, come la prova sul 500 qui sopra: gli schermi si
-    // provano con `retry: false`, e un 404 ritentato non lo vedrebbero mai. Qui sì: con
+    // provavano coi tentativi spenti, e un 404 ritentato non lo vedrebbero mai. Qui sì: con
     // i ritentativi il messaggio arriverebbe dopo le attese di 1 s e 2 s, fuori dal
     // secondo che `findBy` aspetta
     const fetchMock = vi.fn((url: string) =>

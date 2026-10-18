@@ -3,7 +3,7 @@ import { ApiError, UnauthorizedError } from "../api/client";
 import { defaultQueryRetryPredicate } from "./queryRetry";
 
 // Il predicato vero, quello che App.tsx dà al suo QueryClient: i test di schermata si
-// costruiscono il client con `retry: false` e non lo vedono mai (prima lezione di
+// costruivano il client coi tentativi spenti e non lo vedevano mai (prima lezione di
 // CLAUDE.md). `count` è il numero di tentativi già falliti oltre al primo.
 describe("defaultQueryRetryPredicate", () => {
   it.each([

@@ -15,7 +15,7 @@ describe("il client react-query dell'app", () => {
     const onUnauthorized = vi.fn();
     const client = createAppQueryClient(onUnauthorized);
     await client
-      .fetchQuery({ queryKey: ["guasto"], queryFn: () => Promise.reject(new ApiError("rotto", 500)), retry: false })
+      .fetchQuery({ queryKey: ["guasto"], queryFn: () => Promise.reject(new ApiError("rotto", 500)), retryDelay: 0 })
       .catch(() => {});
     expect(onUnauthorized).not.toHaveBeenCalled();
     await client
