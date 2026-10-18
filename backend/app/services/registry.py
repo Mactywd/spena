@@ -44,6 +44,7 @@ from app.repositories.ingredients import (
     remember_alias,
 )
 from app.repositories.products import find_by_barcode
+from app.repositories.substitutions import move_substitutions
 from app.services.recipe_import.manual import DecisionRefused, ManualDecision, decide_by_hand
 from app.services.recipe_import.materialize import (
     materialize_ready,
@@ -654,6 +655,10 @@ async def merge_ingredients(
         await session.delete(line)
     await session.flush()
 
+    # I sostituti (R5): le voci, le correzioni di ricetta e i posti da sostituto del
+    # perdente passano al vincitore — prima che il perdente sparisca, e le sue righe
+    # (CASCADE) con lui. Dopo le righe di ricetta: una correzione segue la sua riga.
+    await move_substitutions(session, loser_id, winner.id)
     await session.execute(delete(IngredientAlias).where(IngredientAlias.ingredient_id == loser_id))
     await session.flush()
     survivor = await session.get(Ingredient, loser_id)

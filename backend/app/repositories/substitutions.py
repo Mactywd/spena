@@ -22,7 +22,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -382,3 +382,100 @@ async def ingredient_view(session: AsyncSession, ingredient_id: uuid.UUID) -> In
         contexts.append(ContextView(context, voice.recipes if voice else 0, row))
     overrides = sum(1 for row in rows if row.recipe_id is not None and is_answered(row))
     return IngredientView(tuple(contexts), overrides)
+
+
+async def _rows_of(session: AsyncSession, ingredient_id: uuid.UUID) -> list[IngredientSubstitution]:
+    statement = select(IngredientSubstitution).where(
+        IngredientSubstitution.ingredient_id == ingredient_id
+    )
+    return list((await session.execute(_loaded(statement))).scalars())
+
+
+def _rank(row: IngredientSubstitution) -> tuple[bool, bool]:
+    # prima chi risponde, poi chi è scritto a mano; a parità resta il vincitore
+    return (is_answered(row), row.decided_by == DecidedBy.HUMAN)
+
+
+async def move_substitutions(
+    session: AsyncSession, loser_id: uuid.UUID, winner_id: uuid.UUID
+) -> None:
+    """La metà di `merge_ingredients` che riguarda i sostituti (R5).
+
+    Va chiamata prima che il perdente sparisca: le chiavi esterne sono in CASCADE, e
+    cancellato lui le sue risposte se ne andrebbero con lui. Quattro passi:
+
+    1. dove il perdente è un sostituto, va il vincitore — tolto prima dove il vincitore
+       c'è già, o dove la risposta è proprio del vincitore (sarebbe sostituto di sé);
+    2. le risposte del perdente non possono proporre il vincitore: dopo la fusione
+       sarebbe un sostituto di sé stesso;
+    3. le risposte del perdente passano al vincitore: una voce generale vince su quella
+       del vincitore solo se risponde dove l'altra no, o è scritta a mano dove l'altra è
+       dell'AI (`_rank`); una correzione di ricetta passa se la ricetta non ne ha già una
+       per il vincitore;
+    4. una risposta «sostituti» rimasta senza sostituti non dice più niente, e si toglie.
+    """
+    rows_of_winner = select(IngredientSubstitution.id).where(
+        IngredientSubstitution.ingredient_id == winner_id
+    )
+    rows_of_loser = select(IngredientSubstitution.id).where(
+        IngredientSubstitution.ingredient_id == loser_id
+    )
+    listing_winner = select(SubstitutionOption.substitution_id).where(
+        SubstitutionOption.substitute_id == winner_id
+    )
+    await session.execute(
+        delete(SubstitutionOption).where(
+            SubstitutionOption.substitute_id == loser_id,
+            or_(
+                SubstitutionOption.substitution_id.in_(rows_of_winner),
+                SubstitutionOption.substitution_id.in_(listing_winner),
+            ),
+        )
+    )
+    await session.execute(
+        update(SubstitutionOption)
+        .where(SubstitutionOption.substitute_id == loser_id)
+        .values(substitute_id=winner_id)
+    )
+    await session.execute(
+        delete(SubstitutionOption).where(
+            SubstitutionOption.substitute_id == winner_id,
+            SubstitutionOption.substitution_id.in_(rows_of_loser),
+        )
+    )
+
+    winner_rows = await _rows_of(session, winner_id)
+    general = {row.context: row for row in winner_rows if row.recipe_id is None}
+    overridden = {row.recipe_id for row in winner_rows if row.recipe_id is not None}
+    for row in await _rows_of(session, loser_id):
+        if row.recipe_id is None:
+            rival = general.get(row.context)
+            if rival is not None:
+                if _rank(rival) >= _rank(row):
+                    await session.execute(
+                        delete(IngredientSubstitution).where(IngredientSubstitution.id == row.id)
+                    )
+                    continue
+                await session.execute(
+                    delete(IngredientSubstitution).where(IngredientSubstitution.id == rival.id)
+                )
+        elif row.recipe_id in overridden:
+            await session.execute(
+                delete(IngredientSubstitution).where(IngredientSubstitution.id == row.id)
+            )
+            continue
+        await session.execute(
+            update(IngredientSubstitution)
+            .where(IngredientSubstitution.id == row.id)
+            .values(ingredient_id=winner_id)
+        )
+
+    await session.execute(
+        delete(IngredientSubstitution).where(
+            IngredientSubstitution.verdict == SubstitutionVerdict.SUBSTITUTES.value,
+            ~select(SubstitutionOption.id)
+            .where(SubstitutionOption.substitution_id == IngredientSubstitution.id)
+            .exists(),
+        )
+    )
+    await session.flush()
