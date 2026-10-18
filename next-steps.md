@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte: S4 fetta 1 sul ramo night/s4-ciqual)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -100,6 +100,9 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `search_ingredients` non protegge il testo cercato nel `LIKE`: un `%` o un `_` digitati fanno da jolly (`backend/app/repositories/ingredients.py`) [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
+- [idea] P3 · Una fusione in Anagrafica perde la scelta CIQUAL (e, con la fetta 2, i pesi) del perdente anche quando il vincitore non ne ha: farli ereditare al vincitore dove non ha niente (deciso il 2026-10-13 di perderli, per ora) [S4]
+- [idea] P3 · `ingredients.composition_ref` («popolato in fase 3») non lo scrive nessuno: `ingredient_nutrition` l'ha sostituito, si può togliere con una migrazione [S4]
+- [idea] P3 · La ricerca in CIQUAL in Anagrafica non ignora gli accenti («pates» non trova «Pâtes» per pezzo di nome, solo per somiglianza): `unaccent`, o una colonna normalizzata [S4]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -116,6 +119,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P2 · Dopo il deploy di S4 fetta 1: il file CIQUAL in `data/ciqual/ciqual-2025.xlsx` (da https://doi.org/10.57745/RDMHWY, committato), poi sul server `load_ciqual --dry-run`, `load_ciqual`, `s4_pilot` (se non passa: spec di S4 §9), `decide_ciqual --limit 20`, uno sguardo in Anagrafica, e `decide_ciqual` fino a «nessun ingrediente alimentare in attesa» — i comandi esatti nel piano, «Dopo il deploy» [S4]
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
 - [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)
@@ -128,9 +132,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-- [in corso] P3 · S4 fetta 1, i nutrienti dell'ingrediente da CIQUAL 2025: `load_ciqual`, `ingredient_nutrition` (migrazione `0016`), `decide_ciqual` in due passi (parole francesi, poi la scelta fra candidati veri), il pilota su Gemma, «Valori nutrizionali» in Anagrafica; il file CIQUAL lo scarica e committa Mattia (Mattia, 2026-10-13) [S4] → `docs/superpowers/plans/2026-10-13-s4-ciqual.md`, ramo `night/s4-ciqual` da `master` → branch night/s4-ciqual
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · S4 fetta 1, i nutrienti dell'ingrediente da CIQUAL 2025: `load_ciqual` (il file XLSX senza dipendenze, colonne per nome con la guardia dell'unità), `ingredient_nutrition` (migrazione 0016, tre stati, `decided_by`), `decide_ciqual` (parole francesi, candidati con `pg_trgm`, la scelta fra quelli soli), il pilota `s4_pilot`, «Valori nutrizionali» in Anagrafica con la correzione e l'annullamento [S4] → branch night/s4-ciqual (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
