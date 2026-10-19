@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -11,8 +11,11 @@ import { useNotice } from "../../components/ui/noticeContext";
 import { DirectEntry, type EntryDoor } from "./DirectEntry";
 import { PantryRow } from "./PantryRow";
 import {
+  attentionCounts,
   expiryCounts,
   expirySummary,
+  expiringText,
+  finishedText,
   groupForDisplay,
   hasBothWorlds,
   inWorld,
@@ -22,12 +25,29 @@ import {
   WORLD_LABELS,
   type PantryWorld,
 } from "./pantryView";
+import { useCollapsedSections } from "./collapsedSections";
 import { loadWorld, saveWorld } from "./pantryWorld";
 import { WorldSelector } from "./WorldSelector";
 import { fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import { ShoppingEntryCard } from "../shopping-list/ShoppingEntryCard";
 import type { PantryItem, PantryStatus } from "../../domain/types";
+
+/** Quel che un reparto chiuso non deve nascondere (spec S15 §2): le voci finite, che
+ * hanno il loro «In lista» da toccare, e quelle in scadenza, che hanno un tempo che
+ * corre. In parole, e non con un pallino: un colore solo non dice niente a chi non lo
+ * distingue. Gli stessi colori delle righe: il «Finito» e la scadenza di `PantryRow`. */
+function attentionNote(rows: PantryItem[]): ReactNode {
+  const { finished, expiring } = attentionCounts(rows);
+  if (finished === 0 && expiring === 0) return null;
+  return (
+    <>
+      {finished > 0 && <span className="font-medium text-finished">{finishedText(finished)}</span>}
+      {finished > 0 && expiring > 0 && " · "}
+      {expiring > 0 && <span className="font-medium text-expiry">{expiringText(expiring)}</span>}
+    </>
+  );
+}
 
 export function PantryScreen() {
   const queryClient = useQueryClient();
@@ -123,6 +143,11 @@ export function PantryScreen() {
 
   const [query, setQuery] = useState("");
   const [expiringOnly, setExpiringOnly] = useState(false);
+  // S15: ricerca e riepilogo sono filtri, e aprono i reparti che hanno un risultato senza
+  // salvare niente; il mondo di S14 no, è una vista. `matchesQuery` ignora gli spazi ai
+  // lati, e così questa condizione
+  const filtering = query.trim() !== "" || expiringOnly;
+  const sections = useCollapsedSections(filtering);
   // S14: il mondo scelto, ricordato per la sessione (`pantryWorld.ts`). Si scrive a ogni
   // cambio, anche quando è il disegno a riportarlo a «Tutto» (`settleWorld`, più giù)
   const [world, setWorld] = useState<PantryWorld>(() => loadWorld());
@@ -344,7 +369,14 @@ export function PantryScreen() {
 
         {loaded &&
           groupForDisplay(visible).map(([category, rows]) => (
-            <Section key={category} category={category} count={rows.length}>
+            <Section
+              key={category}
+              category={category}
+              count={rows.length}
+              collapsed={!sections.isOpen(category)}
+              onToggle={() => sections.setOpen(category, !sections.isOpen(category))}
+              closedNote={attentionNote(rows)}
+            >
               <ul>
                 {rows.map((item) => (
                   <PantryRow

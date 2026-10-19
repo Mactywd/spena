@@ -941,3 +941,157 @@ describe("PantryScreen, «Tutto / Cibo / Casa» (S14)", () => {
     expect(screen.getByText("Detersivo per i piatti")).toBeDefined();
   });
 });
+
+// --- S15: i reparti che si aprono e si chiudono ---
+
+const CHIUSI = "spena.dispensa.reparti-chiusi";
+
+/** I reparti chiusi che la Dispensa ha salvato, in ordine. */
+function chiusiSalvati(): string[] {
+  return (JSON.parse(localStorage.getItem(CHIUSI) ?? "[]") as string[]).sort();
+}
+
+/** Il nome del titolo di un reparto, con gli spazi che il calcolo del nome accessibile
+ * mette o non mette fra un elemento e l'altro: «Latticini 2 · 1 finito». */
+function titolo(testo: string): RegExp {
+  return new RegExp(`^${testo.split(" ").join("\\s+")}$`);
+}
+
+/** Il pulsante del titolo di un reparto: il primo pulsante della sua regione, che si
+ * chiama col solo nome del reparto, aperta e chiusa. Non per nome del pulsante: «Casa»
+ * è anche un mondo di S14. */
+function reparto(nome: string): HTMLElement {
+  return within(screen.getByRole("region", { name: nome })).getAllByRole("button")[0];
+}
+
+describe("PantryScreen, i reparti che si chiudono (S15)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("toccare il titolo chiude il reparto e lo ricorda; chiuso dice quante voci ha e quali chiedono attenzione", async () => {
+    const rows = [
+      { ...ITEMS[0], status: "finished" },
+      { ...ITEMS[1], expires_on: "2026-09-29", expiry: "soon" },
+      ITEMS[2],
+    ];
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [rows, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    const latticini = reparto("Latticini");
+    expect(latticini).toHaveAttribute("aria-expanded", "true");
+    // aperto, il titolo dice il numero e basta: le righe sono lì sotto
+    expect(latticini).toHaveAccessibleName(titolo("Latticini 2"));
+
+    fireEvent.click(latticini);
+    expect(latticini).toHaveAttribute("aria-expanded", "false");
+    expect(latticini).toHaveAccessibleName(titolo("Latticini 2 · 1 finito · 1 in scadenza"));
+    // le righe chiuse escono dalla pagina accessibile, tacche e ✕ comprese
+    expect(screen.queryByRole("link", { name: "Yogurt greco" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeNull();
+    // gli altri reparti non si toccano
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    expect(chiusiSalvati()).toEqual(["latticini"]);
+
+    fireEvent.click(latticini);
+    expect(latticini).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByRole("link", { name: "Yogurt greco" })).toHaveLength(2);
+    expect(chiusiSalvati()).toEqual([]);
+  });
+
+  it("un reparto chiuso resta chiuso tornando in dispensa", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(reparto("Frutta")).toHaveAccessibleName(titolo("Frutta 1 · 1 in scadenza"));
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
+    expect(reparto("Latticini")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("una ricerca apre i reparti chiusi che hanno un risultato, senza cambiare quel che è salvato", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta", "latticini"]));
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByRole("region", { name: "Frutta" });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+
+    const barra = screen.getByLabelText("Cerca o aggiungi in dispensa");
+    fireEvent.change(barra, { target: { value: "mel" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    expect(chiusiSalvati()).toEqual(["frutta", "latticini"]);
+
+    // cancellata la ricerca, la dispensa torna com'era stata lasciata
+    fireEvent.change(barra, { target: { value: "" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(reparto("Latticini")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
+  });
+
+  it("il riepilogo delle scadenze premuto apre i reparti con una scadenza, senza salvare", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    const riepilogo = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(riepilogo);
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    expect(chiusiSalvati()).toEqual(["frutta"]);
+
+    fireEvent.click(riepilogo);
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("durante una ricerca il titolo chiude e apre per davvero, e si salva", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    const barra = screen.getByLabelText("Cerca o aggiungi in dispensa");
+
+    fireEvent.change(barra, { target: { value: "mel" } });
+    fireEvent.click(reparto("Frutta"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(chiusiSalvati()).toEqual(["frutta"]);
+    // la stessa ricerca, una lettera in più: quel che si è appena chiuso resta chiuso
+    // (decisione 1 di Mattia del 2026-10-09: si rispetta il gesto finché la ricerca non si cancella)
+    fireEvent.change(barra, { target: { value: "mela" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    // riaperto a mano durante la ricerca: aperto, e salvato aperto
+    fireEvent.click(reparto("Frutta"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(chiusiSalvati()).toEqual([]);
+    // cancellata la ricerca vale il salvato
+    fireEvent.change(barra, { target: { value: "" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+
+    // chiuso senza filtro, una ricerca nuova lo riapre come ogni reparto con un risultato
+    fireEvent.click(reparto("Frutta"));
+    fireEvent.change(barra, { target: { value: "mel" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    fireEvent.change(barra, { target: { value: "" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("con lo spazio del sito bloccato i reparti partono aperti, e si chiudono lo stesso", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("bloccato");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("bloccato");
+    });
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(reparto("Frutta"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
+  });
+});
