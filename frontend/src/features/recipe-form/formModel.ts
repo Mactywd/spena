@@ -9,11 +9,13 @@ import type {
   RecipeIngredientLine,
 } from "../../domain/types";
 
-// I limiti che `RecipeFields` applica nel backend. Stanno qui per far correggere un
+// I limiti che `RecipeFields` e `RecipeIngredientIn` applicano nel backend. Stanno qui per far correggere un
 // campo *prima* della chiamata, non per decidere qualcosa: l'autorità resta il
 // backend, e un 422 che arriva comunque viene detto per quello che è.
 export const TITLE_MAX = 200;
 export const QUANTITY_MAX = 100;
+// la colonna `recipe_ingredients.note` è un varchar(300)
+export const NOTE_MAX = 300;
 const SERVINGS_MIN = 1;
 const SERVINGS_MAX = 50;
 
@@ -40,8 +42,9 @@ export interface FormLine {
   // utilizzabile. Valorizzato è la ragione per cui una riga senza aggancio può
   // comunque salvarsi: il modello ha detto cos'è e in che reparto.
   proposedCategory: string | null;
-  /** La nota della riga salvata, portata com'è: il modulo non la mostra e non la
-   * cambia, ma una modifica non deve perderla. */
+  /** La nota della riga («da grattugiare»), che il modulo mostra e fa correggere (piano
+   * 20). `null`: la riga non ne ha, e al posto del campo c'è «Aggiungi una nota»; `""`:
+   * il campo è aperto e vuoto. Vuota, salvando non si manda, e il server la tiene `null`. */
   note: string | null;
 }
 
@@ -261,6 +264,12 @@ export function validationProblem(values: RecipeFormValues): string | null {
   if (tooLong)
     return `La quantità di «${tooLong.label}» è troppo lunga: massimo ${QUANTITY_MAX} caratteri.`;
 
+  const noteTooLong = savableLines(values.lines).find(
+    (line) => (line.note ?? "").trim().length > NOTE_MAX
+  );
+  if (noteTooLong)
+    return `La nota di «${noteTooLong.label}» è troppo lunga: massimo ${NOTE_MAX} caratteri.`;
+
   return null;
 }
 
@@ -269,8 +278,10 @@ function lineBody(line: FormLine): RecipeIngredientBody {
   // vuoto resta vuoto invece di diventare ""
   const quantity_text = line.quantityText.trim() === "" ? null : line.quantityText;
   // la nota solo se c'è: una chiave `note: null` in più cambierebbe il corpo che
-  // «Scrivi una ricetta» ha sempre mandato
-  const note = line.note ? { note: line.note } : {};
+  // «Scrivi una ricetta» ha sempre mandato. Senza spazi ai bordi; vuota non c'è, e il
+  // server la salva `null` — è così che il modulo la toglie (piano 20)
+  const noteText = line.note?.trim() ?? "";
+  const note = noteText === "" ? {} : { note: noteText };
   return line.ingredientId !== null
     ? { ingredient_id: line.ingredientId, role: line.role, quantity_text, ...note }
     : {

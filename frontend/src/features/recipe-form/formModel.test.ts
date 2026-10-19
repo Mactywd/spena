@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DraftIngredient, Ingredient, RecipeDetail, RecipeDraft } from "../../domain/types";
 import {
   EMPTY_FORM,
+  NOTE_MAX,
   addNewLine,
   applyDraft,
   lineFromDraft,
@@ -200,5 +201,41 @@ describe("R12: le righe di un nome nuovo", () => {
     // era «non in anagrafica, sarà escluso»: col reparto, parte salvando
     expect(conZafferano.lines[1].proposedCategory).toBe("spezie");
     expect(savableLines(conZafferano.lines).map((line) => line.key)).toContain(ignota.key);
+  });
+});
+
+describe("la nota della riga (piano 20)", () => {
+  it("il limite è quello della colonna: 300", () => {
+    expect(NOTE_MAX).toBe(300);
+  });
+
+  it("si manda senza spazi ai bordi; vuota o di soli spazi non si manda, e il server salva null", () => {
+    const values = valuesFromRecipe(DETAIL);
+    const [pasta, basilico] = values.lines;
+    const corpo = recipeBody({
+      ...values,
+      lines: [{ ...pasta, note: "  molto al dente  " }, { ...basilico, note: "   " }],
+    });
+    expect(corpo.ingredients).toEqual([
+      { ingredient_id: "i1", role: "primary", quantity_text: "320 g", note: "molto al dente" },
+      { ingredient_id: "i2", role: "secondary", quantity_text: null },
+    ]);
+  });
+
+  it("anche una riga nuova di R12 porta la sua nota", () => {
+    const riga = { ...lineFromNewName("speck", "carne"), note: "a cubetti" };
+    const corpo = recipeBody({ ...EMPTY_FORM, title: "Speck", instructions: "Taglia.", lines: [riga] });
+    expect(corpo.ingredients).toEqual([
+      { name: "speck", category: "carne", role: "primary", quantity_text: null, note: "a cubetti" },
+    ]);
+  });
+
+  it("una nota oltre 300 caratteri si dice prima di salvare", () => {
+    const values = valuesFromRecipe(DETAIL);
+    const [pasta] = values.lines;
+    expect(validationProblem({ ...values, lines: [{ ...pasta, note: "a".repeat(301) }] })).toBe(
+      "La nota di «pasta» è troppo lunga: massimo 300 caratteri."
+    );
+    expect(validationProblem({ ...values, lines: [{ ...pasta, note: "a".repeat(300) }] })).toBeNull();
   });
 });
