@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.api import activity
 from app.api import auth, cooking, imports, ingredients, pantry, products, recipes, shopping
 from app.core.config import get_settings
 from app.core.security import (
@@ -67,6 +68,11 @@ app.include_router(shopping.router)
 app.include_router(recipes.router)
 app.include_router(cooking.router)
 app.include_router(imports.router)
+# Il webhook di HC Webhook (H2) è fuori dalla sessione: lo apre la sua chiave, perché il
+# telefono non ha il cookie. È l'unica rotta che scrive senza sessione; le altre di
+# «Attività» stanno dietro la sessione come tutte.
+app.include_router(activity.webhook_router)
+app.include_router(activity.router)
 
 
 @app.get("/api/v1/health")
