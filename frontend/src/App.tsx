@@ -19,6 +19,8 @@ import { ProductScreen } from "./features/registry/ProductScreen";
 import { RegistryScreen } from "./features/registry/RegistryScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
+import { ActivityScreen } from "./features/activity/ActivityScreen";
+import { ConnectScreen } from "./features/activity/ConnectScreen";
 import { AppHeader } from "./components/AppHeader";
 import { TabBar } from "./components/TabBar";
 import { NoticeProvider } from "./components/ui/NoticeProvider";
@@ -81,6 +83,8 @@ export default function App() {
               <Route path="/anagrafica" element={<RegistryScreen />} />
               <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
               <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
+              <Route path="/attivita" element={<ActivityScreen />} />
+              <Route path="/attivita/collega" element={<ConnectScreen />} />
               {/* in fondo: prende solo ciò che nessuna rotta sopra ha preso */}
               <Route path="*" element={<NotFoundScreen />} />
             </Routes>
