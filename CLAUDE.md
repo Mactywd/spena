@@ -138,8 +138,11 @@ stays accurate per brand.
 > (R10) go through — a recipe cannot name a non-food entry. That funnel is the
 > last line, not the only one: the AI's import decisions and the human review
 > queue refuse a non-food term
-> before it ever reaches a recipe, and the three ingredient pickers used by the
-> recipe screens ask the registry for `kind=food` only. See
+> before it ever reaches a recipe, the three ingredient pickers used by the
+> recipe screens ask the registry for `kind=food` only, and the form's new-name
+> step asks `GET /ingredients/match` as the name is typed — the same
+> `ingredient_for_new_name` the save calls — and refuses a non-food there, with
+> a way out. See
 > `docs/superpowers/specs/2026-09-17-non-alimentari-design.md` for where each of
 > these lives.
 

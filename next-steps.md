@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-18 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -58,7 +58,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · Il titolo del foglio della cottura, per una confezione senza prodotto, è il nome dell'ingrediente in minuscolo: `capitalizeFirst` come nelle righe [T3 Consegna 6b]
 - [idea] P3 · La domanda di Open Food Facts in Sistema la spesa dice sempre «È un «…»?» (`OffSuggestionQuestion.tsx`): con un nome femminile esce «È un «zucchina»?». Riformulare senza articolo, per esempio «È «zucchina»?» o «Va bene come «zucchina»?» [giro nel browser 2026-10-07]
 - [idea] P3 · Lista e Sistema la spesa mostrano il testo della voce com'è stato scritto, anche in minuscolo (di proposito: è il testo di chi l'ha scritto) — da confermare con Mattia [T3 Consegna 6b]
-- [idea] P3 · Nel modulo, un nome nuovo che coincide con un non alimentare dell'anagrafica si scopre solo salvando (422 con la frase): il selettore cerca solo cibo, quindi non lo mostra prima [T3 Consegna 6b, R12]
 - [idea] P3 · La casella della Lista (`ListRow.tsx`) è ancora un quadratino da 20 px: `Checkbox` è pronta [T3 Consegna 6b]
 - [idea] P3 · Il 409 «Due righe puntano allo stesso ingrediente» non dice quale: nominarlo, così non si cercano le due righe (backend) [T3 Consegna 6b]
 - [idea] P3 · Nella coda d'import nessun test di schermo prova i pulsanti di una voce mentre una decisione è in volo [T3 Consegna 6b]
@@ -128,9 +127,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-- [in corso] P3 · Modulo della ricetta: la nota modificabile e l'avviso sul nome non alimentare — piano `docs/superpowers/plans/2026-10-13-modulo-nota-nome.md` → branch night/modulo-nota-nome [T3 Consegna 6b, R12, Parte X]
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-18 · Modulo della ricetta: la nota di ogni riga si legge, si corregge e si toglie («Nota», «Aggiungi una nota»; vuota si salva `null`); un nome nuovo che salvando porterebbe a un non alimentare lo dice il passo del nome mentre lo si scrive, col collegamento all'Anagrafica in un'altra scheda (`GET /ingredients/match`, la stessa regola di `_resolve_lines`) (Mattia, 2026-10-13) [T3 Consegna 6b, R12, Parte X] → branch night/modulo-nota-nome (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
