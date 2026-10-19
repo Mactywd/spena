@@ -73,6 +73,14 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
     # di ricette la esclude; il dettaglio no, perché un collegamento vecchio non deve
     # finire in un 404.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # La ricetta da cui questa nasce, per una variante scritta con l'AI (R8). `SET NULL`:
+    # cancellare l'originale non cancella la variante (vedi la migrazione 0014), e se a
+    # cancellarla è l'import che la rifà, il legame torna con `materialize_ready`
+    # (`VARIANTS_KEY`). Nessuna relazione ORM: di lei si legge solo il titolo e se è
+    # eliminata (`recipe_origin` in `app/repositories/recipes.py`).
+    derived_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True
+    )
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
     search_tsv: Mapped[str] = mapped_column(
         TSVECTOR,
