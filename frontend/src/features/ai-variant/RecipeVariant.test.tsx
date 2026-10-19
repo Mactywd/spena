@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { RecipeDetailScreen } from "../cooking/RecipeDetailScreen";
 import { RecipeVariantScreen } from "./RecipeVariantScreen";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
@@ -59,6 +59,11 @@ function stubFetch(route: Rotta = () => undefined) {
   return spy;
 }
 
+/** L'indirizzo corrente, per i test che devono dire dove si è (e dove non si è andati). */
+function Indirizzo() {
+  return <output data-testid="indirizzo">{useLocation().pathname}</output>;
+}
+
 function renderAt(entry: string | { pathname: string; state: unknown }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
@@ -72,6 +77,7 @@ function renderAt(entry: string | { pathname: string; state: unknown }) {
             <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
             <Route path="/ricette/:id/variante" element={<RecipeVariantScreen />} />
           </Routes>
+          <Indirizzo />
         </MemoryRouter>
       </NoticeProvider>
     </QueryClientProvider>
@@ -161,6 +167,36 @@ describe("«Modifica con AI» nel dettaglio (R8)", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Pasta al pomodoro" })).toBeInTheDocument();
     expect(campo).toHaveValue("senza basilico");
     expect(screen.queryByRole("heading", { name: "Nuova variante" })).toBeNull();
+  });
+
+  it("una proposta che arriva dopo «Annulla» non apre niente: si resta sull'originale", async () => {
+    const spy = stubFetch();
+    // la risposta di /ai-variant resta in mano al test: arriva quando decide lui
+    const normale = spy.getMockImplementation()!;
+    let consegna: (risposta: Response) => void = () => {};
+    const inVolo = new Promise<Response>((resolve) => {
+      consegna = resolve;
+    });
+    spy.mockImplementation((url, init) =>
+      String(url).endsWith("/ai-variant") ? inVolo : normale(url, init)
+    );
+    renderAt("/ricette/r1");
+
+    await userEvent.type(await apriIlPannello(), "senza basilico");
+    await userEvent.click(screen.getByRole("button", { name: "Proponi la variante" }));
+    await vi.waitFor(() => expect(mandati(spy, "POST", "/ai-variant")).toHaveLength(1));
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(screen.queryByLabelText("Cosa vuoi cambiare?")).toBeNull();
+
+    // la proposta arriva a pannello chiuso: il pannello non c'è più, e con lui la sua
+    // callback. Si aspetta che la risposta sia stata letta e che i timer di react-query
+    // abbiano girato, poi si guarda: nessun modulo, e l'indirizzo è ancora quello dell'originale.
+    consegna(new Response(JSON.stringify(PROPOSTA), { status: 200 }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(screen.queryByRole("heading", { name: "Nuova variante" })).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Pasta al pomodoro" })).toBeInTheDocument();
+    expect(screen.getByTestId("indirizzo")).toHaveTextContent(/^\/ricette\/r1$/);
   });
 
   it("una ricetta eliminata non ha «Modifica con AI»", async () => {

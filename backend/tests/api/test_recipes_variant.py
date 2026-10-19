@@ -245,6 +245,8 @@ async def test_la_proposta_di_una_ricetta_che_non_c_e_e_un_404(logged_client):
         f"/api/v1/recipes/{uuid.uuid4()}/ai-variant", json={"prompt": "senza basilico"}
     )
     assert risposta.status_code == 404
+    # il testo è della rotta: un 404 qualunque (rotta mancante) non lo scriverebbe
+    assert risposta.json()["detail"] == "ricetta inesistente"
 
 
 async def test_una_ricetta_eliminata_non_propone_varianti(logged_client, monkeypatch, originale):
@@ -255,7 +257,10 @@ async def test_una_ricetta_eliminata_non_propone_varianti(logged_client, monkeyp
         raise AssertionError("l'AI non si chiama per una ricetta eliminata")
 
     monkeypatch.setattr(rotte, "draft_variant", mai)
-    await logged_client.patch(f"/api/v1/recipes/{originale.id}", json={"archived": True})
+    eliminata = await logged_client.patch(
+        f"/api/v1/recipes/{originale.id}", json={"archived": True}
+    )
+    assert eliminata.status_code == 200
 
     risposta = await logged_client.post(
         f"/api/v1/recipes/{originale.id}/ai-variant", json={"prompt": "senza basilico"}
