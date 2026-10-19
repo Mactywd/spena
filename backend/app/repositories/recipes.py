@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,11 +107,18 @@ async def create_recipe(
     embedding: list[float] | None,
     cost: int | None = None,
     category: str | None = None,
+    derived_from_id: uuid.UUID | None = None,
+    # R8: solo per una variante, copiati dall'originale (vedi `variant_copy`); una
+    # ricetta scritta da zero non li ha, come oggi
+    image_url: str | None = None,
+    prep_minutes: int | None = None,
+    cook_minutes: int | None = None,
 ) -> Recipe:
     recipe = Recipe(
         title=title, description=description, instructions=instructions, servings=servings,
         source=source, source_ref=source_ref, embedding=embedding, cost=cost,
-        category=category,
+        category=category, derived_from_id=derived_from_id,
+        image_url=image_url, prep_minutes=prep_minutes, cook_minutes=cook_minutes,
     )
     await write_recipe_ingredients(session, recipe, ingredients)
     session.add(recipe)
@@ -125,6 +133,68 @@ async def get_recipe(session: AsyncSession, recipe_id: uuid.UUID) -> Recipe | No
         .where(Recipe.id == recipe_id)
     )
     return (await session.execute(statement)).unique().scalar_one_or_none()
+
+
+@dataclass(frozen=True)
+class RecipeOrigin:
+    """La ricetta da cui una variante nasce (R8), come la si mostra: il titolo di oggi, e
+    se è eliminata — un'eliminata si apre dalla sua lapide (R10)."""
+
+    id: uuid.UUID
+    title: str
+    archived: bool
+
+
+async def recipe_origin(session: AsyncSession, recipe: Recipe) -> RecipeOrigin | None:
+    """L'originale di `recipe`, o `None` se non è una variante o l'originale non c'è più.
+
+    Due colonne e non `session.get`: l'originale porterebbe con sé le sue righe
+    (`selectin`), che qui non servono.
+    """
+    if recipe.derived_from_id is None:
+        return None
+    row = (
+        await session.execute(
+            select(Recipe.title, Recipe.archived_at).where(Recipe.id == recipe.derived_from_id)
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return RecipeOrigin(
+        id=recipe.derived_from_id, title=row.title, archived=row.archived_at is not None
+    )
+
+
+@dataclass(frozen=True)
+class VariantCopy:
+    """Quel che una variante prende dalla sua originale al salvataggio (R8; deciso da
+    Mattia il 2026-10-13: «Sì, copiali»). Vuoto per una ricetta che non è una variante."""
+
+    image_url: str | None = None
+    prep_minutes: int | None = None
+    cook_minutes: int | None = None
+
+
+async def variant_copy(session: AsyncSession, origin_id: uuid.UUID) -> VariantCopy | None:
+    """La foto e i tempi dell'originale `origin_id`, o `None` se non c'è più (eliminata
+    c'è ancora).
+
+    Li copia il server e non il modulo: `RecipeForm` non ha campi per la foto e per i
+    tempi (R10 §7), e il client non deve maneggiare valori che non mostra. Tre colonne e
+    non `session.get`, come `recipe_origin`: le righe dell'originale qui non servono.
+    """
+    row = (
+        await session.execute(
+            select(Recipe.image_url, Recipe.prep_minutes, Recipe.cook_minutes).where(
+                Recipe.id == origin_id
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return VariantCopy(
+        image_url=row.image_url, prep_minutes=row.prep_minutes, cook_minutes=row.cook_minutes
+    )
 
 
 async def recipe_categories(session: AsyncSession) -> list[str]:

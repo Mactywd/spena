@@ -53,6 +53,9 @@ class RecipeFields(BaseModel):
 class RecipeCreate(RecipeFields):
     source: RecipeSource
     source_ref: str | None = Field(default=None, max_length=500)
+    # R8: la ricetta da cui questa nasce, per una variante scritta con l'AI. Solo alla
+    # creazione: `RecipeReplace` non lo dichiara, quindi una modifica non lo cambia.
+    derived_from_id: uuid.UUID | None = None
 
 
 class RecipeReplace(RecipeFields):
@@ -91,6 +94,15 @@ class RecipeIngredientOut(BaseModel):
     # quel che va mostrato: a 1× è quantity_text, riscritto solo quando si riporziona
     quantity_display: str | None
     quantity_scaled: bool
+
+
+class RecipeOriginOut(BaseModel):
+    """L'originale di una variante (R8): «Variante di «…»» sotto il titolo. `archived`
+    vero: è eliminata, e il collegamento porta alla sua lapide (R10)."""
+
+    id: uuid.UUID
+    title: str
+    archived: bool
 
 
 class RecipeOut(BaseModel):
@@ -133,6 +145,8 @@ class RecipeOut(BaseModel):
     # vero finché una pagina dell'import la rifà: modificarla la rende tua, e lo schermo
     # di modifica lo dice prima del salvataggio (R10 §6.2)
     owned_by_import: bool = False
+    # R8: da quale ricetta nasce, se è una variante; il titolo è quello di oggi
+    derived_from: RecipeOriginOut | None = None
 
 
 class RecipeSummaryOut(BaseModel):

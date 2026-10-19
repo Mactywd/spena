@@ -25,9 +25,12 @@ from app.repositories.imports import adopt_import_page, owned_by_import
 from app.repositories.recipes import (
     IngredientLine,
     NonFoodInRecipe,
+    VariantCopy,
     create_recipe,
     get_recipe,
     recipe_categories,
+    recipe_origin,
+    variant_copy,
     write_recipe_ingredients,
 )
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
@@ -35,6 +38,7 @@ from app.schemas.recipe import (
     RecipeCreate,
     RecipeIngredientIn,
     RecipeIngredientOut,
+    RecipeOriginOut,
     RecipeOut,
     RecipeReplace,
     RecipeSummaryOut,
@@ -127,6 +131,7 @@ async def _to_out(
     # il conteggio e il verdetto arrivano da app/domain/rules.py, non da un `sum`
     # qui: ricalcolarli in linea fa sì che il test a tabella difenda una copia che
     # non gira, ed è la metà aggregata della regola del capitolo 7 della spec
+    origin = await recipe_origin(session, recipe)
     return RecipeOut(
         id=recipe.id, title=recipe.title, description=recipe.description,
         instructions=recipe.instructions, servings=recipe.servings, source=recipe.source,
@@ -142,6 +147,11 @@ async def _to_out(
         unscalable_lines=unscalable, dose_lines=dose_lines,
         archived_at=recipe.archived_at,
         owned_by_import=await owned_by_import(session, recipe.id),
+        derived_from=(
+            RecipeOriginOut(id=origin.id, title=origin.title, archived=origin.archived)
+            if origin is not None
+            else None
+        ),
     )
 
 
@@ -411,6 +421,17 @@ async def create(
 ) -> RecipeOut:
     await _check_category(session, payload.category)
     embedding = await _embedding_for(payload.title, payload.description)
+    # R8: un'originale che nel frattempo non c'è più (l'import l'ha rifatta mentre si
+    # correggeva la variante) non ferma il salvataggio: la variante nasce senza legame.
+    # Rifiutarla butterebbe il lavoro, e dal modulo il legame non si toglie — sarebbe un
+    # vicolo cieco. Un'originale eliminata c'è ancora, e tiene il legame.
+    # E la variante parte con la foto e i tempi dell'originale (deciso da Mattia il
+    # 2026-10-13: «Sì, copiali»): li copia qui il server, perché il modulo non li ha.
+    derived_from_id, copied = None, VariantCopy()
+    if payload.derived_from_id is not None:
+        found = await variant_copy(session, payload.derived_from_id)
+        if found is not None:
+            derived_from_id, copied = payload.derived_from_id, found
     async with _writing_recipe(session):
         recipe = await create_recipe(
             session, title=payload.title, description=payload.description,
@@ -420,6 +441,10 @@ async def create(
             embedding=embedding,
             cost=payload.cost,
             category=payload.category,
+            derived_from_id=derived_from_id,
+            image_url=copied.image_url,
+            prep_minutes=copied.prep_minutes,
+            cook_minutes=copied.cook_minutes,
         )
         await session.commit()
     stored = await get_recipe(session, recipe.id)
