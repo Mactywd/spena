@@ -139,7 +139,7 @@ async def test_i_rifiuti_dicono_perche(db_session):
         await set_grams(db_session, voci["detersivo"].id, None, Decimal("10"))
     assert non_cibo.value.code == "non_food"
 
-    for sbagliato in (Decimal("6000"), Decimal("0"), Decimal("-1")):
+    for sbagliato in (Decimal("6000"), Decimal("0"), Decimal("-1"), Decimal("0.001"), Decimal("NaN"), Decimal("1E+30")):
         with pytest.raises(NutritionRefusal) as fuori:
             await set_grams(db_session, voci["aglio"].id, spicchio, sbagliato)
         assert fuori.value.code == "bad_grams"

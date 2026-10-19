@@ -16,7 +16,7 @@ riga: la coppia torna da decidere. Il rifiuto ha la forma di quelli della fetta 
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Literal
 
 from sqlalchemy import delete, func, select
@@ -201,10 +201,19 @@ async def set_grams(
             MEASURED_UNIT_CODE,
             f"«{label}» è un'unità di peso o di volume: i grammi si contano da sé.",
         )
+    refusal = NutritionRefusal(
+        BAD_GRAMS_CODE, "Un peso va da più di 0 a 5000 g: controlla il numero."
+    )
+    if not grams.is_finite():
+        raise refusal
+    # la colonna è Numeric(8, 2): si controlla il valore che finirebbe scritto, non quello
+    # grezzo (0,001 diventa 0,00 e romperebbe il CHECK invece di essere rifiutato)
+    try:
+        grams = grams.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:  # troppo grande per la precisione del contesto
+        raise refusal from None
     if not Decimal("0") < grams <= GRAMS_MAX:
-        raise NutritionRefusal(
-            BAD_GRAMS_CODE, "Un peso va da più di 0 a 5000 g: controlla il numero."
-        )
+        raise refusal
     statement = pg_insert(IngredientUnitGrams).values(
         id=uuid.uuid4(),
         ingredient_id=ingredient_id,
