@@ -41,6 +41,7 @@ class LlmCallSite(StrEnum):
     INGREDIENT_SUBSTITUTES = "ingredient_substitutes"
     CIQUAL_TERMS = "ciqual_terms"
     CIQUAL_MATCH = "ciqual_match"
+    UNIT_GRAMS = "unit_grams"
 
 
 @dataclass(frozen=True)

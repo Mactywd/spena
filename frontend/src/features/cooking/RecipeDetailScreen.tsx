@@ -7,6 +7,7 @@ import { ApiError } from "../../api/client";
 import { AddMissingButton } from "./AddMissingButton";
 import { AnchorField } from "./AnchorField";
 import { CookSheet } from "./CookSheet";
+import { RecipeNutritionPanel } from "./RecipeNutritionPanel";
 import { ServingsStepper } from "./ServingsStepper";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
@@ -682,6 +683,10 @@ function RecipeDetailView({ id }: { id: string }) {
               <p className="leading-relaxed whitespace-pre-line">{recipe.instructions}</p>
             </Card>
           </section>
+
+          {/* S4 fetta 2: in fondo, dopo il procedimento, chiuso finché non lo si apre:
+              è una stima, e non compete con «Cucina» */}
+          <RecipeNutritionPanel recipeId={recipe.id} />
         </>
       )}
     </div>

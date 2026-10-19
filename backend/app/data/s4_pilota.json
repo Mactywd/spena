@@ -31,5 +31,27 @@
     {"ingrediente": "tonno in scatola", "reparto": "pesce", "atteso": "^thon.*(appertise|conserve)"},
     {"ingrediente": "lenticchie", "reparto": "legumi", "atteso": "^lentille"},
     {"ingrediente": "miele", "reparto": "dolci", "atteso": "^miel"}
+  ],
+  "pesi": [
+    {"ingrediente": "aglio", "unita": "spicchio", "min": 3, "max": 7},
+    {"ingrediente": "uova", "unita": null, "min": 45, "max": 60},
+    {"ingrediente": "olio extravergine di oliva", "unita": "cucchiaio", "min": 9, "max": 14},
+    {"ingrediente": "olio extravergine di oliva", "unita": "cucchiaino", "min": 3, "max": 5},
+    {"ingrediente": "zucchero", "unita": "cucchiaio", "min": 10, "max": 15},
+    {"ingrediente": "zucchero", "unita": "cucchiaino", "min": 3, "max": 6},
+    {"ingrediente": "farina 00", "unita": "cucchiaio", "min": 7, "max": 12},
+    {"ingrediente": "sale", "unita": "pizzico", "min": 0.2, "max": 1.5},
+    {"ingrediente": "cipolla", "unita": null, "min": 70, "max": 180},
+    {"ingrediente": "limone", "unita": null, "min": 60, "max": 140},
+    {"ingrediente": "carota", "unita": null, "min": 50, "max": 130},
+    {"ingrediente": "patata", "unita": null, "min": 120, "max": 250},
+    {"ingrediente": "pomodoro", "unita": null, "min": 80, "max": 200},
+    {"ingrediente": "burro", "unita": "noce", "min": 5, "max": 15},
+    {"ingrediente": "latte intero", "unita": "bicchiere", "min": 180, "max": 260},
+    {"ingrediente": "vino bianco", "unita": "bicchiere", "min": 100, "max": 200},
+    {"ingrediente": "prezzemolo", "unita": "ciuffo", "min": 3, "max": 15},
+    {"ingrediente": "basilico", "unita": "foglia", "min": 0.3, "max": 1.5},
+    {"ingrediente": "pane", "unita": "fetta", "min": 20, "max": 45},
+    {"ingrediente": "parmigiano reggiano", "unita": "cucchiaio", "min": 5, "max": 10}
   ]
 }

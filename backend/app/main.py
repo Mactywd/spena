@@ -82,6 +82,7 @@ app.include_router(substitutions.recipe_router)
 app.include_router(substitutions.ingredient_router)
 app.include_router(nutrition.router)
 app.include_router(nutrition.ciqual_router)
+app.include_router(nutrition.recipe_router)
 
 
 @app.get("/api/v1/health")

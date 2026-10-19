@@ -593,7 +593,7 @@ tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezi
 dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre
 si rinumerano; nella serie, con tante righe in dispensa, ogni «Metti in dispensa» porta in vista la riga nuova e lo scanner esce dallo schermo (vedi la voce `tbd` in `next-steps.md`).
 
-## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE — il prodotto il 2026-09-24; l'ingrediente da CIQUAL il 2026-10-18 sul ramo night/s4-ciqual, non ancora in produzione]**
+## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE — il prodotto il 2026-09-24; l'ingrediente da CIQUAL e i nutrienti di una ricetta il 2026-10-18 sui rami night/s4-ciqual e night/s4-grammi, non ancora in produzione; il tasto «Stima» da pianificare]**
 Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero
 nella forma ma povero nel contenuto. Spec:
 `docs/superpowers/specs/2026-09-24-nutrienti-ampi-design.md`. **Scopo deciso e
@@ -672,6 +672,23 @@ il deploy**: il file, il caricamento, il pilota, l'abbinamento.
 **Le scelte del piano che Mattia può voler rivedere:** «< x» letto come x/2 e «traces»
 come 0; i 30 casi del pilota e le due soglie; la sezione in fondo alla scheda,
 dopo «Prodotti»; la ricerca in francese (la tabella non ha nomi italiani).
+
+**Fetta 2 fatta il 2026-10-18** sul ramo `night/s4-grammi` (piano
+`docs/superpowers/plans/2026-10-13-s4-grammi.md`). I grammi stanno per coppia ingrediente
+× unità canonica in `ingredient_unit_grams` (migrazione `0017`, `UNIQUE NULLS NOT
+DISTINCT`: il «pezzo» è l'unità NULL); massa e volume si pesano da sé (densità 1, salvo
+olio, miele, sciroppi, latte condensato). L'AI pesa le coppie che le ricette usano con
+`decide_grams` — grammi netti della parte che si mangia, o «nessun peso» — e si corregge in
+Anagrafica, «Pesi per unità». La funzione pura `recipe_nutrition`
+(`backend/app/domain/recipe_nutrition.py`) somma le righe con dose, alimento e peso, e
+dichiara le altre col perché (le «q.b.» fuori, decisione di Mattia del 2026-10-13); la
+rotta `GET /api/v1/recipes/{id}/nutrition` la dà a porzione, ed è ciò che P1 e P2
+leggeranno. A video, in fondo al dettaglio, «Valori nutrizionali», chiuso finché non si
+apre. **Resta la fetta 3**, il tasto «Stima» sul prodotto, decisa e rinviata (spec §8).
+
+**Le scelte del piano che Mattia può voler rivedere:** le quattro densità; i 20 pesi del
+pilota e la soglia dell'80%; il pannello chiuso in fondo al dettaglio; «Contate N righe su
+M» e la frase senza righe contate.
 
 ## S5. Non alimentari in lista e dispensa **[FATTO 2026-09-18]**
 Vedi D4: stessa lista, stessa dispensa, nessuna informazione nutrizionale — solo

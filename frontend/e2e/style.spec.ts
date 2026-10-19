@@ -4291,3 +4291,39 @@ test("i sostituti a 375px: il pannello, il modulo e la sezione in Anagrafica si 
     await ricetta.pulisci();
   }
 });
+
+// S4, fetta 2: il pannello «Valori nutrizionali» del dettaglio aperto, con una riga contata
+// e le altre fuori dal conto, e in Anagrafica «Pesi per unità» col campo dei grammi aperto,
+// nei due temi. La scelta dell'alimento si toglie alla fine.
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`i valori di una ricetta e i pesi, tema ${tema === "light" ? "chiaro" : "scuro"} (S4)`, () => {
+    test.use({ colorScheme: tema, viewport: { width: 375, height: 812 } });
+
+    test("ogni testo del pannello e dei pesi sta sopra 4,5:1", async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+      const cerca = async (nome: string) =>
+        ((await (await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)).json()) as Ingredient[]).find(
+          (voce) => voce.name === nome
+        )!;
+      const pasta = await cerca("pasta");
+      const aglio = await cerca("aglio");
+      const scelta = `/api/v1/ingredients/${pasta.id}/nutrition`;
+      try {
+        expect((await page.request.put(scelta, { data: { ciqual_code: "90003" } })).ok()).toBe(true);
+        await page.goto("/ricette");
+        await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+        await page.getByRole("button", { name: "Mostra i valori nutrizionali", exact: true }).click();
+        await expect(page.getByText(/^Contate 1 riga su|^Contata 1 riga su/)).toBeVisible();
+        await page.waitForLoadState("networkidle");
+        expect(await testiIlleggibili(page)).toEqual([]);
+
+        await page.goto(`/anagrafica/ingrediente/${aglio.id}`);
+        await page.getByRole("button", { name: "Correggi il peso di 1 spicchio", exact: true }).click();
+        await expect(page.getByText("Scrivi un numero di grammi più grande di zero.")).toBeVisible();
+        expect(await testiIlleggibili(page)).toEqual([]);
+      } finally {
+        expect.soft((await page.request.delete(scelta)).ok(), "pulizia").toBe(true);
+      }
+    });
+  });
+}

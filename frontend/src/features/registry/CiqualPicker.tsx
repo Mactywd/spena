@@ -39,6 +39,8 @@ export function CiqualPicker({
     mutationFn: (code: string | null) => chooseFood(ingredientId, code),
     onSuccess: (next) => {
       queryClient.setQueryData(nutritionKey(ingredientId), next);
+      // il conto di una ricetta aperta altrove cambia con l'alimento scelto
+      void queryClient.invalidateQueries({ queryKey: ["recipe-nutrition"] });
       onDone(true);
     },
   });
