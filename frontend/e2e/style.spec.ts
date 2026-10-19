@@ -2732,3 +2732,39 @@ test("nessuna parola tecnica a video: né «backend», né «dataset», né «au
   await page.waitForLoadState("networkidle");
   expect(await page.locator("body").innerText(), "dettaglio").not.toMatch(tecniche);
 });
+
+test("il modulo della ricetta: la nota e l'avviso del non alimentare si leggono nei due temi (piano 20)", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  async function leggibile(dove: string) {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `${dove}, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  }
+
+  // niente si salva: la riga vive nel modulo, e il passo del non alimentare si chiude
+  await page.goto("/ricette/nuova-ai");
+  await page.getByLabel("Aggiungi un ingrediente").fill("zz prova nota");
+  await page.getByRole("button", { name: "Aggiungi «zz prova nota»" }).click();
+  await page.getByRole("button", { name: "Aggiungi alla ricetta", exact: true }).click();
+  const aggiungiNota = page.getByRole("button", { name: "Aggiungi una nota: zz prova nota" });
+  await expect(aggiungiNota).toBeVisible();
+  await leggibile("modulo con «Aggiungi una nota»");
+
+  await aggiungiNota.click();
+  await page.getByLabel("Nota per zz prova nota").fill("da grattugiare");
+  await leggibile("modulo con la nota aperta");
+
+  await page.getByLabel("Aggiungi un ingrediente").fill("detersivo per i piatti");
+  await page.getByRole("button", { name: "Aggiungi «detersivo per i piatti»" }).click();
+  await expect(page.getByText(/un non alimentare: una ricetta non può averlo/)).toBeVisible();
+  await expect(page.getByText("Cambia il nome: questo è un non alimentare.")).toBeVisible();
+  await leggibile("passo del nome col non alimentare");
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
+});
