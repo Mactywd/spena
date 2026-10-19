@@ -106,3 +106,12 @@ class AliasMovedOut(BaseModel):
     # `None` se l'alias era il nome stesso dell'ingrediente d'arrivo, e quindi è sparito
     alias: AliasOut | None
     ingredient: IngredientOut
+
+
+class NewNameMatchOut(BaseModel):
+    """`GET /ingredients/match`: l'ingrediente a cui un nome nuovo si collegherebbe
+    salvando una ricetta, o `null` se salvando nascerebbe (piano 20). Intero, e non un
+    sì/no: il modulo legge il `kind` che il server manda, il `display_name` per la frase e
+    l'`id` per il collegamento all'anagrafica."""
+
+    ingredient: IngredientOut | None
