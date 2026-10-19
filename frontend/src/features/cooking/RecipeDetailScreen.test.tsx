@@ -757,7 +757,10 @@ describe("riporzionare da un ingrediente (R2, secondo modo)", () => {
     expect(screen.getByRole("button", { name: "400 g: riscala da pomodoro" })).toBeInTheDocument();
     const aglio = screen.getByText("Aglio").closest("li")!;
     expect(within(aglio).getByText("q.b.")).toBeInTheDocument();
-    expect(within(aglio).queryByRole("button")).toBeNull();
+    // dal merge di R5 la riga ha «Sostituisci»: la dose no, ed è il suo solo pulsante
+    const pulsanti = within(aglio).getAllByRole("button");
+    expect(pulsanti).toHaveLength(1);
+    expect(pulsanti[0]).toHaveAccessibleName("Sostituisci aglio");
   });
 
   it("il tocco apre «Quanto ne fai?» sotto la sua riga, col fuoco; un campo alla volta", async () => {

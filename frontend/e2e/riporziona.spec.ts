@@ -63,6 +63,9 @@ function riga(page: Page, nome: string) {
   return page.getByRole("listitem").filter({ hasText: nome });
 }
 
+/** La dose che si tocca: dal merge di R5 ogni riga ha anche «Sostituisci …». */
+const RISCALA = /: riscala da /;
+
 // stringhe e non funzioni: questo file lo compila tsconfig.node.json, senza la libreria DOM
 async function nonScorreDiLato(page: Page, schermata: string) {
   await page.waitForLoadState("networkidle");
@@ -82,7 +85,7 @@ test("da una dose le altre seguono, lo stepper dice le porzioni che fa, e la cot
     await expect(dose).toBeVisible();
     expect((await dose.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     // «q.b.» non è una dose da cui partire: resta testo
-    await expect(riga(page, "sale").getByRole("button")).toHaveCount(0);
+    await expect(riga(page, "sale").getByRole("button", { name: RISCALA })).toHaveCount(0);
 
     await dose.click();
     const campo = page.getByRole("textbox", { name: "Quanto ne fai?" });
@@ -105,8 +108,8 @@ test("da una dose le altre seguono, lo stepper dice le porzioni che fa, e la cot
     await campo.fill("120");
     await riscala.click();
     await expect(page.getByText("≈ 1,5", { exact: true })).toBeVisible();
-    await expect(riga(page, "farro").getByRole("button")).toHaveText("120 g");
-    await expect(riga(page, "porro").getByRole("button")).toHaveText("0,75");
+    await expect(riga(page, "farro").getByRole("button", { name: RISCALA })).toHaveText("120 g");
+    await expect(riga(page, "porro").getByRole("button", { name: RISCALA })).toHaveText("0,75");
     await expect(riga(page, "sale")).toContainText("q.b.");
     await expect(page.getByText("1 dose su 3 non si riscala: resta com'è.")).toBeVisible();
     await expect(page.getByText("Riscalata da farro: 120 g.")).toBeVisible();
@@ -128,7 +131,7 @@ test("da una dose le altre seguono, lo stepper dice le porzioni che fa, e la cot
 
     // + torna alle porzioni intere: da ≈ 1,5 a 2, cioè la ricetta com'è
     await page.getByRole("button", { name: "Una porzione in più" }).click();
-    await expect(riga(page, "farro").getByRole("button")).toHaveText("160 g");
+    await expect(riga(page, "farro").getByRole("button", { name: RISCALA })).toHaveText("160 g");
     await expect(page.getByText(/^Riscalata da/)).toHaveCount(0);
   } finally {
     await r.elimina();
@@ -150,8 +153,8 @@ test("senza porzioni si riscala lo stesso, lo stepper resta fermo, e si torna al
 
     // prima la risposta: finché il campo è aperto, nella riga ci sono tre pulsanti
     await expect(page.getByText("Riscalata da farro: 80 g.")).toBeVisible();
-    await expect(riga(page, "farro").getByRole("button")).toHaveText("80 g");
-    await expect(riga(page, "porro").getByRole("button")).toHaveText("0,5");
+    await expect(riga(page, "farro").getByRole("button", { name: RISCALA })).toHaveText("80 g");
+    await expect(riga(page, "porro").getByRole("button", { name: RISCALA })).toHaveText("0,5");
     const piu = page.getByRole("button", { name: "Una porzione in più" });
     await expect(piu).toHaveAttribute("aria-disabled", "true");
     await expect(piu).toHaveAccessibleDescription("Porzioni non indicate: si cambiano da «Modifica».");
@@ -160,8 +163,8 @@ test("senza porzioni si riscala lo stesso, lo stepper resta fermo, e si torna al
     const torna = page.getByRole("button", { name: "Torna alle dosi della ricetta" });
     expect((await torna.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await torna.click();
-    await expect(riga(page, "farro").getByRole("button")).toHaveText("160 g");
-    await expect(riga(page, "porro").getByRole("button")).toHaveText("1");
+    await expect(riga(page, "farro").getByRole("button", { name: RISCALA })).toHaveText("160 g");
+    await expect(riga(page, "porro").getByRole("button", { name: RISCALA })).toHaveText("1");
     await expect(torna).toHaveCount(0);
   } finally {
     await r.elimina();
