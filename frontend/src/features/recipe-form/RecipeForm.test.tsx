@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { RecipeForm } from "./RecipeForm";
 import { lineFromDraft, valuesFromRecipe, type RecipeFormValues } from "./formModel";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
-import type { RecipeBody, RecipeDetail } from "../../domain/types";
+import type { Ingredient, RecipeBody, RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
@@ -413,5 +414,228 @@ describe("R12: un ingrediente che non c'è si aggiunge dal modulo", () => {
     const offerta = await offri("zucch");
     expect(screen.getByRole("option", { name: /Zucchero/ })).toBeInTheDocument();
     expect(offerta).toBeInTheDocument();
+  });
+});
+
+describe("la nota della riga (piano 20)", () => {
+  it("si legge nel suo campo e si corregge; il salvataggio porta la nota nuova", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    const nota = screen.getByLabelText("Nota per pasta");
+    expect(nota).toHaveValue("al dente");
+    expect(nota).toHaveAttribute("maxlength", "300");
+    await userEvent.clear(nota);
+    await userEvent.type(nota, "molto al dente");
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { ingredient_id: "i1", role: "primary", quantity_text: "320 g", note: "molto al dente" },
+        ]),
+      })
+    );
+  });
+
+  it("svuotato il campo, la nota si toglie: la riga parte senza", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.clear(screen.getByLabelText("Nota per pasta"));
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { ingredient_id: "i1", role: "primary", quantity_text: "320 g" },
+        ]),
+      })
+    );
+  });
+
+  it("una riga senza nota offre «Aggiungi una nota», che apre il campo col fuoco", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    expect(screen.queryByLabelText("Nota per basilico")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi una nota: basilico" }));
+
+    const nota = screen.getByLabelText("Nota per basilico");
+    expect(nota).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Aggiungi una nota: basilico" })).toBeNull();
+    await userEvent.type(nota, "fresco");
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { ingredient_id: "i2", role: "secondary", quantity_text: null, note: "fresco" },
+        ]),
+      })
+    );
+  });
+
+  it("aperto e lasciato vuoto, il campo non aggiunge niente al salvataggio", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi una nota: basilico" }));
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { ingredient_id: "i2", role: "secondary", quantity_text: null },
+        ]),
+      })
+    );
+  });
+
+  it("anche una riga nuova di R12 ha la sua nota", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.type(screen.getByLabelText("Aggiungi un ingrediente"), "zz tre");
+    await userEvent.click(await screen.findByRole("button", { name: "Aggiungi «zz tre»" }));
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi alla ricetta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi una nota: zz tre" }));
+    await userEvent.type(screen.getByLabelText("Nota per zz tre"), "a cubetti");
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { name: "zz tre", category: "altro", role: "primary", quantity_text: null, note: "a cubetti" },
+        ]),
+      })
+    );
+  });
+});
+
+describe("il passo del nome dice un non alimentare dell'anagrafica (piano 20)", () => {
+  const DETERSIVO: Ingredient = {
+    id: "i-det", name: "detersivo per i piatti", display_name: "Detersivo per i piatti",
+    category: "casa", kind: "non_food",
+  };
+
+  /** `GET /ingredients/match` risponde con `risposta(nome)`; ogni altra chiamata con `[]`. */
+  function stubMatch(risposta: (name: string) => Response) {
+    const spy = vi.fn((url: unknown) => {
+      const indirizzo = new URL(String(url), "http://spena.test");
+      if (indirizzo.pathname.endsWith("/ingredients/match"))
+        return Promise.resolve(risposta(indirizzo.searchParams.get("name") ?? ""));
+      return Promise.resolve(new Response("[]", { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    return spy;
+  }
+
+  function risponde(ingredient: Ingredient | null) {
+    return new Response(JSON.stringify({ ingredient }), { status: 200 });
+  }
+
+  const comeDetersivo = (name: string) =>
+    risponde(name.trim().toLowerCase() === "detersivo per i piatti" ? DETERSIVO : null);
+
+  async function apriIlPasso(testo: string) {
+    await userEvent.type(screen.getByLabelText("Aggiungi un ingrediente"), testo);
+    await userEvent.click(await screen.findByRole("button", { name: `Aggiungi «${testo}»` }));
+  }
+
+  it("lo dice nel passo, col collegamento all'anagrafica, e la riga non si aggiunge", async () => {
+    stubMatch(comeDetersivo);
+    renderForm(valuesFromRecipe(DETAIL));
+
+    await apriIlPasso("detersivo per i piatti");
+
+    expect(
+      await screen.findByText(
+        "In anagrafica questo nome è «Detersivo per i piatti», un non alimentare: una ricetta non può averlo. Scrivi un altro nome; se invece è l'anagrafica a sbagliare, correggila."
+      )
+    ).toBeInTheDocument();
+    const collegamento = screen.getByRole("link", {
+      name: "Correggi «Detersivo per i piatti» in Anagrafica",
+    });
+    expect(collegamento).toHaveAttribute("href", "/anagrafica/ingrediente/i-det");
+    expect(collegamento).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("Si apre a parte: la ricetta resta qui com'è.")).toBeInTheDocument();
+
+    const aggiungi = screen.getByRole("button", { name: "Aggiungi alla ricetta" });
+    expect(aggiungi).toHaveAttribute("aria-disabled", "true");
+    expect(aggiungi).toHaveAccessibleDescription("Cambia il nome: questo è un non alimentare.");
+    await userEvent.click(aggiungi);
+    expect(screen.queryByRole("button", { name: "Togli detersivo per i piatti" })).toBeNull();
+    expect(screen.getByLabelText("Come si chiama in generale?")).toBeInTheDocument();
+  });
+
+  it("cambiato il nome, l'avviso sparisce e la riga si aggiunge", async () => {
+    stubMatch(comeDetersivo);
+    renderForm(valuesFromRecipe(DETAIL));
+    await apriIlPasso("detersivo per i piatti");
+    await screen.findByText(/un non alimentare: una ricetta non può averlo/);
+
+    const nome = screen.getByLabelText("Come si chiama in generale?");
+    await userEvent.clear(nome);
+    await userEvent.type(nome, "zucchine");
+
+    await waitFor(() =>
+      expect(screen.queryByText(/un non alimentare: una ricetta non può averlo/)).toBeNull()
+    );
+    const aggiungi = screen.getByRole("button", { name: "Aggiungi alla ricetta" });
+    expect(aggiungi).not.toHaveAttribute("aria-disabled");
+    await userEvent.click(aggiungi);
+    expect(screen.getByRole("button", { name: "Togli zucchine" })).toBeInTheDocument();
+  });
+
+  it("se il server non risponde, il passo non si ferma: decide il salvataggio", async () => {
+    const spy = stubMatch(() => new Response(JSON.stringify({ detail: "giù" }), { status: 500 }));
+    renderForm(valuesFromRecipe(DETAIL));
+
+    await apriIlPasso("detersivo per i piatti");
+    await waitFor(() =>
+      expect(spy.mock.calls.some(([url]) => String(url).includes("/ingredients/match"))).toBe(true)
+    );
+
+    expect(screen.queryByText(/un non alimentare/)).toBeNull();
+    const aggiungi = screen.getByRole("button", { name: "Aggiungi alla ricetta" });
+    expect(aggiungi).not.toHaveAttribute("aria-disabled");
+    await userEvent.click(aggiungi);
+    expect(screen.getByRole("button", { name: "Togli detersivo per i piatti" })).toBeInTheDocument();
+  });
+
+  it("tornati alla finestra dopo aver corretto l'anagrafica, l'avviso si rilegge", async () => {
+    let attuale: Ingredient = DETERSIVO;
+    stubMatch(() => risponde(attuale));
+    renderForm(valuesFromRecipe(DETAIL));
+    await apriIlPasso("detersivo per i piatti");
+    await screen.findByText(/un non alimentare: una ricetta non può averlo/);
+
+    // corretto in un'altra scheda: ora è un alimento; il ritorno alla finestra rifà la domanda
+    attuale = { ...DETERSIVO, category: "altro", kind: "food" };
+    try {
+      act(() => focusManager.setFocused(false));
+      act(() => focusManager.setFocused(true));
+      await waitFor(() =>
+        expect(screen.queryByText(/un non alimentare: una ricetta non può averlo/)).toBeNull()
+      );
+      expect(screen.getByRole("button", { name: "Aggiungi alla ricetta" })).not.toHaveAttribute(
+        "aria-disabled"
+      );
+    } finally {
+      focusManager.setFocused(undefined);
+    }
+  });
+
+  it("con l'avviso, l'Invio nel campo del nome non aggiunge la riga", async () => {
+    stubMatch(comeDetersivo);
+    renderForm(valuesFromRecipe(DETAIL));
+    await apriIlPasso("detersivo per i piatti");
+    await screen.findByText(/un non alimentare: una ricetta non può averlo/);
+
+    await userEvent.type(screen.getByLabelText("Come si chiama in generale?"), "{Enter}");
+
+    expect(screen.queryByRole("button", { name: "Togli detersivo per i piatti" })).toBeNull();
+    expect(screen.getByLabelText("Come si chiama in generale?")).toBeInTheDocument();
   });
 });

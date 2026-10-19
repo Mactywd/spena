@@ -7,15 +7,18 @@ import { IngredientPicker } from "../../components/IngredientPicker";
 import { Button } from "../../components/ui/Button";
 import { Checkbox } from "../../components/ui/Checkbox";
 import { CostPicker } from "../../components/ui/CostPicker";
-import { IconX } from "../../components/ui/icons";
+import { IconPlus, IconX } from "../../components/ui/icons";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import type { Ingredient, IngredientRole, RecipeBody, RecipeDetail } from "../../domain/types";
 import { capitalizeFirst } from "../../lib/text";
 import { CategoryField } from "./CategoryField";
+import { NonFoodNameNotice } from "./NonFoodNameNotice";
+import { NON_FOOD_NAME_PROBLEM, useNonFoodName } from "./useNonFoodName";
 import { NewIngredientFields } from "../stocking/NewIngredientFields";
 import {
   addNewLine,
   QUANTITY_MAX,
+  NOTE_MAX,
   TITLE_MAX,
   lineFromIngredient,
   matchNote,
@@ -62,6 +65,9 @@ function LineRow({
   // la stessa condizione di `savableLines`: una riga entra nel salvataggio se è
   // agganciata o se porta nome e categoria con cui crearla, ed è lì che ha dose e ruolo
   const savableShape = line.ingredientId !== null || line.proposedCategory !== null;
+  // vero dopo «Aggiungi una nota»: il campo nasce col fuoco, perché è lì che si scrive.
+  // Una nota che c'era già si apre senza rubare il fuoco a nessuno
+  const [focusNote, setFocusNote] = useState(false);
   return (
     <li className="flex flex-col gap-2 py-2 text-sm">
       {/* Prima riga: [la casella, solo se l'aggancio è incerto] + il nome + la ✕. Il nome
@@ -158,6 +164,42 @@ function LineRow({
           </div>
         </div>
       )}
+
+      {/* La nota della riga (piano 20): «da grattugiare», «a temperatura ambiente». Si
+          corregge qui, e si toglie svuotando il campo (vuota si salva `null`). Il campo
+          c'è solo dove la nota c'è: dodici campi vuoti su dodici righe allungherebbero il
+          modulo di un telefono intero, e una nota è l'eccezione — le altre righe hanno
+          «Aggiungi una nota», che apre il campo col fuoco. Svuotato resta aperto fino al
+          salvataggio: chiuderlo mentre lo si cancella porterebbe via il fuoco. Solo dove la
+          riga parte salvando, come la dose */}
+      {savableShape &&
+        (line.note === null ? (
+          <Button
+            variant="ghost"
+            icon={IconPlus}
+            accessibleName={`Aggiungi una nota: ${line.label}`}
+            onClick={() => {
+              setFocusNote(true);
+              onUpdate({ note: "" });
+            }}
+            className="self-start"
+          >
+            Aggiungi una nota
+          </Button>
+        ) : (
+          <label className="text-xs text-ink-soft">
+            Nota
+            <input
+              aria-label={`Nota per ${line.label}`}
+              value={line.note}
+              onChange={(e) => onUpdate({ note: e.target.value })}
+              maxLength={NOTE_MAX}
+              autoFocus={focusNote}
+              placeholder="«da grattugiare», «a temperatura ambiente»"
+              className="mt-1.5 text-ink"
+            />
+          </label>
+        ))}
     </li>
   );
 }
@@ -188,6 +230,10 @@ export function RecipeForm({
   // R12: il nome che il selettore ha consegnato con «Aggiungi «…»», mentre il passo
   // «Come si chiama in generale?» è aperto; `null` a passo chiuso
   const [creating, setCreating] = useState<string | null>(null);
+  // il nome che si sta scrivendo nel passo di R12, e se salvando porterebbe a un non
+  // alimentare dell'anagrafica: lo dice il server, con la regola del salvataggio (piano 20)
+  const [newName, setNewName] = useState("");
+  const nonFoodName = useNonFoodName(creating === null ? null : newName);
   const pickerRef = useRef<HTMLDivElement>(null);
   const linesRef = useRef<HTMLUListElement>(null);
   const submit = useMutation({
@@ -246,6 +292,12 @@ export function RecipeForm({
       .forEach((input) => {
         if (input.dataset.lineKey === added.key) input.focus();
       });
+  }
+
+  function startNew(name: string) {
+    setCreating(name);
+    // il passo parte col nome dato da «Aggiungi «…»»: la domanda parte da lì
+    setNewName(name);
   }
 
   function cancelNew() {
@@ -324,14 +376,15 @@ export function RecipeForm({
             // la scelta di «Sistema la spesa» (S6): «zucch» pesca «Zucchero», e la porta
             // per «zucchine» non deve sparire dietro di lui
             createWhen="always"
-            onCreate={setCreating}
+            onCreate={startNew}
           />
         </div>
 
         {/* Il passo di R12: il nome generico e il reparto, solo del cibo. L'ingrediente
             non nasce qui: nasce salvando la ricetta (`_resolve_lines`), per questo il
             pulsante dice «Aggiungi alla ricetta» e non «Crea l'ingrediente». `key`: un
-            secondo «Aggiungi «…»» riparte dal suo nome */}
+            secondo «Aggiungi «…»» riparte dal suo nome. Un nome che salvando porterebbe a un non
+            alimentare lo dice qui, mentre lo si scrive (piano 20), invece del 422 al salvataggio. */}
         {creating !== null && (
           <div className="mt-2 rounded-card bg-card p-3 ring-1 ring-line ring-inset">
             <NewIngredientFields
@@ -342,6 +395,9 @@ export function RecipeForm({
               submitLabel="Aggiungi alla ricetta"
               onSubmit={addNew}
               onCancel={cancelNew}
+              onNameChange={setNewName}
+              nameNotice={nonFoodName && <NonFoodNameNotice ingredient={nonFoodName} />}
+              nameProblem={nonFoodName ? NON_FOOD_NAME_PROBLEM : undefined}
             />
           </div>
         )}

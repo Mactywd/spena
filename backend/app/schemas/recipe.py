@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe import RecipeSource
@@ -22,6 +22,16 @@ class RecipeIngredientIn(BaseModel):
     role: IngredientRole
     quantity_text: str | None = Field(default=None, max_length=100)
     note: str | None = Field(default=None, max_length=300)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _blank_note_is_none(cls, value: object) -> object:
+        # Una nota vuota o di soli spazi non dice niente: si salva `null`, ed è così che il
+        # modulo la toglie (piano 20). Gli spazi ai bordi non sono parte della nota. Prima
+        # del limite di 300, che conta la nota vera.
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
     @model_validator(mode="after")
     def _one_of_the_two(self) -> "RecipeIngredientIn":

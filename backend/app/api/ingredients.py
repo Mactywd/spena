@@ -34,9 +34,11 @@ from app.schemas.ingredient import (
     IngredientUsageOut,
     MergeIn,
     MergeOut,
+    NewNameMatchOut,
     ProductBriefOut,
 )
 from app.services import registry
+from app.services.ingredient_match import ingredient_for_new_name
 from app.services.registry import RegistryRefusal
 
 router = APIRouter(
@@ -52,6 +54,26 @@ async def search(
 ) -> list[IngredientOut]:
     found = await search_ingredients(session, q, limit, kind=kind)
     return [IngredientOut.model_validate(i) for i in found]
+
+
+@router.get("/match", response_model=NewNameMatchOut)
+async def match_new_name(
+    # lo stesso limite di `RecipeIngredientIn.name`: è il nome che la riga manderebbe
+    name: str = Query(min_length=1, max_length=120),
+    session: AsyncSession = Depends(get_session),
+) -> NewNameMatchOut:
+    """Dove finirebbe questo nome, scritto nel passo del nome del modulo, salvando la
+    ricetta (piano 20). Sola lettura.
+
+    La risposta è `ingredient_for_new_name`, la stessa funzione che `_resolve_lines`
+    chiama salvando: se dice un non alimentare, il salvataggio lo rifiuterebbe, e il
+    modulo lo dice prima. Dichiarata prima di `/{ingredient_id}`, che altrimenti la
+    prenderebbe e risponderebbe 422 su «match», che non è un UUID.
+    """
+    found = await ingredient_for_new_name(session, name)
+    return NewNameMatchOut(
+        ingredient=IngredientOut.model_validate(found) if found is not None else None
+    )
 
 
 @router.post(
