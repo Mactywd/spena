@@ -122,7 +122,7 @@ async def _checked(
             [(substitute.ingredient_id, substitute.note) for substitute in payload.substitutes],
         )
     except SubstitutionRefused as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.message) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.message) from exc
 
 
 @recipe_router.get("/{recipe_id}/substitutes/{ingredient_id}", response_model=LineSubstitutionOut)
@@ -234,7 +234,7 @@ async def correct_ingredient_substitution(
     ingredient = await _ingredient(session, ingredient_id)
     if ingredient.kind != IngredientKind.FOOD:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"«{ingredient.display_name}» non è un alimento: non ha sostituti.",
         )
     answer = await _checked(session, ingredient_id, payload)

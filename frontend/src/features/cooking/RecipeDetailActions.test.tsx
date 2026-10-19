@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
 import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { RecipeDetail } from "../../domain/types";
 
@@ -46,9 +46,7 @@ function stubFetch(route: Rotta = () => undefined) {
 }
 
 function renderAt(entry: string | { pathname: string; state: unknown }) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-  });
+  const client = createTestQueryClient();
   // sempre dentro `NoticeProvider`: l'esito dell'eliminazione, e ogni altro avviso del
   // dettaglio, passa da lì
   return render(
@@ -119,9 +117,7 @@ describe("le azioni del dettaglio (R10 §6.1)", () => {
         </>
       );
     }
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-    });
+    const client = createTestQueryClient();
     render(
       <QueryClientProvider client={client}>
         <NoticeProvider>

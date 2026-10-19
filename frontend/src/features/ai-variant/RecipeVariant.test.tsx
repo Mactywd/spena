@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { RecipeDetailScreen } from "../cooking/RecipeDetailScreen";
 import { RecipeVariantScreen } from "./RecipeVariantScreen";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import type { RecipeDetail, RecipeDraft } from "../../domain/types";
 import type { VariantState } from "./variantState";
 
@@ -65,9 +65,7 @@ function Indirizzo() {
 }
 
 function renderAt(entry: string | { pathname: string; state: unknown }) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-  });
+  const client = createTestQueryClient();
   return render(
     <QueryClientProvider client={client}>
       <NoticeProvider>

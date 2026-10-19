@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { IngredientChooser } from "./IngredientChooser";
 import type { Ingredient } from "../../domain/types";
 
@@ -21,9 +22,7 @@ function stubRoutedFetch(route: (path: string, init?: RequestInit) => [unknown, 
 
 function renderChooser(busy = false) {
   const onChosen = vi.fn();
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <IngredientChooser

@@ -2,13 +2,12 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { focusManager } from "@tanstack/react-query";
+import { QueryClientProvider, focusManager } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { RecipeForm } from "./RecipeForm";
 import { lineFromDraft, valuesFromRecipe, type RecipeFormValues } from "./formModel";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import type { Ingredient, RecipeBody, RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
@@ -52,9 +51,7 @@ function renderForm(
   // quel che torna non conta qui: `onSaved` è vuoto, e il corpo mandato lo legge il test
   save = vi.fn((_body: RecipeBody) => Promise.resolve(DETAIL))
 ) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-  });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -201,6 +198,7 @@ describe("la categoria", () => {
     "se le categorie non arrivano lo dice, e la ricetta si salva lo stesso",
     async () => {
       // un 500 si ritenta due volte col predicato vero: da qui il tempo lungo
+      // — dal 2026-10-13 i tentativi non aspettano, e il tempo lungo resta solo come margine
       stubCategories([{ detail: "giù" }, 500]);
       const { save } = renderForm(valuesFromRecipe(DETAIL));
 

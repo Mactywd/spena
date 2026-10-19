@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
+from app.db.models.ingredient import Ingredient
 from app.db.models.recipe import Recipe
 from app.domain.quantities import (
     ANCHOR_AMOUNT_CEILING,
@@ -299,9 +300,9 @@ async def detail(
     session: AsyncSession = Depends(get_session),
 ) -> RecipeOut:
     if (anchor is None) != (amount is None):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ANCHOR_NEEDS_AMOUNT)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, ANCHOR_NEEDS_AMOUNT)
     if anchor is not None and servings is not None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ONE_SCALE_AT_A_TIME)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, ONE_SCALE_AT_A_TIME)
     recipe = await get_recipe(session, recipe_id)
     if recipe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
@@ -313,7 +314,7 @@ async def detail(
             anchor=(anchor, amount) if anchor is not None and amount is not None else None,
         )
     except AnchorRefused as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.sentence) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.sentence) from exc
 
 
 @router.patch("/{recipe_id}", response_model=RecipeOut)
@@ -392,6 +393,14 @@ async def replace(
     return await _to_out(session, stored)
 
 
+class _RepeatedIngredient(Exception):
+    """Due righe del modulo che, risolte, puntano allo stesso ingrediente."""
+
+    def __init__(self, display_name: str) -> None:
+        super().__init__(display_name)
+        self.display_name = display_name
+
+
 async def _resolve_lines(
     session: AsyncSession, lines: list[RecipeIngredientIn]
 ) -> list[IngredientLine]:
@@ -402,8 +411,15 @@ async def _resolve_lines(
     nessun ingrediente orfano. In sequenza e non in parallelo, per lo stesso motivo del
     fan-in dell'import: due righe con lo stesso nome nuovo devono diventare un
     ingrediente, non un doppione.
+
+    Due righe che puntano allo stesso ingrediente — lo stesso id due volte, un nome nuovo
+    uguale a una riga agganciata, due nomi che `match_name` porta allo stesso — si
+    rifiutano qui, nominandolo (`_RepeatedIngredient`, 409 in `_writing_recipe`): il
+    vincolo d'unicità della tabella delle righe le rifiuterebbe comunque, ma non sa dire
+    quale ingrediente.
     """
     resolved: list[IngredientLine] = []
+    seen: set[uuid.UUID] = set()
     for line in lines:
         ingredient_id = line.ingredient_id
         if ingredient_id is None:
@@ -422,6 +438,13 @@ async def _resolve_lines(
                     category=line.category or "altro",
                 )
                 ingredient_id = created.id
+        if ingredient_id in seen:
+            ingredient = await session.get(Ingredient, ingredient_id)
+            # un id che non esiste due volte non è un doppione da nominare: lo
+            # scopre la scrittura, col suo 404 «inesistente», come prima
+            if ingredient is not None:
+                raise _RepeatedIngredient(ingredient.display_name)
+        seen.add(ingredient_id)
         resolved.append((ingredient_id, line.role, line.quantity_text, line.note))
     return resolved
 
@@ -437,7 +460,7 @@ async def _check_category(
         return
     if category not in await recipe_categories(session):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"«{category}» non è una categoria del ricettario: scegline una dall'elenco, "
             "o nessuna.",
         )
@@ -461,9 +484,17 @@ async def _writing_recipe(session: AsyncSession):
     except NonFoodInRecipe as exc:
         await session.rollback()
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"«{exc.display_name}» non è un alimento: una ricetta non può averlo fra "
             "gli ingredienti. Toglilo dalla riga, poi salva.",
+        ) from exc
+    except _RepeatedIngredient as exc:
+        # un ingrediente creato da una riga precedente se ne va con la ricetta
+        await session.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Due righe puntano allo stesso ingrediente, «{exc.display_name}»: "
+            "togline una, poi salva.",
         ) from exc
     except IntegrityError as exc:
         await session.rollback()

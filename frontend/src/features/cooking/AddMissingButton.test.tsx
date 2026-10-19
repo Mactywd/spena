@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { AddMissingButton } from "./AddMissingButton";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { RecipeIngredientLine } from "../../domain/types";
@@ -22,7 +23,7 @@ const POMODORO = riga("i2", "pomodoro");
 // senza `NoticeProvider` l'avviso non avrebbe dove comparire
 function renderButton(
   lines: RecipeIngredientLine[],
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = createTestQueryClient()
 ) {
   render(
     <QueryClientProvider client={client}>
@@ -110,7 +111,7 @@ describe("AddMissingButton", () => {
 
   it("dopo, la lista della spesa si rilegge", async () => {
     stubLista({ i1: [201] });
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createTestQueryClient();
     client.setQueryData(["shopping-list"], []);
     renderButton([BASILICO], client);
 

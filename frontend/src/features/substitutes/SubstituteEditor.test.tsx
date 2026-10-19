@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { ApiError } from "../../api/client";
 import type { Ingredient } from "../../domain/types";
 import { SubstituteEditor } from "./SubstituteEditor";
@@ -25,7 +26,7 @@ function renderEditor({
 } = {}) {
   const onSaved = vi.fn();
   const onCancel = vi.fn();
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <SubstituteEditor

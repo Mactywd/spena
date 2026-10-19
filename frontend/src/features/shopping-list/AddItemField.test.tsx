@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { AddItemField } from "./AddItemField";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
-import { UnauthorizedError } from "../../api/client";
 
 const POMODORO = { id: "i1", name: "pomodoro", display_name: "Pomodoro", category: "verdura" };
 const PORRO = { id: "i9", name: "porro", display_name: "Porro", category: "verdura" };
@@ -18,12 +18,9 @@ const added = () => vi.fn().mockResolvedValue({ added: true });
  * comparire. */
 function renderField(
   props: { onAdd: (rawText: string, ingredientId?: string) => Promise<{ added: boolean }> },
-  queryCache?: QueryCache
+  onUnauthorized?: () => void
 ) {
-  const client = new QueryClient({
-    queryCache,
-    defaultOptions: { queries: { retry: false } },
-  });
+  const client = createTestQueryClient(onUnauthorized);
   return render(
     <QueryClientProvider client={client}>
       <NoticeProvider>
@@ -154,14 +151,15 @@ describe("AddItemField", () => {
   // m10: un 401 durante la ricerca deve arrivare alla QueryCache che App.tsx aggancia
   // al ritorno all'accesso, non morire in un `.catch` locale
   it("una sessione scaduta durante la ricerca arriva alla QueryCache", async () => {
-    const onError = vi.fn();
+    // Il client è quello dell'app: la sua QueryCache chiama `onUnauthorized` solo per un
+    // `UnauthorizedError`, quindi la chiamata prova anche il tipo dell'errore.
+    const onUnauthorized = vi.fn();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
 
-    renderField({ onAdd: added() }, new QueryCache({ onError }));
+    renderField({ onAdd: added() }, onUnauthorized);
     await userEvent.type(screen.getByLabelText("Aggiungi alla lista"), "pomo");
 
-    await waitFor(() => expect(onError).toHaveBeenCalled());
-    expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
+    await waitFor(() => expect(onUnauthorized).toHaveBeenCalled());
   });
 
   it("una ricerca che non risponde non blocca il testo libero, e lo dice", async () => {

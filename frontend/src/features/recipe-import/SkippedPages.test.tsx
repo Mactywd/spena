@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { SkippedPages } from "./SkippedPages";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { RequeueResult, SkippedPage } from "../../domain/types";
 
@@ -46,20 +46,9 @@ const ENTRATA: RequeueResult = {
   waiting_terms: [],
 };
 
-// Il predicato vero di App.tsx, non un `retry: false` di comodo (CLAUDE.md, prima
-// lezione). `retryDelay: 0` solo dove si prova un errore: i tentativi restano tre.
-function clientVero(retryDelay?: number) {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: defaultQueryRetryPredicate,
-        ...(retryDelay === undefined ? {} : { retryDelay }),
-      },
-    },
-  });
-}
-
-function renderSkipped(count = 3, client = clientVero()) {
+// Il client dell'app (`createTestQueryClient`), non un `retry: false` di comodo (CLAUDE.md,
+// prima lezione): i tentativi restano tre, senza attesa fra l'uno e l'altro.
+function renderSkipped(count = 3, client = createTestQueryClient()) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/ricette/importa"]}>
@@ -309,7 +298,7 @@ describe("SkippedPages", () => {
       }
       return [{}, 404];
     });
-    renderSkipped(3, clientVero(0));
+    renderSkipped(3);
     await apri();
     expect(
       await screen.findByText("Non sono riuscito a leggere le pagine scartate.")

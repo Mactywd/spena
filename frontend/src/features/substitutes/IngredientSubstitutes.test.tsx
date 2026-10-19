@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { IngredientSubstitutes } from "./IngredientSubstitutes";
 import type { IngredientSubstitutions } from "./types";
 
@@ -28,7 +29,7 @@ function stubRoutedFetch(route: FetchRoute) {
 }
 
 function renderSection() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <IngredientSubstitutes ingredientId="i-burro" ingredientName="burro" />

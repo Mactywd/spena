@@ -47,8 +47,11 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    setupFiles: ["./vitest.setup.ts"],
+    setupFiles: ["./vitest.setup.ts", "./src/test/setup.ts"],
     globals: true,
+    // una prova intera: più lunga delle attese di Testing Library (4 s, src/test/setup.ts),
+    // perché una prova ne fa più d'una di fila, e sotto carico 5 s non bastavano
+    testTimeout: 15_000,
     // e2e/ è di Playwright: i suoi file finiscono in `*.spec.ts` e rientrerebbero
     // nel pattern di default di Vitest, che li caricherebbe fuori dal loro runner.
     // Si parte dalle esclusioni di default perché assegnare `exclude` le sostituisce

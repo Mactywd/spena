@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { RecipeEditScreen } from "./RecipeEditScreen";
 import { RecipeDetailScreen } from "../cooking/RecipeDetailScreen";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import type { RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
@@ -39,9 +39,7 @@ function stubFetch(route: Rotta = () => undefined) {
 }
 
 function renderEdit(start = "/ricette/r1/modifica", prime?: (client: QueryClient) => void) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-  });
+  const client = createTestQueryClient();
   prime?.(client);
   return render(
     <QueryClientProvider client={client}>
@@ -121,9 +119,7 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
 
   it("dopo il salvataggio, «indietro» non riporta al modulo", async () => {
     stubFetch();
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-    });
+    const client = createTestQueryClient();
     render(
       <QueryClientProvider client={client}>
         <NoticeProvider>

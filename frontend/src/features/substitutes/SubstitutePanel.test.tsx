@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider, focusManager, onlineManager } from "@tanstack/react-query";
+import { QueryClientProvider, focusManager, onlineManager } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { SubstitutePanel } from "./SubstitutePanel";
 import type { LineSubstitution } from "./types";
 
@@ -38,8 +39,8 @@ function callsTo(spy: ReturnType<typeof stubRoutedFetch>, method: string, path: 
   );
 }
 
-function renderPanel(defaults: { retry: number | false; retryDelay?: number } = { retry: false }) {
-  const client = new QueryClient({ defaultOptions: { queries: defaults } });
+function renderPanel() {
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <SubstitutePanel recipeId="r1" ingredientId="i-pasta" ingredientName="pasta" />
@@ -93,7 +94,7 @@ describe("SubstitutePanel", () => {
     const spy = stubRoutedFetch((_path, method) =>
       method === "POST" ? (guasto ? [{ detail: "boom" }, 500] : [{ ...VUOTA, ai_failed: true }, 200]) : [VUOTA, 200]
     );
-    renderPanel({ retry: 3, retryDelay: 1 });
+    renderPanel();
     expect(await screen.findByText("Nessun suggerimento ancora.")).toBeInTheDocument();
     expect(callsTo(spy, "POST", `${LINE}/ask`)).toHaveLength(1);
 

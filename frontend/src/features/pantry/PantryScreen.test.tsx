@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import { PantryScreen } from "./PantryScreen";
@@ -58,16 +59,23 @@ function stubRoutedFetch(route: (path: string, init?: RequestInit) => [unknown, 
 // senza `NoticeProvider` l'avviso di conferma (la X, il rientro in lista) non
 // avrebbe dove comparire: `useNotice()` restituirebbe il no-op del contesto vuoto
 function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <NoticeProvider>
-          <PantryScreen />
-        </NoticeProvider>
-      </MemoryRouter>
-    </QueryClientProvider>
-  );
+  const client = createTestQueryClient();
+  // il client si restituisce perché un guasto di una lettura secondaria si prova
+  // solo guardandolo arrivare: con i tentativi veri la query resta in attesa
+  // finché non li ha finiti, e un'asserzione negativa prima di allora guarda il
+  // caricamento e non l'errore
+  return {
+    ...render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <NoticeProvider>
+            <PantryScreen />
+          </NoticeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    ),
+    client,
+  };
 }
 
 describe("PantryScreen", () => {
@@ -389,7 +397,8 @@ describe("PantryScreen", () => {
     stubRoutedFetch((path) => {
       if (path.includes("/shopping-list")) return [[], 200];
       calls += 1;
-      return calls === 1 ? [{ detail: "no" }, 500] : [ITEMS, 200];
+      // il guasto dura tre letture (la prima e i due tentativi dell'app): il «Riprova» trova la quarta
+      return calls <= 3 ? [{ detail: "no" }, 500] : [ITEMS, 200];
     });
     renderScreen();
     expect(await screen.findByText("Non sono riuscito a caricare la dispensa.")).toBeDefined();
@@ -433,9 +442,12 @@ describe("PantryScreen", () => {
     stubRoutedFetch((path) =>
       path.includes("/shopping-list") ? [{ detail: "giù" }, 500] : [ITEMS, 200]
     );
-    renderScreen();
+    const { client } = renderScreen();
 
     await screen.findByText("Total 0%"); // la dispensa è arrivata
+    // la lista è fallita davvero (3 tentativi), non è ancora in volo: solo allora
+    // la scheda ha ricevuto `failed` e la sua nota generica è quella da provare
+    await waitFor(() => expect(client.getQueryState(["shopping-list"])?.status).toBe("error"));
     const link = screen.getByRole("link", { name: /Sistema la spesa/ });
     expect(link.getAttribute("href")).toBe("/sistema");
     expect(link).not.toHaveClass("bg-low-tint");

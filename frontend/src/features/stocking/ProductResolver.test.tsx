@@ -2,7 +2,8 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { ProductResolver, type ResolverIngredient } from "./ProductResolver";
 import type { Resolution } from "./stockingView";
 import type { Ingredient, Product } from "../../domain/types";
@@ -62,9 +63,7 @@ function Harness(props: {
 function renderResolver(over: { ingredient?: ResolverIngredient | null; label?: string | null } = {}) {
   const onResolved = vi.fn();
   const onCancel = vi.fn();
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <Harness

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { ScannerPanel } from "./ScannerPanel";
 import type { BarcodeLookup, Product } from "../../domain/types";
 
@@ -37,7 +38,7 @@ function renderPanel(over: { label?: string | null; ingredientId?: string | null
     onProduct: vi.fn(), onNewCode: vi.fn(), onUnlinkedCode: vi.fn(), onCreateByHand: vi.fn(),
     onCancel: vi.fn(),
   };
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
       <ScannerPanel

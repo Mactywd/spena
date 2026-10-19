@@ -44,9 +44,10 @@ class PendingKeys:
 def count_pending_keys(pages: Iterable[RecipeImport]) -> PendingKeys:
     """`occurrences` conta le **ricette** in attesa che usano il termine, non le righe:
     la frolla e la crema vogliono entrambe lo zucchero a velo, ma la ricetta bloccata è
-    una. Una funzione sola per `sync_terms` e per `undo_decision`: due conteggi scritti
-    due volte divergono, e la coda direbbe numeri diversi a seconda di chi l'ha
-    toccata per ultimo.
+    una. `sync_terms` la usa per tutte le chiavi; `undo_decision` conta una chiave sola dal
+    database (`count_pending_recipes_with_key`), e tests/repositories/test_imports_count.py
+    tiene uguali i due conti: due conteggi che divergono farebbero dire alla coda numeri
+    diversi a seconda di chi l'ha toccata per ultimo.
     """
     occurrences: dict[str, int] = {}
     display_names: dict[str, str] = {}
@@ -69,7 +70,8 @@ async def sync_terms(session: AsyncSession, source: str = GIALLOZAFFERANO) -> Te
     `occurrences` (vedi `count_pending_keys`) si ricalcola a ogni passaggio e non si
     incrementa mai: un contatore incrementato divergerebbe al primo ri-scarico, e un
     ordinamento della coda basato su un numero sbagliato è un difetto che nessuno nota.
-    L'altro posto che lo ricalcola è `undo_decision`, per il termine annullato.
+    L'altro posto che lo ricalcola è `undo_decision`, per il termine annullato, con lo
+    stesso conto fatto dal database.
     """
     counted = count_pending_keys(await pending_pages(session, source))
     occurrences = counted.occurrences
