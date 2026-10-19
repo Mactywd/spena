@@ -98,7 +98,7 @@ async def test_la_0018_sale_scende_e_risale(scratch_url):
             fine=datetime(2026, 10, 12, 16, 45, tzinfo=UTC),
         )
 
-    alembic(scratch_url, "downgrade", "0012")
+    alembic(scratch_url, "downgrade", "0017")
     assert await _scalar(scratch_url, TABELLE) == 0
 
     alembic(scratch_url, "upgrade", "head")

@@ -9,8 +9,9 @@ from sqlalchemy.dialects import postgresql
 revision = "0018"
 # La testa di `master` quando H2 è stato scritto. I piani R5, S4 e H2 partono tutti da
 # lì con numeri riservati (0015–0018): al merge questa riga va ripuntata sulla testa di
-# `master` di quel momento, e `alembic heads` deve tornare una riga sola.
-down_revision = "0012"
+# `master` di quel momento, e `alembic heads` deve tornare una riga sola. Al merge del
+# rilascio 2026-10-19 ripuntata sulla `0017` (S4 fetta 2).
+down_revision = "0017"
 
 
 def upgrade() -> None:
