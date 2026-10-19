@@ -113,6 +113,15 @@ function mix(top: string, bottom: string, alpha: number): string {
   );
 }
 
+// La tacca accesa di `StockGauge` mentre una scrittura è in volo: grigia come un
+// pulsante spento (`on-disabled`), non sbiadita con l'opacità (pulizie del 2026-10-13).
+// Contro la scheda è un segno (3:1, WCAG 1.4.11); contro la tacca spenta (`notch-off`)
+// deve dire ancora il livello: 2:1, misurato 2,13 in chiaro e 2,57 in scuro.
+const OFF_GAUGE_PAIRS: [string, string, number][] = [
+  ["on-disabled", "card", 3],
+  ["on-disabled", "notch-off", 2],
+];
+
 describe("i token del colore", () => {
   it("ogni token chiaro ha il suo valore scuro, e viceversa", () => {
     expect(Object.keys(dark).sort()).toEqual(Object.keys(light).sort());
@@ -136,6 +145,15 @@ describe("i token del colore", () => {
       expect(palette[background], `--color-${background} manca in ${mode}`).toBeDefined();
       expect(ratio(palette[shape], palette[background])).toBeGreaterThanOrEqual(1.2);
     });
+
+    it.each(OFF_GAUGE_PAIRS)(
+      `in ${mode}, la tacca spenta accesa %s contro %s sta sopra %s:1`,
+      (mark, background, min) => {
+        expect(palette[mark], `--color-${mark} manca in ${mode}`).toBeDefined();
+        expect(palette[background], `--color-${background} manca in ${mode}`).toBeDefined();
+        expect(ratio(palette[mark], palette[background])).toBeGreaterThanOrEqual(min);
+      }
+    );
   }
 });
 

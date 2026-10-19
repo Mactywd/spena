@@ -38,6 +38,11 @@ export function StockGauge({
     if (!disabled && next !== status) onChange(next);
   }
 
+  // Spenta, non sbiadisce (la regola del tema scuro, estesa il 2026-10-13): le tacche
+  // accese diventano grigie come un pulsante spento, le spente restano `notch-off`. La
+  // forma resta tre tacche, e il livello si legge ancora (2:1, theme.test.ts).
+  const litColor = disabled ? "bg-on-disabled" : LIT[status];
+
   function onKeyDown(event: KeyboardEvent) {
     const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key];
     if (step === undefined) return;
@@ -67,9 +72,9 @@ export function StockGauge({
             data-lit={lit}
             onClick={() => choose(option)}
             onKeyDown={onKeyDown}
-            className="flex size-11 items-center justify-center aria-disabled:opacity-40"
+            className="flex size-11 items-center justify-center"
           >
-            <span className={`h-1.5 w-4 rounded-full ${lit ? LIT[status] : "bg-notch-off"}`} />
+            <span className={`h-1.5 w-4 rounded-full ${lit ? litColor : "bg-notch-off"}`} />
           </button>
         );
       })}

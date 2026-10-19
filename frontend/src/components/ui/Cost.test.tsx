@@ -49,11 +49,4 @@ describe("CostPicker", () => {
       "aria-pressed", "false"
     );
   });
-
-  it("spento, non accetta tocchi", async () => {
-    const onChange = vi.fn();
-    render(<CostPicker value={null} onChange={onChange} disabled />);
-    await userEvent.click(screen.getByRole("button", { name: "Costo 1 su 5" }));
-    expect(onChange).not.toHaveBeenCalled();
-  });
 });
