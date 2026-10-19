@@ -1182,12 +1182,28 @@ server aggiunge `ingredient_kind`, oppure filtra lui. Il selettore
 ricordato fra una visita e l'altra è una comodità per dispositivo, quindi
 `localStorage` basta.
 
-## S15. Reparti della dispensa collassabili **[D]**
+## S15. Reparti della dispensa collassabili **[FATTO 2026-10-19 — sul ramo night/s15-reparti-collassabili, non ancora in produzione]**
 `PantryScreen.tsx` raggruppa per reparto (`groupByCategory`) con un titolo per gruppo.
 I titoli diventano apribili e chiudibili, così la dispensa si naviga per reparto.
 Anche qui lo stato ricordato è una comodità per dispositivo. Due cose da non
 sbagliare: una ricerca (S11) apre i reparti con un risultato, e un reparto chiuso deve
 dire quante voci contiene, altrimenti chiuso sembra vuoto.
+
+**Fatto** (spec `docs/superpowers/specs/2026-10-06-reparti-collassabili-bozza.md`, piano
+`docs/superpowers/plans/2026-10-08-s15-reparti-collassabili.md`): in Dispensa il titolo
+di ogni reparto — quadratino, nome, numero, chevron — è il pulsante che lo apre e lo
+chiude, dentro l'`h2` (`aria-expanded`, `aria-controls`); chiuso, il contenuto ha
+`hidden` e il titolo dice il numero e, se ci sono, «N finito/finiti» e «N in scadenza»
+(in scadenza e oltre), negli stessi colori delle righe. I reparti chiusi si ricordano nel
+`localStorage` (`spena.dispensa.reparti-chiusi`, l'elenco dei chiusi); una ricerca e il
+riepilogo delle scadenze aprono i reparti con un risultato senza salvare, e cancellati
+torna il salvato; toccare un titolo durante una ricerca chiude o apre per davvero, e si
+salva; la voce aggiunta dall'ingresso diretto apre il suo reparto prima di essere portata
+in vista, e lo salva aperto; il mondo di S14 non apre né chiude. `Section` senza
+`onToggle` è quella di prima: Lista e Sistema la spesa non cambiano. Tre scelte decise
+da Mattia il 2026-10-09: un reparto chiuso durante una ricerca resta chiuso finché la
+ricerca non si cancella; «in scadenza» conta anche le voci oltre la scadenza; un reparto
+chiuso che si svuota e torna, torna chiuso.
 
 ## S16. La lista scorre di lato quando una voce porta la nota del rientro **[FATTO 2026-09-27]**
 
