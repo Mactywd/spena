@@ -22,7 +22,14 @@ from app.domain.activity import (
     WEBHOOK_MAX_BYTES,
     parse_payload,
 )
-from app.services.activity import authenticate_webhook, receive_payload, reject_payload
+from app.schemas.activity import ActivityOut, TokenOut
+from app.services.activity import (
+    activity_summary,
+    authenticate_webhook,
+    receive_payload,
+    regenerate_token,
+    reject_payload,
+)
 
 router = APIRouter(
     prefix="/api/v1/activity", tags=["activity"], dependencies=[Depends(require_session)]
@@ -85,3 +92,16 @@ async def hc_webhook(request: Request, session: AsyncSession = Depends(get_sessi
     result = await receive_payload(session, parse_payload(data), len(body), now)
     await session.commit()
     return JSONResponse(result)
+
+
+@router.get("", response_model=ActivityOut)
+async def get_activity(session: AsyncSession = Depends(get_session)) -> ActivityOut:
+    return await activity_summary(session, datetime.now(UTC))
+
+
+@router.post("/token", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
+async def create_token(session: AsyncSession = Depends(get_session)) -> TokenOut:
+    # crea o rigenera: la chiave di prima smette di valere con questo commit
+    token = await regenerate_token(session, datetime.now(UTC))
+    await session.commit()
+    return TokenOut(token=token, header=TOKEN_HEADER)
