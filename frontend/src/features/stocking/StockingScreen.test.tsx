@@ -1404,7 +1404,7 @@ describe("StockingScreen", () => {
     it("non c'è finché la voce non è risolta", async () => {
       stubRoutedFetch(() => [CHECKED]);
       renderScreen();
-      await screen.findByText("mele");
+      await screen.findByText("Mele");
       expect(screen.queryByRole("button", { name: /un'altra confezione/ })).toBeNull();
     });
 
