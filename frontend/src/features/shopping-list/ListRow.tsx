@@ -1,5 +1,6 @@
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
+import { Checkbox } from "../../components/ui/Checkbox";
 import { IconX } from "../../components/ui/icons";
 import type { ShoppingItem } from "../../domain/types";
 
@@ -32,12 +33,12 @@ export function ListRow({
       <div className="flex items-center gap-1">
         {/* S17: in corsia spuntare è il gesto che si fa di più, e il pollice tocca la
             parola, non il quadratino accanto. La label prende casella, nome e nota, ed è
-            alta almeno 44px. L'`aria-label` della casella vince sul testo della label: il
-            nome accessibile è l'ingrediente abbinato, non «Total 0% rientrata perché…».
+            alta almeno 44px. La casella è `Checkbox`, col quadrato da 44 (era un quadratino
+            da 20, T3 Consegna 6b). L'`aria-label` della casella vince sul testo della label:
+            il nome accessibile è l'ingrediente abbinato, non «Total 0% rientrata perché…».
             La ✕ sta fuori, bersaglio suo: dentro, un tocco per togliere spunterebbe anche */}
-        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-3 py-1.5">
-          <input
-            type="checkbox"
+        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-1">
+          <Checkbox
             aria-label={item.ingredient_name ?? item.raw_text}
             checked={checked}
             // `aria-disabled` e non `disabled`, come le tacche della dispensa: il browser
@@ -48,7 +49,6 @@ export function ListRow({
             onChange={() => {
               if (!busy) onToggle();
             }}
-            className="size-5 shrink-0 accent-brand aria-disabled:opacity-40"
           />
           {/* S16: `min-w-0` lascia stringere la colonna sotto la sua parola più lunga, e
               `break-words` spezza un nome che non ci sta: a 375px la riga spingeva la

@@ -135,6 +135,15 @@ describe("CookSheet", () => {
     expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
   });
 
+  it("la casella «Rimetti in lista» è quella di casa, da 44 px", async () => {
+    renderSheet();
+    const row = screen.getByText("Total 0%").closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    const casella = within(row).getByRole("checkbox", { name: /Rimetti in lista/ });
+    expect(casella.className).toContain("size-6");
+    expect(casella.parentElement!.className).toContain("size-11");
+  });
+
   it("dichiarare quasi finito manda 'low' e non spunta il riacquisto", async () => {
     // "low" è l'unico segnale che fa funzionare la regola primario/secondario:
     // scriverlo come "available" cancellerebbe la differenza fra un barattolo

@@ -5,6 +5,7 @@ import { STATUS_LABELS, offersRestock } from "../pantry/statusLabels";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import { Checkbox } from "../../components/ui/Checkbox";
 import { StockGauge } from "../../components/ui/StockGauge";
 import { IconCircleCheck } from "../../components/ui/icons";
 import type { CookResult, PantryItem, PantryStatus, RecipeDetail } from "../../domain/types";
@@ -198,13 +199,11 @@ export function CookSheet({
                 {/* la casella c'è quando la confezione, dopo la cottura, è gialla o
                     rossa — anche se lo era già prima (Mattia, 2026-10-09) */}
                 {offersRestock(status) && (
-                  <label className="flex min-h-11 items-center gap-2.5 text-sm text-ink-soft">
-                    <input
-                      type="checkbox"
+                  <label className="flex min-h-11 items-center gap-1 text-sm text-ink-soft">
+                    <Checkbox
                       aria-label={`Rimetti in lista ${label}`}
                       checked={choice.restock}
                       onChange={(e) => setRestock(item.id, e.target.checked)}
-                      className="size-5"
                     />
                     Rimetti in lista della spesa
                   </label>

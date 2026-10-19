@@ -90,4 +90,13 @@ describe("ListRow", () => {
     renderRow({}, { failed: true });
     expect(screen.getByRole("alert").textContent).toContain("riprova");
   });
+
+  // era un quadratino da 20 px (T3 Consegna 6b): ora la casella di casa, col quadrato da
+  // 44 intorno — il bersaglio è la label intera, ma il disegno si vede da 24
+  it("la casella è quella di casa: il quadratino da 24 nel quadrato da 44", () => {
+    renderRow();
+    const casella = screen.getByRole("checkbox", { name: "yogurt greco" });
+    expect(casella.className).toContain("size-6");
+    expect(casella.parentElement!.className).toContain("size-11");
+  });
 });
