@@ -12,6 +12,8 @@ import { IconPlus } from "../../components/ui/icons";
 import type { Ingredient, IngredientRole, RecipeBody, RecipeDetail } from "../../domain/types";
 import { capitalizeFirst } from "../../lib/text";
 import { CategoryField } from "./CategoryField";
+import { NonFoodNameNotice } from "./NonFoodNameNotice";
+import { NON_FOOD_NAME_PROBLEM, useNonFoodName } from "./useNonFoodName";
 import { NewIngredientFields } from "../stocking/NewIngredientFields";
 import {
   addNewLine,
@@ -249,6 +251,10 @@ export function RecipeForm({
   // R12: il nome che il selettore ha consegnato con «Aggiungi «…»», mentre il passo
   // «Come si chiama in generale?» è aperto; `null` a passo chiuso
   const [creating, setCreating] = useState<string | null>(null);
+  // il nome che si sta scrivendo nel passo di R12, e se salvando porterebbe a un non
+  // alimentare dell'anagrafica: lo dice il server, con la regola del salvataggio (piano 20)
+  const [newName, setNewName] = useState("");
+  const nonFoodName = useNonFoodName(creating === null ? null : newName);
   const pickerRef = useRef<HTMLDivElement>(null);
   const linesRef = useRef<HTMLUListElement>(null);
   const submit = useMutation({
@@ -307,6 +313,12 @@ export function RecipeForm({
       .forEach((input) => {
         if (input.dataset.lineKey === added.key) input.focus();
       });
+  }
+
+  function startNew(name: string) {
+    setCreating(name);
+    // il passo parte col nome dato da «Aggiungi «…»»: la domanda parte da lì
+    setNewName(name);
   }
 
   function cancelNew() {
@@ -385,14 +397,15 @@ export function RecipeForm({
             // la scelta di «Sistema la spesa» (S6): «zucch» pesca «Zucchero», e la porta
             // per «zucchine» non deve sparire dietro di lui
             createWhen="always"
-            onCreate={setCreating}
+            onCreate={startNew}
           />
         </div>
 
         {/* Il passo di R12: il nome generico e il reparto, solo del cibo. L'ingrediente
             non nasce qui: nasce salvando la ricetta (`_resolve_lines`), per questo il
             pulsante dice «Aggiungi alla ricetta» e non «Crea l'ingrediente». `key`: un
-            secondo «Aggiungi «…»» riparte dal suo nome */}
+            secondo «Aggiungi «…»» riparte dal suo nome. Un nome che salvando porterebbe a un non
+            alimentare lo dice qui, mentre lo si scrive (piano 20), invece del 422 al salvataggio. */}
         {creating !== null && (
           <div className="mt-2 rounded-card bg-card p-3 ring-1 ring-line ring-inset">
             <NewIngredientFields
@@ -403,6 +416,9 @@ export function RecipeForm({
               submitLabel="Aggiungi alla ricetta"
               onSubmit={addNew}
               onCancel={cancelNew}
+              onNameChange={setNewName}
+              nameNotice={nonFoodName && <NonFoodNameNotice ingredient={nonFoodName} />}
+              nameProblem={nonFoodName ? NON_FOOD_NAME_PROBLEM : undefined}
             />
           </div>
         )}

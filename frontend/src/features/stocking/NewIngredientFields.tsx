@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "../../components/ui/Button";
 import { CategorySelect } from "../../components/CategorySelect";
 
@@ -20,6 +20,9 @@ export function NewIngredientFields({
   onCancel,
   foodOnly = false,
   submitLabel = "Crea l'ingrediente",
+  onNameChange,
+  nameNotice,
+  nameProblem,
 }: {
   initialName: string;
   /** Mentre la creazione è in volo: il pulsante si spegne ma tiene il fuoco. */
@@ -32,6 +35,14 @@ export function NewIngredientFields({
   /** Il pulsante che conferma: «Crea l'ingrediente» in «Sistema la spesa», che lo crea
    * subito; «Aggiungi alla ricetta» nel modulo, dove nasce salvando la ricetta. */
   submitLabel?: string;
+  /** Il nome scritto, a ogni tasto: lo legge il modulo della ricetta per chiedere al
+   * server se è un non alimentare (piano 20). */
+  onNameChange?: (name: string) => void;
+  /** Un avviso sul nome scritto, sotto il suggerimento del campo. */
+  nameNotice?: ReactNode;
+  /** Il nome scritto non si può usare, e perché: spegne il pulsante come il nome vuoto,
+   * col perché sotto di lui. */
+  nameProblem?: string;
 }) {
   const nameId = useId();
   const hintId = useId();
@@ -42,7 +53,7 @@ export function NewIngredientFields({
   function submit(event: FormEvent) {
     event.preventDefault();
     // l'Invio nel campo invia il modulo anche col pulsante spento: la guardia sta qui
-    if (trimmed === "" || busy) return;
+    if (trimmed === "" || busy || nameProblem) return;
     onSubmit({ name: trimmed, category });
   }
 
@@ -56,12 +67,16 @@ export function NewIngredientFields({
           id={nameId}
           autoFocus
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value);
+            onNameChange?.(e.target.value);
+          }}
           aria-describedby={hintId}
         />
         <p id={hintId} className="text-xs text-ink-soft">
           Il nome che scriveresti in lista: «zucchine», non «zucchine tonde di Nizza».
         </p>
+        {nameNotice}
       </div>
       <CategorySelect value={category} onChange={setCategory} foodOnly={foodOnly} />
       <div>
@@ -72,7 +87,7 @@ export function NewIngredientFields({
           variant="primary"
           shape="block"
           busy={busy}
-          unavailableReason={trimmed === "" ? "Scrivi il nome per crearlo." : undefined}
+          unavailableReason={trimmed === "" ? "Scrivi il nome per crearlo." : nameProblem}
         >
           {submitLabel}
         </Button>
