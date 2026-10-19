@@ -3396,3 +3396,120 @@ test("S14 a 375px: «Tutto / Cibo / Casa» coi due mondi in dispensa — bersagl
     }
   }
 });
+
+// --- S15: i reparti della dispensa che si aprono e si chiudono ---
+
+test("S15 a 375px: un reparto chiuso dice quante voci ha e cosa chiede attenzione, si legge nei due temi, e ricerca e riepilogo lo aprono senza salvarlo", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: la prima cosa qui è una
+  // `page.request`, quindi l'attesa va messa a mano (vedi il test del riepilogo)
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  /** L'id di un ingrediente del seme, cercato per nome intero. */
+  async function ingrediente(nome: string): Promise<string> {
+    const trovati = (await (
+      await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)
+    ).json()) as { id: string; name: string }[];
+    const voce = trovati.find((t) => t.name === nome);
+    expect(voce, `«${nome}» non è nel seme`).toBeDefined();
+    return voce!.id;
+  }
+  /** I reparti chiusi che la Dispensa ha salvato nel `localStorage`. */
+  const chiusiSalvati = async () =>
+    JSON.parse(
+      await page.evaluate<string>("localStorage.getItem('spena.dispensa.reparti-chiusi') ?? '[]'")
+    ) as string[];
+
+  // Due voci nel reparto «pesce», che nessun altro file della suite nomina: l'orata finita,
+  // il calamaro che scade fra due giorni. Questo file non lascia niente dietro di sé:
+  // si archiviano nel `finally`
+  const creati: string[] = [];
+  try {
+    const orata = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: await ingrediente("orata"), status: "finished" },
+    });
+    expect(orata.ok()).toBe(true);
+    creati.push(((await orata.json()) as { id: string }).id);
+    const calamaro = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: await ingrediente("calamaro") },
+    });
+    expect(calamaro.ok()).toBe(true);
+    const calamaroId = ((await calamaro.json()) as { id: string }).id;
+    creati.push(calamaroId);
+    const fraDueGiorni = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const scritta = await page.request.patch(`/api/v1/pantry/${calamaroId}`, {
+      data: { expires_on: fraDueGiorni },
+    });
+    expect(scritta.ok()).toBe(true);
+
+    await page.getByRole("link", { name: "Dispensa" }).click();
+    const pesce = page.getByRole("region", { name: "Pesce" });
+    const titolo = pesce.getByRole("button", { name: /^Pesce\b/ });
+    const rigaOrata = pesce.locator("li", { hasText: "orata" });
+    const rigaCalamaro = pesce.locator("li", { hasText: "calamaro" });
+
+    // aperto, come per chi non ha mai chiuso niente; il titolo intero è il bersaglio
+    await expect(titolo).toHaveAttribute("aria-expanded", "true");
+    await expect(rigaOrata).toBeVisible();
+    const box = await titolo.boundingBox();
+    const scheda = await pesce.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.width, "il titolo intero è il pulsante").toBeGreaterThanOrEqual(scheda!.width - 1);
+
+    // chiuso: le righe spariscono, il titolo dice il numero e cosa chiede attenzione
+    await titolo.click();
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+    await expect(rigaOrata).toBeHidden();
+    await expect(titolo).toHaveAccessibleName(/^Pesce\s+2\s+·\s+1 finito\s+·\s+1 in scadenza$/);
+    expect(await chiusiSalvati()).toEqual(["pesce"]);
+    const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+    const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+    expect(scrollWidth, "il titolo chiuso fa scorrere di lato").toBeLessThanOrEqual(clientWidth);
+
+    // i due colori sono quelli delle righe, e si leggono sul fondo della scheda, nei due temi
+    const finito = titolo.getByText("1 finito", { exact: true });
+    const inScadenza = titolo.getByText("1 in scadenza", { exact: true });
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `dispensa col reparto chiuso, tema ${tema}`).toEqual([]);
+      const token = tema === "light" ? tokenDelTema : tokenDelTemaScuro;
+      const misuraFinito = await contrastoAVideo(finito);
+      expect(misuraFinito.colore, `«1 finito», tema ${tema}`).toBe(token("finished"));
+      expect(misuraFinito.rapporto).toBeGreaterThanOrEqual(4.5);
+      const misuraScadenza = await contrastoAVideo(inScadenza);
+      expect(misuraScadenza.colore, `«1 in scadenza», tema ${tema}`).toBe(token("expiry"));
+      expect(misuraScadenza.rapporto).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // ricordato: ricaricata la pagina, è ancora chiuso
+    await page.reload();
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+
+    // la ricerca lo apre, e non lo salva aperto; cancellata, torna chiuso
+    const barra = page.getByLabel("Cerca o aggiungi in dispensa");
+    await barra.fill("orat");
+    await expect(titolo).toHaveAttribute("aria-expanded", "true");
+    await expect(rigaOrata).toBeVisible();
+    expect(await chiusiSalvati()).toEqual(["pesce"]);
+    await barra.fill("");
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+
+    // il riepilogo delle scadenze premuto lo apre allo stesso modo, e spento lo richiude
+    const riepilogo = page.getByRole("button", { name: /in scadenza questa settimana/ });
+    await riepilogo.click();
+    await expect(titolo).toHaveAttribute("aria-expanded", "true");
+    await expect(rigaCalamaro).toBeVisible();
+    await riepilogo.click();
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+    expect(await chiusiSalvati()).toEqual(["pesce"]);
+  } finally {
+    for (const id of creati) {
+      const tolta = await page.request.patch(`/api/v1/pantry/${id}`, { data: { archived: true } });
+      expect.soft(tolta.ok(), `archiviare la voce ${id}`).toBe(true);
+    }
+  }
+});
