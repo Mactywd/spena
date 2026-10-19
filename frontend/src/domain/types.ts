@@ -135,6 +135,15 @@ export interface RecipeIngredientLine {
   satisfied: boolean;
 }
 
+/** La ricetta da cui una variante nasce (R8), come la manda il server: il titolo di oggi
+ * e se è stata eliminata. Il collegamento la apre comunque: eliminata, si apre dalla sua
+ * lapide con «Ripristina» (R10). */
+export interface RecipeOrigin {
+  id: string;
+  title: string;
+  archived: boolean;
+}
+
 export interface RecipeDetail extends RecipeSummary {
   instructions: string;
   servings: number | null;
@@ -151,6 +160,9 @@ export interface RecipeDetail extends RecipeSummary {
   /** Vero finché una pagina dell'import rifà questa ricetta: salvare una modifica la
    * rende tua, e l'import non la riscrive più (R10 §4). Lo decide il server. */
   owned_by_import: boolean;
+  /** Da quale ricetta nasce, se è una variante scritta con l'AI (R8); `null` altrimenti.
+   * Lo dice il server: il client non cerca l'originale da sé. */
+  derived_from: RecipeOrigin | null;
 }
 
 /** Una riga come la si scrive: un ingrediente esistente, oppure nome e categoria con

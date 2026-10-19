@@ -106,7 +106,11 @@ export function fetchRecipe(id: string, servings?: number) {
   return apiFetch<RecipeDetail>(`/recipes/${id}${query}`);
 }
 
-export function createRecipe(body: RecipeBody & { source: RecipeSource; source_ref: string | null }) {
+/** Una ricetta nuova. `derived_from_id` solo per una variante (R8): la ricetta da cui
+ * nasce, che il salvataggio non tocca. */
+export function createRecipe(
+  body: RecipeBody & { source: RecipeSource; source_ref: string | null; derived_from_id?: string }
+) {
   return apiFetch<RecipeDetail>("/recipes", { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -127,6 +131,15 @@ export function setRecipeArchived(id: string, archived: boolean) {
 // per ogni altra fonte, una volta che l'utente ha visto e corretto la bozza.
 export function draftRecipe(prompt: string) {
   return apiFetch<RecipeDraft>("/recipes/ai-draft", {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  });
+}
+
+/** Propone una variante della ricetta `id` (R8): non salva, e non tocca l'originale. La
+ * variante si salva con `createRecipe` e `derived_from_id`, come ogni ricetta nuova. */
+export function draftVariant(id: string, prompt: string) {
+  return apiFetch<RecipeDraft>(`/recipes/${id}/ai-variant`, {
     method: "POST",
     body: JSON.stringify({ prompt }),
   });
