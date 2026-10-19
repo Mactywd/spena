@@ -12,6 +12,7 @@ from app.db.models.product import Product
 from app.db.models.recipe import CookingEvent, Recipe, RecipeIngredient
 from app.db.models.recipe_import import ImportTerm, RecipeImport
 from app.db.models.shopping import ShoppingListItem
+from app.db.models.substitution import IngredientSubstitution, SubstitutionOption
 from app.db.models.unit import Unit
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "ImportTerm",
     "Ingredient",
     "IngredientAlias",
+    "IngredientSubstitution",
     "LlmCall",
     "PantryItem",
     "Product",
@@ -26,5 +28,6 @@ __all__ = [
     "RecipeImport",
     "RecipeIngredient",
     "ShoppingListItem",
+    "SubstitutionOption",
     "Unit",
 ]

@@ -1008,3 +1008,43 @@ describe("riporzionare da un ingrediente (R2, secondo modo)", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
+
+describe("RecipeDetailScreen — Sostituisci (R5)", () => {
+  it("ogni riga d'ingrediente ha «Sostituisci», chiuso", async () => {
+    stubFetch({});
+    renderScreen();
+    for (const nome of ["pasta", "pomodoro", "aglio", "basilico", "olio"]) {
+      expect(await screen.findByRole("button", { name: `Sostituisci ${nome}` })).toHaveAttribute(
+        "aria-expanded", "false"
+      );
+    }
+  });
+
+  it("il tocco apre sotto la riga cosa usare al suo posto, un secondo tocco lo chiude", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) => {
+        const path = String(url);
+        const corpo = path.includes("/substitutes/i4")
+          ? { ingredient_id: "i4", ingredient_name: "basilico", context: "salato", scope: "general",
+              verdict: "omit", decided_by: "ai", ai_failed: false, substitutes: [] }
+          : path.includes("/pantry")
+            ? PANTRY
+            : DETAIL;
+        return Promise.resolve(new Response(JSON.stringify(corpo), { status: 200 }));
+      })
+    );
+    renderScreen();
+    const apri = await screen.findByRole("button", { name: "Sostituisci basilico" });
+    await userEvent.click(apri);
+    const riga = apri.closest("li")!;
+    expect(
+      await within(riga).findByText("Si può omettere: il piatto riesce anche senza basilico.")
+    ).toBeInTheDocument();
+    expect(apri).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(apri);
+    expect(within(riga).queryByText("Si può omettere: il piatto riesce anche senza basilico.")).toBeNull();
+    expect(apri).toHaveFocus();
+  });
+});

@@ -17,6 +17,7 @@ import { SectionHeading } from "../../components/ui/SectionHeading";
 import { StatusDot } from "../../components/ui/StatusDot";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import {
+  IconArrowsExchange,
   IconChefHat,
   IconChevronLeft,
   IconExternalLink,
@@ -34,6 +35,7 @@ import { RecipeImage } from "../recipes/RecipeImage";
 import { useArchiveRecipe } from "../recipes/useArchiveRecipe";
 import { revealAtTop } from "../../lib/revealAtTop";
 import { capitalizeFirst } from "../../lib/text";
+import { SubstitutePanel } from "../substitutes/SubstitutePanel";
 import type { CookResult, RecipeDetail, RecipeIngredientLine } from "../../domain/types";
 
 // Il numero viene dal backend, non da un conteggio fatto qui: quante voci sono
@@ -89,9 +91,11 @@ type AnchorOutcome =
  * solo caso in cui il colore non dice abbastanza — un principale quasi finito è giallo
  * come un secondario quasi finito, ma a questa ricetta non basta — e sta scritto,
  * piccolo, accanto al nome (Mattia). Il nome del pallino resta quello del vocabolario
- * (`STATUS_LABELS`); «non basta» lo sente anche chi ascolta, perché è testo. */
+ * (`STATUS_LABELS`); «non basta» lo sente anche chi ascolta, perché è testo.
+ * In fondo, «Sostituisci» (R5): apre sotto la riga cosa usare al suo posto. */
 function IngredientRow({
   line,
+  recipeId,
   anchoredAmount,
   open,
   onOpen,
@@ -99,6 +103,7 @@ function IngredientRow({
   onAnchor,
 }: {
   line: RecipeIngredientLine;
+  recipeId: string;
   /** La dose fissata su questa riga, se è lei l'ancora (R2), come la manda il server. */
   anchoredAmount: string | null;
   /** Se il campo «Quanto ne fai?» di questa riga è aperto: uno alla volta. */
@@ -112,6 +117,9 @@ function IngredientRow({
   // la dose toccabile riprende il fuoco quando il campo si chiude, da «Annulla» o da una
   // riscala riuscita: il campo che lo aveva si smonta, e il fuoco cadrebbe sul `body`
   const doseRef = useRef<HTMLButtonElement>(null);
+  // R5: lo stato del pannello è della riga. Due pannelli aperti insieme non si danno
+  // fastidio, e uscire dalla ricetta li chiude tutti
+  const [substituting, setSubstituting] = useState(false);
   return (
     <li className="px-3 py-2.5">
       <div className="flex items-center gap-2.5">
@@ -155,6 +163,18 @@ function IngredientRow({
           ) : (
             <span className="shrink-0 text-sm text-ink-faint">{line.quantity_display}</span>
           ))}
+        {/* Un'icona sola (spec T3 §2: più pulsanti uguali in fila → solo icone), col nome
+            per chi ascolta. `-my-2.5` restituisce il `py-2.5` della riga: il bersaglio è
+            44 px senza alzarla; `-mr-2` lo avvicina al bordo. Il fuoco resta qui quando si
+            chiude, perché il pulsante non si smonta. */}
+        <Button
+          variant="ghost"
+          icon={IconArrowsExchange}
+          label={`Sostituisci ${line.ingredient_name}`}
+          aria-expanded={substituting}
+          onClick={() => setSubstituting((shown) => !shown)}
+          className="-my-2.5 -mr-2 shrink-0"
+        />
       </div>
       {open && (
         <AnchorField
@@ -172,6 +192,13 @@ function IngredientRow({
             onClose();
             doseRef.current?.focus();
           }}
+        />
+      )}
+      {substituting && (
+        <SubstitutePanel
+          recipeId={recipeId}
+          ingredientId={line.ingredient_id}
+          ingredientName={line.ingredient_name}
         />
       )}
     </li>
@@ -566,6 +593,7 @@ function RecipeDetailView({ id }: { id: string }) {
                     <IngredientRow
                       key={line.ingredient_id}
                       line={line}
+                      recipeId={recipe.id}
                       anchoredAmount={
                         anchor !== null && anchor.ingredient_id === line.ingredient_id
                           ? anchor.amount

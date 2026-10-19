@@ -38,6 +38,7 @@ class LlmCallSite(StrEnum):
     INGREDIENT_EMOJI = "ingredient_emoji"
     # R8: «Modifica con AI», la variante di una ricetta che esiste
     RECIPE_VARIANT = "recipe_variant"
+    INGREDIENT_SUBSTITUTES = "ingredient_substitutes"
 
 
 @dataclass(frozen=True)

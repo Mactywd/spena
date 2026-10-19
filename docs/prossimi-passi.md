@@ -1627,7 +1627,7 @@ pagine sono almeno tre ore di sole pause, e `--limit` vale 50 per lotto. Il
 crawler e lo dichiara nel suo `User-Agent` (`SpenaPersonalArchive/1.0`), decisione già
 presa in §3 della spec dell'import.
 
-## R5. Sostituisci ingrediente **[D, con TBD pesante]**
+## R5. Sostituisci ingrediente **[FATTO 2026-10-19 — sul ramo `night/r5-sostituti`, non ancora in produzione]**
 Dentro la ricetta, accanto a ogni ingrediente, un tasto «Sostituisci». Tre esiti, e
 sono tre cose diverse:
 1. **uno o più sostituti** (pollo → tacchino);
@@ -1645,6 +1645,30 @@ corregge una risposta sbagliata.
 ↳ R4 (serve l'anagrafica ampia) — **fatta il 2026-09-24**: l'anagrafica ha 935
 ingredienti, e R5 non aspetta più niente se non la sua spec.
 
+**Il TBD è deciso** (Mattia, 2026-10-13): una risposta per **ingrediente × {dolce,
+salato}**, la doppia voce solo dove serve, più la correzione per singola ricetta; un
+sostituto è solo un ingrediente alimentare dell'anagrafica, e una risposta dell'AI che
+non si verifica si scarta; «si può omettere» soddisfa qualunque riga ai fini di R6; le
+risposte dell'AI si vedono subito, segnate, e si rivedono in Anagrafica; una correzione
+umana non si sovrascrive mai. Una correzione di ricetta si perde se l'import rifà la
+ricetta (deciso da Mattia il 2026-10-13). Spec:
+`docs/superpowers/specs/2026-10-13-r5-sostituti-design.md`.
+
+**Fatto il 2026-10-19**, sul ramo `night/r5-sostituti` (da revisionare). Il contesto
+viene dalla categoria della ricetta (`recipe_context`: dolce se la prima parola è
+«dolci»). Le risposte stanno in `ingredient_substitutions` e `substitution_options`
+(migrazione `0015`); le scrive l'AI con `python -m app.cli.decide_substitutes` (a lotti,
+dalle voci più usate, `--limit` e `--dry-run`) o sul momento al primo «Sostituisci»;
+una chiamata per voce con l'anagrafica alimentare nel prompt, ~0,0004 $, ~0,5 $ per
+tutto il ricettario. Nel dettaglio un'icona in fondo a ogni riga apre il pannello sotto
+la riga, coi sostituti, il pallino della dispensa e «ce l'hai»; «Non va bene qui» scrive
+la correzione della ricetta. In Anagrafica la sezione «Sostituti» con «Deciso dall'AI:
+da rivedere.», «Va bene così» e «Correggi». La fusione sposta tutto sul vincitore.
+
+**Da provare sul telefono:** l'icona in fondo alla riga col pollice, accanto alla dose;
+il pannello che si apre sotto la riga senza far saltare la pagina; il selettore del
+sostituto con la tastiera aperta.
+
 ## R6. Filtra per ricette cucinabili **con sostituti** **[D]** ↳ R5
 Oggi si filtra per «cucinabile». Serve anche «cucinabile usando quel che ho al posto
 di quel che manca».
@@ -1652,6 +1676,12 @@ di quel che manca».
 «Cucinabile» adesso è un gradino di una scala, non una casella: quando R6 arriverà,
 «cucinabile con sostituti» va pensata come una seconda scala o come un interruttore
 accanto a questa, non come una casella in più.
+
+**La regola è scritta** (spec R5 §8, 2026-10-13): una riga che manca conta se la
+risposta che vale per lei è «si può omettere» (qualunque ruolo; la ricetta dirà «senza
+X»), o se almeno un sostituto in dispensa soddisfa la stessa regola della riga (primary
+→ available, secondary → available o low); un passo solo; «insostituibile» o nessuna
+risposta resta mancante. R5 calcola già `satisfied` per ogni sostituto di una riga.
 
 ## R7. Cerca ricette con al massimo *n* ingredienti mancanti **[FATTO 2026-09-21]**
 Due usi in uno: «tanto devo andare a fare la spesa, ammetto 3 cose da comprare», e

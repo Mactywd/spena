@@ -77,6 +77,8 @@ function renderAt(path: string) {
 
 /** Le risposte di sempre: la scheda di «pomodori», e la ricerca che trova «pomodoro». */
 function base(path: string): [unknown, number] | null {
+  // R5: la sezione dei sostituti chiede la sua parte; vuota, non cambia niente agli altri test
+  if (path.endsWith("/substitutes")) return [{ ingredient_id: "i-pomodori", contexts: [], recipe_overrides: 0 }, 200];
   if (path.includes("/ingredients/search")) return [[POMODORO], 200];
   if (path.endsWith("/ingredients/i-pomodori")) return [POMODORI, 200];
   return null;
@@ -986,5 +988,31 @@ describe("la figura in dispensa (S12)", () => {
     expect(screen.queryByRole("group", { name: "Figura in dispensa" })).toBeNull();
     expect(screen.getByRole("button", { name: "Cambia figura" })).toBeInTheDocument();
     expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(0);
+  });
+});
+
+describe("IngredientScreen — Sostituti (R5)", () => {
+  it("in fondo alla scheda di un alimento, i suoi sostituti", async () => {
+    stubRoutedFetch((path) =>
+      path.endsWith("/ingredients/i-pomodori/substitutes")
+        ? [{ ingredient_id: "i-pomodori", recipe_overrides: 0, contexts: [
+            { context: "salato", recipes: 42, verdict: "omit", decided_by: "ai", substitutes: [] },
+          ] }, 200]
+        : base(path) ?? [{}, 404]
+    );
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+    expect(await screen.findByRole("heading", { name: "Sostituti" })).toBeInTheDocument();
+    expect(await screen.findByText("Deciso dall'AI: da rivedere.")).toBeInTheDocument();
+  });
+
+  it("un non alimentare non ha la sezione", async () => {
+    stubRoutedFetch((path) =>
+      path.endsWith("/ingredients/i-detersivo")
+        ? [{ ...DETERSIVO, aliases: [], products: [], usage: { recipes: 0, pantry: 0, shopping: 0 } }, 200]
+        : [{}, 404]
+    );
+    renderAt("/anagrafica/ingrediente/i-detersivo");
+    expect(await screen.findByRole("heading", { name: "Detersivo" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Sostituti" })).toBeNull();
   });
 });
