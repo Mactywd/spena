@@ -115,7 +115,11 @@ describe("ProductScreen", () => {
     const nome = await screen.findByLabelText("Nome");
     await userEvent.clear(nome);
 
-    expect(screen.getByRole("button", { name: "Salva nome" })).toBeDisabled();
+    // «non ancora», col perché: spento con `aria-disabled`, raggiungibile (pulizie del 2026-10-13)
+    const salvaNome = screen.getByRole("button", { name: "Salva nome" });
+    expect(salvaNome).toHaveAttribute("aria-disabled", "true");
+    expect(salvaNome).not.toBeDisabled();
+    expect(salvaNome).toHaveAccessibleDescription("Il campo «Nome» non può restare vuoto.");
     expect(screen.getByText("Il campo «Nome» non può restare vuoto.")).toBeInTheDocument();
 
     // la marca, invece, si può svuotare: non è obbligatoria (F17)

@@ -1,6 +1,6 @@
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { Alert } from "../../components/ui/Alert";
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { Button } from "../../components/ui/Button";
 
 /** Un campo modificabile in loco, con il suo «Salva» (spec §6.4).
  *
@@ -9,10 +9,12 @@ import { buttonClasses } from "../../components/ui/buttonClasses";
  * salvataggio fallisce il campo resta com'era scritto, e l'errore accanto (spec §7):
  * `describeError` lo dice a modo suo quando il rifiuto ha un'uscita da offrire.
  *
- * `required` (F17): quando il campo non può restare vuoto in colonna — il nome del
- * prodotto, non la marca — «Salva» resta spento a bozza vuota e il motivo si legge
- * sotto, come CustomProductForm e RenameForm già fanno: un pulsante spento e muto non
- * si spiega da sé.
+ * «Salva» segue la regola dei pulsanti (pulizie del 2026-10-13): in volo è `busy`; a
+ * campo obbligatorio vuoto è «non ancora», col perché scritto sotto (`required`, F17: un
+ * pulsante spento e muto non si spiega da sé); invariato è `disabled`, lo stato di ogni
+ * campo a riposo, dove non c'è niente da spiegare. Un `disabled` toglie il fuoco a chi ce
+ * l'ha: per questo, dopo un salvataggio riuscito, il fuoco torna nel campo prima che
+ * «Salva» si spenga.
  *
  * L'errore si cancella anche battendo un tasto, non solo quando il valore salvato
  * cambia da fuori: `describeError` (ProductScreen la usa per il rifiuto del codice)
@@ -39,6 +41,8 @@ export function InlineField({
   describeError?: (error: unknown, draft: string) => ReactNode;
 }) {
   const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -59,6 +63,11 @@ export function InlineField({
     setError(null);
     try {
       await onSave(draft.trim());
+      // Riuscito: il valore salvato diventa quello scritto, e «Salva» sta per spegnersi
+      // perché invariato. In volo era `busy` (il fuoco restava); spento con `disabled` lo
+      // perderebbe, e chi usa la tastiera lo ritrovava sulla pagina. Se il fuoco era qui,
+      // torna nel campo appena salvato prima che `saving` si spenga.
+      if (document.activeElement === saveRef.current) inputRef.current?.focus();
     } catch (caught) {
       setError(caught);
     } finally {
@@ -68,7 +77,6 @@ export function InlineField({
 
   const trimmed = draft.trim();
   const changed = trimmed !== value;
-  // (F17) un pulsante spento e muto non si spiega da sé: il motivo va scritto sotto
   const missing = required && trimmed === "";
 
   return (
@@ -76,32 +84,38 @@ export function InlineField({
       <label htmlFor={inputId} className="text-sm font-medium text-ink-soft">
         {label}
       </label>
-      <div className="flex items-center gap-2">
+      {/* `flex-wrap` e `[&>p]:basis-full`: il perché di «Salva» è un `<p>` fratello del
+          pulsante, che `Button` disegna sotto di sé, e va a capo sotto la riga invece di
+          stringere il campo — come nello stepper delle porzioni */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 [&>p]:basis-full">
         <input
           id={inputId}
+          ref={inputRef}
           value={draft}
           placeholder={placeholder}
           inputMode={inputMode}
-          disabled={saving}
+          // in volo `readOnly` e non `disabled`: un campo che diventa `disabled` perde il fuoco
+          readOnly={saving}
           onChange={(event) => {
             setDraft(event.target.value);
             setError(null);
           }}
           className="min-w-0 flex-1"
         />
-        <button
-          type="button"
-          aria-label={`Salva ${label.toLowerCase()}`}
-          disabled={!changed || saving || missing}
+        {/* `busy` e `unavailableReason` vincono su `disabled` (Button): in volo e a campo
+            vuoto il fuoco resta qui */}
+        <Button
+          ref={saveRef}
+          accessibleName={`Salva ${label.toLowerCase()}`}
+          busy={saving}
+          disabled={!changed}
+          unavailableReason={missing ? `Il campo «${label}» non può restare vuoto.` : undefined}
           onClick={() => void save()}
-          className={`${buttonClasses("secondary")} shrink-0`}
+          className="shrink-0"
         >
           Salva
-        </button>
+        </Button>
       </div>
-      {missing && (
-        <p className="text-xs text-ink-soft">Il campo «{label}» non può restare vuoto.</p>
-      )}
       {error !== null &&
         (describeError ? (
           describeError(error, trimmed)
