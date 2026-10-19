@@ -17,10 +17,10 @@ import { NON_FOOD_NAME_PROBLEM, useNonFoodName } from "./useNonFoodName";
 import { NewIngredientFields } from "../stocking/NewIngredientFields";
 import {
   addNewLine,
+  attachIngredient,
   QUANTITY_MAX,
   NOTE_MAX,
   TITLE_MAX,
-  lineFromIngredient,
   matchNote,
   recipeBody,
   savableLines,
@@ -119,7 +119,13 @@ function LineRow({
 
       {line.ingredientId === null && line.proposedCategory !== null && (
         <div className="flex flex-col gap-1">
-          <p className="text-xs text-ink-soft">Non è in anagrafica: lo creo io salvando.</p>
+          {/* Quel che il server fa davvero (`_resolve_lines`): cerca il nome in anagrafica, e
+              se lo trova collega quello — il reparto scelto qui allora non conta —; se no lo
+              crea in questo reparto. «Non è in anagrafica: lo creo io» era falso per un nome
+              che c'era già, offerto da «Aggiungi «…»» anche accanto ai suggerimenti */}
+          <p className="text-xs text-ink-soft">
+            Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.
+          </p>
           {/* solo i reparti del cibo: una ricetta non può nominare un non alimentare, e
               `write_recipe_ingredients` rifiuterebbe il salvataggio */}
           <CategorySelect
@@ -263,20 +269,10 @@ export function RecipeForm({
     onChange((prev) => ({ ...prev, lines: prev.lines.filter((line) => line.key !== key) }));
   }
 
+  // la regola delle righe doppie sta in `attachIngredient` (formModel.ts): una riga che
+  // c'è già si include, una senza aggancio con lo stesso nome si aggancia
   function attach(ingredient: Ingredient) {
-    onChange((prev) => {
-      // due righe sullo stesso ingrediente sono un 409 del backend, e non vorrebbero
-      // dire niente: se c'è già, la si include e basta — che è anche il modo di
-      // confermare un aggancio incerto scegliendolo di persona
-      if (prev.lines.some((line) => line.ingredientId === ingredient.id))
-        return {
-          ...prev,
-          lines: prev.lines.map((line) =>
-            line.ingredientId === ingredient.id ? { ...line, included: true } : line
-          ),
-        };
-      return { ...prev, lines: [...prev.lines, lineFromIngredient(ingredient)] };
-    });
+    onChange((prev) => ({ ...prev, lines: attachIngredient(prev.lines, ingredient) }));
   }
 
   function addNew(fields: { name: string; category: string }) {

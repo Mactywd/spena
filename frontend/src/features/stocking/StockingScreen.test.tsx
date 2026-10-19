@@ -109,8 +109,8 @@ describe("StockingScreen", () => {
   it("elenca solo le voci spuntate", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(CHECKED)));
     renderScreen();
-    expect(await screen.findByText("yogurt greco")).toBeDefined();
-    expect(screen.getByText("mele")).toBeDefined();
+    expect(await screen.findByText("Yogurt greco")).toBeDefined();
+    expect(screen.getByText("Mele")).toBeDefined();
   });
 
   it("permette di confermare una voce come sfusa, senza prodotto", async () => {
@@ -390,7 +390,7 @@ describe("StockingScreen", () => {
     const spy = vi.fn().mockResolvedValue(respond(CHECKED));
     vi.stubGlobal("fetch", spy);
     renderScreen();
-    await screen.findByText("mele");
+    await screen.findByText("Mele");
     // `aria-disabled` e non `disabled`: mentre la sistemazione è in volo il pulsante deve
     // tenere il fuoco. E spento dice perché (dal giro, da non riprogettare via)
     const stock = screen.getByRole("button", { name: "Metti in dispensa" });
@@ -528,7 +528,7 @@ describe("StockingScreen", () => {
     });
 
     renderScreen();
-    await screen.findByText("cosa strana");
+    await screen.findByText("Cosa strana");
 
     // niente pulsanti di sistemazione finché la voce non ha un ingrediente:
     // comparirebbero comandi che alla conferma sparirebbero in silenzio
@@ -653,7 +653,7 @@ describe("StockingScreen", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(CHECKED)));
     renderScreen();
 
-    await screen.findByText("yogurt greco");
+    await screen.findByText("Yogurt greco");
     expect(screen.queryByLabelText(/scadenza/i)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "+ scadenza per yogurt greco" }));
@@ -673,11 +673,11 @@ describe("StockingScreen", () => {
     );
     renderScreen();
 
-    for (const testo of ["yogurt greco", "mele"]) {
+    for (const testo of ["Yogurt greco", "Mele"]) {
       const riga = (await screen.findByText(testo)).closest("li")!;
       await user.click(within(riga).getByRole("button", { name: /sfuso/i }));
     }
-    const rigaYogurt = screen.getByText("yogurt greco").closest("li")!;
+    const rigaYogurt = screen.getByText("Yogurt greco").closest("li")!;
     await user.click(within(rigaYogurt).getByRole("button", { name: /scadenza/i }));
     const campo = within(rigaYogurt).getByLabelText(/scadenza di yogurt greco/i);
     fireEvent.change(campo, { target: { value: "2026-10-02" } });
@@ -703,11 +703,11 @@ describe("StockingScreen", () => {
     renderScreen();
 
     // entrambe le voci hanno già un ingrediente: si confermano sfuse
-    for (const testo of ["yogurt greco", "mele"]) {
+    for (const testo of ["Yogurt greco", "Mele"]) {
       const riga = (await screen.findByText(testo)).closest("li")!;
       await user.click(within(riga).getByRole("button", { name: /sfuso/i }));
     }
-    const rigaYogurt = screen.getByText("yogurt greco").closest("li")!;
+    const rigaYogurt = screen.getByText("Yogurt greco").closest("li")!;
     await user.click(within(rigaYogurt).getByRole("button", { name: /scadenza/i }));
     fireEvent.change(within(rigaYogurt).getByLabelText(/scadenza di yogurt greco/i), {
       target: { value: "2026-10-02" },
@@ -862,7 +862,8 @@ describe("StockingScreen", () => {
       renderScreen();
       await readSpaghettiOnYogurt();
 
-      expect(await screen.findByRole("heading", { name: "È un «yogurt greco»?" })).toBeDefined();
+      // senza articolo: l'«un» della domanda di prima non si accordava con «zucchina» (giro del 2026-10-07)
+      expect(await screen.findByRole("heading", { name: "È «yogurt greco»?" })).toBeDefined();
       expect(
         screen.getByText("Su Open Food Facts è «Spaghetti n.5», di Barilla.")
       ).toBeDefined();
@@ -878,7 +879,7 @@ describe("StockingScreen", () => {
 
       await userEvent.click(await screen.findByRole("button", { name: "No, è un'altra cosa" }));
 
-      expect(screen.queryByRole("heading", { name: "È un «yogurt greco»?" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "È «yogurt greco»?" })).toBeNull();
       expect(screen.queryByRole("heading", { name: /Nuovo prodotto/ })).toBeNull();
       expect(screen.getByRole("button", { name: /Codice.*yogurt greco/i })).toBeDefined();
       expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/ })).toBeDefined();
@@ -1121,7 +1122,7 @@ describe("StockingScreen", () => {
       await userEvent.type(field, "strana");
       await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
       await userEvent.click(screen.getByRole("button", { name: "Cerca a catalogo per mele" }));
-      expect(screen.queryByText("cosa strana")).toBeNull();
+      expect(screen.queryByText("Cosa strana")).toBeNull();
 
       await act(async () =>
         answerPatch(respond({ ...UNMATCHED[0], ingredient_id: "i9" }))
@@ -1204,7 +1205,7 @@ describe("StockingScreen", () => {
     it("una sezione per reparto, nell'ordine della lista; le voci senza ingrediente in fondo", async () => {
       stubRoutedFetch(() => [[...UNMATCHED, ...CHECKED]]);
       renderScreen();
-      await screen.findByText("mele");
+      await screen.findByText("Mele");
       expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
         "Frutta",
         "Latticini",
@@ -1225,8 +1226,8 @@ describe("StockingScreen", () => {
         screen.getByRole("heading", { level: 2, name: "Cerca a catalogo per «mele»" })
       ).toBeDefined();
       // le altre voci, i reparti e «Metti in dispensa» non ci sono (decisione 1, Mattia)
-      expect(screen.queryByText("yogurt greco")).toBeNull();
-      expect(screen.queryByText("cosa strana")).toBeNull();
+      expect(screen.queryByText("Yogurt greco")).toBeNull();
+      expect(screen.queryByText("Cosa strana")).toBeNull();
       for (const reparto of ["Frutta", "Latticini", "Senza reparto"]) {
         expect(screen.queryByRole("heading", { name: reparto })).toBeNull();
       }
@@ -1238,9 +1239,9 @@ describe("StockingScreen", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
       // tutto com'era, e la scelta fatta prima resta
-      const yogurt = screen.getByText("yogurt greco").closest("li")!;
+      const yogurt = screen.getByText("Yogurt greco").closest("li")!;
       expect(within(yogurt).getByText("Sfuso")).toBeDefined();
-      expect(screen.getByText("cosa strana")).toBeDefined();
+      expect(screen.getByText("Cosa strana")).toBeDefined();
       expect(screen.getByRole("button", { name: "Metti in dispensa 1" })).toBeDefined();
       expect(document.activeElement).toBe(
         screen.getByRole("button", { name: "Cerca a catalogo per mele" })
@@ -1345,7 +1346,7 @@ describe("StockingScreen", () => {
       stubRoutedFetch(() => [CHECKED]);
       renderScreen();
       await userEvent.click(await screen.findByRole("button", { name: "Codice a barre per mele" }));
-      expect(targets.at(-1)).toBe(screen.getByText("mele").closest("li"));
+      expect(targets.at(-1)).toBe(screen.getByText("Mele").closest("li"));
       reveal.mockRestore();
     });
 

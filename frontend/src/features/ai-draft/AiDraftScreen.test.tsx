@@ -215,6 +215,22 @@ describe("AiDraftScreen", () => {
     expect(await screen.findByText(/zafferano di Navelli.*non in anagrafica/i)).toBeDefined();
   });
 
+  it("una riga che il server dice non alimentare lo dice, invece di «non in anagrafica»", async () => {
+    const bozza = {
+      ...DRAFT,
+      ingredients: [
+        ...DRAFT.ingredients,
+        { raw_name: "carta forno", role: "secondary", quantity_text: "1 foglio", ingredient_id: null,
+          matched_name: null, confident: false, proposed_category: null, non_food: true },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(bozza), { status: 200 })));
+    renderScreen();
+    await proposeDraft();
+
+    expect(await screen.findByText("carta forno non è un alimento, sarà escluso")).toBeInTheDocument();
+  });
+
   it("salva solo gli agganci confermati, con provenienza AI", async () => {
     const spy = draftThenSave(new Response(CREATED, { status: 201 }));
     vi.stubGlobal("fetch", spy);
@@ -504,7 +520,7 @@ describe("AiDraftScreen", () => {
       },
     ]);
 
-    expect(await screen.findByText(/lo creo io salvando/i)).toBeInTheDocument();
+    expect(await screen.findByText(/se non c'è, lo creo in questo reparto/)).toBeInTheDocument();
     const categoria = screen.getByLabelText(/reparto per «speck»/i);
     expect(categoria).toHaveValue("carne");
 

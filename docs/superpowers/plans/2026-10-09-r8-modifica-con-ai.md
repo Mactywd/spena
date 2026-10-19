@@ -140,7 +140,7 @@ Scelte di questo piano (**decise da Claude su delega di Mattia**: dove sta il ta
 15. **Un'originale sparita al salvataggio** (rifatta dall'import mentre si correggeva la variante): la variante si salva **senza legame**. È la regola «mai un vicolo cieco»: un rifiuto butterebbe il lavoro, e dal modulo il legame non si toglie. Un'originale eliminata tiene il legame.
 16. **La rotta della proposta** risponde 404 a una ricetta che non c'è, **409 con la frase di R10** («Questa ricetta è stata eliminata: ripristinala prima di modificarla.») a una eliminata, 503 all'AI che non risponde («variante AI non disponibile: …»). Il pannello mostra la stessa frase ambra per ogni errore: per chi guarda è sempre «l'AI non ha risposto».
 17. **Il prompt di sistema della variante** è quello della bozza (`SYSTEM_PROMPT`: lo schema, i ruoli, i nomi generici, il costo, niente nutrienti, i reparti) **più** le regole della variante (Task 3). La domanda è un JSON con `ricetta` — titolo, descrizione, procedimento, porzioni, costo e righe col **nome canonico** dell'anagrafica, ruolo, dose e reparto — e `richiesta`. Col nome canonico, `match_name` riaggancia con certezza le righe che la variante tiene. Tetto di **4000** token in uscita (`VARIANT_MAX_TOKENS`): la ricetta intera torna indietro, e un procedimento importato è lungo; la bozza da zero resta a 2000.
-18. **La lavorazione delle righe è una sola** (`_draft_from`, estratta da `draft_recipe` senza cambiarla): una riga che `match_name` aggancia a un non alimentare torna non agganciata e senza reparto, un reparto proposto fuori dai dodici del cibo si scarta (`CATEGORIES` di `decide.py` è già solo cibo). Così una riga così nel modulo è «non in anagrafica, sarà escluso» e non parte salvando.
+18. **La lavorazione delle righe è una sola** (`_draft_from`, estratta da `draft_recipe` senza cambiarla): una riga che `match_name` aggancia a un non alimentare torna non agganciata e senza reparto, un reparto proposto fuori dai dodici del cibo si scarta (`CATEGORIES` di `decide.py` è già solo cibo). Così una riga così nel modulo non parte salvando, e dice «non è un alimento» quando l'anagrafica la conosce con certezza come non alimentare (`non_food`, dalle pulizie delle parole), «non in anagrafica» altrimenti.
 
 Da Mattia, il 2026-10-13 (era la sola domanda aperta di questo piano; deciso da Mattia il 2026-10-13):
 
@@ -944,7 +944,8 @@ In `backend/tests/services/test_ai_recipes.py`:
    async def test_la_variante_non_introduce_un_non_alimentare(db_session, originale):
        """Né agganciato (la carta forno c'è, ma è di casa) né da creare (il detersivo non
        c'è, e il suo reparto non è del cibo): tutti e due tornano senza aggancio e senza
-       reparto, cioè «non in anagrafica, sarà escluso», e non partono salvando."""
+       reparto, e non partono salvando. La carta forno, che l'anagrafica conosce con
+       certezza, dice «non è un alimento»; il detersivo, che non conosce, «non in anagrafica»."""
        db_session.add(
            Ingredient(name="carta forno", display_name="Carta forno", category=IngredientCategory.CASA)
        )

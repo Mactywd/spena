@@ -73,7 +73,7 @@ test("a 375px la riga «da creare salvando» con un nome lungo sta nello schermo
   const nome = riga.getByText(NOME_LUNGO, { exact: true });
   // la nota non ripete il nome: sta su una riga sua, sotto
   await expect(riga.getByText("da creare salvando", { exact: true })).toBeVisible();
-  await expect(riga.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(riga.getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeVisible();
   await expect(page.getByLabel(`Reparto per «${NOME_LUNGO}»`)).toHaveValue("carne");
   await expect(page.getByLabel(`Quantità per ${NOME_LUNGO}`)).toHaveValue("150 g");
   // la risposta l'ha data lo stub, non il modello: nessuna chiamata a OpenRouter

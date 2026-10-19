@@ -121,6 +121,8 @@ async def test_una_voce_non_alimentare_non_si_aggancia_alla_bozza(db_session, mo
         riga = draft.ingredients[0]
         assert riga.ingredient_id is None
         assert riga.confident is False
+        # e dice perché: il modulo scrive «non è un alimento», non «non in anagrafica»
+        assert riga.non_food is True
     finally:
         get_settings.cache_clear()
 
@@ -132,6 +134,7 @@ async def test_una_voce_alimentare_continua_ad_agganciarsi_alla_bozza(db_session
     pasta = next(i for i in draft.ingredients if i.raw_name == "pasta")
     assert pasta.ingredient_id is not None
     assert pasta.confident is True
+    assert pasta.non_food is False
 
 
 async def test_api_failure_raises_llm_unavailable(db_session, anagrafica):
@@ -428,7 +431,8 @@ async def test_le_righe_tenute_si_riagganciano_e_le_nuove_si_propongono(db_sessi
 async def test_la_variante_non_introduce_un_non_alimentare(db_session, originale):
     """Né agganciato (la carta forno c'è, ma è di casa) né da creare (il detersivo non
     c'è, e il suo reparto non è del cibo): tutti e due tornano senza aggancio e senza
-    reparto, cioè «non in anagrafica, sarà escluso», e non partono salvando."""
+    reparto, e non partono salvando. La carta forno, che l'anagrafica conosce con
+    certezza, dice «non è un alimento»; il detersivo, che non conosce, «non in anagrafica»."""
     db_session.add(
         Ingredient(name="carta forno", display_name="Carta forno", category=IngredientCategory.CASA)
     )
@@ -446,6 +450,8 @@ async def test_la_variante_non_introduce_un_non_alimentare(db_session, originale
     for nome in ("carta forno", "detersivo per piatti"):
         assert righe[nome].ingredient_id is None, nome
         assert righe[nome].proposed_category is None, nome
+    assert righe["carta forno"].non_food is True
+    assert righe["detersivo per piatti"].non_food is False
 
 
 async def test_la_spesa_della_variante_ha_la_sua_sezione(db_session, originale):
@@ -482,3 +488,31 @@ async def test_un_modello_giu_durante_la_variante_e_spesa_fallita(db_session, or
     assert riga.call_site == LlmCallSite.RECIPE_VARIANT
     assert riga.ok is False
     assert riga.cost_usd is None
+
+
+async def test_una_somiglianza_incerta_con_un_non_alimentare_non_lo_dice(db_session):
+    """`non_food` dice solo una coincidenza certa (nome o alias esatto): una somiglianza
+    con «carta forno» non autorizza a dire che «carta forn» non è un alimento. La riga resta
+    staccata (com'è oggi per ogni non alimentare) e «non in anagrafica»."""
+    from app.services.ingredient_match import match_name
+
+    db_session.add(
+        Ingredient(name="carta forno", display_name="Carta forno",
+                   category=IngredientCategory.CASA)
+    )
+    await db_session.flush()
+    somiglianza = await match_name(db_session, "carta forn")
+    # la premessa: c'è una somiglianza, e non è certa. Se cade, scegli un altro refuso
+    assert somiglianza.ingredient_id is not None
+    assert somiglianza.certain is False
+
+    finto = FakeLlm({
+        "title": "Torta", "description": None, "instructions": "1. cuoci", "servings": 2,
+        "ingredients": [
+            {"name": "carta forn", "role": "secondary", "quantity_text": "1 foglio",
+             "category": "casa"}
+        ],
+    })
+    riga = (await draft_recipe(db_session, "torta", client=finto)).ingredients[0]
+    assert riga.ingredient_id is None
+    assert riga.non_food is False

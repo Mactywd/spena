@@ -915,7 +915,7 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
   // S17: il bersaglio della spunta è la label intorno a casella, nome e nota, e il
   // pollice la prende solo se è alta almeno 44px. La X resta fuori: dentro, un
   // tocco per togliere una voce la spunterebbe anche
-  await expect(etichetta).toContainText("mascarpone");
+  await expect(etichetta).toContainText("Mascarpone");
   await expect(etichetta.getByRole("button")).toHaveCount(0);
   const box = await etichetta.boundingBox();
   expect(box!.height).toBeGreaterThanOrEqual(44);
@@ -1338,6 +1338,9 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
   const lungo =
     "fagioli cannellini lessati in barattolo di vetro formato famiglia del supermercato sotto casa";
   const libera = "prova sistemazione senza ingrediente";
+  // a video il testo di una voce prende la maiuscola (Mattia, 2026-10-13); i nomi
+  // accessibili delle icone e dei pannelli restano com'è scritto
+  const aVideo = (testo: string) => testo.charAt(0).toUpperCase() + testo.slice(1);
   const voci = [
     { nome: "bresaola", raw_text: "bresaola" },
     { nome: "succo d'arancia", raw_text: "succo d'arancia" },
@@ -1372,7 +1375,7 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     }
 
     await page.goto("/sistema");
-    await expect(page.getByText(lungo, { exact: true })).toBeVisible();
+    await expect(page.getByText(aVideo(lungo), { exact: true })).toBeVisible();
 
     // 1. niente scorrimento di lato, nemmeno col nome lungo accanto alle tre icone.
     // Stringhe e non funzioni: questo file non ha la libreria DOM (vedi il test
@@ -1419,8 +1422,8 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     await catalogo.click();
     const titolo = page.getByRole("heading", { name: `Cerca a catalogo per «${lungo}»` });
     await expect(titolo).toBeVisible();
-    await expect(page.getByText("bresaola", { exact: true })).toHaveCount(0);
-    await expect(page.getByText(libera, { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Bresaola", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(aVideo(libera), { exact: true })).toHaveCount(0);
     // le intestazioni dei reparti se ne vanno: l'unico h2 rimasto è il titolo del
     // pannello, che è un h2 anche lui (Task 7)
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
@@ -1446,7 +1449,7 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     // 5. «Annulla» rimette tutto com'era: le altre voci, la scelta fatta, e il fuoco sul
     // pulsante che aveva aperto il pannello
     await page.getByRole("button", { name: "Annulla", exact: true }).click();
-    await expect(page.getByText("bresaola", { exact: true })).toBeVisible();
+    await expect(page.getByText("Bresaola", { exact: true })).toBeVisible();
     await expect(page.getByText("Sfuso", { exact: true })).toBeVisible();
     await expect(catalogo).toBeFocused();
 
@@ -1466,7 +1469,7 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     }
     await page.emulateMedia({ colorScheme: "light" });
     await page.getByRole("button", { name: "Annulla", exact: true }).click();
-    await expect(page.getByText(libera, { exact: true })).toBeVisible();
+    await expect(page.getByText(aVideo(libera), { exact: true })).toBeVisible();
 
     // 7. un abbinamento riuscito porta la voce nel suo reparto, e il fuoco la segue sulla
     // prima icona (decisione 18) invece di restare sulla pagina: la riga rinasce in
@@ -1477,7 +1480,7 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     await page.getByRole("textbox", { name: `Abbina un ingrediente per ${libera}` }).fill("farina");
     await page.getByRole("option", { name: "Farina", exact: true }).click();
     await expect(
-      page.getByRole("region", { name: "Cereali" }).getByText(libera, { exact: true })
+      page.getByRole("region", { name: "Cereali" }).getByText(aVideo(libera), { exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: `Codice a barre per ${libera}`, exact: true })
@@ -2595,7 +2598,7 @@ test("R12 a 375px: «Aggiungi «…»» nel modulo, il passo del nome e la riga 
 
   const togli = page.getByRole("button", { name: `Togli ${nomeLungo}` });
   const riga = page.getByRole("listitem").filter({ has: togli });
-  await expect(riga.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(riga.getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeVisible();
   await expect(page.getByLabel(`Reparto per «${nomeLungo}»`)).toHaveValue("verdura");
   await expect(page.getByLabel(`Quantità per ${nomeLungo}`)).toBeFocused();
   await page.waitForLoadState("networkidle");
@@ -2718,7 +2721,7 @@ test("il modulo della ricetta e la coda d'import si leggono nei due temi, negli 
   await leggibile("modulo col passo del nome");
 
   await page.getByRole("button", { name: "Aggiungi alla ricetta", exact: true }).click();
-  await expect(page.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(page.getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeVisible();
   await leggibile("modulo con la riga nuova");
 
   // la coda: la scheda con «Forse» e la casella, e il guasto dell'AI
@@ -4156,4 +4159,23 @@ test("il modulo della ricetta: la nota e l'avviso del non alimentare si leggono 
   await expect(page.getByText("Cambia il nome: questo è un non alimentare.")).toBeVisible();
   await leggibile("passo del nome col non alimentare");
   await page.getByRole("button", { name: "Annulla", exact: true }).click();
+});
+
+// --- Pulizie del 2026-10-13: le parole a video ---
+
+test("nel foglio della cottura una confezione senza prodotto si legge con la maiuscola", async ({ page }) => {
+  // «porro» del seme entra in dispensa senza prodotto (ricettaDiProva): il titolo della sua
+  // confezione è il nome dell'ingrediente, e apre la riga (spec T3 §4.7)
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.goto(`/ricette/${ricetta.id}`);
+    await page.getByRole("button", { name: "Cucina", exact: true }).click();
+    const porro = page.getByRole("radiogroup", { name: /porro/ });
+    await expect(porro).toBeVisible();
+    const riga = page.getByRole("listitem").filter({ has: porro });
+    await expect(riga.getByText("Porro", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  } finally {
+    await ricetta.pulisci();
+  }
 });

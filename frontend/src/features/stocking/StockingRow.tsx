@@ -14,6 +14,7 @@ import {
   IconScale,
 } from "../../components/ui/icons";
 import { revealAtTop } from "../../lib/revealAtTop";
+import { capitalizeFirst } from "../../lib/text";
 import type { FocusTarget, PanelTrigger, Resolution } from "./stockingView";
 import type { ShoppingItem } from "../../domain/types";
 
@@ -84,7 +85,9 @@ export function StockingRow({
             `break-words` spezza un nome che non ci sta: a 375px accanto alle tre icone
             restano circa 170px (S16, in Lista) */}
         <div className="min-w-0 flex-1 break-words">
-          <p className="font-medium">{name}</p>
+          {/* la maiuscola solo a video, come in Lista (Mattia, 2026-10-13); `name` resta
+              com'è scritto per i nomi accessibili qui sotto, che lo mettono in una frase */}
+          <p className="font-medium">{capitalizeFirst(name)}</p>
           {resolution && <ResolutionNote resolution={resolution} />}
         </div>
         {resolution ? (

@@ -102,6 +102,10 @@ class DraftIngredient:
     matched_name: str | None
     confident: bool
     proposed_category: str | None = None
+    # Vero quando la riga nomina con certezza (nome o alias esatto) un ingrediente non
+    # alimentare: l'aggancio si stacca (una ricetta non lo può avere), e il modulo dice
+    # «non è un alimento» invece di «non in anagrafica», che lì sarebbe falso.
+    non_food: bool = False
 
 
 @dataclass
@@ -245,6 +249,9 @@ async def _draft_from(session: AsyncSession, payload: dict[str, Any]) -> RecipeD
                     if match.ingredient_id is None and category in CATEGORIES
                     else None
                 ),
+                # solo la coincidenza certa: una somiglianza con un non alimentare non
+                # dice che la riga lo sia, e lì resta «non in anagrafica»
+                non_food=non_food and match.certain,
             )
         )
 

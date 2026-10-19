@@ -157,13 +157,13 @@ describe("StockingRow", () => {
         targets.push(this);
       });
     renderRow({ focused: true });
-    expect(targets).toEqual([screen.getByText("mele").closest("li")]);
+    expect(targets).toEqual([screen.getByText("Mele").closest("li")]);
     spy.mockRestore();
   });
 
   it("il pannello sta dentro la voce, sotto la sua riga", () => {
     renderRow({ children: <p>il pannello</p> });
-    const name = screen.getByText("mele");
+    const name = screen.getByText("Mele");
     const panel = screen.getByText("il pannello");
     expect(panel.closest("li")).toBe(name.closest("li"));
     expect(name.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -201,8 +201,18 @@ describe("StockingRow", () => {
   it("quel che lo schermo mette dopo sta dentro la voce, sotto la sua scadenza (S3)", () => {
     renderRow({ after: <p>confezione in più</p> });
     const dopo = screen.getByText("confezione in più");
-    expect(dopo.closest("li")).toBe(screen.getByText("mele").closest("li"));
+    expect(dopo.closest("li")).toBe(screen.getByText("Mele").closest("li"));
     const scadenza = screen.getByRole("button", { name: "+ scadenza per mele" });
     expect(scadenza.compareDocumentPosition(dopo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // come in Lista: la maiuscola solo a video (Mattia, 2026-10-13); le icone e il campo
+  // della scadenza tengono il testo com'è scritto
+  it("il nome della voce si legge con la maiuscola; i nomi accessibili restano com'è scritto", () => {
+    renderRow();
+    expect(screen.getByText("Mele")).toBeDefined();
+    expect(screen.queryByText("mele")).toBeNull();
+    expect(screen.getByRole("toolbar", { name: "Come entra in dispensa: mele" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Sfuso, senza marca: mele" })).toBeDefined();
   });
 });

@@ -228,6 +228,10 @@ export interface DraftIngredient {
   matched_name: string | null;
   confident: boolean;
   proposed_category: string | null;
+  /** La riga nomina con certezza un non alimentare: è staccata, e il modulo lo dice. Il
+   * server lo manda sempre; facoltativo qui perché le bozze scritte a mano (i test, la
+   * variante di R8) non lo portano, e senza vale «no». */
+  non_food?: boolean;
 }
 
 // La bozza di ricetta restituita da POST /recipes/ai-draft. Non salva nulla da

@@ -3,6 +3,7 @@ import { Button } from "../../components/ui/Button";
 import { Checkbox } from "../../components/ui/Checkbox";
 import { IconX } from "../../components/ui/icons";
 import type { ShoppingItem } from "../../domain/types";
+import { capitalizeFirst } from "../../lib/text";
 
 // Parziale e tipizzato sull'unione: "manual" non ha nota perché non c'è niente da
 // spiegare, e il giorno in cui il backend aggiunge un motivo il compilatore lo dice.
@@ -54,7 +55,12 @@ export function ListRow({
               `break-words` spezza un nome che non ci sta: a 375px la riga spingeva la
               pagina di lato */}
           <span className="flex min-w-0 flex-1 flex-col break-words">
-            <span className={checked ? "text-ink-faint line-through" : ""}>{item.raw_text}</span>
+            {/* la maiuscola solo a video, dove il testo apre la riga (spec T3 §4.7;
+                Mattia, 2026-10-13): il testo salvato resta com'è scritto, e il nome della
+                casella e della ✕ pure, perché lo mettono in mezzo a una frase */}
+            <span className={checked ? "text-ink-faint line-through" : ""}>
+              {capitalizeFirst(item.raw_text)}
+            </span>
             {/* visibile, non un tooltip: da telefono non esiste il passaggio del mouse,
                 e il motivo per cui una voce è rientrata va letto */}
             {hint && <span className="text-xs text-low">{hint}</span>}

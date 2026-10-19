@@ -80,7 +80,7 @@ describe("CookSheet", () => {
     expect(pesca.textContent).toContain("Quasi finito");
 
     const aperta = screen.getByText("quella aperta").closest("li")!;
-    expect(aperta.textContent).toContain("pasta");
+    expect(aperta.textContent).toContain("Pasta");
   });
 
   it("due confezioni identiche tranne la data d'ingresso restano distinguibili", async () => {
@@ -543,5 +543,16 @@ describe("CookSheet", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
     expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
+  });
+
+  // la maiuscola solo a video, come le righe della Dispensa (spec T3 §4.7): il titolo di
+  // una confezione senza prodotto è il nome dell'ingrediente, e apre la riga. Il nome di un
+  // prodotto resta com'è scritto; i nomi accessibili restano in minuscolo
+  it("una confezione senza prodotto si intitola con la maiuscola, una con prodotto col suo nome", () => {
+    renderSheet();
+    const aperta = screen.getByText("quella aperta").closest("li")!;
+    expect(within(aperta).getByText("Pasta")).toBeInTheDocument();
+    expect(within(aperta).getByRole("radiogroup").getAttribute("aria-label")).toMatch(/di pasta/);
+    expect(screen.getByText("Total 0%")).toBeInTheDocument();
   });
 });
