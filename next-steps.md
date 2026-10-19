@@ -111,6 +111,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · L'emoji dell'ingrediente anche in Lista, in Sistema la spesa e nel foglio della cottura: un campo in tre risposte (oggi solo in Dispensa, deciso da Mattia il 2026-10-07) [S12]
 - [idea] P3 · `import_gz` potrebbe nominare `decide_emoji` quando ha creato ingredienti nuovi, come nomina `decide_units` per le unità [S12]
 - [idea] P3 · Una fusione in Anagrafica tiene la figura del vincitore anche quando non ne ha una e il perdente sì: potrebbe ereditarla [S12]
+- [idea] P3 · Il foglio della cottura manda una transizione anche per una confezione non toccata se si spunta «Rimetti in lista»: se intanto la confezione è cambiata su un altro dispositivo e la scheda non ha ancora riletto la dispensa, il backend la riporta allo stato mostrato a video (per esempio da disponibile a quasi finito). È la stessa corsa che c'è già per una scelta esplicita; chiuderla vorrebbe che la richiesta porti lo stato atteso (`from_status`), un cambio di contratto che «Rimetti in lista» escludeva [Parte X]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5

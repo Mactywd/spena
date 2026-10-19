@@ -2947,9 +2947,9 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   Dispensa «In lista» / «Già in lista» c'è anche sulle righe gialle, con la parola «Quasi
   finito»; nel foglio la casella c'è quando la confezione dopo la cottura è gialla (vuota)
   o rossa (spuntata), **anche se era già gialla prima**: spuntata, parte come transizione
-  allo stesso stato, che `cook` non applica alla voce (né stato, né `status_changed_at`)
-  e che rientra in lista col motivo `low_while_cooking`; `updated` conta solo gli stati
-  cambiati. Quali stati offrono il rientro lo dice una funzione sola, `offersRestock` in
+  allo stesso stato, che `cook` non applica alla voce (né stato, né `fill_percent`, né
+  `status_changed_at`) e che rientra in lista col motivo `low_while_cooking`; `updated`
+  conta solo gli stati cambiati. Quali stati offrono il rientro lo dice una funzione sola, `offersRestock` in
   `statusLabels.ts`, per le due sezioni. Il rientro dalla Dispensa resta `manual`. Il
   testo di prima, per la storia:
   **Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
