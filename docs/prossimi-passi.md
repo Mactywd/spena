@@ -1650,12 +1650,44 @@ del merge, ma l'immagine è stata ricostruita solo con il deploy di S7: fino ad 
 il browser riceveva il pacchetto di prima. Nessuna migrazione, quindi niente da
 applicare; la verifica a mano del 2026-09-23 vale anche per questa voce ed è passata.
 
-## R8. Modifica con AI **[D]**
+## R8. Modifica con AI **[FATTO 2026-10-19 — spec: `docs/superpowers/specs/2026-10-09-r8-modifica-con-ai-design.md`, sul ramo `night/r8-modifica-con-ai`, non ancora in produzione]**
 Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
 («sostituisci lo zucchero con dolcificante», che obbliga a ribilanciare il resto).
 **Il salvataggio crea una ricetta nuova**, non tocca l'originale.
 
-TBD: se la nuova ricetta tiene un legame con quella da cui nasce, e se si vede.
+**Deciso da Mattia il 2026-10-09:** il legame si tiene e si vede — nella nuova, sotto il
+titolo, «Variante di «…»» che porta all'originale; nell'originale niente in più. La
+proposta dell'AI apre il modulo già compilato; se l'AI non risponde si resta
+sull'originale con un avviso ambra.
+
+**Fatto** il 2026-10-19, sul ramo `night/r8-modifica-con-ai`: nel dettaglio, fra
+«Modifica» ed «Elimina», l'icona «Modifica con AI» apre sotto il titolo un pannello con
+«Cosa vuoi cambiare?» e «Proponi la variante»; la proposta (`POST
+/recipes/{id}/ai-variant`, `draft_variant` in `services/ai_recipes.py`, il prompt della
+bozza esteso con le regole della variante, sezione `recipe_variant` in `llm_calls`) apre
+«Nuova variante» (`/ricette/:id/variante`) col modulo di sempre e la categoria
+dell'originale; «Salva la variante» crea una ricetta nuova con `derived_from_id`
+(colonna nuova, migrazione `0014`, `ON DELETE SET NULL`), e la variante mostra sotto il
+titolo «Variante di «…»», con «(eliminata)» se l'originale è eliminata (porta alla
+lapide). Le righe passano dall'imbuto: la proposta non aggancia e non propone un non
+alimentare. L'annullamento di una decisione dell'import, che rifà l'originale, tiene
+gli id delle varianti nel `payload` come le cotture (`variant_recipe_ids`). Un'originale
+sparita al salvataggio non ferma la variante: nasce senza legame.
+
+**Deciso da Mattia il 2026-10-13:** la variante parte con la foto e i tempi
+dell'originale («Sì, copiali»). Li copia il server al salvataggio (`variant_copy` in
+`app/repositories/recipes.py`), perché il modulo della ricetta non ha campi per la foto
+e per i tempi (R10 §7); `PUT` li lascia com'erano. Oggi nessuno schermo li corregge, per
+nessuna ricetta: è un'idea in `next-steps.md`.
+
+**Le scelte del piano che Mattia può voler rivedere:** il tasto fra le icone accanto al
+titolo; il prompt in un pannello dentro il dettaglio (e non in uno schermo suo); la
+categoria che parte da quella dell'originale; «(eliminata)» nel legame.
+
+**Da provare sul telefono:** il pannello con la tastiera aperta (il campo resta in
+vista?), una variante vera col modello vero — la notte ha provato solo coi finti, quindi
+la qualità del ribilanciamento («sostituisci lo zucchero con dolcificante») non è
+misurata — e il giro indietro: variante → originale → indietro.
 
 ## R9. Il costo della ricetta **[FATTO 2026-09-24, in produzione]**
 Ogni ricetta ha un costo da 1 a 5, disegnato come cinque `€` di cui i primi *n* neri
@@ -1951,7 +1983,7 @@ un modello giù è spesa sprecata, ed è il giro che paga e non conclude che una
 delle spese esiste per scoprire.
 
 `call_site` è oggi `TERM_DECISION`, `TERM_COLLAPSE`, `RECIPE_DRAFT` e — dal 2026-09-20,
-con D1 — `UNIT_FORMS`. Ogni punto di
+con D1 — `UNIT_FORMS` e — dal 2026-10-19, con R8 — `RECIPE_VARIANT`. Ogni punto di
 chiamata nuovo ne aggiunge uno: `complete_json` lo pretende come argomento
 obbligatorio, e `tests/test_llm_spend_is_recorded.py` legge i sorgenti e fallisce se un
 modulo chiama l'LLM senza registrare. Serve perché la dimenticanza qui non rompe

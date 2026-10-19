@@ -111,6 +111,9 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `import_gz` potrebbe nominare `decide_emoji` quando ha creato ingredienti nuovi, come nomina `decide_units` per le unità [S12]
 - [idea] P3 · Una fusione in Anagrafica tiene la figura del vincitore anche quando non ne ha una e il perdente sì: potrebbe ereditarla [S12]
 - [idea] P3 · Il foglio della cottura manda una transizione anche per una confezione non toccata se si spunta «Rimetti in lista»: se intanto la confezione è cambiata su un altro dispositivo e la scheda non ha ancora riletto la dispensa, il backend la riporta allo stato mostrato a video (per esempio da disponibile a quasi finito). È la stessa corsa che c'è già per una scelta esplicita; chiuderla vorrebbe che la richiesta porti lo stato atteso (`from_status`), un cambio di contratto che «Rimetti in lista» escludeva [Parte X]
+- [idea] P3 · Le spese dell'AI (H1) danno un nome a ogni sezione: `recipe_variant` (R8) e `ingredient_emoji` (S12) sono nate su rami a parte; il ramo `night/h1-spese-ai` li nomina già tutti e due in `CALL_SITE_LABELS` («Varianti con l'AI», «Figure della dispensa»): al merge controllare solo che restino [R8, H1]
+- [idea] P3 · Dal modulo della variante non si ripropone: per una richiesta diversa si torna all'originale e si riapre il pannello [R8]
+- [idea] P3 · Correggere la foto e i tempi di una ricetta: il modulo non li ha (R10 §7), e una variante li copia dall'originale (deciso da Mattia il 2026-10-13), quindi una variante «senza forno» tiene i minuti di cottura della torta finché non c'è un modo di cambiarli [R8, R10]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
@@ -127,6 +130,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P3 · Prove di R8: una variante vera col modello vero (la notte ha usato solo i finti: il ribilanciamento non è misurato), il pannello con la tastiera aperta al telefono, il giro variante → originale → indietro [R8]
 - [tbd] P3 · Prova sul telefono di «Rimetti in lista»: «In lista» sulla riga gialla col pollice, e nel foglio della cottura la casella su una confezione già quasi finita [Parte X]
 - [tbd] P3 · Prove sul telefono di S15: il tocco sui titoli dei reparti col pollice, la nota del titolo chiuso a 375 px coi nomi lunghi, e i reparti chiusi che restano chiusi dopo aver chiuso e riaperto l'app installata [S15]
 - [tbd] P3 · Prove sul telefono di S14: «Tutto / Cibo / Casa» col pollice; chiusa e riaperta l'app installata, la Dispensa riparte da «Tutto» (la `sessionStorage` di una PWA può durare più di quanto si pensa) [S14]
@@ -145,9 +149,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono dei pulsanti spenti e del ☰ (tema scuro): il pulsante spento grigio si legge al sole e si capisce spento accanto a un secondario acceso, nei due temi; un pulsante `ghost` in volo (il cestino della ricetta, la ✕ della riga della lista) si capisce spento anche se cambia solo il colore della scritta; il ☰ in scuro spegne la pagina e si stacca col suo bordo. Nel browser l'e2e misura i contrasti nei due temi [T3 Consegna 1]
 
 ## In corso
-- [in corso] P3 · R8, modifica con AI che salva una ricetta nuova, col legame «Variante di «…»» — piano `docs/superpowers/plans/2026-10-09-r8-modifica-con-ai.md` → branch night/r8-modifica-con-ai [R8]
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-19 · R8, modifica con AI che salva una ricetta nuova: «Modifica con AI» nel dettaglio, la proposta nel modulo («Nuova variante»), «Salva la variante» con `derived_from_id` (migrazione 0014) e «Variante di «…»» sotto il titolo; la variante parte con la foto e i tempi dell'originale, copiati dal server (deciso da Mattia il 2026-10-13); sezione `recipe_variant` nelle spese [R8] → branch night/r8-modifica-con-ai (da revisionare)
 - [fatto] 2026-10-19 · «Rimetti in lista» anche per quasi finito: in Dispensa «In lista» / «Già in lista» anche sulle righe gialle (la riga del rientro esce in `RestockLine`), nel foglio della cottura la casella anche su una confezione già gialla, che spuntata rientra in lista senza toccarla (transizione allo stesso stato, motivo `low_while_cooking`); `offersRestock` è la regola per le due sezioni [Parte X] → branch night/rimetti-in-lista (da revisionare)
 - [fatto] 2026-10-19 · S15, reparti della dispensa collassabili: il titolo intero apre e chiude, chiuso dice il numero e «N finito» / «N in scadenza», i chiusi si ricordano nel `localStorage`, ricerca e riepilogo aprono senza salvare, la voce aggiunta apre e salva aperto, il mondo non apre né chiude [S15] → branch night/s15-reparti-collassabili (da revisionare)
 - [fatto] 2026-10-19 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` in `PantryItemOut`, il selettore sotto la barra solo coi due mondi, ricordato in `sessionStorage`, il riepilogo delle scadenze che segue il mondo, «Cerca in tutto», a «Tutto» quando il selettore sparisce o la voce aggiunta è dell'altro mondo [S14] → branch night/s14-cibo-casa (da revisionare)
