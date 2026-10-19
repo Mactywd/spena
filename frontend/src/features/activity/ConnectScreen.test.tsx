@@ -136,6 +136,19 @@ describe("ConnectScreen", () => {
     expect(screen.queryByLabelText("Chiave")).toBeNull();
   });
 
+  it("l'errore di una rigenerazione che non è riuscita si toglie con «Annulla»", async () => {
+    conChiaveNuova(CON_CHIAVE, 500);
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Rigenera la chiave" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rigenera" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Non sono riuscito a creare la chiave.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("lo stato della chiave che non si legge: lo dice, e «Riprova» richiede", async () => {
     const spy = stubRoutedFetch(() => [{ detail: "rotto" }, 500]);
     renderScreen();

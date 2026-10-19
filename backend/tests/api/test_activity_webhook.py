@@ -32,6 +32,8 @@ SAMSUNG = {
 
 CORPO = {
     "timestamp": "2026-10-12T12:00:00.500Z",
+    # dalla 1.9.23 HC Webhook lo mette in ogni corpo
+    "timezone": "Europe/Rome",
     "app_version": "2.4.0",
     "steps": [
         {"count": 4321, "start_time": "2026-10-11T22:00:00Z", "end_time": "2026-10-12T12:00:00.123Z"}
@@ -208,6 +210,19 @@ async def test_un_corpo_troppo_grosso_si_rifiuta_e_si_registra(client, chiave, d
     assert await conta(db_session, ActivityStepsDay) == 0
     sync = await db_session.scalar(select(ActivitySync))
     assert (sync.status, sync.problems) == ("rejected", [TOO_BIG])
+
+
+async def test_una_lunghezza_dichiarata_assurda_non_e_un_500(client, chiave, db_session):
+    # più di 4300 cifre: `int()` solleverebbe. L'intestazione si ignora e il corpo si legge
+    # a pezzi come se non ci fosse.
+    risposta = await client.post(
+        WEBHOOK,
+        content=json.dumps(CORPO),
+        headers={"X-Spena-Token": chiave, "Content-Length": "9" * 5000},
+    )
+
+    assert risposta.status_code == 200
+    assert await conta(db_session, ActivityStepsDay) == 1
 
 
 async def test_anche_senza_lunghezza_dichiarata_il_corpo_si_ferma_al_limite(

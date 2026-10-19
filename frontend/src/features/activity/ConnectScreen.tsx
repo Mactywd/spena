@@ -80,7 +80,14 @@ export function ConnectScreen() {
           <Button variant="primary" onClick={() => create.mutate()} busy={create.isPending}>
             Rigenera
           </Button>
-          <Button variant="ghost" onClick={() => setConfirming(false)}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setConfirming(false);
+              // l'errore di un tentativo che l'utente lascia non deve restare sullo schermo
+              create.reset();
+            }}
+          >
             Annulla
           </Button>
         </div>

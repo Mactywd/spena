@@ -375,6 +375,18 @@ def test_i_tipi_che_spena_non_usa_si_registrano_solo_per_nome():
     assert letto.problems == []
 
 
+def test_timezone_e_deleted_sono_involucro_non_tipi_ignorati():
+    corpo = {
+        "timestamp": "2026-10-12T12:00:00Z",
+        "timezone": "Europe/Rome",
+        "deleted": [{"type": "steps", "id": "abc"}],
+        "steps": [],
+        "heart_rate": [{"bpm": 70, "time": "2026-10-12T06:00:00Z"}],
+    }
+
+    assert parse_payload(corpo).ignored_keys == ["heart_rate"]
+
+
 @pytest.mark.parametrize(
     ("valore", "prova"), [(True, True), ("true", False), (1, False), (None, False)]
 )

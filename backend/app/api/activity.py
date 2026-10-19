@@ -37,6 +37,19 @@ router = APIRouter(
 webhook_router = APIRouter(prefix="/api/v1/activity", tags=["activity"])
 
 
+def _declared_size(request: Request) -> int | None:
+    """La lunghezza dichiarata, o `None` se manca o non è un numero credibile.
+
+    Solo cifre ASCII e al massimo dieci: oltre le 4300 cifre `int()` solleva, e sarebbe un
+    500 su un'intestazione. `None` vuol dire «non lo so»: la lettura a pezzi si ferma
+    comunque al limite.
+    """
+    declared = request.headers.get("content-length", "")
+    if declared.isascii() and declared.isdigit() and len(declared) <= 10:
+        return int(declared)
+    return None
+
+
 async def _read_capped(request: Request) -> bytes | None:
     """Il corpo, o `None` se supera `WEBHOOK_MAX_BYTES`.
 
@@ -44,8 +57,8 @@ async def _read_capped(request: Request) -> bytes | None:
     (`Transfer-Encoding: chunked`), e leggere tutto per poi misurarlo vorrebbe dire tenere
     in memoria quel che si voleva rifiutare.
     """
-    declared = request.headers.get("content-length", "")
-    if declared.isascii() and declared.isdigit() and int(declared) > WEBHOOK_MAX_BYTES:
+    declared = _declared_size(request)
+    if declared is not None and declared > WEBHOOK_MAX_BYTES:
         return None
     body = bytearray()
     async for chunk in request.stream():
@@ -75,8 +88,8 @@ async def hc_webhook(request: Request, session: AsyncSession = Depends(get_sessi
     token.last_used_at = now
     body = await _read_capped(request)
     if body is None:
-        declared = request.headers.get("content-length", "")
-        size = int(declared) if declared.isascii() and declared.isdigit() else WEBHOOK_MAX_BYTES + 1
+        declared = _declared_size(request)
+        size = WEBHOOK_MAX_BYTES + 1 if declared is None else declared
         return await _rejected(
             session, TOO_BIG, min(size, 2**31 - 1), now, status.HTTP_413_CONTENT_TOO_LARGE
         )

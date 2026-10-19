@@ -149,14 +149,15 @@ def _sync_out(sync: ActivitySync, now: datetime) -> SyncOut:
 
 def _exercise_out(exercise: ActivityExercise) -> ExerciseOut:
     seconds = (exercise.ended_at - exercise.started_at).total_seconds()
+    distance_km = round(exercise.distance_m / 1000, 1) if exercise.distance_m else None
     return ExerciseOut(
         day=exercise.day,
         time=rome_clock(exercise.started_at),
         label=exercise_label(exercise.exercise_type),
         title=exercise.title,
         minutes=round(seconds / 60),
-        # zero metri è «nessuna distanza», non «0,0 km»
-        distance_km=round(exercise.distance_m / 1000, 1) if exercise.distance_m else None,
+        # zero metri, o pochi metri che arrotondano a zero, è «nessuna distanza», non «0,0 km»
+        distance_km=distance_km or None,
         source=source_label(exercise.source),
     )
 

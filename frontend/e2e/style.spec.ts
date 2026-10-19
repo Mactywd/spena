@@ -2759,6 +2759,8 @@ test("attività e collegamento a 375px: i testi si leggono nei due temi, e nient
     headers: { "X-Spena-Token": token },
     data: {
       timestamp: new Date().toISOString(),
+      // dalla 1.9.23 HC Webhook lo mette in ogni corpo
+      timezone: "Europe/Rome",
       steps: [
         { count: 6789, start_time: `${giorno}T08:00:00.123Z`, end_time: `${giorno}T20:00:00.456Z` },
         { count: 120, start_time: `${giorno}T06:00:00Z`, end_time: `${giorno}T06:15:00Z` },

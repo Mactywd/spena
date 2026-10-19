@@ -27,7 +27,11 @@ TOKEN_HEADER = "X-Spena-Token"
 # rifiuto lo dà il backend, e si vede in «Attività».
 WEBHOOK_MAX_BYTES = 2 * 1024 * 1024
 
-ENVELOPE_KEYS = frozenset({"timestamp", "app_version", "test"})
+# `timezone` e `deleted` sono involucro di HC Webhook dalla 1.9.23, non tipi di dato: il
+# primo è in ogni corpo (anche nella prova), il secondo elenca i record cancellati in Health
+# Connect. Non si possono spegnere nell'app, quindi non vanno mai tra le chiavi ignorate,
+# che invitano a toglierle dal webhook.
+ENVELOPE_KEYS = frozenset({"timestamp", "app_version", "test", "timezone", "deleted"})
 USED_KEYS = frozenset({"steps", "exercise", "weight"})
 
 MAX_RECORDS = 5000

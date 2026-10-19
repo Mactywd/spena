@@ -121,6 +121,15 @@ async def test_gli_allenamenti_degli_ultimi_sette_giorni_dal_piu_recente(db_sess
     ]
 
 
+async def test_una_distanza_che_arrotonda_a_zero_non_e_zero_virgola_zero_km(db_session):
+    db_session.add(allenamento(utc(2026, 10, 13, 7), 20, distance_m=30.0))
+    await db_session.flush()
+
+    riepilogo = await activity_summary(db_session, ADESSO)
+
+    assert [e.distance_km for e in riepilogo.exercises] == [None]
+
+
 async def test_le_ultime_cinque_pesate(db_session):
     db_session.add_all(
         [pesata(utc(2026, 10, giorno, 5, 30), 70 + giorno / 10) for giorno in range(1, 7)]
