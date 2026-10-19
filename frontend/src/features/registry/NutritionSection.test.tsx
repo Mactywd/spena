@@ -271,7 +271,7 @@ describe("la sezione nella scheda dell'ingrediente", () => {
   function scheda(kind: "food" | "non_food"): IngredientDetail {
     return {
       id: "i-pomodoro", name: "pomodoro", display_name: "Pomodoro", category: kind === "food" ? "verdura" : "casa",
-      kind, aliases: [], products: [], usage: { recipes: 0, pantry: 0, shopping: 0 },
+      kind, emoji: null, aliases: [], products: [], usage: { recipes: 0, pantry: 0, shopping: 0 },
     };
   }
 

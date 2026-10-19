@@ -90,7 +90,7 @@ async def test_la_0016_sale_scende_e_risale(scratch_url):
     await _run(scratch_url, "DELETE FROM ingredients WHERE name = 'pomodoro'")
     assert await _scalar(scratch_url, "SELECT count(*) FROM ingredient_nutrition") == 0
 
-    alembic(scratch_url, "downgrade", "0012")
+    alembic(scratch_url, "downgrade", "0015")
     assert await _scalar(scratch_url, TABELLE) == 0
 
     alembic(scratch_url, "upgrade", "head")
