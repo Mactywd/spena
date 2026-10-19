@@ -75,7 +75,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · «Deciso nella coda» porta a una coda che mostra solo le 50 decisioni più recenti: filtro per termine o annulla dalla scheda [Parte X]
 - [idea] P3 · Cercare nell'elenco delle decisioni della coda [T3, esito del giro]
 - [idea] P3 · I test di schermata si costruiscono il client react-query con `retry: false` e non provano il retry vero dell'app [Parte X]
-- [idea] P3 · Estrarre da `PantryRow.tsx` la domanda del rientro in lista, poi la scadenza [Parte X]
+- [idea] P3 · Estrarre da `PantryRow.tsx` la scadenza (la domanda del rientro è uscita in `RestockLine.tsx` con «Rimetti in lista», sul ramo night/rimetti-in-lista) [Parte X]
 - [idea] P3 · Due confezioni dello stesso prodotto non si distinguono, né in dispensa né nel foglio della cottura [T3, esito del giro]
 - [idea] P3 · Tecniche e preparazioni di base mescolate alle ricette; procedimento diviso in passi; i minuti dai dati grezzi; «N dosi su M non si riscalano» che dice quali — fuori dal ridisegno, spec §5 [T3]
 - [idea] P3 · Un layout da desktop (oggi una colonna da 448 px) [T3]
@@ -127,6 +127,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P3 · Prova sul telefono di «Rimetti in lista»: «In lista» sulla riga gialla col pollice, e nel foglio della cottura la casella su una confezione già quasi finita [Parte X]
 - [tbd] P3 · Prove sul telefono di S15: il tocco sui titoli dei reparti col pollice, la nota del titolo chiuso a 375 px coi nomi lunghi, e i reparti chiusi che restano chiusi dopo aver chiuso e riaperto l'app installata [S15]
 - [tbd] P3 · Prove sul telefono di S14: «Tutto / Cibo / Casa» col pollice; chiusa e riaperta l'app installata, la Dispensa riparte da «Tutto» (la `sessionStorage` di una PWA può durare più di quanto si pensa) [S14]
 - [tbd] P2 · Dopo il deploy di S12: una volta `ssh hetznerserver "cd ~/sites/spena && docker compose -f docker-compose.prod.yml exec -T backend python -m app.cli.decide_emoji"`, rilanciato finché l'ultima riga dice «nessun ingrediente in attesa» (le figure degli ingredienti di produzione; ~9 chiamate all'AI; se il numero degli «ingredienti restano da decidere» non scende fra due lanci, quelli restano col ripiego del reparto o si sceglie la figura a mano in Anagrafica, e non serve rilanciare ancora; se la riga «figure non disponibili (…)» si ripete identica dopo che i primi lotti erano passati, il perché è fra parentesi, e i lotti decisi prima del guasto restano scritti), poi sul telefono le emoji del proprio telefono in una dispensa vera di una trentina di voci, e la griglia di «Cambia figura» col pollice [S12]
@@ -144,9 +145,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono dei pulsanti spenti e del ☰ (tema scuro): il pulsante spento grigio si legge al sole e si capisce spento accanto a un secondario acceso, nei due temi; un pulsante `ghost` in volo (il cestino della ricetta, la ✕ della riga della lista) si capisce spento anche se cambia solo il colore della scritta; il ☰ in scuro spegne la pagina e si stacca col suo bordo. Nel browser l'e2e misura i contrasti nei due temi [T3 Consegna 1]
 
 ## In corso
-- [in corso] P3 · «Rimetti in lista» anche per «quasi finito», ovunque: in Dispensa la riga gialla ha «In lista» come la rossa (`RestockLine.tsx`), nel foglio della cottura la casella c'è anche su una confezione già gialla e invariata, vuota; il titolo chiuso dei reparti di S15 resta «N finito» (Mattia, 2026-10-09 e 2026-10-13) [Parte X] → `docs/superpowers/plans/2026-10-09-rimetti-in-lista.md`, ramo `night/rimetti-in-lista` da `night/s15-reparti-collassabili` → branch night/rimetti-in-lista
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-19 · «Rimetti in lista» anche per quasi finito: in Dispensa «In lista» / «Già in lista» anche sulle righe gialle (la riga del rientro esce in `RestockLine`), nel foglio della cottura la casella anche su una confezione già gialla, che spuntata rientra in lista senza toccarla (transizione allo stesso stato, motivo `low_while_cooking`); `offersRestock` è la regola per le due sezioni [Parte X] → branch night/rimetti-in-lista (da revisionare)
 - [fatto] 2026-10-19 · S15, reparti della dispensa collassabili: il titolo intero apre e chiude, chiuso dice il numero e «N finito» / «N in scadenza», i chiusi si ricordano nel `localStorage`, ricerca e riepilogo aprono senza salvare, la voce aggiunta apre e salva aperto, il mondo non apre né chiude [S15] → branch night/s15-reparti-collassabili (da revisionare)
 - [fatto] 2026-10-19 · S14, «Tutto / Cibo / Casa» in dispensa: `ingredient_kind` in `PantryItemOut`, il selettore sotto la barra solo coi due mondi, ricordato in `sessionStorage`, il riepilogo delle scadenze che segue il mondo, «Cerca in tutto», a «Tutto» quando il selettore sparisce o la voce aggiunta è dell'altro mondo [S14] → branch night/s14-cibo-casa (da revisionare)
 - [fatto] 2026-10-18 · Tema scuro: il pulsante spento è grigio pieno (`disabled` / `on-disabled`) in ogni variante e in volo, niente più `opacity`; il velo del ☰ al 45% / 60% col bordo `panel-edge` in scuro; l'e2e misura anche i pulsanti spenti [T3 Consegna 1] → branch night/tema-scuro-spenti (da revisionare)

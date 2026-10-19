@@ -2939,7 +2939,20 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   `imposta-password.sh`.
 - **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
   `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.
-- **Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
+- ~~**Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
+  «finito»**~~ **Chiusa il 2026-10-19, decisa da Mattia il 2026-10-09** (spec
+  `docs/superpowers/specs/2026-10-09-rimetti-in-lista-design.md`, piano
+  `docs/superpowers/plans/2026-10-09-rimetti-in-lista.md`, sul ramo
+  `night/rimetti-in-lista`, non ancora in produzione): «anche quasi finito, ovunque». In
+  Dispensa «In lista» / «Già in lista» c'è anche sulle righe gialle, con la parola «Quasi
+  finito»; nel foglio la casella c'è quando la confezione dopo la cottura è gialla (vuota)
+  o rossa (spuntata), **anche se era già gialla prima**: spuntata, parte come transizione
+  allo stesso stato, che `cook` non applica alla voce (né stato, né `status_changed_at`)
+  e che rientra in lista col motivo `low_while_cooking`; `updated` conta solo gli stati
+  cambiati. Quali stati offrono il rientro lo dice una funzione sola, `offersRestock` in
+  `statusLabels.ts`, per le due sezioni. Il rientro dalla Dispensa resta `manual`. Il
+  testo di prima, per la storia:
+  **Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
   «finito»** (`frontend/src/features/cooking/CookSheet.tsx`), mentre in dispensa la
   domanda arriva anche nel giallo dal 2026-09-17. Non è un difetto: là la casella c'è
   sempre e visibile per ogni riga, quindi pre-spuntarla è un valore di partenza, non
@@ -2951,6 +2964,10 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   del rientro in lista («Lo rimetto in lista?», con la sua lapide e il suo esito) come
   componente a sé è il taglio naturale, quando qualcuno ci tornerà; la scadenza è il
   secondo candidato.
+  **Il primo taglio è fatto il 2026-10-19, con «Rimetti in lista»**: la riga del
+  rientro («Finito» o «Quasi finito», e «In lista» o «Già in lista») è
+  `features/pantry/RestockLine.tsx`. La lapide e l'esito non c'erano più dal ridisegno di
+  T3: l'avviso lo dà `PantryScreen`. Resta la scadenza.
 - ~~**Il bersaglio di «+ scadenza» sborda di 4px su quello del cursore** in dispensa.~~
   **Chiusa il 2026-09-27, e la premessa era sbagliata**: misurato in Chromium, il
   bordo alto del bersaglio cade esattamente sul bordo basso del cursore, 0px di
