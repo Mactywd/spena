@@ -102,7 +102,8 @@ export function MergePanel({
           onPick={setWinner}
         />
       ) : (
-        <p className="flex flex-wrap items-center gap-2 text-sm">
+        // un `<div>` e non un `<p>`: un `Button` col suo perché porta un `<p>`, e un `<p>` dentro un `<p>` non esiste
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <span>
             Resta: <span className="font-medium">«{winner.display_name}»</span>
           </span>
@@ -121,7 +122,7 @@ export function MergePanel({
           >
             Cambia
           </Button>
-        </p>
+        </div>
       )}
 
       {slowWarning && <p className="text-sm text-low">{slowWarning}</p>}

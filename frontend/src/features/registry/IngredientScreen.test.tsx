@@ -504,6 +504,8 @@ describe("IngredientScreen", () => {
     // premuto «Unisci» da tastiera tiene il fuoco; e un tocco non fa niente
     const unisco = await screen.findByRole("button", { name: "Unisco…" });
     const cambia = screen.getByRole("button", { name: "Cambia" });
+    // un `Button` non sta dentro un `<p>`: il suo perché, se un giorno lo avrà, è un `<p>`
+    expect(cambia.closest("p")).toBeNull();
     const lascia = screen.getByRole("button", { name: "Lascia com'è" });
     for (const button of [unisco, cambia, lascia]) {
       expect(button).toHaveAttribute("aria-disabled", "true");

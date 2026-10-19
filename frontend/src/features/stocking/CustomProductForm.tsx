@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { createProduct } from "./api";
 import type { BarcodeLookup, Product } from "../../domain/types";
-import { buttonClasses } from "../../components/ui/buttonClasses";
+import { Button } from "../../components/ui/Button";
 
 const EMPTY_NUTRIENTS: Record<string, string> = { kcal: "", protein: "", carbs: "", fat: "" };
 
@@ -119,7 +119,7 @@ export function CustomProductForm({
     event.preventDefault();
     // il modulo resta compilato: un 409 (codice già in catalogo) o un servizio
     // giù non devono far perdere quel che l'utente ha scritto
-    // Invio nel campo invia il modulo anche col pulsante spento: la guardia sta qui
+    // la guardia resta anche qui, oltre a quella di `Button`: il modulo non deve partire senza nome da nessuna strada
     if (nameMissing) return;
     create.mutate();
   }
@@ -182,20 +182,25 @@ export function CustomProductForm({
         </p>
       )}
       <div>
-        <button type="submit" disabled={create.isPending || nameMissing}
-                className={buttonClasses("primary", "block")}>
+        {/* La regola dei pulsanti (pulizie del 2026-10-13): in volo `busy`, senza nome
+            «non ancora» col perché, che `Button` scrive sotto di sé — un pulsante spento
+            e muto non si spiega da sé. Tutti e due con `aria-disabled`: il fuoco resta
+            qui, e anche l'Invio in un campo, che arriva al submit come un clic, si ferma */}
+        <Button
+          type="submit"
+          variant="primary"
+          shape="block"
+          busy={create.isPending}
+          unavailableReason={nameMissing ? "Scrivi il nome del prodotto per salvarlo." : undefined}
+        >
           Salva prodotto
-        </button>
-        {/* un pulsante spento e muto non si spiega da sé */}
-        {nameMissing && (
-          <p className="pt-2 text-xs text-ink-soft">Scrivi il nome del prodotto per salvarlo.</p>
-        )}
+        </Button>
       </div>
       {/* un 409 persistente non deve incollare il riquadro allo schermo: si esce
           sempre, e la voce resta sistemabile come sfusa */}
-      <button type="button" onClick={onCancel} className={`${buttonClasses("ghost")} self-start`}>
+      <Button variant="ghost" onClick={onCancel} className="self-start">
         Annulla
-      </button>
+      </Button>
     </form>
   );
 }

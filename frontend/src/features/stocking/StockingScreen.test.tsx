@@ -924,7 +924,7 @@ describe("StockingScreen", () => {
       expect(await screen.findByText("Su Open Food Facts è senza nome.")).toBeDefined();
       await userEvent.click(screen.getByRole("button", { name: "Sì" }));
       expect(await screen.findByLabelText("Nome")).toHaveValue("");
-      expect(screen.getByRole("button", { name: "Salva prodotto" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Salva prodotto" })).toHaveAttribute("aria-disabled", "true");
     });
 
     it("un codice che Open Food Facts non conosce apre il modulo e lo dice", async () => {
