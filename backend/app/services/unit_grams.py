@@ -11,14 +11,21 @@ L'unico posto che scrive `ingredient_unit_grams`: il peso a mano (Anagrafica, ro
 solo dove non c'è niente, e lo controlla nella stessa INSERT. «Annulla il peso» toglie la
 riga: la coppia torna da decidere. Il rifiuto ha la forma di quelli della fetta 1
 (`NutritionRefusal`).
+
+L'AI pesa le coppie da decidere a lotti di `GRAMS_BATCH` (`decide_grams`, sezione
+`unit_grams`): i grammi netti della parte che si mangia di una unità, o `null` se
+un'unità di quell'ingrediente non ha un peso sensato — che si scrive, e non si richiede.
 """
 
+import json
+import math
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Literal
 
+import httpx
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +43,9 @@ from app.domain.recipe_nutrition import (
     unit_label,
 )
 from app.domain.rules import IngredientKind
+from app.services.ai_spend import Spend, complete_recorded
 from app.services.ingredient_nutrition import NON_FOOD_CODE, NutritionRefusal
+from app.services.llm import LlmCallSite, LlmUnavailable
 
 MEASURED_UNIT_CODE = "measured_unit"
 BAD_GRAMS_CODE = "bad_grams"
@@ -266,3 +275,178 @@ async def apply_ai_grams(
         .on_conflict_do_nothing()
     )
     return result.rowcount == 1
+
+
+# Quaranta coppie per chiamata: una risposta è ~30 token a coppia, ~1.200 per lotto, ben
+# sotto il tetto. Le 800–1.500 coppie stimate per la produzione (spec §3) sono 20–40
+# chiamate, meno di 0,05 $.
+GRAMS_BATCH = 40
+GRAMS_MAX_TOKENS = 3000
+
+GRAMS_SYSTEM_PROMPT = (
+    "Ricevi un elenco numerato di coppie ingrediente e unità di misura, prese da ricette "
+    "italiane, ciascuna con un esempio di dose. Per ognuna scrivi quanti grammi pesa UNA "
+    "unità di quell'ingrediente: il peso netto della parte che si mangia (senza buccia, "
+    "guscio, osso o torsolo), per un pezzo di misura media. «pezzo» vuol dire un pezzo "
+    "intero: un uovo, una cipolla, un limone.\n\n"
+    "Regole:\n"
+    '- "n", "ingrediente" e "unita" vanno riscritti identici a come te li ho passati.\n'
+    '- "grammi" è un numero maggiore di zero; null se quell\'unità, per quell\'ingrediente, '
+    "non ha un peso sensato.\n"
+    "- Una risposta per ogni coppia, nessuna in più."
+)
+
+GRAMS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pesi": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "n": {"type": "integer"},
+                    "ingrediente": {"type": "string"},
+                    "unita": {"type": "string"},
+                    "grammi": {"type": ["number", "null"]},
+                },
+                "required": ["n", "ingrediente", "unita", "grammi"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["pesi"],
+    "additionalProperties": False,
+}
+
+
+@dataclass(frozen=True)
+class PairQuestion:
+    ingredient: str
+    unit_label: str
+    example: str | None
+
+
+def _read_grams(value: object) -> tuple[bool, Decimal | None]:
+    """(si può applicare, grammi): `None` è «nessun peso»; un numero fuori misura, una
+    stringa o un booleano non si applicano."""
+    if value is None:
+        return True, None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return False, None
+    grams = Decimal(str(value)).quantize(Decimal("0.01"))
+    if not Decimal("0") < grams <= GRAMS_MAX:
+        return False, None
+    return True, grams
+
+
+def _same_text(answer: dict, field: str, expected: str) -> bool:
+    return str(answer.get(field) or "").strip().casefold() == expected.casefold()
+
+
+async def ask_grams(
+    session: AsyncSession,
+    questions: Sequence[PairQuestion],
+    client: httpx.AsyncClient | None = None,
+    spend: Spend | None = None,
+) -> tuple[dict[int, Decimal | None], int]:
+    """I pesi delle coppie chieste, per indice (da 0), e quante risposte si sono rifiutate.
+    Una coppia che manca dal dizionario non ha avuto una risposta verificabile."""
+    asked = dict(enumerate(questions, start=1))
+    question = {
+        "coppie": [
+            {"n": n, "ingrediente": item.ingredient, "unita": item.unit_label, "esempio": item.example}
+            for n, item in asked.items()
+        ]
+    }
+    data = await complete_recorded(
+        session,
+        call_site=LlmCallSite.UNIT_GRAMS,
+        system=GRAMS_SYSTEM_PROMPT,
+        user=json.dumps(question, ensure_ascii=False),
+        schema=GRAMS_SCHEMA,
+        schema_name="grammi_unita",
+        max_tokens=GRAMS_MAX_TOKENS,
+        client=client,
+        spend=spend,
+    )
+    weights: dict[int, Decimal | None] = {}
+    refused = 0
+    answered: set[int] = set()
+    for answer in data.get("pesi") or []:
+        if not isinstance(answer, dict):
+            refused += 1
+            continue
+        n = answer.get("n")
+        if type(n) is not int or n not in asked or n in answered:
+            refused += 1
+            continue
+        item = asked[n]
+        if not _same_text(answer, "ingrediente", item.ingredient) or not _same_text(
+            answer, "unita", item.unit_label
+        ):
+            refused += 1
+            continue
+        answered.add(n)
+        ok, grams = _read_grams(answer.get("grammi"))
+        if not ok:
+            refused += 1
+            continue
+        weights[n - 1] = grams
+    return weights, refused
+
+
+@dataclass(frozen=True)
+class GramsRun:
+    """Quel che un lancio ha fatto, e quel che resta."""
+
+    weighed: int = 0
+    none: int = 0
+    refused: int = 0
+    # le coppie ancora da pesare alla fine, non solo quelle del `--limit`
+    pending: int = 0
+    unavailable: str | None = None
+    asked: int = 0
+
+
+async def decide_grams(
+    session: AsyncSession,
+    client: httpx.AsyncClient | None = None,
+    limit: int | None = None,
+    after_batch: Callable[[], Awaitable[None]] | None = None,
+    batch_size: int = GRAMS_BATCH,
+) -> GramsRun:
+    """Pesa le coppie da decidere, le prime `limit` per ingrediente e unità. Non fa
+    commit: lo fa `after_batch` dopo ogni lotto. Al primo guasto dell'AI si ferma."""
+    pairs = await pending_pairs(session, limit)
+    weighed = none = refused = 0
+    unavailable: str | None = None
+    for start in range(0, len(pairs), batch_size):
+        chunk = pairs[start : start + batch_size]
+        try:
+            answers, bad = await ask_grams(
+                session,
+                [PairQuestion(pair.ingredient_name, pair.unit_label, pair.example) for pair in chunk],
+                client=client,
+            )
+        except LlmUnavailable as exc:
+            unavailable = str(exc)
+            break
+        refused += bad
+        for index, grams in answers.items():
+            pair = chunk[index]
+            if await apply_ai_grams(session, pair.ingredient_id, pair.unit_id, grams):
+                if grams is None:
+                    none += 1
+                else:
+                    weighed += 1
+        await session.flush()
+        if after_batch is not None:
+            await after_batch()
+    return GramsRun(
+        weighed=weighed,
+        none=none,
+        refused=refused,
+        pending=await count_pending_pairs(session),
+        unavailable=unavailable,
+        asked=len(pairs),
+    )

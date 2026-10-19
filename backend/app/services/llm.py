@@ -37,6 +37,7 @@ class LlmCallSite(StrEnum):
     UNIT_FORMS = "unit_forms"
     CIQUAL_TERMS = "ciqual_terms"
     CIQUAL_MATCH = "ciqual_match"
+    UNIT_GRAMS = "unit_grams"
 
 
 @dataclass(frozen=True)
