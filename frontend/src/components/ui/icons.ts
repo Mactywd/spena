@@ -24,6 +24,7 @@ export {
   IconAlertCircle,
   IconEye,
   IconEyeOff,
+  IconCopy,
 } from "@tabler/icons-react";
 // barra delle schede
 export { IconListCheck, IconBox, IconToolsKitchen2 } from "@tabler/icons-react";
