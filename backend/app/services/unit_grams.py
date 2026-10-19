@@ -1,0 +1,259 @@
+"""I grammi per ingrediente × unità canonica (S4, fetta 2): quali coppie servono, chi le
+scrive, come si mostrano.
+
+Le coppie da pesare sono quelle che le ricette usano davvero — tutte, eliminate comprese,
+perché una ricetta eliminata si ripristina — di un alimento, con una dose letta, su
+un'unità che non è di massa né di volume (`classify_unit`). Sempre sull'unità canonica, e
+«pezzo»/«pezzi» come la dose senza unità (spec §4.21–4.23).
+
+L'unico posto che scrive `ingredient_unit_grams`: il peso a mano (Anagrafica, rotte di
+`app/api/nutrition.py`) vince sempre e si scrive anche sopra quello dell'AI; l'AI scrive
+solo dove non c'è niente, e lo controlla nella stessa INSERT. «Annulla il peso» toglie la
+riga: la coppia torna da decidere. Il rifiuto ha la forma di quelli della fetta 1
+(`NutritionRefusal`).
+"""
+
+import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Literal
+
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
+
+from app.db.models.ingredient import Ingredient
+from app.db.models.nutrition import IngredientUnitGrams, NutritionDecider
+from app.db.models.recipe import RecipeIngredient
+from app.db.models.unit import Unit
+from app.domain.recipe_nutrition import (
+    GRAMS_MAX,
+    PIECE_LABEL,
+    UnitKind,
+    classify_unit,
+    unit_label,
+)
+from app.domain.rules import IngredientKind
+from app.services.ingredient_nutrition import NON_FOOD_CODE, NutritionRefusal
+
+MEASURED_UNIT_CODE = "measured_unit"
+BAD_GRAMS_CODE = "bad_grams"
+
+
+@dataclass(frozen=True)
+class Pair:
+    ingredient_id: uuid.UUID
+    ingredient_name: str
+    # l'unità canonica, o None per il pezzo
+    unit_id: uuid.UUID | None
+    unit_label: str
+    # una dose com'è scritta in una ricetta: all'AI dice di che si parla
+    example: str | None
+
+
+@dataclass(frozen=True)
+class Weight:
+    # l'id dell'unità canonica, o «pezzo»: è anche il pezzo di indirizzo delle rotte
+    unit: str
+    unit_label: str
+    grams: Decimal | None
+    state: Literal["undecided", "decided", "none"]
+    decided_by: str | None
+
+
+def unit_param(unit_id: uuid.UUID | None) -> str:
+    return PIECE_LABEL if unit_id is None else str(unit_id)
+
+
+def _same_unit(unit_id: uuid.UUID | None):
+    if unit_id is None:
+        return IngredientUnitGrams.unit_id.is_(None)
+    return IngredientUnitGrams.unit_id == unit_id
+
+
+async def used_pairs(session: AsyncSession, ingredient_id: uuid.UUID | None = None) -> list[Pair]:
+    seen = aliased(Unit)
+    canonical = aliased(Unit)
+    statement = (
+        select(
+            RecipeIngredient.ingredient_id,
+            Ingredient.name,
+            canonical.id,
+            canonical.key,
+            canonical.singular,
+            func.min(RecipeIngredient.quantity_text),
+        )
+        .join(Ingredient, Ingredient.id == RecipeIngredient.ingredient_id)
+        .outerjoin(seen, seen.id == RecipeIngredient.quantity_unit_id)
+        .outerjoin(canonical, canonical.id == func.coalesce(seen.canonical_id, seen.id))
+        .where(
+            RecipeIngredient.quantity_value.is_not(None),
+            Ingredient.kind == IngredientKind.FOOD,
+        )
+        .group_by(
+            RecipeIngredient.ingredient_id, Ingredient.name, canonical.id, canonical.key, canonical.singular
+        )
+    )
+    if ingredient_id is not None:
+        statement = statement.where(RecipeIngredient.ingredient_id == ingredient_id)
+    pairs: dict[tuple[uuid.UUID, uuid.UUID | None], Pair] = {}
+    for ingredient, name, unit_id, key, singular, example in (await session.execute(statement)).all():
+        kind = classify_unit(key, singular)
+        if kind.measure != "pair":
+            continue
+        pair_unit = None if kind.piece else unit_id
+        current = pairs.get((ingredient, pair_unit))
+        if current is None or (example or "") < (current.example or ""):
+            pairs[(ingredient, pair_unit)] = Pair(ingredient, name, pair_unit, unit_label(key, singular), example)
+    return sorted(pairs.values(), key=lambda pair: (pair.ingredient_name, pair.unit_label))
+
+
+async def decided_grams(
+    session: AsyncSession, ingredient_ids: Sequence[uuid.UUID] | None = None
+) -> dict[tuple[uuid.UUID, uuid.UUID | None], tuple[Decimal | None, str]]:
+    """Le coppie decise: (ingrediente, unità) → (grammi o None, chi ha deciso)."""
+    statement = select(
+        IngredientUnitGrams.ingredient_id,
+        IngredientUnitGrams.unit_id,
+        IngredientUnitGrams.grams,
+        IngredientUnitGrams.decided_by,
+    )
+    if ingredient_ids is not None:
+        statement = statement.where(IngredientUnitGrams.ingredient_id.in_(list(ingredient_ids)))
+    return {
+        (row.ingredient_id, row.unit_id): (row.grams, row.decided_by)
+        for row in (await session.execute(statement)).all()
+    }
+
+
+async def pending_pairs(session: AsyncSession, limit: int | None = None) -> list[Pair]:
+    decided = await decided_grams(session)
+    pending = [pair for pair in await used_pairs(session) if (pair.ingredient_id, pair.unit_id) not in decided]
+    return pending if limit is None else pending[:limit]
+
+
+async def count_pending_pairs(session: AsyncSession) -> int:
+    return len(await pending_pairs(session))
+
+
+async def weights_of(session: AsyncSession, ingredient_id: uuid.UUID) -> list[Weight]:
+    """Le coppie di un ingrediente: quelle che le ricette usano, e quelle decise anche se
+    nessuna ricetta le usa più (un peso scritto non sparisce di nascosto)."""
+    decided = await decided_grams(session, [ingredient_id])
+    labels: dict[uuid.UUID | None, str] = {
+        pair.unit_id: pair.unit_label for pair in await used_pairs(session, ingredient_id)
+    }
+    extra = [unit_id for (_, unit_id) in decided if unit_id is not None and unit_id not in labels]
+    if extra:
+        for unit_id, key, singular in (
+            await session.execute(select(Unit.id, Unit.key, Unit.singular).where(Unit.id.in_(extra)))
+        ).all():
+            labels[unit_id] = unit_label(key, singular)
+    if (ingredient_id, None) in decided:
+        labels.setdefault(None, PIECE_LABEL)
+    weights = []
+    for unit_id, label in labels.items():
+        if (ingredient_id, unit_id) not in decided:
+            weights.append(Weight(unit_param(unit_id), label, None, "undecided", None))
+            continue
+        grams, decided_by = decided[(ingredient_id, unit_id)]
+        state = "none" if grams is None else "decided"
+        weights.append(Weight(unit_param(unit_id), label, grams, state, decided_by))
+    return sorted(weights, key=lambda weight: weight.unit_label)
+
+
+async def resolve_pair_unit(
+    session: AsyncSession, unit_id: uuid.UUID | None
+) -> tuple[uuid.UUID | None, str, UnitKind]:
+    """L'unità della coppia (canonica, o None per il pezzo), il suo nome e il suo tipo."""
+    if unit_id is None:
+        return None, PIECE_LABEL, classify_unit(None, None)
+    unit = await session.get(Unit, unit_id)
+    if unit is None:
+        raise LookupError(f"nessuna unità {unit_id}")
+    canonical = unit if unit.canonical_id is None else await session.get(Unit, unit.canonical_id)
+    kind = classify_unit(canonical.key, canonical.singular)
+    return (None if kind.piece else canonical.id), unit_label(canonical.key, canonical.singular), kind
+
+
+async def _food(session: AsyncSession, ingredient_id: uuid.UUID) -> Ingredient:
+    ingredient = await session.get(Ingredient, ingredient_id)
+    if ingredient is None:
+        raise LookupError(f"nessun ingrediente {ingredient_id}")
+    if ingredient.kind != IngredientKind.FOOD:
+        raise NutritionRefusal(
+            NON_FOOD_CODE,
+            f"«{ingredient.display_name}» non è un alimento: non ha valori nutrizionali.",
+        )
+    return ingredient
+
+
+async def set_grams(
+    session: AsyncSession, ingredient_id: uuid.UUID, unit_id: uuid.UUID | None, grams: Decimal
+) -> list[Weight]:
+    """Il peso a mano. Vince sempre, anche su quello dell'AI."""
+    await _food(session, ingredient_id)
+    pair_unit, label, kind = await resolve_pair_unit(session, unit_id)
+    if kind.measure != "pair":
+        raise NutritionRefusal(
+            MEASURED_UNIT_CODE,
+            f"«{label}» è un'unità di peso o di volume: i grammi si contano da sé.",
+        )
+    if not Decimal("0") < grams <= GRAMS_MAX:
+        raise NutritionRefusal(
+            BAD_GRAMS_CODE, "Un peso va da più di 0 a 5000 g: controlla il numero."
+        )
+    statement = pg_insert(IngredientUnitGrams).values(
+        id=uuid.uuid4(),
+        ingredient_id=ingredient_id,
+        unit_id=pair_unit,
+        grams=grams,
+        decided_by=NutritionDecider.HUMAN,
+        decided_at=func.now(),
+    )
+    await session.execute(
+        statement.on_conflict_do_update(
+            constraint="uq_ingredient_unit_grams",
+            set_={
+                "grams": statement.excluded.grams,
+                "decided_by": statement.excluded.decided_by,
+                "decided_at": statement.excluded.decided_at,
+            },
+        )
+    )
+    return await weights_of(session, ingredient_id)
+
+
+async def clear_grams(
+    session: AsyncSession, ingredient_id: uuid.UUID, unit_id: uuid.UUID | None
+) -> list[Weight]:
+    """L'annullamento: la coppia torna da decidere, e l'AI la riprenderà."""
+    await _food(session, ingredient_id)
+    pair_unit, _, _ = await resolve_pair_unit(session, unit_id)
+    await session.execute(
+        delete(IngredientUnitGrams).where(
+            IngredientUnitGrams.ingredient_id == ingredient_id, _same_unit(pair_unit)
+        )
+    )
+    return await weights_of(session, ingredient_id)
+
+
+async def apply_ai_grams(
+    session: AsyncSession, ingredient_id: uuid.UUID, unit_id: uuid.UUID | None, grams: Decimal | None
+) -> bool:
+    """Il peso dell'AI (o «nessun peso», `None`), solo dove non c'è niente. `True` se l'ha
+    scritto. `unit_id` è già quella della coppia (canonica, o None)."""
+    result = await session.execute(
+        pg_insert(IngredientUnitGrams)
+        .values(
+            id=uuid.uuid4(),
+            ingredient_id=ingredient_id,
+            unit_id=unit_id,
+            grams=grams,
+            decided_by=NutritionDecider.AI,
+        )
+        .on_conflict_do_nothing()
+    )
+    return result.rowcount == 1
