@@ -1982,8 +1982,8 @@ Non è una stima: è la cifra addebitata, e la buttavamo via da mesi leggendo so
 un modello giù è spesa sprecata, ed è il giro che paga e non conclude che una torta
 delle spese esiste per scoprire.
 
-`call_site` è oggi `TERM_DECISION`, `TERM_COLLAPSE`, `RECIPE_DRAFT` e — dal 2026-09-20,
-con D1 — `UNIT_FORMS` e — dal 2026-10-19, con R8 — `RECIPE_VARIANT`. Ogni punto di
+`call_site` è oggi `TERM_DECISION`, `TERM_COLLAPSE`, `RECIPE_DRAFT`, `UNIT_FORMS` (dal
+2026-09-20, con D1) e `RECIPE_VARIANT` (dal 2026-10-19, con R8). Ogni punto di
 chiamata nuovo ne aggiunge uno: `complete_json` lo pretende come argomento
 obbligatorio, e `tests/test_llm_spend_is_recorded.py` legge i sorgenti e fallisce se un
 modulo chiama l'LLM senza registrare. Serve perché la dimenticanza qui non rompe

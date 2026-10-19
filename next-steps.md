@@ -114,6 +114,9 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · Le spese dell'AI (H1) danno un nome a ogni sezione: `recipe_variant` (R8) e `ingredient_emoji` (S12) sono nate su rami a parte; il ramo `night/h1-spese-ai` li nomina già tutti e due in `CALL_SITE_LABELS` («Varianti con l'AI», «Figure della dispensa»): al merge controllare solo che restino [R8, H1]
 - [idea] P3 · Dal modulo della variante non si ripropone: per una richiesta diversa si torna all'originale e si riapre il pannello [R8]
 - [idea] P3 · Correggere la foto e i tempi di una ricetta: il modulo non li ha (R10 §7), e una variante li copia dall'originale (deciso da Mattia il 2026-10-13), quindi una variante «senza forno» tiene i minuti di cottura della torta finché non c'è un modo di cambiarli [R8, R10]
+- [idea] P3 · Una variante perde le note delle righe che tiene («al dente», «tritato»): la domanda all'AI non le manda e lo schema della bozza non ha un campo per la nota; da decidere se mandarle e farle tornare, ora che le dosi dell'import spostano parole nella nota [R8]
+- [idea] P3 · `recipes.derived_from_id` non ha indice: con `ON DELETE SET NULL` ogni ricetta cancellata (l'annullamento di una decisione dell'import, `drop_seed_recipes`) fa una scansione di `recipes`, più la ricerca delle varianti nell'annullamento. Oggi è niente; con un ricettario di migliaia di ricette e un annullamento che ne rimette in coda centinaia diventano secondi: allora un indice [R8]
+- [idea] P3 · `CLAUDE.md` dice cosa l'annullamento tiene nel `payload` della pagina (`cooking_event_ids`) e non nomina `variant_recipe_ids` di R8: aggiungerlo al merge [R8]
 
 ## Bloccati
 - [bloccato] P3 · R6, cucinabili con sostituti — attende: R5
