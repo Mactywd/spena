@@ -164,6 +164,7 @@ function RecipeDetailView({ id }: { id: string }) {
     data: pantry,
     isLoading: isPantryLoading,
     isError: isPantryError,
+    isFetching: isPantryFetching,
     refetch: refetchPantry,
   } = useQuery({ queryKey: ["pantry"], queryFn: fetchPantry });
 
@@ -181,12 +182,21 @@ function RecipeDetailView({ id }: { id: string }) {
   // l'esito lo dice l'avviso unico, che il fuoco non lo prende. Un `ref` e non uno
   // stato: è un'intenzione per il prossimo disegno, non qualcosa da disegnare.
   const cookRef = useRef<HTMLButtonElement>(null);
+  const retryPantryRef = useRef<HTMLButtonElement>(null);
   const refocusCook = useRef(false);
+  // Se la dispensa non si ricarica, al posto di «Cucina» c'è l'avviso con «Riprova», e il
+  // fuoco va lì — anche se l'errore arriva dopo, a fuoco già tornato su «Cucina», che
+  // sparendo lo lascia sul `body` (T3 Consegna 5). L'intenzione resta finché la rilettura
+  // della dispensa non è finita. Solo se il fuoco è caduto sulla pagina: chi nel frattempo
+  // ha toccato altro se lo tiene.
   useEffect(() => {
     if (sheetOpen || !refocusCook.current) return;
-    refocusCook.current = false;
-    cookRef.current?.focus();
-  }, [sheetOpen]);
+    const active = document.activeElement;
+    if (active === null || active === document.body) {
+      (isPantryError ? retryPantryRef.current : cookRef.current)?.focus();
+    }
+    if (!isPantryFetching) refocusCook.current = false;
+  }, [sheetOpen, isPantryError, isPantryFetching]);
 
   if (isRecipeLoading) return <p className="p-4 text-ink-soft">Carico…</p>;
 
@@ -398,13 +408,11 @@ function RecipeDetailView({ id }: { id: string }) {
                 <Alert>
                   Non sono riuscito a caricare la dispensa: non posso avviare la cottura.
                 </Alert>
-                <button
-                  type="button"
-                  onClick={() => void refetchPantry()}
-                  className={buttonClasses("secondary")}
-                >
+                {/* `busy` mentre rilegge: il fuoco, che può essere arrivato qui dopo
+                    «Ho cucinato», resta qui */}
+                <Button ref={retryPantryRef} busy={isPantryFetching} onClick={() => void refetchPantry()}>
                   Riprova
-                </button>
+                </Button>
               </div>
             ) : (
               <Button

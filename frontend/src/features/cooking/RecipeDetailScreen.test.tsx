@@ -594,6 +594,42 @@ describe("il foglio e l'esito si fanno vedere (T4)", () => {
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "Cucina" })).toHaveFocus());
   });
 
+  it("se dopo «Ho cucinato» la dispensa non si ricarica, il fuoco va su «Riprova» al posto di «Cucina»", async () => {
+    // «Cucina» lascia il posto all'avviso, e il fuoco cadeva sulla pagina (T3 Consegna 5)
+    let letture = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) => {
+        const path = String(url);
+        if (path.includes("/cook")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ event_id: "e1", updated: 1, restocked: 1 }), { status: 201 })
+          );
+        }
+        if (path.includes("/pantry")) {
+          letture += 1;
+          // la prima lettura apre il foglio; quella dopo la cottura fallisce
+          return Promise.resolve(
+            letture === 1
+              ? new Response(JSON.stringify(PANTRY), { status: 200 })
+              : new Response("", { status: 500 })
+          );
+        }
+        return Promise.resolve(new Response(JSON.stringify(DETAIL), { status: 200 }));
+      })
+    );
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
+    const row = (await screen.findByText("Pelati")).closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+
+    const riprova = await screen.findByRole("button", { name: "Riprova" });
+    await vi.waitFor(() => expect(riprova).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "Cucina" })).toBeNull();
+  });
+
   it("annullare il foglio non inventa un esito, e riporta il fuoco su «Cucina»", async () => {
     stubCookServer();
     renderScreen();
