@@ -410,7 +410,18 @@ function RecipeDetailView({ id }: { id: string }) {
                 </Alert>
                 {/* `busy` mentre rilegge: il fuoco, che può essere arrivato qui dopo
                     «Ho cucinato», resta qui */}
-                <Button ref={retryPantryRef} busy={isPantryFetching} onClick={() => void refetchPantry()}>
+                <Button
+                  ref={retryPantryRef}
+                  busy={isPantryFetching}
+                  onClick={() => {
+                    // Se la rilettura riesce «Riprova» sparisce e il fuoco cadrebbe sulla
+                    // pagina: l'intenzione si riarma, e l'effetto lo porta su «Cucina» (o
+                    // di nuovo su «Riprova» se fallisce ancora) — sempre e solo se è
+                    // caduto sulla pagina.
+                    refocusCook.current = true;
+                    void refetchPantry();
+                  }}
+                >
                   Riprova
                 </Button>
               </div>
