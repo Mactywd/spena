@@ -1094,4 +1094,71 @@ describe("PantryScreen, i reparti che si chiudono (S15)", () => {
     expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
   });
+
+  it("la voce aggiunta in un reparto chiuso lo apre prima di portarla in vista, e lo salva aperto", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    const created = { ...ITEMS[2], id: "p9" };
+    let added = false;
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") {
+        added = true;
+        return [created, 201];
+      }
+      return [added ? [...ITEMS, created] : ITEMS, 200];
+    });
+    // per ogni chiamata, se la riga portata in vista stava dentro un contenuto chiuso:
+    // `this` è l'elemento. Uno spy e non un'assegnazione (vedi il test dell'aggiunta)
+    const dentroUnChiuso: boolean[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      dentroUnChiuso.push(this.closest("[hidden]") !== null);
+    });
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+
+    // --- l'aggiunta (il flusso di S3: il + della barra, la scelta, la scheda di conferma) ---
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+    // --- fine dell'aggiunta ---
+
+    await waitFor(() => expect(dentroUnChiuso).toHaveLength(1));
+    // la riga era a video quando ci si è andati: il reparto si era già aperto
+    expect(dentroUnChiuso).toEqual([false]);
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(chiusiSalvati()).toEqual([]);
+  });
+
+  it("il mondo scelto (S14) non apre e non chiude i reparti: nasconde quelli dell'altro mondo", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    const detersivo = {
+      ...ITEMS[2],
+      id: "p8",
+      ingredient_id: "i8",
+      ingredient_name: "detersivo per i piatti",
+      ingredient_category: "casa",
+      ingredient_kind: "non_food",
+      expires_on: null,
+      expiry: null,
+    };
+    const rows = [...ITEMS.map((row) => ({ ...row, ingredient_kind: "food" })), detersivo];
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [rows, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+
+    fireEvent.click(mondo("Casa"));
+    // un reparto del cibo sotto «Casa» non c'è, non è chiuso
+    expect(screen.queryByRole("region", { name: "Frutta" })).toBeNull();
+    expect(reparto("Casa")).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(mondo("Cibo"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(mondo("Tutto"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(chiusiSalvati()).toEqual(["frutta"]);
+  });
 });

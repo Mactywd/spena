@@ -190,13 +190,18 @@ export function PantryScreen() {
   /** Una confezione è entrata, da una delle due porte. La riga nuova deve potersi
    * vedere: la barra torna vuota, il riepilogo si spegne, e `revealId` la porta in
    * vista quando arriva nell'elenco. Il mondo (S14) non si rimette qui: se la voce è
-   * dell'altro mondo ci pensa `settleWorld` nel disegno, guardando `revealId`. Un
-   * filtro nuovo (S15) deciderà da sé come farsi da parte. */
+   * dell'altro mondo ci pensa `settleWorld` nel disegno, guardando `revealId`. Il
+   * reparto della voce, se è chiuso, si apre (S15). */
   function afterEntry(created: PantryItem, label: string) {
     invalidate();
     setQuery("");
     setExpiringOnly(false);
     setRevealId(created.id);
+    // S15: la voce entra in un reparto forse chiuso. Si apre adesso, insieme a `revealId`, e
+    // si salva aperto (l'utente ha appena messo lì qualcosa): `PantryRow` la porta in vista
+    // nel suo effetto, che React esegue prima di quelli di questo schermo, quindi quando la
+    // riga arriva il suo reparto deve essere già aperto
+    sections.setOpen(created.ingredient_category, true);
     notice({
       text: `In dispensa: ${label}`,
       action: { label: "Annulla", onClick: () => undoEntry(created, label) },
