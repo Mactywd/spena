@@ -17,6 +17,7 @@ import {
   undoTerm,
 } from "./api";
 import { DecidedTermRow } from "./DecidedTermRow";
+import { SkippedPages } from "./SkippedPages";
 import { TermCard, type Decision } from "./TermCard";
 
 /** Il messaggio da mostrare quando una decisione fallisce.
@@ -448,6 +449,10 @@ export function ImportQueueScreen() {
           </ul>
         </section>
       )}
+      {/* le pagine scartate, chiuse di partenza (spec 2026-10-09-scartate-in-coda): in
+          fondo, perché la coda resta la cosa da fare; il numero è quello che lo stato porta
+          già, e senza scartate la sezione non c'è */}
+      <SkippedPages count={status?.skipped ?? 0} />
     </Screen>
   );
 }

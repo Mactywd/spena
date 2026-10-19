@@ -69,6 +69,29 @@ async def pending_pages(session: AsyncSession, source: str) -> list[RecipeImport
     return list(rows.scalars())
 
 
+async def skipped_pages(
+    session: AsyncSession, source: str, *, limit: int, offset: int
+) -> tuple[int, list[RecipeImport]]:
+    """Le pagine scartate, dalla scaricata per ultima, col loro totale.
+
+    A parità di `fetched_at` (una transazione sola scrive lo stesso istante) decide
+    l'indirizzo: senza un secondo ordine stabile, `offset` potrebbe mostrare due volte
+    la stessa pagina e mai un'altra.
+    """
+    where = (RecipeImport.source == source, RecipeImport.state == ImportState.SKIPPED)
+    total = (
+        await session.execute(select(func.count()).select_from(RecipeImport).where(*where))
+    ).scalar_one()
+    rows = await session.execute(
+        select(RecipeImport)
+        .where(*where)
+        .order_by(RecipeImport.fetched_at.desc(), RecipeImport.url)
+        .limit(limit)
+        .offset(offset)
+    )
+    return total, list(rows.scalars())
+
+
 async def counts(session: AsyncSession, source: str) -> ImportCounts:
     by_state = dict(
         (
@@ -155,6 +178,10 @@ async def terms_by_key(session: AsyncSession, source: str) -> dict[str, ImportTe
 
 async def get_term(session: AsyncSession, term_id: uuid.UUID) -> ImportTerm | None:
     return await session.get(ImportTerm, term_id)
+
+
+async def get_page(session: AsyncSession, page_id: uuid.UUID) -> RecipeImport | None:
+    return await session.get(RecipeImport, page_id)
 
 
 async def waiting_titles(

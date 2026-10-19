@@ -10,6 +10,7 @@ sblocca.
 
 import uuid
 from dataclasses import dataclass
+from enum import StrEnum
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +34,52 @@ EMPTY_REASON = (
     "ogni ingrediente è stato ignorato: la ricetta resterebbe senza righe, "
     "e una ricetta senza ingredienti risulterebbe sempre cucinabile"
 )
+
+# L'inizio del motivo di una pagina scartata per una riga non alimentare. Lo scrive
+# `materialize_ready` e lo rilegge `explain_skip`: una costante sola, perché la stringa
+# scritta e quella letta non possano scollarsi.
+NON_FOOD_PREFIX = "riga non alimentare: "
+
+
+class SkipCause(StrEnum):
+    """Perché una pagina è scartata, in un codice. Le parole le scrive la schermata."""
+
+    # scartata allo scarico (`store_unparsable`): niente righe da materializzare
+    UNREADABLE = "unreadable"
+    # ogni riga ignorata: resterebbe una ricetta senza ingredienti (`EMPTY_REASON`)
+    ALL_IGNORED = "all_ignored"
+    # `create_recipe` ha rifiutato una riga non alimentare (`NON_FOOD_PREFIX`)
+    NON_FOOD = "non_food"
+    # un motivo che questa versione non scrive più: le righe ci sono, si può riprovare
+    OTHER = "other"
+
+
+@dataclass(frozen=True)
+class SkipExplained:
+    cause: SkipCause
+    # la voce non alimentare com'era scritta allo scarto; None per le altre cause, o se il
+    # taglio a 200 caratteri del motivo non ne ha lasciato niente
+    non_food_name: str | None
+    # se rimetterla in coda può cambiare qualcosa
+    requeueable: bool
+
+
+def explain_skip(payload: dict, reason: str | None) -> SkipExplained:
+    """Perché questa pagina è scartata, da quel che conserva (spec 2026-10-09 §3.1).
+
+    Le righe prima del motivo: una pagina illeggibile ha il `payload` vuoto qualunque
+    cosa dica il suo motivo, e rimessa in coda tornerebbe scartata subito — con
+    `EMPTY_REASON`, che per lei sarebbe falso. Per questo non si rimette.
+    """
+    if not payload.get("ingredients"):
+        return SkipExplained(SkipCause.UNREADABLE, None, requeueable=False)
+    if reason == EMPTY_REASON[:200]:
+        return SkipExplained(SkipCause.ALL_IGNORED, None, requeueable=True)
+    if reason is not None and reason.startswith(NON_FOOD_PREFIX):
+        name = reason[len(NON_FOOD_PREFIX):].strip().removeprefix("«").removesuffix("»").strip()
+        return SkipExplained(SkipCause.NON_FOOD, name or None, requeueable=True)
+    return SkipExplained(SkipCause.OTHER, None, requeueable=True)
+
 
 # La chiave del `payload` dove `undo_decision` lascia gli id delle cotture della ricetta
 # che ha cancellato. La ricetta rifatta da questa pagina le riprende (S9 §5.2).
@@ -211,7 +258,7 @@ async def materialize_ready(
             # pagina resta visibile e recuperabile: SKIPPED col nome della voce
             # incriminata, non un buco silenzioso.
             page.state = ImportState.SKIPPED
-            page.skipped_reason = f"riga non alimentare: «{exc.display_name}»"[:200]
+            page.skipped_reason = f"{NON_FOOD_PREFIX}«{exc.display_name}»"[:200]
             skipped += 1
             continue
         recipe.category = (page.payload.get("category") or None) and str(page.payload["category"])[:60]

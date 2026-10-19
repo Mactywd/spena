@@ -4051,3 +4051,73 @@ test("la nota di una riga della ricetta si legge nei due temi", async ({ page })
     expect.soft(tolta.ok(), `pulizia: la ricetta ${id} non si è eliminata`).toBe(true);
   }
 });
+
+test("le pagine scartate della coda d'import: bersagli da pollice, niente di lato a 375px, leggibili nei due temi", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // L'elenco finto: il seme non ha pagine scartate, e qui si misura solo come si vedono.
+  // Un indirizzo lungo senza titolo e un titolo lungo con le cotture che aspettano: i due
+  // casi che a 375px potrebbero spingere la pagina di lato
+  await page.route("**/api/v1/imports/**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/imports/pages/skipped"))
+      return route.fulfill({
+        json: {
+          total: 2,
+          pages: [
+            {
+              id: "e2e-vuota",
+              url: "https://e2e.invalid/scartate/una-pagina-senza-ricetta-con-un-indirizzo-molto-lungo.html",
+              title: null,
+              cause: "unreadable",
+              non_food_name: null,
+              requeueable: false,
+              waiting_cooking_events: 0,
+            },
+            {
+              id: "e2e-torta",
+              url: "https://e2e.invalid/scartate/torta.html",
+              title: "Torta della nonna con crema pasticcera, pinoli tostati e scorza di limone",
+              cause: "non_food",
+              non_food_name: "Carta forno",
+              requeueable: true,
+              waiting_cooking_events: 2,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith("/imports/terms")) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/imports/status"))
+      return route.fulfill({
+        json: { fetched: 2, pending_recipes: 0, imported: 0, skipped: 2, pending_terms: 0 },
+      });
+    return route.fallback();
+  });
+  await page.goto("/ricette/importa");
+
+  const titolo = page.getByRole("button", { name: "Scartate (2)", exact: true });
+  await expect(titolo).toBeVisible();
+  expect((await titolo.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await titolo.click();
+
+  for (const bersaglio of [
+    page.getByRole("button", { name: /^Rimetti in coda/ }),
+    page.getByRole("link", { name: /^Apri la pagina/ }),
+  ]) {
+    await bersaglio.scrollIntoViewIfNeeded();
+    await expect(bersaglio).toBeInViewport({ ratio: 1 });
+    expect((await bersaglio.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+  const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+  expect(scrollWidth, "la coda con le scartate scorre di lato").toBeLessThanOrEqual(clientWidth);
+
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `scartate aperte, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+});

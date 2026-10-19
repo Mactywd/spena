@@ -967,3 +967,18 @@ describe("un termine messo a fuoco con ?termine=", () => {
     expect(spy.mock.calls.some(([url]) => /\/imports\/terms\/[^/?]+$/.test(String(url)))).toBe(false);
   });
 });
+
+describe("le pagine scartate", () => {
+  it("con pagine scartate, in fondo alla coda c'è «Scartate (N)», chiusa", async () => {
+    renderQueue({ status: { ...STATO_NORMALE, skipped: 4 } });
+    const titolo = await screen.findByRole("button", { name: "Scartate (4)" });
+    expect(titolo).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("senza pagine scartate la sezione non c'è", async () => {
+    renderQueue();
+    // lo stato è arrivato: la riga che lo racconta c'è
+    await screen.findByText(/19 ricette scaricate aspettano/);
+    expect(screen.queryByRole("button", { name: /^Scartate/ })).toBeNull();
+  });
+});

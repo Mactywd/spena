@@ -2959,6 +2959,11 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   preesistente `EMPTY_REASON` (`backend/app/services/recipe_import/materialize.py`).
   Una pagina `SKIPPED` non si ritenta da sola: chi vuole sapere perché deve
   aprire il database.
+  *(Fatto il 2026-10-18, sul ramo `night/scartate-in-coda`, non ancora in
+  produzione: `GET /api/v1/imports/pages/skipped` elenca le scartate col perché in un
+  codice — `explain_skip` in `materialize.py`, accanto a chi scrive i motivi — e la coda
+  d'import le mostra in «Scartate (N)» con le parole da persona. Spec
+  `docs/superpowers/specs/2026-10-09-scartate-in-coda-design.md`.)*
 - **Una pagina `SKIPPED` non torna mai in coda, nemmeno dopo aver corretto la causa.**
   Nessuna strada dell'app la rimette `pending`: `undo_decision` riprende solo le pagine
   `imported` con la loro ricetta, e né la coda né `fix_registry` né un comando toccano le
@@ -2972,6 +2977,14 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   che comparirà in pagine scaricate domani, non la ferma — rifiutare su qualunque
   termine deciso bloccherebbe quasi ogni ingrediente di base, e per ora si lascia così
   (deciso il 2026-09-28).
+  *(Fatto il 2026-10-18, sul ramo `night/scartate-in-coda`, non ancora in
+  produzione: «Rimetti in coda» nella sezione «Scartate (N)» della coda d'import
+  (`POST /api/v1/imports/pages/{id}/requeue`, `requeue_page` in
+  `services/recipe_import/requeue.py`) rimette la pagina `pending`, riallinea i termini,
+  la materializza subito e dice com'è finita: entrata (con le cotture del `payload`
+  rilegate), di nuovo scartata col motivo, o in attesa dei termini che nomina. Una pagina
+  illeggibile non si rimette: si mostra con «Apri la pagina». Piano
+  `docs/superpowers/plans/2026-10-09-scartate-in-coda.md`.)*
 - ~~**La guardia sugli argomenti sconosciuti di `app.cli.seed` stampa il rifiuto
   ma esce con codice 0.**~~ **Chiusa con R4, il 2026-09-24**: un flag sconosciuto o
   contraddittorio esce con codice 1.
