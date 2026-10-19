@@ -41,6 +41,10 @@ CALL_SITE_LABELS: dict[str, str] = {
     "recipe_draft": "Ricette scritte con l'AI",
     "recipe_variant": "Varianti con l'AI",
     "ingredient_emoji": "Figure della dispensa",
+    "ingredient_substitutes": "Sostituti degli ingredienti",
+    "ciqual_terms": "Cercare gli alimenti CIQUAL",
+    "ciqual_match": "Abbinare gli ingredienti a CIQUAL",
+    "unit_grams": "Pesare le dosi delle ricette",
 }
 
 
