@@ -1030,6 +1030,8 @@ describe("PantryScreen, i reparti che si chiudono (S15)", () => {
     fireEvent.change(barra, { target: { value: "" } });
     expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
     expect(reparto("Latticini")).toHaveAttribute("aria-expanded", "false");
+    // chiuso, senza niente da segnalare: il titolo dice solo il numero (nessun « · » in coda)
+    expect(reparto("Latticini")).toHaveAccessibleName(titolo("Latticini 2"));
     expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
   });
 

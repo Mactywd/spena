@@ -3507,9 +3507,15 @@ test("S15 a 375px: un reparto chiuso dice quante voci ha e cosa chiede attenzion
     await expect(titolo).toHaveAttribute("aria-expanded", "false");
     expect(await chiusiSalvati()).toEqual(["pesce"]);
   } finally {
+    // `expect.soft` e non un'asserzione, e ogni voce nel suo try/catch: una richiesta che
+    // lancia non deve fermare il ciclo né nascondere l'errore vero del `try`
     for (const id of creati) {
-      const tolta = await page.request.patch(`/api/v1/pantry/${id}`, { data: { archived: true } });
-      expect.soft(tolta.ok(), `archiviare la voce ${id}`).toBe(true);
+      try {
+        const tolta = await page.request.patch(`/api/v1/pantry/${id}`, { data: { archived: true } });
+        expect.soft(tolta.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+      } catch (guasto) {
+        expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
+      }
     }
   }
 });

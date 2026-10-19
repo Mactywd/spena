@@ -34,7 +34,7 @@ export function Section({
   children: ReactNode;
 }) {
   const headingId = useId();
-  const contentId = useId();
+  const contentId = `${headingId}-content`;
   const { icon: Icon, tint } = departmentStyle(category);
   const name = title ?? (category ? capitalizeFirst(category) : "Senza reparto");
   const badge = (
