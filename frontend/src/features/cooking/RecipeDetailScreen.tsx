@@ -21,10 +21,14 @@ import {
   IconExternalLink,
   IconPencil,
   IconRestore,
+  IconSparkles,
   IconTrash,
 } from "../../components/ui/icons";
 import { useNotice } from "../../components/ui/noticeContext";
 import { BackLink } from "../../components/BackLink";
+import { OriginLink } from "../ai-variant/OriginLink";
+import { VariantPrompt } from "../ai-variant/VariantPrompt";
+import { VARIANT_PANEL_ID } from "../ai-variant/variantState";
 import { RecipeImage } from "../recipes/RecipeImage";
 import { useArchiveRecipe } from "../recipes/useArchiveRecipe";
 import { revealAtTop } from "../../lib/revealAtTop";
@@ -96,13 +100,26 @@ function IngredientRow({ line }: { line: RecipeIngredientLine }) {
   );
 }
 
+/** `key={id}`: da una variante alla sua originale (R8) la rotta resta la stessa e cambia
+ * solo `:id`. Senza la chiave React terrebbe lo stato della ricetta di prima — le porzioni
+ * scelte, il foglio della cottura o il pannello della variante aperti — e lo applicherebbe
+ * all'altra. */
 export function RecipeDetailScreen() {
   const { id = "" } = useParams();
+  return <RecipeDetailView key={id} id={id} />;
+}
+
+function RecipeDetailView({ id }: { id: string }) {
   const [cooking, setCooking] = useState(false);
 
   // le porzioni chieste: è una vista, non si salva. Uscire dalla ricetta se ne
   // dimentica, ed è quel che vuole chi sta guardando cosa cucinare stasera.
   const [servings, setServings] = useState<number | null>(null);
+
+  // R8: il pannello di «Modifica con AI», e il tasto che lo apre. Chiuso il pannello il
+  // fuoco torna sul tasto: il pannello si smonta col campo che aveva il fuoco.
+  const [variantOpen, setVariantOpen] = useState(false);
+  const variantButtonRef = useRef<HTMLButtonElement>(null);
 
   const queryClient = useQueryClient();
   const notice = useNotice();
@@ -254,6 +271,17 @@ export function RecipeDetailScreen() {
           >
             <IconPencil aria-hidden="true" className="size-5" stroke={1.8} />
           </Link>
+          {/* R8: fra le due azioni rare, perché è una modifica; la scintilla è l'icona di
+              «scrivi con l'AI» (spec T3 §3.3) */}
+          <Button
+            ref={variantButtonRef}
+            variant="ghost"
+            icon={IconSparkles}
+            label="Modifica con AI"
+            aria-expanded={variantOpen}
+            aria-controls={VARIANT_PANEL_ID}
+            onClick={() => setVariantOpen((open) => !open)}
+          />
           <Button
             variant="ghost"
             icon={IconTrash}
@@ -263,6 +291,19 @@ export function RecipeDetailScreen() {
           />
         </IconToolbar>
       </div>
+
+      {/* R8, Mattia: nella variante, sotto il titolo, la ricetta da cui nasce */}
+      {recipe.derived_from && <OriginLink origin={recipe.derived_from} />}
+
+      {variantOpen && (
+        <VariantPrompt
+          recipe={recipe}
+          onClose={() => {
+            setVariantOpen(false);
+            variantButtonRef.current?.focus();
+          }}
+        />
+      )}
 
       {/* categoria e costo da leggere: il costo si cambia da «Modifica» (dal giro, un
           tocco scorrendo sui € lo cambiava) */}

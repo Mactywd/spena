@@ -11,6 +11,7 @@ import { LoginScreen } from "./features/auth/LoginScreen";
 import { RecipeDetailScreen } from "./features/cooking/RecipeDetailScreen";
 import { PantryScreen } from "./features/pantry/PantryScreen";
 import { ImportQueueScreen } from "./features/recipe-import/ImportQueueScreen";
+import { RecipeVariantScreen } from "./features/ai-variant/RecipeVariantScreen";
 import { RecipeEditScreen } from "./features/recipe-form/RecipeEditScreen";
 import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
 import { NotFoundScreen } from "./features/not-found/NotFoundScreen";
@@ -78,6 +79,7 @@ export default function App() {
               <Route path="/ricette/importa" element={<ImportQueueScreen />} />
               <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
               <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
+              <Route path="/ricette/:id/variante" element={<RecipeVariantScreen />} />
               <Route path="/anagrafica" element={<RegistryScreen />} />
               <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
               <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
