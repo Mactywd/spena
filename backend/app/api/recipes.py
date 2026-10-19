@@ -45,7 +45,7 @@ from app.schemas.recipe import (
     RecipeUpdate,
     SearchModeOut,
 )
-from app.services.ai_recipes import draft_recipe
+from app.services.ai_recipes import RecipeDraft, draft_recipe, draft_variant
 from app.services.embeddings import (
     EmbeddingUnavailable,
     get_embedding_provider,
@@ -451,6 +451,16 @@ async def create(
     return await _to_out(session, stored)
 
 
+def _draft_out(draft: RecipeDraft) -> DraftOut:
+    """La bozza come la legge il modulo: la stessa forma per la stesura e per la variante."""
+    return DraftOut(
+        title=draft.title, description=draft.description, instructions=draft.instructions,
+        servings=draft.servings,
+        ingredients=[DraftIngredientOut(**vars(i)) for i in draft.ingredients],
+        cost=draft.cost,
+    )
+
+
 @router.post("/ai-draft", response_model=DraftOut)
 async def ai_draft(
     payload: DraftRequest, session: AsyncSession = Depends(get_session)
@@ -462,9 +472,28 @@ async def ai_draft(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, f"stesura AI non disponibile: {exc}"
         ) from exc
-    return DraftOut(
-        title=draft.title, description=draft.description, instructions=draft.instructions,
-        servings=draft.servings,
-        ingredients=[DraftIngredientOut(**vars(i)) for i in draft.ingredients],
-        cost=draft.cost,
-    )
+    return _draft_out(draft)
+
+
+@router.post("/{recipe_id}/ai-variant", response_model=DraftOut)
+async def ai_variant(
+    recipe_id: uuid.UUID, payload: DraftRequest, session: AsyncSession = Depends(get_session)
+) -> DraftOut:
+    """Propone una variante della ricetta, e non salva niente (R8).
+
+    La variante si salva con `POST /recipes` e `derived_from_id`: una ricetta nuova,
+    mentre questa resta com'è. Un'eliminata risponde come alla modifica (R10): prima
+    si ripristina.
+    """
+    recipe = await get_recipe(session, recipe_id)
+    if recipe is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
+    if recipe.archived_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+    try:
+        draft = await draft_variant(session, recipe, payload.prompt)
+    except LlmUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, f"variante AI non disponibile: {exc}"
+        ) from exc
+    return _draft_out(draft)

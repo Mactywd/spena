@@ -8,12 +8,15 @@ servizio vero, con i finti dell'LLM, lo prova `tests/services/test_ai_recipes.py
 import uuid
 
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe import Recipe, RecipeSource
 from app.db.models.recipe_import import RecipeImport
+from app.domain.rules import IngredientRole
 from app.repositories.recipes import create_recipe
+from app.services.ai_recipes import DraftIngredient, RecipeDraft
+from app.services.llm import LlmUnavailable
 
 TITOLO_VARIANTE = "Pasta al pomodoro senza basilico"
 
@@ -191,3 +194,96 @@ async def test_una_variante_non_puo_avere_un_non_alimentare(logged_client, db_se
         await db_session.execute(select(Recipe.id).where(Recipe.title == TITOLO_VARIANTE))
     ).scalars().all()
     assert salvate == []
+
+
+# ---- la proposta: POST /recipes/{id}/ai-variant ----
+
+
+def proposta() -> RecipeDraft:
+    return RecipeDraft(
+        title=TITOLO_VARIANTE, description=None, instructions="Cuoci. Condisci.",
+        servings=2, cost=1,
+        ingredients=[
+            DraftIngredient(
+                raw_name="zucchero", role=IngredientRole.SECONDARY, quantity_text="1 pizzico",
+                ingredient_id=None, matched_name=None, confident=False, proposed_category="dolci",
+            )
+        ],
+    )
+
+
+async def test_la_proposta_passa_dal_servizio_e_non_salva_niente(
+    logged_client, db_session, monkeypatch, originale
+):
+    import app.api.recipes as rotte
+
+    chiamate = []
+
+    async def variante_finta(_session, recipe, prompt):
+        chiamate.append((recipe.id, recipe.title, len(recipe.ingredients), prompt))
+        return proposta()
+
+    monkeypatch.setattr(rotte, "draft_variant", variante_finta)
+    risposta = await logged_client.post(
+        f"/api/v1/recipes/{originale.id}/ai-variant", json={"prompt": "senza basilico"}
+    )
+
+    assert risposta.status_code == 200
+    # il servizio riceve la ricetta con le sue righe, e la richiesta com'è
+    assert chiamate == [(originale.id, "Pasta al pomodoro", 3, "senza basilico")]
+    corpo = risposta.json()
+    assert corpo["title"] == TITOLO_VARIANTE
+    assert corpo["cost"] == 1
+    assert corpo["ingredients"][0]["raw_name"] == "zucchero"
+    assert corpo["ingredients"][0]["proposed_category"] == "dolci"
+    # propone e non salva: nel ricettario c'è sempre e solo l'originale
+    assert await db_session.scalar(select(func.count()).select_from(Recipe)) == 1
+
+
+async def test_la_proposta_di_una_ricetta_che_non_c_e_e_un_404(logged_client):
+    risposta = await logged_client.post(
+        f"/api/v1/recipes/{uuid.uuid4()}/ai-variant", json={"prompt": "senza basilico"}
+    )
+    assert risposta.status_code == 404
+
+
+async def test_una_ricetta_eliminata_non_propone_varianti(logged_client, monkeypatch, originale):
+    """R10: un'eliminata si ripristina prima di modificarla, e la variante è una modifica."""
+    import app.api.recipes as rotte
+
+    async def mai(*_args):
+        raise AssertionError("l'AI non si chiama per una ricetta eliminata")
+
+    monkeypatch.setattr(rotte, "draft_variant", mai)
+    await logged_client.patch(f"/api/v1/recipes/{originale.id}", json={"archived": True})
+
+    risposta = await logged_client.post(
+        f"/api/v1/recipes/{originale.id}/ai-variant", json={"prompt": "senza basilico"}
+    )
+
+    assert risposta.status_code == 409
+    assert risposta.json()["detail"] == (
+        "Questa ricetta è stata eliminata: ripristinala prima di modificarla."
+    )
+
+
+async def test_l_ai_che_non_risponde_e_un_503(logged_client, monkeypatch, originale):
+    import app.api.recipes as rotte
+
+    async def giu(*_args):
+        raise LlmUnavailable("OPENROUTER_API_KEY non configurata")
+
+    monkeypatch.setattr(rotte, "draft_variant", giu)
+    risposta = await logged_client.post(
+        f"/api/v1/recipes/{originale.id}/ai-variant", json={"prompt": "senza basilico"}
+    )
+
+    assert risposta.status_code == 503
+    assert risposta.json()["detail"].startswith("variante AI non disponibile")
+
+
+async def test_la_proposta_senza_sessione_e_rifiutata(client, originale):
+    risposta = await client.post(
+        f"/api/v1/recipes/{originale.id}/ai-variant", json={"prompt": "senza basilico"}
+    )
+    assert risposta.status_code == 401
