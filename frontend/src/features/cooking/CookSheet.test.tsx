@@ -169,8 +169,12 @@ describe("CookSheet", () => {
     const pesca = screen.getByText("Pesca").closest("li")!;
     expect(within(yogurt).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-checked", "true");
     expect(within(pesca).getByRole("radio", { name: "Quasi finito" })).toHaveAttribute("aria-checked", "true");
-    // e nessuna domanda sul rientro finché non si tocca niente
-    expect(screen.queryByRole("checkbox")).toBeNull();
+    // la domanda del rientro c'è dove la confezione resta gialla o rossa, anche senza
+    // toccare niente: sulle due quasi finite, vuota (Mattia, 2026-10-09); sulle
+    // disponibili no
+    expect(within(yogurt).queryByRole("checkbox")).toBeNull();
+    expect(within(pesca).getByRole("checkbox", { name: /Rimetti in lista/ })).not.toBeChecked();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
 
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
     expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
@@ -427,5 +431,88 @@ describe("CookSheet", () => {
 
     const body = JSON.parse(spy.mock.calls[0][1].body);
     expect(body.transitions[0].restock).toBe(false);
+  });
+
+  // --- «Rimetti in lista» anche per quasi finito (decisione di Mattia del 2026-10-09) ---
+
+  it("una confezione già quasi finita si rimette in lista senza toccarne lo stato", async () => {
+    // Dalla Consegna 5 toccare lo stato di partenza vuol dire «invariato», e una
+    // confezione gialla non si poteva più rimettere in lista da qui. Ora la casella c'è,
+    // e spuntata parte come transizione allo stesso stato: il backend non tocca la voce
+    // e la rimette in lista col motivo del giallo
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 1 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    const box = within(row).getByRole("checkbox", { name: /Rimetti in lista/ });
+    expect(box).not.toBeChecked();
+    await userEvent.click(box);
+    expect(box).toBeChecked();
+    // le tacche restano dove partono: lo stato non si tocca
+    expect(within(row).getByRole("radio", { name: "Quasi finito" })).toHaveAttribute("aria-checked", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([
+      { pantry_item_id: "p3", to_status: "low", restock: true },
+    ]);
+  });
+
+  it("spuntata e poi tolta, una quasi finita invariata non manda niente", async () => {
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    const box = within(row).getByRole("checkbox", { name: /Rimetti in lista/ });
+    await userEvent.click(box);
+    await userEvent.click(box);
+    expect(box).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
+  });
+
+  it("da quasi finito a finito la casella si spunta; tornando a quasi finito resta, vuota", async () => {
+    // tornare allo stato di partenza annulla la scelta, spunta compresa: la casella resta
+    // perché la confezione è ancora gialla, ma vuota come all'inizio
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
+
+    await userEvent.click(within(row).getByRole("radio", { name: "Quasi finito" }));
+    expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
+  });
+
+  it("una spunta su una confezione che intanto è tornata disponibile non si manda", async () => {
+    // la dispensa è una prop viva: se la confezione cambia altrove a foglio aperto e non è
+    // più gialla, la casella sparisce, e una spunta che nessuno vede non rientra in lista
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    const { show } = renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    await userEvent.click(within(row).getByRole("checkbox", { name: /Rimetti in lista/ }));
+
+    show(PANTRY.map((item) => (item.id === "p3" ? { ...item, status: "available" as const } : item)));
+    expect(within(screen.getByText("Pesca").closest("li")!).queryByRole("checkbox")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
   });
 });
