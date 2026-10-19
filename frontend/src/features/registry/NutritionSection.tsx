@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { CiqualPicker } from "./CiqualPicker";
+import { UnitWeights } from "./UnitWeights";
 import { decidedText, fetchNutrition, forgetFood, nutritionKey, type IngredientNutrition } from "./nutrition";
 
 /** «Valori nutrizionali» nella scheda di un alimento in Anagrafica (S4, fetta 1).
@@ -26,6 +27,8 @@ export function NutritionSection({ ingredientId }: { ingredientId: string }) {
     onSuccess: (next) => {
       queryClient.setQueryData(nutritionKey(ingredientId), next);
       setNote("Scelta annullata: l'AI lo abbinerà al prossimo giro.");
+      // un alimento tolto cambia il conto delle ricette
+      void queryClient.invalidateQueries({ queryKey: ["recipe-nutrition"] });
     },
   });
 
@@ -69,6 +72,7 @@ export function NutritionSection({ ingredientId }: { ingredientId: string }) {
   }
 
   return (
+    <>
     <section>
       <SectionHeading>Valori nutrizionali</SectionHeading>
       <Card className="flex flex-col gap-3">
@@ -79,6 +83,12 @@ export function NutritionSection({ ingredientId }: { ingredientId: string }) {
         </p>
       </Card>
     </section>
+    {/* S4 fetta 2: i pesi delle dosi, sotto i valori; per un alimento, anche senza un
+        alimento CIQUAL scelto (un peso serve lo stesso) */}
+    {data && (data.state === "undecided" || data.state === "none" || data.state === "food") && (
+      <UnitWeights ingredientId={ingredientId} weights={data.weights ?? []} />
+    )}
+    </>
   );
 }
 

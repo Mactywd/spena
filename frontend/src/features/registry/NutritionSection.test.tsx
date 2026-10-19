@@ -11,7 +11,7 @@ import type { IngredientDetail } from "../../domain/types";
 
 const CITAZIONE = "Anses. 2025. Table de composition nutritionnelle des aliments Ciqual";
 const DA_DECIDERE: IngredientNutrition = {
-  state: "undecided", decided_by: null, food: null, nutrients: [], source: "CIQUAL 2025", citation: CITAZIONE,
+  state: "undecided", decided_by: null, food: null, nutrients: [], weights: [], source: "CIQUAL 2025", citation: CITAZIONE,
 };
 const TROVATI: CiqualFood[] = [
   { code: "90001", name_fr: "Tomate, crue", group_fr: "légumes" },
@@ -27,6 +27,7 @@ const POMODORO: IngredientNutrition = {
     { key: "fiber", label: "Fibre", unit: "g", main: true, value: null },
     { key: "vitamin_c", label: "Vitamina C", unit: "mg", main: false, value: 14 },
   ],
+  weights: [],
   source: "CIQUAL 2025",
   citation: CITAZIONE,
 };
