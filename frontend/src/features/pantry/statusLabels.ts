@@ -34,3 +34,17 @@ export const STATUS_TONE: Record<PantryStatus, StatusTone> = {
   low: { fill: "bg-low text-on-low", tint: "bg-low-tint text-low" },
   finished: { fill: "bg-finished text-on-finished", tint: "bg-finished-tint text-finished" },
 };
+
+/** I due stati per cui l'app chiede «la rimetto in lista?». */
+export type RestockStatus = Extract<PantryStatus, "low" | "finished">;
+
+/** Dove l'app offre di rimettere in lista una confezione: in Dispensa («In lista») e nel
+ * foglio della cottura («Rimetti in lista della spesa»), per lo stesso insieme di stati.
+ * Una regola sola per le due sezioni (decisione di Mattia del 2026-10-09, «anche quasi
+ * finito, ovunque»): prima la Dispensa faceva la domanda solo sul rosso e il foglio anche
+ * sul giallo, e rispondevano in modo diverso alla stessa domanda. Sta qui, accanto alle
+ * parole e ai colori degli stati, e non accanto a un componente: un export che non è un
+ * componente romperebbe il fast refresh. */
+export function offersRestock(status: PantryStatus): status is RestockStatus {
+  return status === "low" || status === "finished";
+}

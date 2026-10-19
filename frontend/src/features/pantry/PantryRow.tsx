@@ -4,9 +4,10 @@ import { Alert } from "../../components/ui/Alert";
 import { IngredientFigure } from "../../components/IngredientFigure";
 import { Button } from "../../components/ui/Button";
 import { StockGauge } from "../../components/ui/StockGauge";
-import { IconListCheck, IconShoppingCartPlus, IconX } from "../../components/ui/icons";
+import { IconX } from "../../components/ui/icons";
 import { EXPIRY_INPUT_MAX, expiryText } from "./expiryLabels";
 import { itemLabel } from "./pantryView";
+import { RestockLine } from "./RestockLine";
 import { ingredientPath, productPath } from "../registry/origin";
 import { revealAtTop } from "../../lib/revealAtTop";
 import { capitalizeFirst } from "../../lib/text";
@@ -26,8 +27,9 @@ const EXPIRY_TONE_TEXT = {
 } as const;
 
 /** Una riga della dispensa (spec T3 §4.1): l'ingrediente, sotto il prodotto, a
- * destra le tacche e la ✕; sotto ancora, su una riga sua, la scadenza. Il nome è l'ingrediente e non il prodotto
- * (dal giro): così un aggancio sbagliato, il parmigiano sotto «burro», si vede proprio
+ * destra le tacche e la ✕; sotto ancora, su una riga sua, la scadenza. Sotto ancora, per una
+ * voce gialla o rossa, il rientro in lista (`RestockLine`). Il nome è l'ingrediente e non il
+ * prodotto (dal giro): così un aggancio sbagliato, il parmigiano sotto «burro», si vede proprio
  * qui, dove si corregge (S9). */
 export function PantryRow({
   item,
@@ -206,23 +208,9 @@ export function PantryRow({
           </button>
         )}
       </div>
-      {item.status === "finished" && (
-        // «Lo rimetto in lista? Sì / No» aveva bersagli da 35px e non tornava più se
-        // ignorato: ora è un pulsante che resta finché serve, e ignorarlo è il «No»
-        <div className="flex items-center justify-between gap-2 pb-2">
-          <span className="text-sm font-medium text-finished">Finito</span>
-          {listed ? (
-            <span className="flex items-center gap-1 text-sm text-ink-soft">
-              <IconListCheck aria-hidden="true" className="size-4" stroke={1.8} />
-              Già in lista
-            </span>
-          ) : (
-            <Button icon={IconShoppingCartPlus} onClick={onRestock} busy={busy}>
-              In lista
-            </Button>
-          )}
-        </div>
-      )}
+      {/* sotto una voce gialla o rossa, «In lista» (Mattia, 2026-10-09: «anche quasi
+          finito, ovunque»); su una disponibile non c'è niente */}
+      <RestockLine status={item.status} listed={listed} busy={busy} onRestock={onRestock} />
       {failed && <Alert className="pb-2">Non sono riuscito a salvare la modifica. Riprova.</Alert>}
     </li>
   );

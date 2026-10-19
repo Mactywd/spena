@@ -580,6 +580,23 @@ describe("PantryScreen", () => {
     expect(await screen.findByText("Era già in lista.")).toBeDefined();
   });
 
+  it("«In lista» su una voce quasi finita la rimette in lista, e lo stato resta quello (Mattia, 2026-10-09)", async () => {
+    const low = [{ ...ITEMS[1], status: "low" }];
+    const fetchSpy = stubRoutedFetch((path) =>
+      path.includes("/restock") ? [{ added: true }, 200] : path.includes("/shopping-list") ? [[], 200] : [low, 200]
+    );
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
+    expect(await screen.findByText(`Rimesso in lista: ${ITEMS[1].ingredient_name}`)).toBeDefined();
+    expect(
+      fetchSpy.mock.calls.some(
+        ([url, init]) => String(url).includes(`/pantry/${ITEMS[1].id}/restock`) && init?.method === "POST"
+      )
+    ).toBe(true);
+    // il rientro scrive solo in lista: nessuno stato parte, la voce resta gialla
+    expect(fetchSpy.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
+
   it("una voce finita che ha già una voce aperta in lista non offre «In lista»", async () => {
     const finished = [{ ...ITEMS[2], status: "finished" }];
     const list = [{ id: "s1", raw_text: "mela", ingredient_id: "i2", ingredient_name: "mela",

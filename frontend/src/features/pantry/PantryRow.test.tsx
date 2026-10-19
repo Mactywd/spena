@@ -118,9 +118,16 @@ describe("PantryRow", () => {
     expect(screen.getByText("Già in lista")).toBeDefined();
   });
 
-  it("una voce non finita non offre «In lista»", () => {
-    renderRow({ status: "low" });
+  it("una voce disponibile non offre «In lista»", () => {
+    renderRow({ status: "available" });
     expect(screen.queryByRole("button", { name: "In lista" })).toBeNull();
+  });
+
+  it("una voce quasi finita dice «Quasi finito» e offre «In lista» (Mattia, 2026-10-09)", () => {
+    const { onRestock } = renderRow({ status: "low" });
+    expect(screen.getByText("Quasi finito")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "In lista" }));
+    expect(onRestock).toHaveBeenCalled();
   });
 
   it("la ✕ è di sola icona e nomina la voce", () => {
