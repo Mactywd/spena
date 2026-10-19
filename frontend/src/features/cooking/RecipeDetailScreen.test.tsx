@@ -649,7 +649,7 @@ describe("il foglio e l'esito si fanno vedere (T4)", () => {
 
   it("se «Riprova» riesce, il fuoco torna su «Cucina»", async () => {
     // riuscita la rilettura «Riprova» sparisce: senza questo il fuoco cadeva sulla pagina
-    let letture = 0;
+    let guasto = false;
     vi.stubGlobal(
       "fetch",
       vi.fn((url: unknown) => {
@@ -660,10 +660,10 @@ describe("il foglio e l'esito si fanno vedere (T4)", () => {
           );
         }
         if (path.includes("/pantry")) {
-          letture += 1;
-          // la prima lettura apre il foglio; quella dopo la cottura fallisce; la terza riesce
+          // la lettura che apre il foglio riesce; quella dopo la cottura fallisce, con tutti
+          // i tentativi del client dell'app; quella di «Riprova» riesce
           return Promise.resolve(
-            letture === 2
+            guasto
               ? new Response("", { status: 500 })
               : new Response(JSON.stringify(PANTRY), { status: 200 })
           );
@@ -676,10 +676,12 @@ describe("il foglio e l'esito si fanno vedere (T4)", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
     const row = (await screen.findByText("Pelati")).closest("li")!;
     await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    guasto = true;
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
 
     const riprova = await screen.findByRole("button", { name: "Riprova" });
     await vi.waitFor(() => expect(riprova).toHaveFocus());
+    guasto = false;
     await userEvent.keyboard("{Enter}");
 
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "Cucina" })).toHaveFocus());
