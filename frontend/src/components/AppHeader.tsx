@@ -4,13 +4,16 @@ import { Link, useLocation } from "react-router-dom";
 import { BrandMark } from "./ui/BrandMark";
 import { IconMenu2, IconX } from "./ui/icons";
 
-// L'indice completo (D3, T1): le sezioni che la barra in basso non porta. «Attività»
-// (H2) è il connettore di Samsung Health, via Health Connect e HC Webhook: in fondo.
-// Pasti, Spese e Profilo si aggiungeranno qui quando esisteranno.
+// L'indice completo (D3, T1): le sezioni che la barra in basso non porta. «Spese
+// dell'AI» (H1) è la prima sezione secondaria; «dell'AI» perché sotto «Sistema la
+// spesa» un «Spese» da solo si leggerebbe come lo scontrino. «Attività» (H2) è il
+// connettore di Samsung Health, via Health Connect e HC Webhook: in fondo. Pasti e
+// Profilo si aggiungeranno qui quando esisteranno.
 const INDEX = [
   { to: "/sistema", label: "Sistema la spesa" },
   { to: "/ricette/importa", label: "Ingredienti da abbinare" },
   { to: "/anagrafica", label: "Anagrafica" },
+  { to: "/spese-ai", label: "Spese dell'AI" },
   { to: "/attivita", label: "Attività" },
 ];
 

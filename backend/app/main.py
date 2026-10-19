@@ -16,6 +16,7 @@ from app.api import (
     products,
     recipes,
     shopping,
+    spending,
     substitutions,
 )
 from app.core.config import get_settings
@@ -89,6 +90,7 @@ app.include_router(nutrition.recipe_router)
 # «Attività» stanno dietro la sessione come tutte.
 app.include_router(activity.webhook_router)
 app.include_router(activity.router)
+app.include_router(spending.router)
 
 
 @app.get("/api/v1/health")

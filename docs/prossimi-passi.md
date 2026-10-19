@@ -2014,7 +2014,7 @@ e i sostituti. Brainstorming suo, a valle di tutto.
 
 # Parte VI — Sezioni secondarie (hamburger)
 
-## H1. Expense Tracker **[TBD]** ↳ T2
+## H1. Expense Tracker **[FATTO 2026-10-18 — sul ramo `night/h1-spese-ai`, non ancora in produzione]** ↳ T2
 Spesa totale su OpenRouter nel periodo scelto, con una torta di come si divide.
 
 **Dipendenza sciolta il 2026-09-17:** T2 è fatto, quindi `llm_calls` sta già
@@ -2025,6 +2025,26 @@ TBD: brainstorming su cosa mostrare. La materia prima è `llm_calls` (costo per
 sezione, per giorno, riusciti e falliti); `python -m app.cli.llm_prices` stampa invece
 i prezzi di listino per provider, che è un'altra cosa e serve semmai a scegliere il
 modello.
+
+**Il TBD è deciso** (Mattia, 2026-10-09): la schermata mostra sempre il totale del
+periodo, la divisione per sezione e l'andamento giorno per giorno; niente elenco delle
+chiamate, niente vista delle fallite. Periodi: «Questo mese» di partenza, «Ultimi 30
+giorni», «Da sempre»; i giorni contati a Roma come la scadenza. Niente torta: una barra
+per sezione, che regge sei sezioni su 375 px e si legge senza legenda. Spec:
+`docs/superpowers/specs/2026-10-09-h1-spese-ai-design.md`.
+
+**Fatto il 2026-10-18**, sul ramo `night/h1-spese-ai` (da revisionare):
+`GET /api/v1/llm-spending?period=month|30d|all` somma i costi dichiarati di `llm_calls`
+nel periodo, per sezione (col nome a video da `CALL_SITE_LABELS` in
+`backend/app/domain/spending.py`, il `call_site` grezzo per una sezione che non conosce) e
+per giorno di Roma, coi giorni senza spesa a zero. Le fallite hanno sempre il costo NULL:
+non entrano nel totale e si contano, con una riga sotto il totale. A video
+«Spese dell'AI», l'ultima voce del ☰: il totale grande, le barre per sezione, le colonne
+per giorno in SVG scritto a mano, nessuna dipendenza nuova.
+
+**Da provare sul telefono e coi dati veri:** i tre pulsanti del periodo col pollice;
+«Da sempre» che parte dal 17 settembre 2026; il totale confrontato con l'attività
+dell'app sul sito di OpenRouter.
 
 ## H2. Connettore Samsung Health **[FATTO 2026-10-19 — sul ramo `night/h2-health-connect`, non ancora in produzione]**
 Serve a Pasti: l'attività fisica cambia il fabbisogno, e inserirla a mano non si fa.

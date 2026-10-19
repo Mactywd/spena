@@ -969,6 +969,7 @@ const SCHERMATE = [
   "/anagrafica",
   "/attivita",
   "/attivita/collega",
+  "/spese-ai",
   "/non-esiste",
 ];
 
@@ -4398,4 +4399,93 @@ test("attività e collegamento a 375px: i testi si leggono nei due temi, e nient
   }
   await page.emulateMedia({ colorScheme: "light" });
   await senzaScorrimentoLaterale(page, "il collegamento");
+});
+
+// H1, le spese dell'AI. Lo stack e2e non ha spese (la chiave di OpenRouter è vuota): le
+// semina `backend/tests/e2e_spese.py` nel container del backend, nessuna rete, e le toglie.
+// Vedi `frontend/e2e/spese.spec.ts`.
+function aiutanteSpese(comando: "seed" | "clean"): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_spese.py", comando],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+/** Il contrasto WCAG 1.4.11 di un segno SVG: il suo `fill` calcolato contro il fondo del
+ * primo antenato che ne dipinge uno (la scheda). `contrastoSegno` legge il
+ * `backgroundColor`, che un `<rect>` non ha: per il resto è la stessa risalita. */
+async function contrastoRiempimento(segno: Locator) {
+  return segno.evaluate((el) => {
+    const view = el.ownerDocument.defaultView;
+    const canali = (colore: string) => (colore.match(/[\d.]+/g) ?? []).map(Number);
+    const luminanza = (colore: string) => {
+      const [r, g, b] = canali(colore).map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+
+    const proprio = view.getComputedStyle(el).fill;
+    let fondo: string | null = null;
+    for (let nodo = el.parentElement; nodo; nodo = nodo.parentElement) {
+      const stile = view.getComputedStyle(nodo);
+      const alfa = canali(stile.backgroundColor)[3] ?? 1;
+      if (alfa > 0) {
+        fondo = stile.backgroundColor;
+        break;
+      }
+    }
+
+    const a = luminanza(proprio);
+    const b = luminanza(fondo ?? "rgb(255, 255, 255)");
+    return {
+      colore: proprio as string,
+      fondo: fondo as string | null,
+      rapporto: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+    };
+  });
+}
+
+test("le spese dell'AI a 375px: barre e colonne si distinguono dalla scheda, e i testi si leggono, nei due temi", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  aiutanteSpese("clean");
+  aiutanteSpese("seed");
+  try {
+    await page.goto("/spese-ai");
+    await page.getByRole("group", { name: "Periodo" }).getByRole("button", { name: "Ultimi 30 giorni" }).click();
+    const barra = page.locator("[data-bar]").first();
+    const colonna = page.locator("[data-day]").first();
+    await expect(colonna).toBeVisible();
+    await expect(barra).toBeVisible();
+
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      const scheda = tema === "light" ? tokenDelTema("card") : tokenDelTemaScuro("card");
+      const verde = tema === "light" ? tokenDelTema("brand") : tokenDelTemaScuro("brand");
+      for (const [nome, segno] of [
+        ["la barra di una sezione", barra],
+        ["la colonna di un giorno", colonna],
+      ] as const) {
+        const misura = await contrastoRiempimento(segno);
+        expect(misura.colore, `${nome}, tema ${tema}`).toBe(verde);
+        expect(misura.fondo, `${nome}, tema ${tema}`).toBe(scheda);
+        expect(misura.rapporto, `${nome} su --color-card, tema ${tema}`).toBeGreaterThanOrEqual(3);
+      }
+      expect(await testiIlleggibili(page), `le spese dell'AI, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "le spese dell'AI");
+  } finally {
+    try {
+      aiutanteSpese("clean");
+    } catch (guasto) {
+      expect.soft(false, `pulizia: non sono riuscito a togliere le spese seminate (${guasto})`).toBe(true);
+    }
+  }
 });
