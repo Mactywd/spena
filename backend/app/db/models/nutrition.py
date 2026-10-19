@@ -14,14 +14,24 @@ così un caricamento più nuovo li aggiorna tutti. L'unico che scrive questa tab
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.db.models.base import UUIDMixin
 from app.domain.ciqual import CODE_MAX_LENGTH, GROUP_MAX_LENGTH, NAME_MAX_LENGTH
 
 
@@ -65,6 +75,46 @@ class IngredientNutrition(Base):
         ForeignKey("ciqual_foods.code", ondelete="RESTRICT"),
         nullable=True,
     )
+    decided_by: Mapped[str] = mapped_column(String(20))
+    decided_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class IngredientUnitGrams(UUIDMixin, Base):
+    """Quanti grammi pesa una unità di un ingrediente, per coppia (S4, fetta 2).
+
+    Sempre sull'unità **canonica** (`units.canonical_id`, o l'unità stessa): «cucchiai» e
+    «cucchiaio» hanno un peso solo. `unit_id` NULL è il «pezzo», la dose senza unità («2»
+    uova). `grams` NULL è «nessun peso sensato», deciso: non si richiede. Le unità di
+    massa e di volume non hanno righe qui: i loro grammi si contano da sé
+    (`app/domain/recipe_nutrition.py`). L'unico che scrive è `app/services/unit_grams.py`.
+
+    `CASCADE` sull'unità, non `RESTRICT`: la pulizia delle dosi toglie le unità spurie, e
+    il peso di un'unità che non c'è più non serve a niente.
+    """
+
+    __tablename__ = "ingredient_unit_grams"
+    __table_args__ = (
+        UniqueConstraint(
+            "ingredient_id",
+            "unit_id",
+            name="uq_ingredient_unit_grams",
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint("grams IS NULL OR grams > 0", name="ck_ingredient_unit_grams_positive"),
+        CheckConstraint(
+            "decided_by IN ('ai', 'human')", name="ck_ingredient_unit_grams_decided_by"
+        ),
+    )
+
+    ingredient_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ingredients.id", ondelete="CASCADE")
+    )
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("units.id", ondelete="CASCADE"), nullable=True
+    )
+    grams: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     decided_by: Mapped[str] = mapped_column(String(20))
     decided_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
