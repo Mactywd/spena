@@ -3519,3 +3519,174 @@ test("S15 a 375px: un reparto chiuso dice quante voci ha e cosa chiede attenzion
     }
   }
 });
+
+// --- «Rimetti in lista» anche per quasi finito (2026-10-09) ---
+
+test("«Rimetti in lista» a 375px: la riga gialla offre «In lista», e il foglio della cottura rimette in lista una confezione già quasi finita senza toccarla", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: la prima cosa qui è una
+  // `page.request`, quindi l'attesa va messa a mano (vedi il test del riepilogo)
+  await expect(page.getByRole("link", { name: "Dispensa", exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  /** L'id di un ingrediente del seme, cercato per nome intero. */
+  async function ingrediente(nome: string): Promise<string> {
+    const trovati = (await (
+      await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)
+    ).json()) as { id: string; name: string }[];
+    const voce = trovati.find((t) => t.name === nome);
+    expect(voce, `«${nome}» non è nel seme`).toBeDefined();
+    return voce!.id;
+  }
+  /** Le voci aperte della lista per un ingrediente. */
+  async function inLista(ingredienteId: string) {
+    const voci = (await (
+      await page.request.get("/api/v1/shopping-list?status=pending&status=checked")
+    ).json()) as { id: string; ingredient_id: string | null; reason: string }[];
+    return voci.filter((voce) => voce.ingredient_id === ingredienteId);
+  }
+
+  // Due ingredienti che nessun altro file della suite nomina, e che nessuna ricetta del
+  // seme usa: l'asparago quasi finito, le fave disponibili. Questo file non lascia niente
+  // dietro di sé: voci di lista, confezioni e ricetta si tolgono nel `finally`
+  const asparagoId = await ingrediente("asparago");
+  const faveId = await ingrediente("fave");
+  expect(
+    await inLista(asparagoId),
+    "lo stack e2e non è pulito: ricrealo con `down -v` e riesegui"
+  ).toEqual([]);
+
+  const confezioni: string[] = [];
+  let ricettaId: string | undefined;
+  try {
+    const asparago = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: asparagoId, status: "low" },
+    });
+    expect(asparago.ok()).toBe(true);
+    const asparagoVoce = ((await asparago.json()) as { id: string }).id;
+    confezioni.push(asparagoVoce);
+    const fave = await page.request.post("/api/v1/pantry", { data: { ingredient_id: faveId } });
+    expect(fave.ok()).toBe(true);
+    confezioni.push(((await fave.json()) as { id: string }).id);
+
+    // 1. In Dispensa la riga gialla dice «Quasi finito» e offre «In lista»; la verde no
+    await page.getByRole("link", { name: "Dispensa", exact: true }).click();
+    const rigaAsparago = page.locator("li", { hasText: "asparago" });
+    const rigaFave = page.locator("li", { hasText: "fave" });
+    const parola = rigaAsparago.getByText("Quasi finito", { exact: true });
+    const inListaBottone = rigaAsparago.getByRole("button", { name: "In lista", exact: true });
+    await expect(parola).toBeVisible();
+    await expect(inListaBottone).toBeVisible();
+    await expect(rigaFave.getByRole("button", { name: "In lista", exact: true })).toHaveCount(0);
+    const scatola = (await inListaBottone.boundingBox())!;
+    expect(scatola.width).toBeGreaterThanOrEqual(44);
+    expect(scatola.height).toBeGreaterThanOrEqual(44);
+    await senzaScorrimentoLaterale(page, "la dispensa con una riga gialla");
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `dispensa con la riga gialla, tema ${tema}`).toEqual([]);
+      const token = tema === "light" ? tokenDelTema : tokenDelTemaScuro;
+      const misura = await contrastoAVideo(parola);
+      expect(misura.colore, `«Quasi finito», tema ${tema}`).toBe(token("low"));
+      expect(misura.rapporto).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // il tocco rimette in lista come una richiesta a mano, e la riga resta gialla
+    await inListaBottone.click();
+    await expect(page.getByText("Rimesso in lista: asparago")).toBeVisible();
+    await expect(rigaAsparago.getByText("Già in lista")).toBeVisible();
+    await expect(
+      rigaAsparago.getByRole("radio", { name: "Quasi finito", exact: true })
+    ).toHaveAttribute("aria-checked", "true");
+    const dallaDispensa = await inLista(asparagoId);
+    expect(dallaDispensa.map((voce) => voce.reason)).toEqual(["manual"]);
+    // si toglie, perché il foglio della cottura possa rimetterla in lista lui
+    const tolta = await page.request.patch(`/api/v1/shopping-list/${dallaDispensa[0].id}`, {
+      data: { status: "archived" },
+    });
+    expect(tolta.ok()).toBe(true);
+
+    // 2. Il foglio della cottura: la confezione già gialla ha la casella, vuota
+    const creata = await page.request.post("/api/v1/recipes", {
+      data: {
+        title: `Rimetti in lista e2e ${Date.now()}`,
+        instructions: "1. Lessa gli asparagi.\n2. Unisci le fave.",
+        servings: 2,
+        source: "manual",
+        ingredients: [
+          { ingredient_id: asparagoId, role: "primary", quantity_text: "8 gambi" },
+          { ingredient_id: faveId, role: "secondary", quantity_text: "100 g" },
+        ],
+      },
+    });
+    expect(creata.ok()).toBe(true);
+    ricettaId = ((await creata.json()) as { id: string }).id;
+    await page.goto(`/ricette/${ricettaId}`);
+    await page.getByRole("button", { name: "Cucina", exact: true }).click();
+
+    const tacche = page.getByRole("radiogroup", { name: /asparago/ });
+    await expect(tacche.getByRole("radio", { name: "Quasi finito", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    const casella = page.getByRole("checkbox", { name: /Rimetti in lista asparago/ });
+    await expect(casella).toBeVisible();
+    await expect(casella).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: /Rimetti in lista fave/ })).toHaveCount(0);
+    await senzaScorrimentoLaterale(page, "il foglio della cottura con una confezione gialla");
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `foglio con la casella del giallo, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    await casella.click();
+    await expect(casella).toBeChecked();
+    await expect(tacche.getByRole("radio", { name: "Quasi finito", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    await page.getByRole("button", { name: "Ho cucinato", exact: true }).click();
+    // per il testo: l'avviso unico tiene sempre la sua regione
+    await expect(page.getByRole("status").filter({ hasText: /^Segnato\./ })).toHaveText(
+      "Segnato. Una cosa è tornata in lista della spesa."
+    );
+
+    // la confezione è ancora gialla, e la voce in lista ha il motivo del giallo
+    const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
+      id: string;
+      status: string;
+    }[];
+    expect(dispensa.find((voce) => voce.id === asparagoVoce)?.status).toBe("low");
+    expect((await inLista(asparagoId)).map((voce) => voce.reason)).toEqual(["low_while_cooking"]);
+
+    // 3. In Lista la nota del rientro lo dice
+    await page.getByRole("link", { name: "Lista", exact: true }).click();
+    await expect(
+      page.locator("li", { hasText: "asparago" }).getByText("rientrata perché quasi finita cucinando")
+    ).toBeVisible();
+  } finally {
+    for (const id of [asparagoId, faveId]) {
+      for (const voce of await inLista(id)) {
+        const tolta = await page.request.patch(`/api/v1/shopping-list/${voce.id}`, {
+          data: { status: "archived" },
+        });
+        expect.soft(tolta.ok(), `archiviare la voce di lista ${voce.id}`).toBe(true);
+      }
+    }
+    for (const id of confezioni) {
+      const tolta = await page.request.patch(`/api/v1/pantry/${id}`, { data: { archived: true } });
+      expect.soft(tolta.ok(), `archiviare la confezione ${id}`).toBe(true);
+    }
+    if (ricettaId) {
+      const tolta = await page.request.patch(`/api/v1/recipes/${ricettaId}`, {
+        data: { archived: true },
+      });
+      expect.soft(tolta.ok(), `eliminare la ricetta ${ricettaId}`).toBe(true);
+    }
+  }
+});
