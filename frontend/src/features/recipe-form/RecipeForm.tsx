@@ -7,6 +7,7 @@ import { IngredientPicker } from "../../components/IngredientPicker";
 import { Button } from "../../components/ui/Button";
 import { Checkbox } from "../../components/ui/Checkbox";
 import { CostPicker } from "../../components/ui/CostPicker";
+import { IconX } from "../../components/ui/icons";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import type { Ingredient, IngredientRole, RecipeBody, RecipeDetail } from "../../domain/types";
 import { capitalizeFirst } from "../../lib/text";
@@ -86,26 +87,9 @@ function LineRow({
               («Togli pasta», «Quantità per pasta»), dove resta com'è */}
           <span className="min-w-0 flex-1 break-words">{capitalizeFirst(line.label)}</span>
         </label>
-        {/* la stessa X delle pastiglie del filtro, e per la stessa ragione il nome
-            accessibile nomina la riga: su dodici righe «Togli» da solo non dice quale */}
-        <button
-          type="button"
-          aria-label={`Togli ${line.label}`}
-          onClick={onRemove}
-          className="flex size-11 shrink-0 items-center justify-center rounded-full text-ink-soft"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            className="size-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        {/* la ✕ di casa (`Button` di sola icona, 44 px), come in Lista e in Dispensa; il
+            nome accessibile nomina la riga: su dodici righe «Togli» da solo non dice quale */}
+        <Button variant="ghost" icon={IconX} label={`Togli ${line.label}`} onClick={onRemove} />
       </div>
 
       {showsMatch(line) && (
@@ -142,7 +126,7 @@ function LineRow({
       )}
 
       {savableShape && (
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="flex-1 text-xs text-ink-soft">
             Quantità
             <input
@@ -159,21 +143,17 @@ function LineRow({
               la ricetta è cucinabile (giro di T3) */}
           <div className="flex gap-1" role="group" aria-label={`Ruolo di ${line.label}`}>
             {(["primary", "secondary"] as IngredientRole[]).map((role) => (
-              <button
+              // `Button` con `aria-pressed`: quello scelto è il primario, l'altro il
+              // secondario col suo anello — un `bg-page` sul fondo della pagina era
+              // un'etichetta, non un bottone da toccare (dal giro)
+              <Button
                 key={role}
-                type="button"
-                onClick={() => onUpdate({ role })}
+                variant={line.role === role ? "primary" : "secondary"}
                 aria-pressed={line.role === role}
-                // quello non scelto porta fondo e contorno suoi: un `bg-page` sul fondo
-                // della pagina era un'etichetta, non un bottone da toccare
-                className={`min-h-11 rounded-full px-3 py-2 text-xs font-medium ${
-                  line.role === role
-                    ? "bg-brand text-on-brand"
-                    : "bg-card text-ink-soft ring-1 ring-line ring-inset"
-                }`}
+                onClick={() => onUpdate({ role })}
               >
                 {ROLE_LABELS[role]}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

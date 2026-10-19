@@ -114,6 +114,22 @@ describe("RecipeForm riempito da una ricetta", () => {
     );
   });
 
+  // erano due `<button>` scritti a mano, la ✕ con un SVG in linea (T3 Consegna 6b): ora
+  // sono `Button`, coi 44 px, l'icona di casa e `aria-pressed` per i ruoli
+  it("la ✕ e i ruoli sono pulsanti di casa: 44 px, l'icona X, aria-pressed", () => {
+    stubCategories([[], 200]);
+    renderForm(valuesFromRecipe(DETAIL));
+
+    const togli = screen.getByRole("button", { name: "Togli pasta" });
+    expect(togli.className).toContain("size-11");
+    expect(togli.querySelector("svg")!.getAttribute("class")).toContain("tabler-icon-x");
+
+    const ruoli = within(screen.getByRole("group", { name: "Ruolo di pasta" }));
+    expect(ruoli.getByRole("button", { name: "principale" })).toHaveAttribute("aria-pressed", "true");
+    expect(ruoli.getByRole("button", { name: "secondario" })).toHaveAttribute("aria-pressed", "false");
+    for (const ruolo of ruoli.getAllByRole("button")) expect(ruolo.className).toContain("min-h-11");
+  });
+
   it("il nome di una riga si legge una volta sola, con la maiuscola; i nomi accessibili restano come sono", () => {
     stubCategories([[], 200]);
     renderForm(valuesFromRecipe(DETAIL));
