@@ -48,7 +48,7 @@ from app.services.embeddings import (
     log_degradation_once,
     recipe_document,
 )
-from app.services.ingredient_match import match_name
+from app.services.ingredient_match import ingredient_for_new_name
 from app.services.llm import LlmUnavailable
 from app.services.recipe_search import search_recipes, semantic_search_usable
 
@@ -329,12 +329,14 @@ async def _resolve_lines(
     for line in lines:
         ingredient_id = line.ingredient_id
         if ingredient_id is None:
-            # `match_name` e non una ricerca sul solo nome canonico: se la bozza dice
-            # «pomodori» e l'anagrafica ha «pomodoro» con quell'alias, collegarsi è
-            # giusto e creare sarebbe un duplicato travestito
-            match = await match_name(session, line.name or "")
-            if match.certain and match.ingredient_id is not None:
-                ingredient_id = match.ingredient_id
+            # `match_name` (dentro `ingredient_for_new_name`) e non una ricerca sul solo
+            # nome canonico: se la bozza dice «pomodori» e l'anagrafica ha «pomodoro» con
+            # quell'alias, collegarsi è giusto e creare sarebbe un duplicato travestito. La
+            # stessa funzione la chiede in anticipo il passo del nome del modulo
+            # (`GET /ingredients/match`): l'avviso sul non alimentare dice quel che qui succede
+            linked = await ingredient_for_new_name(session, line.name or "")
+            if linked is not None:
+                ingredient_id = linked.id
             else:
                 created = await create_ingredient(
                     session, name=line.name or "",
