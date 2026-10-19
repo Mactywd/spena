@@ -106,6 +106,67 @@ describe("Button", () => {
     expect(screen.getByRole("button", { name: "Salva" })).toBeDisabled();
   });
 
+  // Insieme, `busy` e `unavailableReason` vincono su `disabled` (idea della Consegna 6a,
+  // pulizie del 2026-10-13): il `disabled` nativo toglierebbe il fuoco, e il perché non lo
+  // sentirebbe più nessuno.
+  it("con disabled e unavailableReason insieme vince il perché: niente disabled nativo, il motivo si sente", () => {
+    const onClick = vi.fn();
+    render(
+      <Button disabled unavailableReason="Scrivi il nome." onClick={onClick}>
+        Salva
+      </Button>
+    );
+    const salva = screen.getByRole("button", { name: "Salva" });
+    expect(salva).not.toBeDisabled();
+    expect(salva).toHaveAttribute("aria-disabled", "true");
+    expect(salva).toHaveAccessibleDescription("Scrivi il nome.");
+    salva.focus();
+    expect(salva).toHaveFocus();
+    fireEvent.click(salva);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("con disabled e busy insieme vince busy: il fuoco resta", () => {
+    render(
+      <Button disabled busy>
+        Salva
+      </Button>
+    );
+    const salva = screen.getByRole("button", { name: "Salva" });
+    expect(salva).not.toBeDisabled();
+    expect(salva).toHaveAttribute("aria-disabled", "true");
+    salva.focus();
+    expect(salva).toHaveFocus();
+  });
+
+  // dal giro della Consegna 5: «Elimina» di sola icona non mostrava niente mentre
+  // archiviava. Il segno d'attesa al posto dell'icona, e lo stesso nome
+  it("di sola icona, in volo mostra il segno d'attesa al posto dell'icona, col nome di sempre", () => {
+    const { rerender } = render(<Button icon={IconTrash} label="Elimina" />);
+    const pulsante = screen.getByRole("button", { name: "Elimina" });
+    expect(pulsante.querySelector("svg")!.getAttribute("class")).toContain("tabler-icon-trash");
+
+    rerender(<Button icon={IconTrash} label="Elimina" busy />);
+    const svg = screen.getByRole("button", { name: "Elimina" }).querySelector("svg")!;
+    expect(svg.getAttribute("class")).toContain("tabler-icon-loader-2");
+    // chi ha chiesto meno movimento lo vede fermo
+    expect(svg.getAttribute("class")).toContain("motion-safe:animate-spin");
+    expect(svg).toHaveAttribute("aria-hidden", "true");
+    // è lo stesso pulsante: il fuoco non si perde
+    expect(screen.getByRole("button", { name: "Elimina" })).toBe(pulsante);
+  });
+
+  it("con il testo, in volo tiene la sua icona: la parola la cambia già il chiamante", () => {
+    render(
+      <Button icon={IconPencil} busy>
+        Modifica
+      </Button>
+    );
+    const svg = screen.getByRole("button", { name: "Modifica" }).querySelector("svg")!;
+    expect(svg.getAttribute("class")).toContain("tabler-icon-pencil");
+    expect(svg.getAttribute("class")).not.toContain("animate-spin");
+  });
+
   // `unavailableReason` (T3 Consegna 6a, la regola di Mattia): in volo → `busy`; «non si
   // può ancora» → `unavailableReason`, col perché; `disabled` solo dove nessuno dei due
   // vale. Il perché lo scrive `Button` sotto di sé, e lo lega al pulsante: prima ogni
