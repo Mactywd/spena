@@ -8,9 +8,9 @@ from sqlalchemy.dialects import postgresql
 
 revision = "0015"
 # Numero riservato dalla fase giorno del 2026-10-13: R5 parte da `master`, ferma alla
-# `0012`. Al merge questa riga si ripunta sulla testa di `master` di quel momento, e
+# `0012`. Al merge del rilascio 2026-10-19 ripuntata sulla `0014` (R8), e
 # `alembic heads` deve dire una testa sola (il piano, «Al merge»).
-down_revision = "0012"
+down_revision = "0014"
 
 
 def upgrade() -> None:
