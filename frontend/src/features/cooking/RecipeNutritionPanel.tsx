@@ -36,17 +36,18 @@ export function RecipeNutritionPanel({ recipeId }: { recipeId: string }) {
   if (open) {
     if (query.isLoading) {
       body = <p className="text-sm text-ink-soft">Calcolo i valori nutrizionali…</p>;
-    } else if (query.isError || !query.data) {
+    } else if (query.data) {
+      // anche se l'ultima rilettura è fallita: i numeri già letti valgono più di un errore
+      body = <Breakdown data={query.data} />;
+    } else {
       body = (
         <div className="flex flex-col items-start gap-2">
           <p className="text-sm text-ink-soft">Non sono riuscito a calcolare i valori nutrizionali.</p>
-          <Button variant="secondary" onClick={() => void query.refetch()}>
+          <Button variant="secondary" busy={query.isFetching} onClick={() => void query.refetch()}>
             Riprova a calcolarli
           </Button>
         </div>
       );
-    } else {
-      body = <Breakdown data={query.data} />;
     }
   }
 

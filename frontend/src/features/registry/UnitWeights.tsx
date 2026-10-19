@@ -74,7 +74,8 @@ function WeightRow({
   const queryClient = useQueryClient();
   const fieldId = useId();
   const label = `1 ${weight.unit_label}`;
-  const [text, setText] = useState(weight.grams !== null ? String(weight.grams).replace(".", ",") : "");
+  const currentText = weight.grams !== null ? String(weight.grams).replace(".", ",") : "";
+  const [text, setText] = useState(currentText);
   const grams = parseGrams(text);
 
   async function done(next: IngredientNutrition) {
@@ -89,6 +90,15 @@ function WeightRow({
   const failure = save.error ?? forget.error;
   const refusal = registryRefusal(failure);
 
+  // si riapre sul peso di adesso e senza l'avviso di un tentativo chiuso: né il numero di
+  // prima di un «Annulla il peso», né il rifiuto di un «Lascia com'è»
+  function open() {
+    setText(currentText);
+    save.reset();
+    forget.reset();
+    onEdit();
+  }
+
   return (
     <li className="py-1">
       <div className="flex min-h-11 items-center gap-2">
@@ -99,7 +109,7 @@ function WeightRow({
           icon={IconPencil}
           label={`Correggi il peso di ${label}`}
           aria-expanded={editing}
-          onClick={onEdit}
+          onClick={open}
         />
       </div>
       {editing && (

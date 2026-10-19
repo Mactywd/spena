@@ -159,6 +159,34 @@ describe("Pesi per unità", () => {
     expect(chiamate(spy, "PUT", "/unit-grams/")).toHaveLength(0);
   });
 
+  it("dopo «Annulla il peso» il campo riparte vuoto, non col numero di prima", async () => {
+    stub(aglio([SPICCHIO]), (_path, init) =>
+      init?.method === "DELETE" ? [aglio([{ ...SPICCHIO, grams: null, state: "undecided", decided_by: null }]), 200] : undefined
+    );
+    renderSection();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Correggi il peso di 1 spicchio" }));
+    await userEvent.click(screen.getByRole("button", { name: "Annulla il peso" }));
+    await within(await riga("1 spicchio")).findByText("da decidere");
+    await userEvent.click(screen.getByRole("button", { name: "Correggi il peso di 1 spicchio" }));
+
+    expect(screen.getByLabelText("Grammi in 1 spicchio")).toHaveValue("");
+  });
+
+  it("chiuso con «Lascia com'è» dopo un rifiuto, riaperto non porta il vecchio avviso", async () => {
+    stub(aglio([SPICCHIO]), (_path, init) => (init?.method === "PUT" ? [{ detail: "x" }, 500] : undefined));
+    renderSection();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Correggi il peso di 1 spicchio" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salva il peso" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Lascia com'è" }));
+    await userEvent.click(screen.getByRole("button", { name: "Correggi il peso di 1 spicchio" }));
+
+    expect(screen.getByLabelText("Grammi in 1 spicchio")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("il pezzo si scrive con la parola nell'indirizzo", async () => {
     const spy = stub(aglio([PEZZO]), (_path, init) =>
       init?.method === "PUT" ? [aglio([{ ...PEZZO, grams: 50, state: "decided" }]), 200] : undefined

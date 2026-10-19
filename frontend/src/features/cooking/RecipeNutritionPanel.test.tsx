@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -43,6 +43,7 @@ function renderPanel() {
       </MemoryRouter>
     </QueryClientProvider>
   );
+  return client;
 }
 
 async function apri() {
@@ -132,6 +133,24 @@ describe("RecipeNutritionPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Riprova a calcolarli" }));
 
     expect(await screen.findByRole("cell", { name: "465 kcal" })).toBeInTheDocument();
+  });
+
+  it("una rilettura fallita lascia i numeri già letti", async () => {
+    const spy = stub([CONTO, 200], [{ detail: "ricetta inesistente" }, 404]);
+    const client = renderPanel();
+
+    await apri();
+    expect(await screen.findByRole("cell", { name: "465 kcal" })).toBeInTheDocument();
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["recipe-nutrition"] });
+      // il rendering segue la notifica con un giro: lo si aspetta, o l'asserzione guarda prima
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(client.getQueryState(["recipe-nutrition", "r-1"])?.status).toBe("error");
+
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("cell", { name: "465 kcal" })).toBeInTheDocument();
+    expect(screen.queryByText("Non sono riuscito a calcolare i valori nutrizionali.")).toBeNull();
   });
 
   it("«Nascondi» richiude", async () => {
