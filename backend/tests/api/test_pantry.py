@@ -653,3 +653,27 @@ async def test_il_mondo_e_quello_scritto_sull_ingrediente(logged_client, db_sess
 
     per_nome = {v["ingredient_name"]: v for v in (await logged_client.get("/api/v1/pantry")).json()}
     assert per_nome["aglio"]["ingredient_kind"] == "non_food"
+
+
+async def test_la_rotta_di_rientro_vale_anche_per_una_voce_quasi_finita(
+    logged_client, db_session, dispensa
+):
+    """Dal 2026-10-09 la Dispensa offre «In lista» anche sul giallo (decisione di Mattia).
+
+    La rotta lo accettava già: questa prova fissa il contratto che la riga gialla usa —
+    scrive in lista con il motivo di una richiesta a mano, come per una finita, e non
+    tocca lo stato della voce.
+    """
+    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.LOW)
+    db_session.add(item)
+    await db_session.flush()
+
+    risposta = await logged_client.post(f"/api/v1/pantry/{item.id}/restock")
+    assert risposta.status_code == 200
+    assert risposta.json() == {"added": True}
+
+    lista = (await logged_client.get("/api/v1/shopping-list")).json()
+    assert [(voce["raw_text"], voce["reason"]) for voce in lista] == [("pomodoro", "manual")]
+
+    await db_session.refresh(item)
+    assert item.status == "low"

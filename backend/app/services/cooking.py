@@ -53,12 +53,19 @@ async def cook(
             raise KeyError(transition.pantry_item_id)
 
         previous = item.status
-        item.status = transition.to_status
-        # la posizione del cursore non sopravvive a uno stato deciso qui: restare a
-        # 80 mentre lo stato dice «finito» mostrerebbe un barattolo pieno per
-        # qualcosa che non c'è più (stesso motivo di `set_status`)
-        item.fill_percent = None
-        item.status_changed_at = now
+        # Una «transizione» allo stesso stato non cambia niente della voce: è il foglio
+        # che rimette in lista una confezione già quasi finita senza toccarla (decisione
+        # di Mattia del 2026-10-09). Riscrivere `status_changed_at`, o azzerare il
+        # cursore, direbbe un cambio che non c'è stato. Il rientro qui sotto vale lo
+        # stesso, col motivo dello stato, e l'istantanea la registra con `from` uguale a
+        # `to`: la storia vera di quella sera.
+        if transition.to_status != previous:
+            item.status = transition.to_status
+            # la posizione del cursore non sopravvive a uno stato deciso qui: restare a
+            # 80 mentre lo stato dice «finito» mostrerebbe un barattolo pieno per
+            # qualcosa che non c'è più (stesso motivo di `set_status`)
+            item.fill_percent = None
+            item.status_changed_at = now
 
         if transition.restock and await restock(
             session,

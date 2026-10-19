@@ -18,5 +18,6 @@ class CookRequest(BaseModel):
 
 class CookResultOut(BaseModel):
     event_id: uuid.UUID
+    # quante confezioni hanno cambiato stato (una transizione allo stesso stato no)
     updated: int
     restocked: int

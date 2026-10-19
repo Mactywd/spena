@@ -34,6 +34,8 @@ async def cook_recipe(
 
     return CookResultOut(
         event_id=event.id,
-        updated=len(event.snapshot["transitions"]),
+        # le confezioni il cui stato è cambiato: una transizione allo stesso stato è solo
+        # un rientro in lista, e lo conta `restocked`
+        updated=sum(1 for t in event.snapshot["transitions"] if t["from"] != t["to"]),
         restocked=event.snapshot["restocked"],
     )

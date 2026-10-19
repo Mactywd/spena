@@ -127,7 +127,7 @@ async def patch(
 async def restock_item(
     item_id: uuid.UUID, session: AsyncSession = Depends(get_session)
 ) -> RestockOut:
-    """Rimette in lista quel che è finito, se non c'è già.
+    """Rimette in lista quel che è finito o quasi finito, se non c'è già.
 
     Una rotta sua e non un campo della PATCH: spostare un cursore e comprare una
     cosa sono due gesti, e l'utente ne compie il secondo rispondendo a una domanda.
