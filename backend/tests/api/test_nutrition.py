@@ -43,7 +43,7 @@ async def test_un_ingrediente_da_decidere(logged_client, mondo):
 
     assert risposta.status_code == 200
     assert risposta.json() == {
-        "state": "undecided", "decided_by": None, "food": None, "nutrients": [],
+        "state": "undecided", "decided_by": None, "food": None, "nutrients": [], "weights": [],
         "source": "CIQUAL 2025", "citation": CITAZIONE,
     }
 
