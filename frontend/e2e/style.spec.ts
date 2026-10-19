@@ -24,7 +24,10 @@ import { buttonClasses, type ButtonVariant } from "../src/components/ui/buttonCl
  * riepilogo — e i giri dei due temi, che creano un prodotto e una sua confezione
  * (`perOgniLuogo`); tutti tolgono quel che hanno messo prima di finire: questo file
  * non lascia niente dietro di sé, e nessun altro file dipende dal proprio posto
- * nell'ordine alfabetico.
+ * nell'ordine alfabetico. Fa eccezione l'ultima prova, «attività e collegamento a
+ * 375px»: crea una chiave e manda un corpo di HC Webhook, e per l'attività non c'è
+ * un'API che cancelli, quindi passi, camminata e pesata restano nello stack finché
+ * `down -v` non lo toglie (i valori sono suoi, diversi da quelli di `attivita.spec.ts`).
  */
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
 
@@ -964,6 +967,8 @@ const SCHERMATE = [
   "/ricette/nuova-ai",
   "/ricette/importa",
   "/anagrafica",
+  "/attivita",
+  "/attivita/collega",
   "/non-esiste",
 ];
 
@@ -4327,3 +4332,70 @@ for (const tema of ["light", "dark"] as const) {
     });
   });
 }
+
+// H2, «Attività». Il telefono non c'è: il corpo di HC Webhook lo manda la prova, con la chiave
+// creata dalla rotta (la sessione della prova la apre). Un totale dei passi, una finestra di
+// 15 minuti che non si salva (per misurare l'avviso ambra del problema), una camminata, una
+// pesata, il sonno che Spena non usa. Vedi `frontend/e2e/attivita.spec.ts`.
+test("attività e collegamento a 375px: i testi si leggono nei due temi, e niente scorre di lato", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: la prima `page.request` qui
+  // sotto partirebbe prima del cookie di sessione e tornerebbe 401
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const creata = await page.request.post("/api/v1/activity/token");
+  expect(creata.status()).toBe(201);
+  const { token } = (await creata.json()) as { token: string };
+  const giorno = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(
+    new Date(Date.now() - 86_400_000)
+  );
+  const inviato = await page.request.post("/api/v1/activity/hc-webhook", {
+    headers: { "X-Spena-Token": token },
+    data: {
+      timestamp: new Date().toISOString(),
+      // dalla 1.9.23 HC Webhook lo mette in ogni corpo
+      timezone: "Europe/Rome",
+      steps: [
+        { count: 6789, start_time: `${giorno}T08:00:00.123Z`, end_time: `${giorno}T20:00:00.456Z` },
+        { count: 120, start_time: `${giorno}T06:00:00Z`, end_time: `${giorno}T06:15:00Z` },
+      ],
+      exercise: [
+        {
+          type: "79",
+          title: "Giro del parco",
+          start_time: `${giorno}T15:00:00Z`,
+          end_time: `${giorno}T15:20:00Z`,
+          metadata: { data_origin: "com.sec.android.app.shealth" },
+        },
+      ],
+      weight: [{ kilograms: 81.7, time: `${giorno}T05:00:00Z` }],
+      sleep: [{ session_end_time: `${giorno}T05:00:00Z`, duration_seconds: 25200, stages: [] }],
+    },
+  });
+  expect(inviato.status()).toBe(200);
+
+  await page.goto("/attivita");
+  await expect(page.getByRole("list", { name: "Passi degli ultimi 7 giorni" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Passi non salvati" })).toBeVisible();
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `«Attività», tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await senzaScorrimentoLaterale(page, "«Attività»");
+
+  // il collegamento con la chiave appena creata: i tre campi da copiare a video
+  await page.goto("/attivita/collega");
+  await page.getByRole("button", { name: "Rigenera la chiave" }).click();
+  await page.getByRole("button", { name: "Rigenera", exact: true }).click();
+  await expect(page.getByLabel("Intestazioni (JSON)", { exact: true })).toBeVisible();
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `il collegamento, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await senzaScorrimentoLaterale(page, "il collegamento");
+});

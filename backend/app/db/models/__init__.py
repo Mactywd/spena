@@ -5,6 +5,13 @@ e senza questi import vedrebbe uno schema vuoto, quindi il primo
 `alembic revision --autogenerate` proporrebbe di cancellare tutte le tabelle.
 """
 
+from app.db.models.activity import (
+    ActivityExercise,
+    ActivityStepsDay,
+    ActivitySync,
+    ActivityToken,
+    ActivityWeight,
+)
 from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.llm_call import LlmCall
 from app.db.models.nutrition import CiqualFood, IngredientNutrition, IngredientUnitGrams
@@ -17,6 +24,11 @@ from app.db.models.substitution import IngredientSubstitution, SubstitutionOptio
 from app.db.models.unit import Unit
 
 __all__ = [
+    "ActivityExercise",
+    "ActivityStepsDay",
+    "ActivitySync",
+    "ActivityToken",
+    "ActivityWeight",
     "CiqualFood",
     "CookingEvent",
     "ImportTerm",

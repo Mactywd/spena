@@ -4,12 +4,14 @@ import { Link, useLocation } from "react-router-dom";
 import { BrandMark } from "./ui/BrandMark";
 import { IconMenu2, IconX } from "./ui/icons";
 
-// L'indice completo (D3, T1): le sezioni che la barra in basso non porta. Pasti,
-// Spese, Profilo e Connettori si aggiungeranno qui quando esisteranno.
+// L'indice completo (D3, T1): le sezioni che la barra in basso non porta. «Attività»
+// (H2) è il connettore di Samsung Health, via Health Connect e HC Webhook: in fondo.
+// Pasti, Spese e Profilo si aggiungeranno qui quando esisteranno.
 const INDEX = [
   { to: "/sistema", label: "Sistema la spesa" },
   { to: "/ricette/importa", label: "Ingredienti da abbinare" },
   { to: "/anagrafica", label: "Anagrafica" },
+  { to: "/attivita", label: "Attività" },
 ];
 
 const FOCUSABLE = "a[href], button:not([disabled])";
