@@ -808,6 +808,49 @@ describe("coda di revisione dell'import", () => {
     expect(esito.closest('[role="status"]')).not.toBeNull();
   });
 
+  // La riga annullata sparisce col suo «Annulla», e il fuoco cadeva sulla pagina (T3
+  // Consegna 6b): va al nome del termine, tornato in coda come scheda
+  it("annullata una decisione, il fuoco va al nome del termine tornato in coda", async () => {
+    const DECISO: ImportTerm = {
+      id: "t5", display_name: "Speck", occurrences: 3, suggestion: null,
+      waiting_titles: ["Pasta e speck"], decided_by: "ai", decided_action: "map",
+      decided_name: "speck", decided_at: "2026-10-01T10:00:00Z",
+    };
+    const TORNATO: ImportTerm = {
+      ...DECISO, decided_by: null, decided_action: null, decided_name: null, decided_at: null,
+    };
+    let annullato = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown, init?: RequestInit) => {
+        const path = String(url);
+        const method = init?.method ?? "GET";
+        const rispondi = (body: unknown, status = 200) =>
+          Promise.resolve(new Response(JSON.stringify(body), { status }));
+        if (path.endsWith("/imports/terms/t5/undo") && method === "POST") {
+          annullato = true;
+          return rispondi({ recipes_requeued: 1, ingredient_deleted: false, remaining_terms: 3 });
+        }
+        if (path.includes("decided_by=ai")) return rispondi(annullato ? [] : [DECISO]);
+        if (path.includes("decided_by=human")) return rispondi([]);
+        if (path.includes("/imports/terms")) return rispondi(annullato ? [...TERMINI, TORNATO] : TERMINI);
+        if (path.includes("/imports/status")) return rispondi(STATO_NORMALE);
+        return rispondi({}, 404);
+      })
+    );
+    renderScreen();
+
+    const annulla = await screen.findByRole("button", { name: "Annulla la decisione su «Speck»" });
+    annulla.focus();
+    await userEvent.keyboard("{Enter}");
+
+    await screen.findByRole("button", { name: "Ignora «Speck»" });
+    await waitFor(() => {
+      expect(document.activeElement?.tagName).toBe("P");
+      expect(document.activeElement).toHaveTextContent("Speck");
+    });
+  });
+
   it("il suggerimento testuale non è più grande del resto della scheda", async () => {
     renderQueue();
 

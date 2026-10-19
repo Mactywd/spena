@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CategorySelect } from "../../components/CategorySelect";
 import { IngredientPicker } from "../../components/IngredientPicker";
 import { Button } from "../../components/ui/Button";
@@ -21,17 +21,41 @@ export function TermCard({
   suggestionName,
   pending,
   onDecide,
+  arriving = false,
+  onArrived,
 }: {
   term: ImportTerm;
   /** Il nome dell'aggancio testuale: è la proposta di riserva, e c'è anche senza AI. */
   suggestionName: string | null;
   pending: boolean;
   onDecide: (decision: Decision) => void;
+  /** Il termine è appena tornato in coda da un annullamento: la scheda prende il fuoco
+   * sul nome, se è caduto sulla pagina. */
+  arriving?: boolean;
+  /** Detto quando la scheda ha fatto quel che doveva col fuoco. */
+  onArrived?: () => void;
 }) {
   const [alsoSecondary, setAlsoSecondary] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState(term.display_name.toLowerCase());
   const [newCategory, setNewCategory] = useState<string>("altro");
+
+  // Annullata una decisione, la riga di «Decisioni recenti» sparisce col suo «Annulla»
+  // e il termine torna qui: il fuoco cadeva sulla pagina (T3 Consegna 6b). Va al nome,
+  // così chi ascolta sente quale termine è tornato e il Tab lo porta alle scelte. Solo
+  // se è caduto: chi nel frattempo ha toccato altro se lo tiene. Se l'«Annulla» del
+  // termine ha ancora il fuoco (la coda si è riletta prima delle decisioni recenti), si
+  // aspetta il disegno dopo: per questo l'effetto gira a ogni disegno, e torna subito
+  // indietro finché `arriving` è falso.
+  const nameRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!arriving) return;
+    const active = document.activeElement;
+    const row = active instanceof HTMLElement ? active.closest("[data-decided-term]") : null;
+    if (row?.getAttribute("data-decided-term") === term.id) return;
+    if (active === null || active === document.body) nameRef.current?.focus();
+    onArrived?.();
+  });
 
   const role = alsoSecondary ? ("secondary" as const) : undefined;
 
@@ -56,7 +80,13 @@ export function TermCard({
   return (
     <Card as="li" className="flex flex-col gap-3">
       <div>
-        <p className="font-medium">{term.display_name}</p>
+        <p
+          ref={nameRef}
+          tabIndex={-1}
+          className="rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          {term.display_name}
+        </p>
         <p className="text-xs text-ink-faint">
           {term.occurrences === 1 ? "1 ricetta in attesa" : `${term.occurrences} ricette in attesa`}
         </p>
