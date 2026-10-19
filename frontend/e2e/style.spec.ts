@@ -3690,3 +3690,119 @@ test("«Rimetti in lista» a 375px: la riga gialla offre «In lista», e il fogl
     }
   }
 });
+
+test("Modifica con AI a 375px: il guasto è ambra, e il pannello e il modulo della variante si leggono nei due temi", async ({
+  page,
+}) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${ricetta.id}`);
+    const tasto = page
+      .getByRole("toolbar", { name: "Azioni della ricetta" })
+      .getByRole("button", { name: "Modifica con AI", exact: true });
+    const scatola = (await tasto.boundingBox())!;
+    expect(scatola.width).toBeGreaterThanOrEqual(44);
+    expect(scatola.height).toBeGreaterThanOrEqual(44);
+
+    await tasto.click();
+    await page.getByLabel("Cosa vuoi cambiare?").fill("senza scamorza");
+    // lo stack e2e non ha la chiave dell'AI: il server risponde 503 da sé, senza rete
+    await page.getByRole("button", { name: "Proponi la variante", exact: true }).click();
+    const guasto = page.getByText(
+      "L'AI non ha risposto: questa ricetta resta com'è. Riprova fra poco.",
+      { exact: true }
+    );
+    await expect(guasto).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      const misura = await contrastoAVideo(guasto);
+      expect(misura.colore, `il guasto della variante non è ambra, tema ${tema}`).toBe(
+        tema === "light" ? tokenDelTema("low") : tokenDelTemaScuro("low")
+      );
+      expect(await testiIlleggibili(page), `dettaglio col pannello della variante, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "il dettaglio col pannello della variante");
+
+    // il modulo della variante: la proposta la costruisce il test (il modello qui non si chiama)
+    await page.route(`**/api/v1/recipes/${ricetta.id}/ai-variant`, (route) =>
+      route.fulfill({
+        json: {
+          title: `${ricetta.titolo} senza scamorza`, description: null,
+          instructions: "1. Pulisci le verdure.\n2. Cuoci il farro.", servings: 2, cost: 2,
+          ingredients: [
+            {
+              raw_name: "farro", role: "primary", quantity_text: "160 g", ingredient_id: ricetta.ids.farro,
+              matched_name: "farro", confident: true, proposed_category: null,
+            },
+          ],
+        } satisfies RecipeDraft,
+      })
+    );
+    await page.getByRole("button", { name: "Proponi la variante", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Nuova variante" })).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `modulo della variante, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "il modulo della variante");
+  } finally {
+    await ricetta.pulisci();
+  }
+});
+
+test("il legame «Variante di «…»» sta sotto il titolo, è un bersaglio da pollice e si legge nei due temi", async ({
+  page,
+}) => {
+  const ricetta = await ricettaDiProva(page);
+  let varianteId: string | null = null;
+  try {
+    const titoloVariante = `${ricetta.titolo} variante`;
+    const creata = await page.request.post("/api/v1/recipes", {
+      data: {
+        title: titoloVariante, instructions: "1. Cuoci il farro.", servings: 2,
+        source: "ai", source_ref: "prompt: prova e2e", derived_from_id: ricetta.id,
+        ingredients: [{ ingredient_id: ricetta.ids.farro, role: "primary", quantity_text: "160 g" }],
+      },
+    });
+    expect(creata.ok()).toBe(true);
+    varianteId = ((await creata.json()) as { id: string }).id;
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${varianteId}`);
+    const titolo = page.getByRole("heading", { level: 1, name: titoloVariante });
+    const legame = page.getByRole("link", { name: `Variante di «${ricetta.titolo}»`, exact: true });
+    await expect(legame).toBeVisible();
+    const sTitolo = (await titolo.boundingBox())!;
+    const sLegame = (await legame.boundingBox())!;
+    expect(sLegame.y, "il legame sta sotto il titolo").toBeGreaterThanOrEqual(sTitolo.y + sTitolo.height - 1);
+    expect(sLegame.height).toBeGreaterThanOrEqual(44);
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `dettaglio di una variante, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "il dettaglio di una variante");
+
+    // eliminata l'originale, il legame lo dice
+    const via = await page.request.patch(`/api/v1/recipes/${ricetta.id}`, { data: { archived: true } });
+    expect(via.ok()).toBe(true);
+    await page.reload();
+    await expect(
+      page.getByRole("link", { name: `Variante di «${ricetta.titolo}» (eliminata)`, exact: true })
+    ).toBeVisible();
+  } finally {
+    if (varianteId) {
+      const risposta = await page.request.patch(`/api/v1/recipes/${varianteId}`, {
+        data: { archived: true },
+      });
+      expect.soft(risposta.ok(), `pulizia: la variante ${varianteId} non si è eliminata`).toBe(true);
+    }
+    await ricetta.pulisci();
+  }
+});
