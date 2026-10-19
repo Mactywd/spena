@@ -143,3 +143,49 @@ export function groupForDisplay(items: PantryItem[]): [string, PantryItem[]][] {
       [...rows.filter((r) => r.status !== "finished"), ...rows.filter((r) => r.status === "finished")],
     ]);
 }
+
+// --- S15: i reparti che si aprono e si chiudono ---
+
+/** Come sta un reparto a video (spec S15 §3). `collapsed` è quel che l'utente ha chiuso
+ * e che si ricorda; `filtering` è una ricerca scritta o il riepilogo delle scadenze
+ * premuto; `closedWhileFiltering` sono i reparti chiusi a mano mentre quel filtro era
+ * acceso, e si svuota quando il filtro si spegne. */
+export interface SectionView {
+  collapsed: ReadonlySet<string>;
+  filtering: boolean;
+  closedWhileFiltering: ReadonlySet<string>;
+}
+
+/** Se un reparto è aperto a video. Un filtro mostra quel che ha trovato e non cambia
+ * quel che l'utente aveva deciso: con un filtro acceso a video restano solo i reparti
+ * che hanno un risultato, e sono aperti — salvo quelli che si chiudono a mano proprio
+ * adesso, perché toccare il titolo durante una ricerca chiude per davvero. Spento il
+ * filtro, vale il salvato. Il mondo di S14 non passa da qui: decide quali reparti ci
+ * sono, non come stanno. */
+export function sectionOpen(category: string, view: SectionView): boolean {
+  return view.filtering
+    ? !view.closedWhileFiltering.has(category)
+    : !view.collapsed.has(category);
+}
+
+/** Quel che un reparto chiuso non deve nascondere (spec S15 §2): le voci finite, che
+ * hanno il loro «In lista» da toccare, e quelle in scadenza o oltre, che hanno un tempo
+ * che corre. Una finita conta una volta, come finita: è la regola del riepilogo in cima
+ * (`isExpiring` lascia fuori le finite). */
+export function attentionCounts(rows: PantryItem[]): { finished: number; expiring: number } {
+  let finished = 0;
+  let expiring = 0;
+  for (const row of rows) {
+    if (row.status === "finished") finished += 1;
+    else if (isExpiring(row)) expiring += 1;
+  }
+  return { finished, expiring };
+}
+
+export function finishedText(count: number): string {
+  return count === 1 ? "1 finito" : `${count} finiti`;
+}
+
+export function expiringText(count: number): string {
+  return `${count} in scadenza`;
+}

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { PantryItem } from "../../domain/types";
 import {
+  attentionCounts,
+  expiringText,
   expiryCounts,
   expirySummary,
+  finishedText,
   groupForDisplay,
   hasBothWorlds,
   hasExpiry,
@@ -10,9 +13,11 @@ import {
   isExpiring,
   itemLabel,
   matchesQuery,
+  sectionOpen,
   settleWorld,
   visibleItems,
   type PantryWorld,
+  type SectionView,
 } from "./pantryView";
 
 function item(over: Partial<PantryItem>): PantryItem {
@@ -229,5 +234,87 @@ describe("settleWorld", () => {
   ];
   it.each(casi)("%s", (_caso, world, items, revealId, atteso) => {
     expect(settleWorld(world, items, revealId)).toBe(atteso);
+  });
+});
+
+// --- S15: i reparti che si aprono e si chiudono ---
+
+describe("sectionOpen", () => {
+  const NIENTE: ReadonlySet<string> = new Set();
+  const FRUTTA: ReadonlySet<string> = new Set(["frutta"]);
+  // Le righe della tabella di §3 della spec S15 che passano da qui. La voce aggiunta e
+  // il mondo di S14 stanno fuori: la prima apre il suo reparto nei salvati (`setOpen`,
+  // nel momento in cui la si porta in vista), il secondo decide quali reparti ci sono,
+  // non come stanno.
+  const casi: [string, SectionView, boolean][] = [
+    [
+      "nessun filtro, mai chiuso: aperto",
+      { collapsed: NIENTE, filtering: false, closedWhileFiltering: NIENTE },
+      true,
+    ],
+    [
+      "nessun filtro, chiuso e salvato: chiuso",
+      { collapsed: FRUTTA, filtering: false, closedWhileFiltering: NIENTE },
+      false,
+    ],
+    [
+      "ricerca o riepilogo, chiuso e salvato: aperto, perché a video c'è solo se ha un risultato",
+      { collapsed: FRUTTA, filtering: true, closedWhileFiltering: NIENTE },
+      true,
+    ],
+    [
+      "ricerca o riepilogo, aperto: aperto",
+      { collapsed: NIENTE, filtering: true, closedWhileFiltering: NIENTE },
+      true,
+    ],
+    [
+      "ricerca o riepilogo, chiuso a mano durante il filtro: chiuso",
+      { collapsed: FRUTTA, filtering: true, closedWhileFiltering: FRUTTA },
+      false,
+    ],
+    [
+      "filtro spento: vale il salvato, non quel che si era chiuso durante il filtro",
+      { collapsed: NIENTE, filtering: false, closedWhileFiltering: FRUTTA },
+      true,
+    ],
+  ];
+  it.each(casi)("%s", (_caso, view, atteso) => {
+    expect(sectionOpen("frutta", view)).toBe(atteso);
+  });
+});
+
+describe("attentionCounts", () => {
+  const casi: [string, PantryItem[], { finished: number; expiring: number }][] = [
+    ["niente da dire", [item({}), item({ status: "low" })], { finished: 0, expiring: 0 }],
+    ["una finita", [item({ status: "finished" }), item({})], { finished: 1, expiring: 0 }],
+    [
+      "in scadenza e oltre la scadenza contano tutte e due",
+      [
+        item({ expires_on: "2026-10-10", expiry: "soon" }),
+        item({ expires_on: "2026-10-01", expiry: "expired" }),
+      ],
+      { finished: 0, expiring: 2 },
+    ],
+    [
+      "una finita con la scadenza conta una volta, come finita (come nel riepilogo)",
+      [item({ status: "finished", expires_on: "2026-10-10", expiry: "soon" })],
+      { finished: 1, expiring: 0 },
+    ],
+  ];
+  it.each(casi)("%s", (_caso, rows, atteso) => {
+    expect(attentionCounts(rows)).toEqual(atteso);
+  });
+});
+
+describe("finishedText e expiringText", () => {
+  // l'accordo al plurale: «2 finito» era uno degli «accordi sbagliati» del giro di T3
+  const casi: [number, string, string][] = [
+    [1, "1 finito", "1 in scadenza"],
+    [2, "2 finiti", "2 in scadenza"],
+    [11, "11 finiti", "11 in scadenza"],
+  ];
+  it.each(casi)("%i", (n, finito, scadenza) => {
+    expect(finishedText(n)).toBe(finito);
+    expect(expiringText(n)).toBe(scadenza);
   });
 });
