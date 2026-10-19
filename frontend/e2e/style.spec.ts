@@ -495,8 +495,9 @@ function tokenDelTemaScuro(nome: string): string {
 }
 
 /** Ogni testo visibile della pagina, col suo contrasto contro il primo fondo dipinto
- * dietro di lui. Salta ciò che è nascosto, il testo sotto un'opacità minore di 1 (i
- * controlli spenti fuori da `Button`, che si spengono ancora così) e il testo dentro un
+ * dietro di lui. Salta ciò che è nascosto, il testo sotto un'opacità minore di 1 (gli
+ * elementi velati: dal 2026-10-13 nessun controllo spento usa più l'opacità, e
+ * `src/disabledLook.test.ts` lo tiene) e il testo dentro un
  * `aria-hidden`. I pulsanti spenti si misurano come ogni altro testo: WCAG li esenta, la
  * regola di casa no, e dal tema scuro (bozza del 2026-10-06, decisione 6) hanno un colore
  * pieno — lasciarli fuori vorrebbe dire che il prossimo `opacity` torna senza che nessuno
@@ -947,8 +948,8 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
 //
 // Cosa lo scanner (`testiIlleggibili`) misura e cosa no, detto esatto: prende il colore
 // calcolato del testo e quello del primo antenato con un fondo non trasparente, e ne fa
-// il rapporto WCAG. Salta il testo sotto un antenato con `opacity` minore di 1 (i
-// controlli spenti fuori da `Button`, gli elementi velati), dentro `aria-hidden` o
+// il rapporto WCAG. Salta il testo sotto un antenato con `opacity` minore di 1
+// (gli elementi velati), dentro `aria-hidden` o
 // `.sr-only`; i pulsanti spenti li misura.
 // Non misura segnaposto e valori dei campi (non sono nodi di testo), né il testo sopra
 // un'immagine o un gradiente, che confronta col primo fondo pieno. Legge i colori come
@@ -3803,6 +3804,161 @@ test("il legame «Variante di «…»» sta sotto il titolo, è un bersaglio da 
       });
       expect.soft(risposta.ok(), `pulizia: la variante ${varianteId} non si è eliminata`).toBe(true);
     }
+    await ricetta.pulisci();
+  }
+});
+
+// --- Pulizie del 2026-10-13: i controlli spenti senza opacità, e il fuoco ---
+
+/** Trattiene le richieste `metodo` verso `rotta` finché non si chiama la funzione che
+ * restituisce: un controllo resta «in volo» per tutto il tempo che serve a misurarlo. */
+async function trattieni(page: Page, rotta: string, metodo: string): Promise<() => void> {
+  let rilascia!: () => void;
+  const via = new Promise<void>((resolve) => (rilascia = resolve));
+  await page.route(rotta, async (route) => {
+    if (route.request().method() !== metodo) return route.continue();
+    await via;
+    return route.continue();
+  });
+  return rilascia;
+}
+
+/** Le proprietà calcolate che servono qui, così come il browser le dà. */
+async function stileDi(elemento: Locator) {
+  return elemento.evaluate((el) => {
+    const s = el.ownerDocument.defaultView.getComputedStyle(el);
+    return {
+      opacita: s.opacity as string,
+      colore: s.color as string,
+      fondo: s.backgroundColor as string,
+      accento: s.accentColor as string,
+    };
+  });
+}
+
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`controlli spenti senza opacità, tema ${tema === "light" ? "chiaro" : "scuro"}`, () => {
+    test.use({ colorScheme: tema });
+
+    test("in Lista la casella in volo è grigia e piena, nel suo quadrato da 44 px", async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+      const creata = await page.request.post("/api/v1/shopping-list", {
+        data: { raw_text: "prova casella spenta", ingredient_id: null },
+      });
+      expect(creata.ok()).toBe(true);
+      const id = ((await creata.json()) as { id: string }).id;
+      const rotta = `**/api/v1/shopping-list/${id}`;
+      try {
+        const rilascia = await trattieni(page, rotta, "PATCH");
+        await page.goto("/lista");
+        const casella = page.getByRole("checkbox", { name: "prova casella spenta" });
+        const quadrato = (await casella.locator("xpath=..").boundingBox())!;
+        expect(quadrato.width).toBeGreaterThanOrEqual(44);
+        expect(quadrato.height).toBeGreaterThanOrEqual(44);
+
+        const risposta = page.waitForResponse(
+          (r) => r.request().method() === "PATCH" && r.url().includes(`/shopping-list/${id}`)
+        );
+        await casella.click();
+        await expect(casella).toHaveAttribute("aria-disabled", "true");
+        await fermo(page);
+        const spenta = await stileDi(casella);
+        expect(spenta.opacita).toBe("1");
+        expect(spenta.accento).toBe(tokenIn(tema, "ink-faint"));
+
+        rilascia();
+        await risposta;
+        await expect(casella).not.toHaveAttribute("aria-disabled", "true");
+      } finally {
+        await page.unroute(rotta);
+        const pulizia = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+          data: { status: "archived" },
+        });
+        expect.soft(pulizia.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+      }
+    });
+
+    test("in Dispensa le tacche e la scadenza in volo sono grigie, non sbiadite", async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+      const trovati = (await (
+        await page.request.get("/api/v1/ingredients/search?q=cavolfiore")
+      ).json()) as { id: string; name: string }[];
+      const cavolfiore = trovati.find((voce) => voce.name === "cavolfiore");
+      expect(cavolfiore, "«cavolfiore» non è nel seme").toBeDefined();
+      const creata = await page.request.post("/api/v1/pantry", {
+        data: { ingredient_id: cavolfiore!.id, status: "available" },
+      });
+      expect(creata.ok()).toBe(true);
+      const id = ((await creata.json()) as { id: string }).id;
+      const rotta = `**/api/v1/pantry/${id}`;
+      try {
+        const rilascia = await trattieni(page, rotta, "PATCH");
+        await page.goto("/dispensa");
+        const tacche = page.getByRole("radiogroup", { name: /cavolfiore/ });
+        await expect(tacche).toBeVisible();
+
+        const risposta = page.waitForResponse(
+          (r) => r.request().method() === "PATCH" && r.url().includes(`/pantry/${id}`)
+        );
+        await tacche.getByRole("radio", { name: "Quasi finito", exact: true }).click();
+        await expect(tacche.getByRole("radio", { name: "Disponibile", exact: true })).toHaveAttribute(
+          "aria-disabled",
+          "true"
+        );
+        await fermo(page);
+        for (const tacca of await tacche.getByRole("radio").all()) {
+          expect((await stileDi(tacca)).opacita).toBe("1");
+        }
+        const accesa = tacche.locator("[data-lit=true] > span").first();
+        expect((await stileDi(accesa)).fondo).toBe(tokenIn(tema, "on-disabled"));
+        const scadenza = page.getByRole("button", { name: "+ scadenza per cavolfiore" });
+        const spenta = await stileDi(scadenza);
+        expect(spenta.opacita).toBe("1");
+        expect(spenta.colore).toBe(tokenIn(tema, "ink-faint"));
+
+        rilascia();
+        await risposta;
+        await expect(tacche.getByRole("radio", { name: "Disponibile", exact: true })).not.toHaveAttribute(
+          "aria-disabled",
+          "true"
+        );
+      } finally {
+        await page.unroute(rotta);
+        const pulizia = await page.request.patch(`/api/v1/pantry/${id}`, { data: { archived: true } });
+        expect.soft(pulizia.ok(), `pulizia: la confezione ${id} non si è archiviata`).toBe(true);
+      }
+    });
+  });
+}
+
+test("lo stepper delle porzioni da tastiera: arrivato a 1, il fuoco passa al «+»", async ({ page }) => {
+  // in Chromium un pulsante che diventa `disabled` perde il fuoco davvero: jsdom no
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+  const meno = page.getByRole("button", { name: "Una porzione in meno" });
+  const piu = page.getByRole("button", { name: "Una porzione in più" });
+  await expect(meno).toBeEnabled();
+  await meno.focus();
+  await page.keyboard.press("Enter");
+  await expect(meno).toBeDisabled();
+  await expect(piu).toBeFocused();
+});
+
+test("nel foglio della cottura la casella «Rimetti in lista» è un bersaglio da 44 px", async ({ page }) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${ricetta.id}`);
+    await page.getByRole("button", { name: "Cucina", exact: true }).click();
+    const radicchio = page.getByRole("radiogroup", { name: /radicchio/ });
+    await radicchio.getByRole("radio", { name: "Finito", exact: true }).click();
+    const casella = page.getByRole("checkbox", { name: /Rimetti in lista radicchio/ });
+    await expect(casella).toBeChecked();
+    const quadrato = (await casella.locator("xpath=..").boundingBox())!;
+    expect(quadrato.width).toBeGreaterThanOrEqual(44);
+    expect(quadrato.height).toBeGreaterThanOrEqual(44);
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  } finally {
     await ricetta.pulisci();
   }
 });
