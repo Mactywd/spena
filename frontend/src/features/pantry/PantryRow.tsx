@@ -193,6 +193,7 @@ export function PantryRow({
             // `aria-disabled` e non `disabled`, come le tacche: dopo un Invio il fuoco
             // torna qui mentre il salvataggio è in volo, e il browser toglie il fuoco a
             // un pulsante che diventa `disabled` — finiva sul `body`
+            // Spento non sbiadisce: scrive in `ink-faint`, anche sopra il viola di una scadenza
             aria-disabled={busy || undefined}
             onClick={() => {
               if (busy) return;
@@ -200,7 +201,7 @@ export function PantryRow({
               setEditingExpiry(true);
             }}
             aria-label={expiry ? `Scadenza di ${label}: ${expiry}` : `+ scadenza per ${label}`}
-            className={`flex min-h-11 items-start pt-0.5 text-left aria-disabled:opacity-40 ${
+            className={`flex min-h-11 items-start pt-0.5 text-left aria-disabled:text-ink-faint ${
               item.expiry ? EXPIRY_TONE_TEXT[item.expiry] : ""
             }`}
           >

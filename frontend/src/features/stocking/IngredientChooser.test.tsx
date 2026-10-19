@@ -62,6 +62,10 @@ describe("IngredientChooser", () => {
   it("mentre la scelta di prima è in volo, il campo è spento", () => {
     stubRoutedFetch(() => [[], 200]);
     renderChooser(true);
-    expect(screen.getByRole("textbox", { name: "Cosa hai comprato?" })).toBeDisabled();
+    // spento senza `disabled`, che toglierebbe il fuoco (pulizie del 2026-10-13)
+    const campo = screen.getByRole("textbox", { name: "Cosa hai comprato?" });
+    expect(campo).toHaveAttribute("aria-disabled", "true");
+    expect(campo).toHaveAttribute("readonly");
+    expect(campo).not.toBeDisabled();
   });
 });

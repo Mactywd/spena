@@ -252,14 +252,40 @@ describe("IngredientPicker", () => {
     );
     const aggiungi = await screen.findByRole("button", { name: "Aggiungi «zz tre»" });
     // `busy` e non `disabled` (Consegna 6a): il browser toglie il fuoco a un pulsante che
-    // diventa `disabled`. Campo e suggerimenti restano spenti come prima (idea in
-    // next-steps.md): cambia solo il pulsante
+    // diventa `disabled`. Campo e suggerimenti fanno lo stesso dal 2026-10-13 (il test dopo)
     expect(aggiungi).toHaveAttribute("aria-disabled", "true");
     expect(aggiungi.hasAttribute("disabled")).toBe(false);
     aggiungi.focus();
     expect(aggiungi).toHaveFocus();
     fireEvent.click(aggiungi);
     expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  // Il campo e i suggerimenti si spegnevano con `disabled` mentre la scelta di prima era in
+  // volo: il browser toglie il fuoco a un controllo che diventa `disabled`, e chi usa la
+  // tastiera lo ritrovava sul `body` (T3 Consegna 2, pulizie del 2026-10-13)
+  it("mentre la scelta è in volo, campo e suggerimenti sono spenti ma raggiungibili, e non scelgono", async () => {
+    stubRoutedFetch(() => [[LATTE], 200]);
+    const onPick = vi.fn();
+    renderWithClient(
+      <IngredientPicker label="Ingrediente" failureNote="x" onPick={onPick} initialTerm="lat" disabled />
+    );
+
+    const latte = await screen.findByRole("option", { name: "Latte" });
+    expect(latte).toHaveAttribute("aria-disabled", "true");
+    expect(latte).not.toBeDisabled();
+    latte.focus();
+    expect(latte).toHaveFocus();
+    fireEvent.click(latte);
+    expect(onPick).not.toHaveBeenCalled();
+
+    const campo = screen.getByLabelText("Ingrediente");
+    expect(campo).not.toBeDisabled();
+    expect(campo).toHaveAttribute("aria-disabled", "true");
+    expect(campo).toHaveAttribute("readonly");
+    campo.focus();
+    expect(campo).toHaveFocus();
+    expect(campo).toHaveValue("lat");
   });
 
   it("il campo invita a cercare un ingrediente (spec T3 §4.7)", () => {

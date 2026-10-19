@@ -44,7 +44,10 @@ export function IngredientPicker({
    * d'uscita, e nominarla è quel che la distingue da un vicolo cieco. */
   failureNote: string;
   onPick: (ingredient: Ingredient) => void;
-  /** Mentre la scrittura nata dalla scelta precedente è ancora in volo. */
+  /** Mentre la scrittura nata dalla scelta precedente è ancora in volo. Campo e
+   * suggerimenti restano raggiungibili — si spengono con `aria-disabled`, il campo è
+   * `readOnly` — perché un controllo che diventa `disabled` perde il fuoco; non si
+   * scrive e non si sceglie (pulizie del 2026-10-13). */
   disabled?: boolean;
   /** Restringe i suggerimenti al cibo. Lo passano i tre selettori del mondo
    * ricette, dove una voce non alimentare verrebbe rifiutata al salvataggio. */
@@ -104,8 +107,9 @@ export function IngredientPicker({
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           placeholder="Cerca un ingrediente"
-          disabled={disabled}
-          className="mt-1.5 disabled:opacity-50"
+          readOnly={disabled}
+          aria-disabled={disabled || undefined}
+          className="mt-1.5 aria-disabled:text-ink-faint"
         />
       </label>
 
@@ -134,8 +138,7 @@ export function IngredientPicker({
             setTerm("");
           }}
           // `busy` e non `disabled` (Consegna 6a): mentre la scelta di prima è in volo il
-          // pulsante tiene il fuoco. Campo e suggerimenti restano spenti con `disabled`:
-          // sono un'altra forma, annotata in next-steps.md
+          // pulsante tiene il fuoco, come il campo e i suggerimenti
           busy={disabled}
         >
           {`Aggiungi «${debounced}»`}
