@@ -1408,7 +1408,7 @@ componente solo, `RecipeImage` (`frontend/src/features/recipes/RecipeImage.tsx`)
 usato da entrambe le schermate: una seconda copia di quella logica si sarebbe
 scollata esattamente lì, dove nessuno guarda.
 
-## R2. Riporziona **[FATTO IN PARTE 2026-09-20: la metà per porzioni]** ↳ D1
+## R2. Riporziona **[FATTO 2026-10-18 — il secondo modo sul ramo `night/r2-riporziona-ingrediente`, non ancora in produzione; la metà per porzioni dal 2026-09-20]** ↳ D1
 Due modi, e il secondo è quello che manca a tutte le app: per **numero di porzioni**,
 e per **quantità assoluta di un ingrediente** — «la ricetta è per 400 g di pasta, io
 ne faccio 150 g», indipendentemente dalle porzioni.
@@ -1423,6 +1423,31 @@ non è una dose che non si riscala.
 **Resta il secondo modo**, ancorato a un ingrediente invece che alle porzioni, e
 implica scegliere quell'ingrediente prima di poter scalare. TBD, invariato dalla
 proposta originale: se anche questo riporziona è solo una vista o si può salvare.
+
+**Il TBD è deciso** (Mattia, 2026-10-09): **solo vista**, come lo stepper; si parte da un
+tocco sulla dose della riga; un modo alla volta, e con un ingrediente fissato lo stepper
+dice le porzioni equivalenti. Spec: `docs/superpowers/specs/2026-10-09-r2-riporziona-ingrediente-design.md`.
+
+**Il secondo modo è fatto il 2026-10-18**, sul ramo `night/r2-riporziona-ingrediente`
+(da revisionare): `GET /api/v1/recipes/{id}?anchor=<ingrediente>&amount=<dose>` riscala
+dalla dose scritta (la riga d'ancora la dice com'è scritta, le altre seguono, quelle senza
+dose strutturata si contano come nel primo modo); oltre 50 volte la ricetta, in su o in giù,
+un 422 dice fra quali dosi stare; un'ancora che la ricetta non ha più si ignora. Il calcolo è
+in `resolve_anchor` (`backend/app/services/rescale.py`), lo stesso per il dettaglio e per la
+cottura. A video la dose riscalabile è sottolineata a puntini e si tocca; sotto la riga
+«Quanto ne fai?», con l'unità accanto; lo stepper dice «≈ 1,5» e − / + tornano alle porzioni
+intere; «Riscalata da pasta: 150 g.» con «Torna alle dosi della ricetta», l'unica uscita sulle
+ricette senza porzioni. La cottura manda la dose e non le porzioni: `cooking_events.servings`
+resta null, e lo `snapshot` guadagna `anchor` (ingrediente, dose, unità, fattore, porzioni
+equivalenti), senza migrazione.
+
+**L'etichetta** è «Quanto ne fai?» con l'unità accanto alla casella, non «Quanti g ne
+fai?» (deciso da Mattia il 2026-10-13): il registro delle unità non sa il genere, e con
+«fette», «scatole», «coste» la domanda letterale sbaglia l'accordo.
+
+**Da provare sul telefono:** la tastiera dei numeri che si apre da sola col tocco sulla
+dose, la virgola della tastiera italiana, il tocco sulla dose sottolineata col pollice senza
+prendere la riga accanto, l'Invio («fatto») che riscala.
 
 ## R3. Filtra per ingrediente **[FATTO 2026-09-17, rifatto lo stesso giorno]**
 «Contiene questi ingredienti» — `GET /api/v1/recipes/search?ingredient_id=…&ingredient_id=…`.

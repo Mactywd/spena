@@ -20,6 +20,7 @@ describe("defaultQueryRetryPredicate", () => {
   it.each([
     ["un 401 (la sessione è scaduta)", new UnauthorizedError()],
     ["un 404 (la cosa chiesta non c'è)", new ApiError("ricetta inesistente", 404)],
+    ["un 422 (la domanda è sbagliata, e rifatta uguale lo resta)", new ApiError("fuori scala", 422)],
   ])("%s non si ritenta mai", (_nome, error) => {
     expect(defaultQueryRetryPredicate(0, error)).toBe(false);
   });

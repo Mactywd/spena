@@ -86,7 +86,13 @@ export function CookSheet({
         // proprio perché la fase 3 ci trovi una storia vera su cui appoggiarsi.
         // Scrivere 2 dopo aver cucinato per 6 sarebbe invisibile oggi e sbagliato
         // per sempre.
-        servings: recipe.scaled_to ?? recipe.servings ?? undefined,
+        // Riscalata da una dose (R2, secondo modo): si manda la dose, non le porzioni.
+        // «≈ 1,5» non è un numero di porzioni che qualcuno ha scelto, e scriverlo
+        // arrotondato sarebbe lo stesso errore di un 2 al posto di un 6; il server
+        // registra la dose nello storico e ne ricalcola il fattore.
+        ...(recipe.anchor
+          ? { anchor: recipe.anchor.ingredient_id, amount: recipe.anchor.amount }
+          : { servings: recipe.scaled_to ?? recipe.servings ?? undefined }),
         // si parte da ciò che è in elenco, non da ciò che è stato toccato: una voce
         // sparita dalla dispensa mentre il foglio era aperto farebbe fallire tutta
         // la cottura per un id che l'utente non ha più davanti e non può togliere.

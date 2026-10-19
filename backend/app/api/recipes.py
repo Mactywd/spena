@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.db.models.recipe import Recipe
-from app.domain.quantities import UnitForms, render_quantity, scale_quantity
+from app.domain.quantities import (
+    ANCHOR_AMOUNT_CEILING,
+    decimal_text,
+    render_quantity,
+    scale_quantity,
+)
 from app.domain.rules import (
     Availability,
     IngredientRole,
@@ -35,6 +40,7 @@ from app.repositories.recipes import (
 )
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
 from app.schemas.recipe import (
+    AnchorOut,
     RecipeCreate,
     RecipeIngredientIn,
     RecipeIngredientOut,
@@ -55,6 +61,13 @@ from app.services.embeddings import (
 from app.services.ingredient_match import match_name
 from app.services.llm import LlmUnavailable
 from app.services.recipe_search import search_recipes, semantic_search_usable
+from app.services.rescale import (
+    AnchorRefused,
+    anchor_unit,
+    is_anchorable,
+    resolve_anchor,
+    unit_forms,
+)
 
 router = APIRouter(
     prefix="/api/v1/recipes", tags=["recipes"], dependencies=[Depends(require_session)]
@@ -62,9 +75,20 @@ router = APIRouter(
 
 RECIPE_ARCHIVED = "Questa ricetta è stata eliminata: ripristinala prima di modificarla."
 
+# R2: le due regole dei parametri del dettaglio. Il frontend non le viola mai, quindi
+# non sono frasi a video: dicono il contratto a chi chiama la rotta a mano
+ANCHOR_NEEDS_AMOUNT = "La dose di un ingrediente vuole `anchor` e `amount` insieme."
+ONE_SCALE_AT_A_TIME = (
+    "Un modo alla volta: le porzioni (`servings`) oppure la dose di un ingrediente "
+    "(`anchor` con `amount`)."
+)
+
 
 async def _to_out(
-    session: AsyncSession, recipe: Recipe, servings: int | None = None
+    session: AsyncSession,
+    recipe: Recipe,
+    servings: int | None = None,
+    anchor: tuple[uuid.UUID, Decimal] | None = None,
 ) -> RecipeOut:
     ingredient_ids = [ri.ingredient_id for ri in recipe.ingredients]
     availability = await availability_map(session, ingredient_ids)
@@ -74,13 +98,19 @@ async def _to_out(
     # Capacitor. In TypeScript vorrebbe dire spedire il registro delle unità al
     # client e tenere le stesse regole in due lingue.
     factor: Decimal | None = None
+    # R2, secondo modo: una dose fissata su una riga. `resolve_anchor` solleva
+    # `AnchorRefused` oltre le 50 volte (la rotta ne fa un 422 con la frase); un'ancora
+    # che la ricetta non ha più si ignora, come `servings` su una ricetta senza porzioni
+    resolved = resolve_anchor(recipe, *anchor) if anchor is not None else None
+    if resolved is not None:
+        factor = resolved.factor
     # `is not None` e non la verità: che `servings=0` non arrivi mai qui lo garantisce
     # `Query(ge=1)` in fondo a questo file, e una condizione che dipende da un
     # validatore scritto altrove smette di valere il giorno in cui quello cambia
-    if servings is not None and recipe.servings is not None:
+    elif servings is not None and recipe.servings is not None:
         factor = Decimal(servings) / Decimal(recipe.servings)
-        if factor == 1:
-            factor = None  # chiedere le porzioni che ha già è come non chiedere niente
+    if factor == 1:
+        factor = None  # chiedere quel che la ricetta dice già è come non chiedere niente
 
     lines: list[RecipeIngredientOut] = []
     requirements: list[tuple[IngredientRole, Availability]] = []
@@ -103,12 +133,14 @@ async def _to_out(
         if ri.quantity_text is not None:
             dose_lines += 1
         if factor is not None and ri.quantity_value is not None:
-            forms = (
-                UnitForms(ri.unit.key, ri.unit.singular, ri.unit.plural)
-                if ri.unit
-                else None
+            # la riga dell'ancora dice la dose scritta, non il suo ricalcolo: chi
+            # ha scritto 150 deve leggere 150, anche quando 150 / 400 × 400 non torna esatto
+            value = (
+                resolved.amount
+                if resolved is not None and ri is resolved.line
+                else scale_quantity(ri.quantity_value, factor)
             )
-            display = render_quantity(scale_quantity(ri.quantity_value, factor), forms)
+            display = render_quantity(value, unit_forms(ri))
             scaled = True
         else:
             display = ri.quantity_text
@@ -126,6 +158,8 @@ async def _to_out(
                 satisfied=is_satisfied(role, have),
                 quantity_display=display,
                 quantity_scaled=scaled,
+                anchorable=is_anchorable(ri),
+                anchor_unit=anchor_unit(ri) if is_anchorable(ri) else None,
             )
         )
     # il conteggio e il verdetto arrivano da app/domain/rules.py, non da un `sum`
@@ -143,8 +177,21 @@ async def _to_out(
         ),
         image_url=recipe.image_url, prep_minutes=recipe.prep_minutes,
         cook_minutes=recipe.cook_minutes, category=recipe.category, cost=recipe.cost,
-        scaled_to=servings if factor is not None else None,
+        scaled_to=servings if factor is not None and resolved is None else None,
         unscalable_lines=unscalable, dose_lines=dose_lines,
+        anchor=(
+            AnchorOut(
+                ingredient_id=resolved.line.ingredient_id,
+                amount=decimal_text(resolved.amount),
+                equivalent_servings=(
+                    float(resolved.equivalent_servings)
+                    if resolved.equivalent_servings is not None
+                    else None
+                ),
+            )
+            if resolved is not None
+            else None
+        ),
         archived_at=recipe.archived_at,
         owned_by_import=await owned_by_import(session, recipe.id),
         derived_from=(
@@ -240,12 +287,30 @@ async def categories(session: AsyncSession = Depends(get_session)) -> list[str]:
 async def detail(
     recipe_id: uuid.UUID,
     servings: int | None = Query(default=None, ge=1, le=50),
+    # R2, secondo modo: la riga (per ingrediente) e la dose scritta, col punto. Tre
+    # decimali come la colonna `quantity_value`
+    anchor: uuid.UUID | None = Query(default=None),
+    amount: Decimal | None = Query(
+        default=None, gt=0, lt=ANCHOR_AMOUNT_CEILING, decimal_places=3
+    ),
     session: AsyncSession = Depends(get_session),
 ) -> RecipeOut:
+    if (anchor is None) != (amount is None):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ANCHOR_NEEDS_AMOUNT)
+    if anchor is not None and servings is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, ONE_SCALE_AT_A_TIME)
     recipe = await get_recipe(session, recipe_id)
     if recipe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
-    return await _to_out(session, recipe, servings=servings)
+    try:
+        return await _to_out(
+            session,
+            recipe,
+            servings=servings,
+            anchor=(anchor, amount) if anchor is not None and amount is not None else None,
+        )
+    except AnchorRefused as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.sentence) from exc
 
 
 @router.patch("/{recipe_id}", response_model=RecipeOut)

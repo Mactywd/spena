@@ -3962,3 +3962,52 @@ test("nel foglio della cottura la casella «Rimetti in lista» è un bersaglio d
     await ricetta.pulisci();
   }
 });
+
+test("il campo «Quanto ne fai?» e la dose fissata si leggono nei due temi, coi bersagli da pollice (R2)", async ({
+  page,
+}) => {
+  // jsdom non calcola il CSS: la sottolineatura, i 44 px senza alzare la riga e il
+  // contrasto del campo dentro la scheda si vedono solo qui. La vista riscalata non scrive
+  // niente: la ricetta del seme basta, ed è letta e basta.
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+
+  const dose = page.getByRole("button", { name: "180 g: riscala da pasta" });
+  expect((await dose.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(dose).toHaveCSS("text-decoration-style", "dotted");
+  await dose.click();
+  const campo = page.getByRole("textbox", { name: "Quanto ne fai?" });
+  await expect(campo).toBeFocused();
+  for (const [nome, bersaglio] of [
+    ["la casella", campo],
+    ["Riscala", page.getByRole("button", { name: "Riscala", exact: true })],
+    ["Annulla", page.getByRole("button", { name: "Annulla", exact: true })],
+  ] as const) {
+    expect((await bersaglio.boundingBox())!.height, nome).toBeGreaterThanOrEqual(44);
+  }
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `il campo aperto, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await senzaScorrimentoLaterale(page, "il dettaglio col campo «Quanto ne fai?» aperto");
+
+  // «Pasta al pomodoro» del seme è per 2, con 180 g di pasta: 135 g sono «≈ 1,5»
+  await campo.fill("135");
+  await page.getByRole("button", { name: "Riscala", exact: true }).click();
+  await expect(page.getByText("≈ 1,5", { exact: true })).toBeVisible();
+  const torna = page.getByRole("button", { name: "Torna alle dosi della ricetta" });
+  expect((await torna.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `la dose fissata, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await senzaScorrimentoLaterale(page, "il dettaglio riscalato da una dose");
+
+  await torna.click();
+  await expect(page.getByRole("button", { name: "180 g: riscala da pasta" })).toBeVisible();
+});

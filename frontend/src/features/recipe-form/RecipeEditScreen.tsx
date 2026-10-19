@@ -60,7 +60,7 @@ function EditForm({ recipe }: { recipe: RecipeDetail }) {
  * Il modulo nasce solo da una risposta letta dopo l'apertura, mai dalla cache: la PUT
  * rimpiazza la ricetta intera, e un modulo costruito su una copia vecchia rimanderebbe
  * al server i valori vecchi. Succedeva davvero: dal dettaglio riporzionato la chiave
- * attiva è `["recipe", id, 3]`, e cambiare il costo lì rilegge solo quella — la copia a
+ * attiva è `["recipe", id, { servings: 3 }]`, e cambiare il costo lì rilegge solo quella — la copia a
  * 1× restava col costo di prima, e «Salva le modifiche» lo rimetteva zitto. Un giro in
  * più ad ogni apertura della modifica è il prezzo di non perdere niente. */
 export function RecipeEditScreen() {

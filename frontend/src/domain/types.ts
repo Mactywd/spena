@@ -130,6 +130,13 @@ export interface RecipeIngredientLine {
   quantity_display: string | null;
   /** Se `quantity_display` è stato riscalato rispetto a `quantity_text`. */
   quantity_scaled: boolean;
+  /** Se da questa riga si può riscalare (R2, secondo modo): ha una dose strutturata più
+   * grande di zero. Lo decide il server; «q.b.» e le righe senza dose no. */
+  anchorable: boolean;
+  /** La parola dell'unità da scrivere accanto al campo «Quanto ne fai?»: il plurale
+   * deciso, o la parola com'è arrivata. `null` per un numero nudo, o se la riga non si
+   * riscala. */
+  anchor_unit: string | null;
   note: string | null;
   availability: Availability;
   satisfied: boolean;
@@ -142,6 +149,16 @@ export interface RecipeOrigin {
   id: string;
   title: string;
   archived: boolean;
+}
+
+/** La dose fissata da cui il server ha riscalato la ricetta (R2, secondo modo). */
+export interface RecipeAnchor {
+  ingredient_id: string;
+  /** La dose come il server l'ha letta, col punto («112.5»): torna così alla cottura. */
+  amount: string;
+  /** Le porzioni che quella dose fa, già arrotondate dal server; `null` se la ricetta
+   * non dice per quante porzioni è. */
+  equivalent_servings: number | null;
 }
 
 export interface RecipeDetail extends RecipeSummary {
@@ -157,6 +174,9 @@ export interface RecipeDetail extends RecipeSummary {
    * Arriva dal server e non si ricalcola qui — `ingredients.length` conterebbe anche
    * le righe senza dose, che non sono dosi mancate. */
   dose_lines: number;
+  /** La dose fissata, se la risposta è riscalata da un ingrediente; `null` altrimenti —
+   * anche quando il server ha ignorato un'ancora che la ricetta non ha più. */
+  anchor: RecipeAnchor | null;
   /** Vero finché una pagina dell'import rifà questa ricetta: salvare una modifica la
    * rende tua, e l'import non la riscrive più (R10 §4). Lo decide il server. */
   owned_by_import: boolean;
