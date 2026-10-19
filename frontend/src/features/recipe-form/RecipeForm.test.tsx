@@ -610,4 +610,16 @@ describe("il passo del nome dice un non alimentare dell'anagrafica (piano 20)", 
       focusManager.setFocused(undefined);
     }
   });
+
+  it("con l'avviso, l'Invio nel campo del nome non aggiunge la riga", async () => {
+    stubMatch(comeDetersivo);
+    renderForm(valuesFromRecipe(DETAIL));
+    await apriIlPasso("detersivo per i piatti");
+    await screen.findByText(/un non alimentare: una ricetta non può averlo/);
+
+    await userEvent.type(screen.getByLabelText("Come si chiama in generale?"), "{Enter}");
+
+    expect(screen.queryByRole("button", { name: "Togli detersivo per i piatti" })).toBeNull();
+    expect(screen.getByLabelText("Come si chiama in generale?")).toBeInTheDocument();
+  });
 });

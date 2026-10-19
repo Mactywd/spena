@@ -83,3 +83,13 @@ async def test_una_riga_nuova_porta_la_sua_nota(logged_client):
 
     assert risposta.status_code == 201, risposta.text
     assert risposta.json()["ingredients"][0]["note"] == "a cubetti"
+
+
+async def test_gli_spazi_ai_bordi_non_contano_nel_limite(logged_client, pasta):
+    ricetta = await _scritta(logged_client, pasta)
+
+    # il validatore taglia gli spazi prima del limite: 300 caratteri veri più spazi ai bordi passano
+    risposta = await _modifica(logged_client, ricetta["id"], pasta, "  " + "a" * 300 + "  ")
+
+    assert risposta.status_code == 200, risposta.text
+    assert risposta.json()["ingredients"][0]["note"] == "a" * 300

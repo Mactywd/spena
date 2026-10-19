@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
  * alimentare del seme («detersivo per i piatti») lo dice subito, col collegamento che apre
  * l'anagrafica in un'altra scheda lasciando il modulo com'era.
  *
- * La ricetta si crea con `page.request` e si elimina nel `finally`; il passo del nome si
+ * La ricetta si crea con `page.request` e si archivia nel `finally`; il passo del nome si
  * chiude con «Annulla», così nessun ingrediente nasce. Niente resta dietro.
  */
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
