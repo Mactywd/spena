@@ -24,7 +24,7 @@ async def main(argv: list[str]) -> int:
         if argv[0] != FLAG_LIMIT:
             print(f"argomento sconosciuto: {argv[0]}")
             return 2
-        if len(argv) != 2 or not argv[1].isdigit() or int(argv[1]) < 1:
+        if len(argv) != 2 or not argv[1].isdecimal() or int(argv[1]) < 1:
             print(f"uso: python -m app.cli.decide_grams [{FLAG_LIMIT} N], con N almeno 1")
             return 2
         limit = int(argv[1])

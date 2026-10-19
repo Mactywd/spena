@@ -328,12 +328,20 @@ class PairQuestion:
 
 def _read_grams(value: object) -> tuple[bool, Decimal | None]:
     """(si può applicare, grammi): `None` è «nessun peso»; un numero fuori misura, una
-    stringa o un booleano non si applicano."""
+    stringa o un booleano non si applicano. Un numero enorme (1e30, un intero di 400 cifre)
+    si rifiuta come gli altri: non deve fermare il giro."""
     if value is None:
         return True, None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         return False, None
-    grams = Decimal(str(value)).quantize(Decimal("0.01"))
+    try:
+        raw = Decimal(str(value))
+        # prima la misura sul valore grezzo, poi l'arrotondamento: un 1e30 non arriva al quantize
+        if not raw.is_finite() or not Decimal("0") < raw <= GRAMS_MAX + Decimal("0.005"):
+            return False, None
+        grams = raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, OverflowError, ValueError):
+        return False, None
     if not Decimal("0") < grams <= GRAMS_MAX:
         return False, None
     return True, grams

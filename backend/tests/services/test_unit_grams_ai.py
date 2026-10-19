@@ -114,6 +114,22 @@ async def test_un_peso_fuori_misura_non_si_applica(db_session):
     assert await _scritti(db_session) == []
 
 
+async def test_un_peso_enorme_si_rifiuta_senza_fermare_il_giro(db_session):
+    await _mondo(db_session)
+    finto = FakeLlm(
+        '{"pesi": [{"n": 1, "ingrediente": "aglio", "unita": "spicchio", "grammi": 1e30},'
+        ' {"n": 2, "ingrediente": "olio di oliva", "unita": "cucchiai", "grammi": 1'
+        + "0" * 400
+        + "},"
+        ' {"n": 3, "ingrediente": "uova", "unita": "pezzo", "grammi": 50}]}'
+    )
+
+    esito = await decide_grams(db_session, client=finto)
+
+    assert (esito.refused, esito.weighed, esito.pending) == (2, 1, 2)
+    assert await _scritti(db_session) == [(Decimal("50.00"), "ai")]
+
+
 async def test_un_numero_un_ingrediente_o_un_unita_che_non_tornano_non_si_applicano(db_session):
     await _mondo(db_session)
     finto = FakeLlm(

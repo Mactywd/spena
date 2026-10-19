@@ -24,7 +24,7 @@ class _SessioneFinta:
 async def test_argomenti_sbagliati_escono_con_errore(capsys):
     assert await main(["--azzera"]) == 2
     assert "argomento sconosciuto: --azzera" in capsys.readouterr().out
-    for argomenti in (["--limit"], ["--limit", "0"], ["--limit", "x"]):
+    for argomenti in (["--limit"], ["--limit", "0"], ["--limit", "x"], ["--limit", "²"]):
         assert await main(argomenti) == 2, argomenti
 
 
