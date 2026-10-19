@@ -3934,6 +3934,41 @@ for (const tema of ["light", "dark"] as const) {
   });
 }
 
+// S4, fetta 1: la sezione «Valori nutrizionali» con un alimento scelto e le vitamine
+// aperte, poi la ricerca della correzione con un risultato scelto (e il perché sotto
+// «Salva l'alimento»), nei due temi. Lo stack ha la tabella CIQUAL di prova (piano
+// `2026-10-13-s4-ciqual.md`); la scelta si toglie alla fine.
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`i valori nutrizionali in Anagrafica, tema ${tema === "light" ? "chiaro" : "scuro"} (S4)`, () => {
+    test.use({ colorScheme: tema, viewport: { width: 375, height: 812 } });
+
+    test("ogni testo della sezione e della ricerca sta sopra 4,5:1", async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+      const trovati = (await (
+        await page.request.get("/api/v1/ingredients/search?q=pomodoro")
+      ).json()) as Ingredient[];
+      const pomodoro = trovati.find((voce) => voce.name === "pomodoro")!;
+      const percorso = `/api/v1/ingredients/${pomodoro.id}/nutrition`;
+      try {
+        expect((await page.request.put(percorso, { data: { ciqual_code: "90001" } })).ok()).toBe(true);
+        await page.goto(`/anagrafica/ingrediente/${pomodoro.id}`);
+        await expect(page.getByRole("cell", { name: "18 kcal", exact: true })).toBeVisible();
+        await page.getByText("Vitamine e minerali (3)", { exact: true }).click();
+        await page.waitForLoadState("networkidle");
+        expect(await testiIlleggibili(page)).toEqual([]);
+
+        await page.getByRole("button", { name: "Cambia alimento", exact: true }).click();
+        await page.getByLabel("Cerca nella tabella CIQUAL", { exact: true }).fill("tomate");
+        await page.getByRole("radio", { name: "Tomate, crue", exact: true }).check();
+        await expect(page.getByText("È già il suo alimento: scegline un altro.")).toBeVisible();
+        expect(await testiIlleggibili(page)).toEqual([]);
+      } finally {
+        expect.soft((await page.request.delete(percorso)).ok(), "pulizia").toBe(true);
+      }
+    });
+  });
+}
+
 test("lo stepper delle porzioni da tastiera: arrivato a 1, il fuoco passa al «+»", async ({ page }) => {
   // in Chromium un pulsante che diventa `disabled` perde il fuoco davvero: jsdom no
   await page.getByRole("link", { name: "Ricette", exact: true }).click();

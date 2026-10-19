@@ -39,6 +39,8 @@ class LlmCallSite(StrEnum):
     # R8: «Modifica con AI», la variante di una ricetta che esiste
     RECIPE_VARIANT = "recipe_variant"
     INGREDIENT_SUBSTITUTES = "ingredient_substitutes"
+    CIQUAL_TERMS = "ciqual_terms"
+    CIQUAL_MATCH = "ciqual_match"
 
 
 @dataclass(frozen=True)

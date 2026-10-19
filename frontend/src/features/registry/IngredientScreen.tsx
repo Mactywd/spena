@@ -21,6 +21,7 @@ import { AliasRow } from "./AliasRow";
 import { CategoryForm } from "./CategoryForm";
 import { EmojiForm } from "./EmojiForm";
 import { MergePanel } from "./MergePanel";
+import { NutritionSection } from "./NutritionSection";
 import { RenameForm } from "./RenameForm";
 import { IngredientSubstitutes } from "../substitutes/IngredientSubstitutes";
 import { fetchIngredientDetail } from "./api";
@@ -233,6 +234,10 @@ function IngredientCard({ id }: { id: string }) {
       {ingredient.kind === "food" && (
         <IngredientSubstitutes ingredientId={ingredient.id} ingredientName={ingredient.name} />
       )}
+
+      {/* S4: i valori dell'alimento CIQUAL, in fondo e solo per un alimento. Una voce non
+          alimentare non ha valori nutrizionali, e non li chiede */}
+      {ingredient.kind === "food" && <NutritionSection ingredientId={ingredient.id} />}
     </Screen>
   );
 }

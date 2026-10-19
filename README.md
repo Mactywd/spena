@@ -288,6 +288,37 @@ ridistribuiscono, e ognuna conserva l'indirizzo originale, che la schermata dell
 ricetta offre con «apri l'originale». La decisione e i suoi limiti stanno in §3 di
 `docs/superpowers/specs/2026-09-12-import-ricette-design.md`.
 
+## I valori nutrizionali degli ingredienti (CIQUAL)
+
+I nutrienti medi di un ingrediente generico — `pomodoro`, non una marca — vengono dalla
+tabella CIQUAL 2025 dell'Anses: Anses. 2025. Table de composition nutritionnelle des
+aliments Ciqual (<https://doi.org/10.57745/RDMHWY>, licenza Etalab 2.0, che chiede di
+citare la fonte). Il file è `data/ciqual/ciqual-2025.xlsx`; si carica, e si ricarica
+quando esce un'edizione nuova:
+
+```bash
+docker compose exec backend python -m app.cli.load_ciqual --dry-run   # legge e conta, non scrive
+docker compose exec backend python -m app.cli.load_ciqual
+```
+
+Un file che non torna — una colonna con un'unità diversa da quella attesa, una colonna
+d'obbligo che manca — non scrive niente e dice quale colonna. Poi l'AI sceglie l'alimento
+di ogni ingrediente alimentare che non ne ha uno, fra candidati trovati nella tabella:
+
+```bash
+docker compose exec backend python -m app.cli.s4_pilot             # prima: 30 casi con la risposta nota
+docker compose exec backend python -m app.cli.decide_ciqual --limit 20
+docker compose exec backend python -m app.cli.decide_ciqual
+```
+
+Il pilota non scrive niente sugli ingredienti: dice quanti casi l'AI azzecca, contro la
+soglia del 90%, e quanto è costato. `decide_ciqual` scrive solo dove un ingrediente non ha
+ancora una scelta, e l'ultima riga dice quanti ne restano. Una scelta si corregge nella
+scheda dell'ingrediente in Anagrafica, «Valori nutrizionali»: «Cambia alimento» (si cerca
+in francese, come la tabella, o per codice), «Nessun alimento adatto», o «Annulla la
+scelta», che la ridà all'AI. Una scelta fatta lì il comando non la tocca. In produzione,
+con `-f docker-compose.prod.yml` come ogni altro comando.
+
 ## Test
 
 Tre suite separate. Ognuna va lanciata dalla sua directory.

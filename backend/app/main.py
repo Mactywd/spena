@@ -10,6 +10,7 @@ from app.api import (
     cooking,
     imports,
     ingredients,
+    nutrition,
     pantry,
     products,
     recipes,
@@ -79,6 +80,8 @@ app.include_router(cooking.router)
 app.include_router(imports.router)
 app.include_router(substitutions.recipe_router)
 app.include_router(substitutions.ingredient_router)
+app.include_router(nutrition.router)
+app.include_router(nutrition.ciqual_router)
 
 
 @app.get("/api/v1/health")

@@ -593,7 +593,7 @@ tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezi
 dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre
 si rinumerano; nella serie, con tante righe in dispensa, ogni «Metti in dispensa» porta in vista la riga nuova e lo scanner esce dallo schermo (vedi la voce `tbd` in `next-steps.md`).
 
-## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE 2026-09-24 — solo il livello prodotto]**
+## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE — il prodotto il 2026-09-24; l'ingrediente da CIQUAL il 2026-10-18 sul ramo night/s4-ciqual, non ancora in produzione]**
 Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero
 nella forma ma povero nel contenuto. Spec:
 `docs/superpowers/specs/2026-09-24-nutrienti-ampi-design.md`. **Scopo deciso e
@@ -650,6 +650,28 @@ puntare una variante alla sua forma canonica proprio per questo — così il pes
 coppia ingrediente×unità che S4 dovrà riempire un giorno si scrive una volta sola per
 unità canonica, non una volta per ogni variante che il ricettario ha scritto
 diversamente. L'attacco c'è; riempirlo non chiederà una migrazione.
+
+**Fetta 1 fatta il 2026-10-18** sul ramo `night/s4-ciqual` (spec
+`docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md`, piano
+`docs/superpowers/plans/2026-10-13-s4-ciqual.md`), con le decisioni di Mattia del
+2026-10-13: la fonte è **CIQUAL 2025** dell'Anses (licenza Etalab 2.0, citazione
+obbligatoria), non CREA; il modello è Gemma, dopo un pilota. Il file
+(`data/ciqual/ciqual-2025.xlsx`, lo mette Mattia) si legge senza dipendenze e si carica
+in `ciqual_foods` con `load_ciqual`, che riconosce le colonne dal nome e rifiuta un file
+con un'unità diversa da quella del vocabolario; 30 nutrienti dell'Allegato XIII su 35
+(fuori la vitamina A e i quattro che CIQUAL non ha). `ingredient_nutrition` (migrazione
+`0016`) lega un ingrediente al suo alimento, con tre stati e `decided_by`; i valori si
+leggono con una join. L'AI sceglie in due passi — parole di ricerca in francese, poi un
+codice fra i candidati che `pg_trgm` trova — con `decide_ciqual`, solo dove non c'è una
+scelta; «nessun alimento adatto» si scrive (deciso da Mattia il 2026-10-13). Il pilota
+(`s4_pilot`, 30 casi, soglia 90%) dice se Gemma basta. In Anagrafica, nella scheda di un
+alimento, «Valori nutrizionali»: la fonte, la tabella per 100 g, «Cambia alimento»,
+«Nessun alimento adatto», «Annulla la scelta». **In produzione servono passi a mano dopo
+il deploy**: il file, il caricamento, il pilota, l'abbinamento.
+
+**Le scelte del piano che Mattia può voler rivedere:** «< x» letto come x/2 e «traces»
+come 0; i 30 casi del pilota e le due soglie; la sezione in fondo alla scheda,
+dopo «Prodotti»; la ricerca in francese (la tabella non ha nomi italiani).
 
 ## S5. Non alimentari in lista e dispensa **[FATTO 2026-09-18]**
 Vedi D4: stessa lista, stessa dispensa, nessuna informazione nutrizionale — solo
