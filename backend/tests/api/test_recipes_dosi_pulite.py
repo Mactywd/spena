@@ -57,3 +57,21 @@ async def test_le_frazioni_si_riscalano(logged_client, ricetta):
     # «cucchiaino» non è decisa (qui non gira nessun AI): si mostra la parola com'è
     assert righe["zucchero"]["quantity_display"] == "1 cucchiaino"
     assert righe["limone"]["quantity_display"] == "3"
+
+
+async def test_il_q_b_resta_accanto_anche_alla_dose_fissata(logged_client, ricetta):
+    # R2 con la pulizia delle dosi (rilascio 2026-10-19): la riga dell'ancora mostra la dose
+    # scritta e non il suo ricalcolo, ma il «+ q.b.» le resta accanto come alle altre
+    righe = _per_nome((await logged_client.get(f"/api/v1/recipes/{ricetta}")).json())
+    parmigiano = righe["parmigiano"]
+    assert parmigiano["anchorable"] is True
+    corpo = (
+        await logged_client.get(
+            f"/api/v1/recipes/{ricetta}",
+            params={"anchor": parmigiano["ingredient_id"], "amount": "100"},
+        )
+    ).json()
+    righe = _per_nome(corpo)
+    assert corpo["anchor"]["amount"] == "100"
+    assert righe["parmigiano"]["quantity_display"] == "100 g + q.b."
+    assert righe["limone"]["quantity_display"] == "3"
