@@ -4,7 +4,14 @@ import pytest_asyncio
 from llm_fakes import FakeLlm
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
-from app.services.ai_recipes import draft_recipe
+from app.services.ai_recipes import (
+    DRAFT_SCHEMA,
+    SYSTEM_PROMPT,
+    VARIANT_MAX_TOKENS,
+    VARIANT_SYSTEM_PROMPT,
+    draft_recipe,
+    draft_variant,
+)
 from app.services.llm import LlmUnavailable
 
 
@@ -332,3 +339,146 @@ def test_lo_schema_chiede_il_costo():
     assert "cost" in DRAFT_SCHEMA["required"]
     assert DRAFT_SCHEMA["properties"]["cost"] == {"type": ["integer", "null"]}
     assert '"cost"' in SYSTEM_PROMPT
+
+
+# ---- R8: la variante di una ricetta che esiste ----
+
+VARIANTE = {
+    "title": "Pasta al pomodoro senza basilico",
+    "description": "Di sempre, senza erbe",
+    "instructions": "1. Cuoci la pasta.\n2. Scalda il sugo con un pizzico di zucchero.",
+    "servings": 2,
+    "cost": 1,
+    "ingredients": [
+        {"name": "pasta", "role": "primary", "quantity_text": "180 g", "category": "cereali"},
+        {"name": "pomodoro", "role": "primary", "quantity_text": "350 g", "category": "verdura"},
+        {"name": "zucchero", "role": "secondary", "quantity_text": "1 pizzico", "category": "dolci"},
+    ],
+}
+
+
+@pytest_asyncio.fixture
+async def originale(db_session, anagrafica):
+    from sqlalchemy import select
+
+    from app.db.models.recipe import RecipeSource
+    from app.repositories.recipes import create_recipe, get_recipe
+
+    ids = {i.name: i.id for i in (await db_session.execute(select(Ingredient))).scalars()}
+    ricetta = await create_recipe(
+        db_session, title="Pasta al pomodoro", description="Di sempre",
+        instructions="1. Cuoci la pasta.\n2. Scalda il sugo.", servings=2,
+        source=RecipeSource.MANUAL, source_ref=None,
+        ingredients=[
+            (ids["pasta"], "primary", "180 g", None),
+            (ids["pomodoro"], "primary", "300 g", None),
+            (ids["basilico"], "secondary", "q.b.", None),
+        ],
+        embedding=None, cost=1,
+    )
+    return await get_recipe(db_session, ricetta.id)
+
+
+async def test_la_variante_manda_all_ai_la_ricetta_e_la_richiesta(db_session, originale):
+    """La domanda è la ricetta com'è salvata, coi nomi canonici dell'anagrafica — così le
+    righe che la variante tiene si riagganciano con certezza — e la richiesta."""
+    import json
+
+    finto = FakeLlm(VARIANTE)
+    await draft_variant(db_session, originale, "senza basilico", client=finto)
+
+    corpo = finto.bodies[0]
+    assert corpo["messages"][0]["content"] == VARIANT_SYSTEM_PROMPT
+    # le regole della bozza valgono anche qui: la variante le estende, non le riscrive
+    assert VARIANT_SYSTEM_PROMPT.startswith(SYSTEM_PROMPT)
+    assert corpo["max_tokens"] == VARIANT_MAX_TOKENS == 4000
+    # lo schema è quello della bozza: il modulo legge la stessa forma
+    assert corpo["response_format"]["json_schema"]["schema"] == DRAFT_SCHEMA
+    domanda = json.loads(corpo["messages"][1]["content"])
+    assert domanda["richiesta"] == "senza basilico"
+    ricetta = domanda["ricetta"]
+    assert ricetta["title"] == "Pasta al pomodoro"
+    assert ricetta["description"] == "Di sempre"
+    assert ricetta["instructions"] == "1. Cuoci la pasta.\n2. Scalda il sugo."
+    assert ricetta["servings"] == 2
+    assert ricetta["cost"] == 1
+    assert sorted(
+        (r["name"], r["role"], r["quantity_text"], r["category"]) for r in ricetta["ingredients"]
+    ) == [
+        ("basilico", "secondary", "q.b.", "spezie"),
+        ("pasta", "primary", "180 g", "cereali"),
+        ("pomodoro", "primary", "300 g", "verdura"),
+    ]
+
+
+async def test_le_righe_tenute_si_riagganciano_e_le_nuove_si_propongono(db_session, originale):
+    draft = await draft_variant(db_session, originale, "senza basilico", client=FakeLlm(VARIANTE))
+
+    assert draft.title == "Pasta al pomodoro senza basilico"
+    assert draft.cost == 1
+    righe = {i.raw_name: i for i in draft.ingredients}
+    assert righe["pasta"].ingredient_id is not None
+    assert righe["pasta"].confident is True
+    assert righe["pomodoro"].quantity_text == "350 g"
+    # uno nuovo che l'anagrafica non ha: si propone col reparto, «da creare salvando»
+    assert righe["zucchero"].ingredient_id is None
+    assert righe["zucchero"].proposed_category == "dolci"
+
+
+async def test_la_variante_non_introduce_un_non_alimentare(db_session, originale):
+    """Né agganciato (la carta forno c'è, ma è di casa) né da creare (il detersivo non
+    c'è, e il suo reparto non è del cibo): tutti e due tornano senza aggancio e senza
+    reparto, cioè «non in anagrafica, sarà escluso», e non partono salvando."""
+    db_session.add(
+        Ingredient(name="carta forno", display_name="Carta forno", category=IngredientCategory.CASA)
+    )
+    await db_session.flush()
+    risposta = {**VARIANTE, "ingredients": [
+        *VARIANTE["ingredients"],
+        {"name": "carta forno", "role": "secondary", "quantity_text": "1 foglio", "category": "casa"},
+        {"name": "detersivo per piatti", "role": "secondary", "quantity_text": "1 goccia",
+         "category": "casa"},
+    ]}
+
+    draft = await draft_variant(db_session, originale, "in forno", client=FakeLlm(risposta))
+
+    righe = {i.raw_name: i for i in draft.ingredients}
+    for nome in ("carta forno", "detersivo per piatti"):
+        assert righe[nome].ingredient_id is None, nome
+        assert righe[nome].proposed_category is None, nome
+
+
+async def test_la_spesa_della_variante_ha_la_sua_sezione(db_session, originale):
+    from sqlalchemy import select
+
+    from app.db.models.llm_call import LlmCall
+    from app.services.llm import LlmCallSite
+    from llm_fakes import COSTO_FINTO
+
+    await draft_variant(db_session, originale, "senza basilico", client=FakeLlm(VARIANTE))
+
+    # committata: una variante chiesta e buttata è pagata lo stesso (vedi `_record_spend`)
+    assert not db_session.new, "la spesa è solo in sospeso: senza commit andrebbe persa"
+    riga = (await db_session.execute(select(LlmCall))).scalar_one()
+    assert riga.call_site == LlmCallSite.RECIPE_VARIANT == "recipe_variant"
+    assert riga.ok is True
+    assert riga.cost_usd == pytest.approx(COSTO_FINTO)
+
+
+async def test_un_modello_giu_durante_la_variante_e_spesa_fallita(db_session, originale):
+    from sqlalchemy import select
+
+    from app.db.models.llm_call import LlmCall
+    from app.services.llm import LlmCallSite
+
+    with pytest.raises(LlmUnavailable):
+        await draft_variant(
+            db_session, originale, "senza basilico",
+            client=FakeLlm(httpx.ReadTimeout("troppo lento")),
+        )
+
+    assert not db_session.new, "la spesa è solo in sospeso: senza commit andrebbe persa"
+    riga = (await db_session.execute(select(LlmCall))).scalar_one()
+    assert riga.call_site == LlmCallSite.RECIPE_VARIANT
+    assert riga.ok is False
+    assert riga.cost_usd is None

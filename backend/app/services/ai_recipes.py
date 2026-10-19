@@ -10,11 +10,14 @@ aggancio debole viene mostrato ma marcato incerto, perché un ingrediente
 sbagliato in silenzio avvelena la disponibilità di tutte le ricette.
 """
 
+import json
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.recipe import Recipe
 from app.domain.rules import IngredientKind, IngredientRole, cost_in_scale
 from app.services.ingredient_match import match_name
 from app.repositories.llm_calls import record_llm_call
@@ -22,6 +25,9 @@ from app.services.llm import LlmCallSite, LlmUnavailable, LlmUsage, complete_jso
 from app.services.recipe_import.decide import CATEGORIES
 
 DRAFT_MAX_TOKENS = 2000
+# La variante rimanda indietro la ricetta intera, e un procedimento importato è lungo:
+# col tetto della bozza una risposta troncata sarebbe JSON rotto, cioè un 503.
+VARIANT_MAX_TOKENS = 4000
 
 SYSTEM_PROMPT = """Sei un assistente di cucina. Rispondi SOLO con un oggetto JSON valido, senza testo attorno e senza blocchi di codice.
 
@@ -43,6 +49,18 @@ Regole:
 - "cost" è quanto costano gli ingredienti della ricetta intera, su cinque gradini: 1 molto basso, 2 basso, 3 medio, 4 elevato, 5 molto elevato. Pasta e ceci è 1, un filetto di manzo è 4, un risotto al tartufo è 5.
 - Non inserire valori nutrizionali, calorie o macronutrienti.
 - "category" è il reparto di supermercato dell'ingrediente, scelto fra: verdura, frutta, carne, pesce, latticini, cereali, legumi, condimenti, spezie, bevande, dolci, altro. Serve nel caso l'ingrediente non sia ancora in anagrafica.
+"""
+
+# R8. Le regole della bozza valgono tutte — lo schema, i ruoli, i nomi generici, il
+# costo, niente nutrienti, i reparti del cibo — e la variante ne aggiunge di sue: per
+# questo il testo estende `SYSTEM_PROMPT` invece di ricopiarlo.
+VARIANT_SYSTEM_PROMPT = SYSTEM_PROMPT + """
+Questa volta non scrivi una ricetta da zero. Ricevi un oggetto JSON con due chiavi: "ricetta", una ricetta che esiste già, e "richiesta", la modifica che la persona vuole. Rispondi con la ricetta modificata, intera, nello stesso schema.
+- Applica la richiesta e ribilancia il resto: se togli, aggiungi o sostituisci un ingrediente, correggi le dosi, i tempi e i passaggi del procedimento che ne dipendono, perché il piatto riesca. Sostituire lo zucchero con un dolcificante, per esempio, cambia la dose e può cambiare i liquidi e la cottura.
+- Quel che la richiesta non tocca resta com'è: gli ingredienti con lo stesso "name", la stessa "quantity_text", lo stesso "role" e la stessa "category", e lo stesso numero di porzioni.
+- "title" dice in cosa la variante è diversa dall'originale: "Torta di mele con dolcificante", non di nuovo "Torta di mele".
+- "cost" è il costo della variante, non quello dell'originale.
+- Solo ingredienti alimentari: niente prodotti per la casa o per l'igiene, anche se la richiesta li nomina.
 """
 
 DRAFT_SCHEMA = {
@@ -99,22 +117,94 @@ class RecipeDraft:
 async def draft_recipe(
     session: AsyncSession, prompt: str, client: object | None = None
 ) -> RecipeDraft:
+    payload = await _ask(
+        session, call_site=LlmCallSite.RECIPE_DRAFT, system=SYSTEM_PROMPT, user=prompt,
+        max_tokens=DRAFT_MAX_TOKENS, client=client,
+    )
+    return await _draft_from(session, payload)
+
+
+def variant_question(recipe: Recipe, prompt: str) -> str:
+    """La domanda della variante: la ricetta com'è salvata, e la richiesta (R8).
+
+    Le righe col nome canonico dell'anagrafica e non col nome a video: è quello che
+    `match_name` riconosce con certezza, quindi le righe che la variante tiene tornano
+    agganciate senza niente da confermare. Il reparto c'è perché lo schema lo chiede a
+    ogni riga, e il modello lo ripete invece di indovinarlo.
+    """
+    return json.dumps(
+        {
+            "ricetta": {
+                "title": recipe.title,
+                "description": recipe.description,
+                "instructions": recipe.instructions,
+                "servings": recipe.servings,
+                "cost": recipe.cost,
+                "ingredients": [
+                    {
+                        "name": line.ingredient.name,
+                        "role": line.role,
+                        "quantity_text": line.quantity_text,
+                        "category": line.ingredient.category,
+                    }
+                    for line in recipe.ingredients
+                ],
+            },
+            "richiesta": prompt,
+        },
+        ensure_ascii=False,
+    )
+
+
+async def draft_variant(
+    session: AsyncSession, recipe: Recipe, prompt: str, client: object | None = None
+) -> RecipeDraft:
+    """Una variante di `recipe` secondo `prompt` (R8): la ricetta modificata, intera, da
+    correggere nel modulo. Propone e non salva, e l'originale non si tocca: si salva con
+    `POST /recipes` e `derived_from_id`, come ogni ricetta nuova.
+
+    La domanda si costruisce prima della chiamata: dopo, la registrazione della spesa fa
+    `commit` sulla sessione.
+    """
+    question = variant_question(recipe, prompt)
+    payload = await _ask(
+        session, call_site=LlmCallSite.RECIPE_VARIANT, system=VARIANT_SYSTEM_PROMPT,
+        user=question, max_tokens=VARIANT_MAX_TOKENS, client=client,
+    )
+    return await _draft_from(session, payload)
+
+
+async def _ask(
+    session: AsyncSession,
+    *,
+    call_site: LlmCallSite,
+    system: str,
+    user: str,
+    max_tokens: int,
+    client: object | None,
+) -> dict[str, Any]:
+    """Una chiamata con lo schema della bozza, con la spesa registrata comunque vada."""
     try:
         esito = await complete_json(
-            call_site=LlmCallSite.RECIPE_DRAFT,
-            system=SYSTEM_PROMPT,
-            user=prompt,
+            call_site=call_site,
+            system=system,
+            user=user,
             schema=DRAFT_SCHEMA,
             schema_name="bozza_ricetta",
-            max_tokens=DRAFT_MAX_TOKENS,
+            max_tokens=max_tokens,
             client=client,
         )
     except LlmUnavailable:
-        await _record_spend(session, LlmUsage(), ok=False)
+        await _record_spend(session, call_site, LlmUsage(), ok=False)
         raise
 
-    await _record_spend(session, esito.usage, ok=True)
-    payload = esito.data
+    await _record_spend(session, call_site, esito.usage, ok=True)
+    return esito.data
+
+
+async def _draft_from(session: AsyncSession, payload: dict[str, Any]) -> RecipeDraft:
+    """La risposta del modello diventa una bozza: la stessa lavorazione per la stesura da
+    zero e per la variante (R8), così le guardie sulle righe sono una sola."""
     raw_ingredients = payload.get("ingredients") or []
     if not isinstance(raw_ingredients, list):
         raise LlmUnavailable("la lista degli ingredienti ha una forma inutilizzabile")
@@ -170,15 +260,17 @@ async def draft_recipe(
     )
 
 
-async def _record_spend(session: AsyncSession, usage: LlmUsage, *, ok: bool) -> None:
+async def _record_spend(
+    session: AsyncSession, call_site: LlmCallSite, usage: LlmUsage, *, ok: bool
+) -> None:
     """La spesa si committa anche se la bozza non si salva.
 
-    Questa rotta propone e non scrive: la sua sessione non viene committata da
+    Queste rotte propongono e non scrivono: la loro sessione non viene committata da
     nessuno. Ma la chiamata è avvenuta ed è stata pagata che l'utente salvi la ricetta
     o la butti, e legarne la registrazione al salvataggio renderebbe invisibile
     proprio il consumo più facile da fare per sbaglio — dieci bozze chieste e nessuna
     tenuta. La commit è sicura perché su questo percorso non c'è nient'altro in sospeso
     nella sessione.
     """
-    await record_llm_call(session, call_site=LlmCallSite.RECIPE_DRAFT, usage=usage, ok=ok)
+    await record_llm_call(session, call_site=call_site, usage=usage, ok=ok)
     await session.commit()
