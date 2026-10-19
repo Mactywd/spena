@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-19 (fase notte)_
+_Ultimo aggiornamento: 2026-10-19 (rilascio: 19 rami della notte del 2026-10-18 uniti su master)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -14,17 +14,15 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-Una catena e dei rami a sé, da eseguire in quest'ordine (decisa nelle fasi giorno del
-2026-10-09 e del 2026-10-13). I piani 2, 3, 5, 6 e 7 partono ciascuno dal ramo del piano prima,
-il 10 da quello del 7, il 13 da quello del 10; se un anello manca, quelli dopo si fermano nella
-loro Preparazione. Il 18 parte dal ramo del 17. Il 4, l'8, il 9, l'11, il 12, il 14, il 15, il
-16, il 17, il 19 e il 20 partono da `master`. La migrazione `0013` di S12 si eredita lungo la
-catena (R8 aggiunge la `0014` sopra): per questo i piani dopo S12 fanno girare pytest su un
-database dei test loro (`spena_test_<slug>`), e `spena_test` resta per chi parte da `master`
-finché è alla `0012`. Il 16, il 17, il 18 e il 19 aggiungono migrazioni con un numero riservato
-(`0015`, `0016`, `0017` sopra la `0016`, `0018`) e partono dalla `0012`: al merge Mattia ripunta
-la `down_revision` sulla testa di `master` di quel momento, e `alembic heads` deve dire una testa
-sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
+Resta solo il 4, `suggerimenti-soglia`: la notte del 2026-10-18 l'ha già costruito sul suo ramo,
+ed è rimasto fuori dal rilascio del 2026-10-19, che ha unito gli altri diciannove. Prima del merge
+serve una decisione di Mattia: con l'elenco tagliato «Sistema la spesa», che precompila la ricerca
+con tutto il testo della voce, resta senza suggerimenti («pasta barilla integrale» contro pasta fa
+0,250, sotto il pavimento di 0,30), e l'Anagrafica nasconde i quasi-doppioni appena c'è un
+riscontro. Le strade (a) contare come riscontro il testo che contiene un nome o un alias intero,
+(b) un elenco non tagliato per questi due chiamanti, (c) accettare e provare sul telefono, sono nel
+riepilogo `docs/night-reports/2026-10-18-riepilogo.md` («Domande per Mattia», 1) e nella `[tbd] P2`
+del ramo.
 
 4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
 
@@ -36,6 +34,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [tbd] P3 · S4 fetta 3, il tasto «Stima» sul prodotto senza valori: prima la media del suo ingrediente (CIQUAL), poi l'AI con la ricerca web, ogni valore segnato come stima e mai come lettura d'etichetta — deciso il 2026-10-13, serve il piano (e prima una misura del costo della ricerca web su OpenRouter) [S4] → spec `docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md` §8
 - [tbd] P3 · P1, creazione di un pasto per tipo, ricette adatte senza nascondere il resto — TBD: la stima calorica da foto [P1]
 - [tbd] P3 · P2, NutriScore sul periodo — TBD: la funzione non lineare, e come dichiarare i dati parziali [P2]
+- [tbd] P3 · R6, cucinabili con sostituti: la regola è nella spec R5 §8, e R5 è unita col rilascio del 2026-10-19 — TBD: la forma della scala («cucinabile con sostituti» come gradino) e il calcolo sul ricettario intero (in SQL o in blocco); serve il piano [R6]
 
 ### Idee
 - [idea] P3 · «Chiudi tutto / apri tutto» sui reparti della dispensa, se sul telefono toccarli uno per uno non basta (deciso di no per ora, spec S15 §6.5) [S15]
@@ -72,7 +71,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · `import_gz` potrebbe nominare `decide_emoji` quando ha creato ingredienti nuovi, come nomina `decide_units` per le unità [S12]
 - [idea] P3 · Una fusione in Anagrafica tiene la figura del vincitore anche quando non ne ha una e il perdente sì: potrebbe ereditarla [S12]
 - [idea] P3 · Il foglio della cottura manda una transizione anche per una confezione non toccata se si spunta «Rimetti in lista»: se intanto la confezione è cambiata su un altro dispositivo e la scheda non ha ancora riletto la dispensa, il backend la riporta allo stato mostrato a video (per esempio da disponibile a quasi finito). È la stessa corsa che c'è già per una scelta esplicita; chiuderla vorrebbe che la richiesta porti lo stato atteso (`from_status`), un cambio di contratto che «Rimetti in lista» escludeva [Parte X]
-- [idea] P3 · Le spese dell'AI (H1) danno un nome a ogni sezione: `recipe_variant` (R8) e `ingredient_emoji` (S12) sono nate su rami a parte; il ramo `night/h1-spese-ai` li nomina già tutti e due in `CALL_SITE_LABELS` («Varianti con l'AI», «Figure della dispensa»): al merge controllare solo che restino [R8, H1]
 - [idea] P3 · Dal modulo della variante non si ripropone: per una richiesta diversa si torna all'originale e si riapre il pannello [R8]
 - [idea] P3 · Correggere la foto e i tempi di una ricetta: il modulo non li ha (R10 §7), e una variante li copia dall'originale (deciso da Mattia il 2026-10-13), quindi una variante «senza forno» tiene i minuti di cottura della torta finché non c'è un modo di cambiarli [R8, R10]
 - [idea] P3 · Una variante perde le note delle righe che tiene («al dente», «tritato»): la domanda all'AI non le manda e lo schema della bozza non ha un campo per la nota; da decidere se mandarle e farle tornare, ora che le dosi dell'import spostano parole nella nota [R8]
@@ -95,7 +93,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [idea] P3 · H1: il dettaglio di un giorno per sezione (oggi le colonne non si toccano: a 375 px sarebbero bersagli da 10 px) [H1]
 
 ## Bloccati
-- [bloccato] P3 · R6, cucinabili con sostituti — attende: il merge di R5 (`night/r5-sostituti`); la regola è nella spec R5 §8
 - [bloccato] P3 · H3, Profilo — attende: la spec di P2, che dice cosa serve
 - [bloccato] P3 · P3, pianificare più giorni — attende: P2 e S4 (deciso il 2026-09-24 di non partire prima); aperti anche i profili di budget [P3]
 - [bloccato] P3 · M1, motore di suggerimento — attende: pasti, nutrienti e sostituti (P2, S4, R5)
@@ -140,6 +137,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-19 · Le etichette delle spese dell'AI al merge di H1: `recipe_variant` (R8) e `ingredient_emoji` (S12) restano in `CALL_SITE_LABELS`, e ci sono anche quelle di R5 e delle due fette di S4 [R8, H1] → ramo rilascio/2026-10-19 (ae7de12)
 - [fatto] 2026-10-18 · Pulizie dei test e del backend: attese di Testing Library a 4 s e prove a 15 s (la Lista e l'Anagrafica cadevano sotto carico); un client react-query solo per l'app e i test (`createAppQueryClient`, `createTestQueryClient` con i tentativi veri senza attesa), e una prova che nessun test se ne faccia uno; le date dell'e2e nel giorno di Roma; `HTTP_422_UNPROCESSABLE_CONTENT` e gli avvisi di Starlette come errori; l'annullamento riconta `occurrences` con una `COUNT`; il 409 delle due righe nomina l'ingrediente; i test della coda con una decisione in volo [Parte X, T3] → branch night/pulizie-test (da revisionare)
 - [fatto] 2026-10-19 · R5, sostituisci ingrediente: risposte per ingrediente × {dolce, salato} decise dall'AI (`decide_substitutes`, a lotti, `--limit`/`--dry-run`) o al primo tocco, l'icona «Sostituisci» in fondo a ogni riga col pannello sotto, «Non va bene qui» per la ricetta, la sezione «Sostituti» in Anagrafica con le voci dell'AI da rivedere, la fusione che sposta tutto; migrazione `0015` [R5] → branch night/r5-sostituti (da revisionare)
 - [fatto] 2026-10-19 · Pulizie dei controlli spenti e del fuoco: casella, tacche, scadenza, suggerimenti e campo del selettore spenti senza opacità (grigio e `ink-faint`, la regola del tema scuro), con una prova che l'opacità non torni; le caselle della Lista e del foglio della cottura sono `Checkbox` da 44 px; il fuoco non cade più (stepper al bordo, selettore in volo, «Salva» dei campi del prodotto, «Salva prodotto», dopo un annullamento in coda, dopo una dispensa che non si ricarica); `Button` fa vincere `busy`/`unavailableReason` su `disabled` e disegna il segno d'attesa sui pulsanti di sola icona; la ✕ e i ruoli del modulo sono `Button`; «Cambia» fuori dal `<p>` [T3] → branch night/pulizie-controlli (da revisionare)
