@@ -399,3 +399,99 @@ describe("R12: un ingrediente che non c'è si aggiunge dal modulo", () => {
     expect(offerta).toBeInTheDocument();
   });
 });
+
+describe("la nota della riga (piano 20)", () => {
+  it("si legge nel suo campo e si corregge; il salvataggio porta la nota nuova", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    const nota = screen.getByLabelText("Nota per pasta");
+    expect(nota).toHaveValue("al dente");
+    expect(nota).toHaveAttribute("maxlength", "300");
+    await userEvent.clear(nota);
+    await userEvent.type(nota, "molto al dente");
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { ingredient_id: "i1", role: "primary", quantity_text: "320 g", note: "molto al dente" },
+        ]),
+      })
+    );
+  });
+
+  it("svuotato il campo, la nota si toglie: la riga parte senza", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.clear(screen.getByLabelText("Nota per pasta"));
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { ingredient_id: "i1", role: "primary", quantity_text: "320 g" },
+        ]),
+      })
+    );
+  });
+
+  it("una riga senza nota offre «Aggiungi una nota», che apre il campo col fuoco", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    expect(screen.queryByLabelText("Nota per basilico")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi una nota: basilico" }));
+
+    const nota = screen.getByLabelText("Nota per basilico");
+    expect(nota).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Aggiungi una nota: basilico" })).toBeNull();
+    await userEvent.type(nota, "fresco");
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { ingredient_id: "i2", role: "secondary", quantity_text: null, note: "fresco" },
+        ]),
+      })
+    );
+  });
+
+  it("aperto e lasciato vuoto, il campo non aggiunge niente al salvataggio", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi una nota: basilico" }));
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { ingredient_id: "i2", role: "secondary", quantity_text: null },
+        ]),
+      })
+    );
+  });
+
+  it("anche una riga nuova di R12 ha la sua nota", async () => {
+    stubCategories([[], 200]);
+    const { save } = renderForm(valuesFromRecipe(DETAIL));
+
+    await userEvent.type(screen.getByLabelText("Aggiungi un ingrediente"), "zz tre");
+    await userEvent.click(await screen.findByRole("button", { name: "Aggiungi «zz tre»" }));
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi alla ricetta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Aggiungi una nota: zz tre" }));
+    await userEvent.type(screen.getByLabelText("Nota per zz tre"), "a cubetti");
+    await salva();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredients: expect.arrayContaining([
+          { name: "zz tre", category: "altro", role: "primary", quantity_text: null, note: "a cubetti" },
+        ]),
+      })
+    );
+  });
+});

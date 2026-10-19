@@ -8,6 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { Checkbox } from "../../components/ui/Checkbox";
 import { CostPicker } from "../../components/ui/CostPicker";
 import { SectionHeading } from "../../components/ui/SectionHeading";
+import { IconPlus } from "../../components/ui/icons";
 import type { Ingredient, IngredientRole, RecipeBody, RecipeDetail } from "../../domain/types";
 import { capitalizeFirst } from "../../lib/text";
 import { CategoryField } from "./CategoryField";
@@ -15,6 +16,7 @@ import { NewIngredientFields } from "../stocking/NewIngredientFields";
 import {
   addNewLine,
   QUANTITY_MAX,
+  NOTE_MAX,
   TITLE_MAX,
   lineFromIngredient,
   matchNote,
@@ -61,6 +63,9 @@ function LineRow({
   // la stessa condizione di `savableLines`: una riga entra nel salvataggio se è
   // agganciata o se porta nome e categoria con cui crearla, ed è lì che ha dose e ruolo
   const savableShape = line.ingredientId !== null || line.proposedCategory !== null;
+  // vero dopo «Aggiungi una nota»: il campo nasce col fuoco, perché è lì che si scrive.
+  // Una nota che c'era già si apre senza rubare il fuoco a nessuno
+  const [focusNote, setFocusNote] = useState(false);
   return (
     <li className="flex flex-col gap-2 py-2 text-sm">
       {/* Prima riga: [la casella, solo se l'aggancio è incerto] + il nome + la ✕. Il nome
@@ -178,6 +183,42 @@ function LineRow({
           </div>
         </div>
       )}
+
+      {/* La nota della riga (piano 20): «da grattugiare», «a temperatura ambiente». Si
+          corregge qui, e si toglie svuotando il campo (vuota si salva `null`). Il campo
+          c'è solo dove la nota c'è: dodici campi vuoti su dodici righe allungherebbero il
+          modulo di un telefono intero, e una nota è l'eccezione — le altre righe hanno
+          «Aggiungi una nota», che apre il campo col fuoco. Svuotato resta aperto fino al
+          salvataggio: chiuderlo mentre lo si cancella porterebbe via il fuoco. Solo dove la
+          riga parte salvando, come la dose */}
+      {savableShape &&
+        (line.note === null ? (
+          <Button
+            variant="ghost"
+            icon={IconPlus}
+            accessibleName={`Aggiungi una nota: ${line.label}`}
+            onClick={() => {
+              setFocusNote(true);
+              onUpdate({ note: "" });
+            }}
+            className="self-start"
+          >
+            Aggiungi una nota
+          </Button>
+        ) : (
+          <label className="text-xs text-ink-soft">
+            Nota
+            <input
+              aria-label={`Nota per ${line.label}`}
+              value={line.note}
+              onChange={(e) => onUpdate({ note: e.target.value })}
+              maxLength={NOTE_MAX}
+              autoFocus={focusNote}
+              placeholder="«da grattugiare», «a temperatura ambiente»"
+              className="mt-1.5 text-ink"
+            />
+          </label>
+        ))}
     </li>
   );
 }
