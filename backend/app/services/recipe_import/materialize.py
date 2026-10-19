@@ -15,7 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient
-from app.db.models.recipe import CookingEvent, RecipeSource
+from app.db.models.recipe import CookingEvent, Recipe, RecipeSource
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportState, RecipeImport, TermDecision
 from app.domain.rules import IngredientRole, cost_in_scale, default_role
 from app.repositories.imports import pending_pages, terms_by_key
@@ -36,6 +36,8 @@ EMPTY_REASON = (
 # La chiave del `payload` dove `undo_decision` lascia gli id delle cotture della ricetta
 # che ha cancellato. La ricetta rifatta da questa pagina le riprende (S9 §5.2).
 COOKING_EVENTS_KEY = "cooking_event_ids"
+# R8: le varianti di una ricetta cancellata per rifarla aspettano qui, come le cotture.
+VARIANTS_KEY = "variant_recipe_ids"
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,30 @@ async def _relink_cooking_events(
     )
     page.payload = {key: value for key, value in page.payload.items() if key != COOKING_EVENTS_KEY}
     return result.rowcount or 0
+
+
+async def _relink_variants(
+    session: AsyncSession, page: RecipeImport, recipe_id: uuid.UUID
+) -> None:
+    """Rimette sulla ricetta rifatta il legame delle sue varianti (R8).
+
+    Stessa forma di `_relink_cooking_events`: `derived_from_id IS NULL` nella condizione,
+    perché una variante che nel frattempo qualcuno ha legato ad altro non si ruba; la
+    chiave si toglie riassegnando il dizionario, perché SQLAlchemy non vede le mutazioni
+    dentro un JSONB.
+    """
+    waiting = page.payload.get(VARIANTS_KEY)
+    if not waiting:
+        return
+    await session.execute(
+        update(Recipe)
+        .where(
+            Recipe.id.in_([uuid.UUID(str(value)) for value in waiting]),
+            Recipe.derived_from_id.is_(None),
+        )
+        .values(derived_from_id=recipe_id)
+    )
+    page.payload = {key: value for key, value in page.payload.items() if key != VARIANTS_KEY}
 
 
 async def materialize_ready(
@@ -187,6 +213,7 @@ async def materialize_ready(
         page.recipe_id = recipe.id
         created += 1
         relinked += await _relink_cooking_events(session, page, recipe.id)
+        await _relink_variants(session, page, recipe.id)
 
     await session.flush()
     return Materialized(created=created, skipped=skipped, relinked=relinked)

@@ -19,6 +19,9 @@ scrive gli id delle cotture alla chiave `cooking_event_ids` (`COOKING_EVENTS_KEY
 `materialize_ready` li rimette sulla ricetta rifatta. Una pagina che resta in coda
 tiene gli id finché non torna ricetta: la cottura è senza ricetta per quel tempo, e la
 ritrova dopo.
+Da R8 ce n'è una terza, il legame delle varianti (`recipes.derived_from_id`, anche lui ON
+DELETE SET NULL): gli id delle varianti aspettano alla chiave `variant_recipe_ids`
+(`VARIANTS_KEY`), e tornano allo stesso modo.
 
 Ripensato con R10, quando le ricette importate sono diventate modificabili. Una ricetta
 che l'utente modifica o elimina non è più dell'import: la sua pagina passa ad `adopted`
@@ -44,7 +47,7 @@ from app.db.models.recipe_import import ImportState, ImportTerm, RecipeImport, T
 from app.domain.rules import cost_in_scale
 from app.repositories.imports import pending_pages
 from app.repositories.ingredients import delete_ingredient_if_unused, forget_alias
-from app.services.recipe_import.materialize import COOKING_EVENTS_KEY
+from app.services.recipe_import.materialize import COOKING_EVENTS_KEY, VARIANTS_KEY
 from app.services.recipe_import.terms import count_pending_keys
 
 
@@ -160,6 +163,19 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
                 payload[COOKING_EVENTS_KEY] = sorted(
                     {*payload.get(COOKING_EVENTS_KEY, []), *cooked}
                 )
+            # R8: `recipes.derived_from_id` è ON DELETE SET NULL come le cotture, e per lo
+            # stesso motivo le varianti di questa ricetta aspettano nel `payload`:
+            # `materialize_ready` rimette il legame sulla ricetta rifatta
+            variants = [
+                str(variant_id)
+                for variant_id in (
+                    await session.execute(
+                        select(Recipe.id).where(Recipe.derived_from_id == recipe.id)
+                    )
+                ).scalars()
+            ]
+            if variants:
+                payload[VARIANTS_KEY] = sorted({*payload.get(VARIANTS_KEY, []), *variants})
             # Riassegnato e non mutato: SQLAlchemy non vede le mutazioni in un JSONB.
             if payload != page.payload:
                 page.payload = payload
