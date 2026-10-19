@@ -45,7 +45,6 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 17. [pronto] P3 · S4 fetta 1, i nutrienti dell'ingrediente da CIQUAL 2025: `load_ciqual`, `ingredient_nutrition` (migrazione `0016`), `decide_ciqual` in due passi (parole francesi, poi la scelta fra candidati veri), il pilota su Gemma, «Valori nutrizionali» in Anagrafica; il file CIQUAL lo scarica e committa Mattia (Mattia, 2026-10-13) [S4] → `docs/superpowers/plans/2026-10-13-s4-ciqual.md`, ramo `night/s4-ciqual` da `master`
 18. [pronto] P3 · S4 fetta 2, i grammi per ingrediente × unità e i nutrienti di una ricetta con la copertura dichiarata («q.b.» fuori, e lo si dice): `ingredient_unit_grams` (migrazione `0017`), `decide_grams`, «Pesi per unità» in Anagrafica, il pannello nel dettaglio della ricetta (Mattia, 2026-10-13) [S4] → `docs/superpowers/plans/2026-10-13-s4-grammi.md`, ramo `night/s4-grammi` da `night/s4-ciqual`
 19. [pronto] P3 · H2, l'attività da Health Connect via HC Webhook: passi, allenamenti e peso (anche dal Galaxy Watch, senza doppioni), la chiave del webhook, «Attività» dal ☰; migrazione `0018`; il collegamento sul telefono lo fa Mattia dopo il deploy (Mattia, 2026-10-13) [H2] → `docs/superpowers/plans/2026-10-13-h2-health-connect.md`, ramo `night/h2-health-connect` da `master`
-20. [pronto] P3 · Modulo della ricetta: la nota di ogni riga si legge, si corregge e si toglie; un nome nuovo che in anagrafica è un non alimentare lo dice il passo del nome mentre lo si scrive, col collegamento all'Anagrafica in un'altra scheda (Mattia, 2026-10-13) [T3 Consegna 6b, R12] → `docs/superpowers/plans/2026-10-13-modulo-nota-nome.md`, ramo `night/modulo-nota-nome` da `master`
 
 ## Da approfondire (giorno)
 
@@ -129,7 +128,7 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-_(niente)_
+- [in corso] P3 · Modulo della ricetta: la nota modificabile e l'avviso sul nome non alimentare — piano `docs/superpowers/plans/2026-10-13-modulo-nota-nome.md` → branch night/modulo-nota-nome [T3 Consegna 6b, R12, Parte X]
 
 ## Fatti (recenti)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
