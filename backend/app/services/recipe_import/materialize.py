@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.ingredient import Ingredient
 from app.db.models.recipe import CookingEvent, Recipe, RecipeSource
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportState, RecipeImport, TermDecision
+from app.domain.quantities import clean_dose, merge_notes
 from app.domain.rules import IngredientRole, cost_in_scale, default_role
 from app.repositories.imports import pending_pages, terms_by_key
 from app.repositories.recipes import NonFoodInRecipe, create_recipe
@@ -139,24 +140,36 @@ async def materialize_ready(
             continue  # aspetta: è la decisione presa nello spec §2
 
         # collasso per ingrediente, nell'ordine di prima comparsa
-        collapsed: dict[uuid.UUID, tuple[IngredientRole, str | None]] = {}
+        collapsed: dict[uuid.UUID, tuple[IngredientRole, str | None, str | None]] = {}
         for line, term in zip(lines, decisions, strict=True):
             if term.decision == TermDecision.IGNORED:
                 continue
-            quantity = line.get("quantity_text")
+            arrived = line.get("quantity_text")
+            # Il ruolo si legge dal testo come è arrivato, come prima della pulizia: la
+            # pulizia non cambia ruoli (spec 2026-10-13, §3.10), così una ricetta rifatta
+            # da qui è uguale a quella che il comando `clean_doses` ha ripulito sul posto.
             role = IngredientRole(
                 term.role_override
-                or default_role(categories.get(term.ingredient_id, "altro"), quantity)
+                or default_role(categories.get(term.ingredient_id, "altro"), arrived)
             )
+            # La dose pulita all'ingresso: le parole davanti nella nota, gli spazi
+            # dell'HTML a uno (Mattia, 2026-10-13). Il `payload` resta com'è arrivato.
+            cleaned = clean_dose(arrived)
+            quantity, note = cleaned.quantity_text, cleaned.note
             key = term.ingredient_id
             if key in collapsed:
-                previous_role, previous_quantity = collapsed[key]
+                previous_role, previous_quantity, previous_note = collapsed[key]
                 collapsed[key] = (
                     stronger(previous_role, role),
                     merge_quantities(previous_quantity, quantity),
+                    merge_notes(previous_note, note),
                 )
             else:
-                collapsed[key] = (role, quantity[:MAX_QUANTITY_CHARS] if quantity else None)
+                collapsed[key] = (
+                    role,
+                    quantity[:MAX_QUANTITY_CHARS] if quantity else None,
+                    note,
+                )
 
         if not collapsed:
             page.state = ImportState.SKIPPED
@@ -183,8 +196,8 @@ async def materialize_ready(
                 source=RecipeSource.DATASET,
                 source_ref=page.url,
                 ingredients=[
-                    (ingredient_id, role, quantity, None)
-                    for ingredient_id, (role, quantity) in collapsed.items()
+                    (ingredient_id, role, quantity, note)
+                    for ingredient_id, (role, quantity, note) in collapsed.items()
                 ],
                 embedding=embedding,
             )

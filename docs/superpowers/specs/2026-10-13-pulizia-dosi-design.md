@@ -64,7 +64,9 @@ rilegge le dosi e toglie le unità spurie. Il lancio in produzione lo fa Mattia.
    nessuna strada: è la decisione 3 resa misurabile.
 6. **Come si separa la nota dalla dose.** Il testo si divide sugli a capo in righe (vuote
    escluse, spazi interni ridotti a uno). La dose comincia dall'**ultima** riga che comincia con
-   una cifra, con ½ ¼ ¾, o con «q.b.»; quel che sta prima è la nota. Se quel che sta prima non ha
+   una cifra, con ½ ¼ ¾, o con «q.b.»; quel che sta prima è la nota. Le righe senza lettere subito
+   prima di quella riga sono anch'esse dose: il numero può arrivare spezzato («fredda ⏎ 1 ⏎ ½ ⏎
+   cucchiai» → «1 ½ cucchiai», nota «fredda»; aggiunto la notte del 2026-10-18, su delega). Se quel che sta prima non ha
    nemmeno una lettera («2 ⏎ 1/2 ⏎ cucchiai») è tutto dose: non si inventa una nota fatta di
    numeri. Una nota chiusa per intero fra parentesi perde le parentesi («(da pulire)» → «da
    pulire»). Le dosi unite con « + » (`merge_quantities`) si puliscono pezzo per pezzo, e le note

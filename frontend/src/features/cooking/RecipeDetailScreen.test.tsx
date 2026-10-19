@@ -404,6 +404,22 @@ describe("RecipeDetailScreen", () => {
     await userEvent.click(piu);
     expect(spy.mock.calls.some(([url]) => String(url).includes("servings="))).toBe(false);
   });
+
+  it("la nota della riga sta sotto il nome, e la dose resta a destra", async () => {
+    // la nota nasce dalla pulizia delle dosi dell'import: «da grattugiare ⏎ 50 ⏎ g» è
+    // diventata la dose «50 g» e la nota «da grattugiare» (spec 2026-10-13)
+    stubFetch({
+      ingredients: DETAIL.ingredients.map((line) =>
+        line.ingredient_id === "i1" ? { ...line, note: "da grattugiare" } : line
+      ),
+    });
+    renderScreen();
+    const row = (await screen.findByText("Pasta")).closest("li")!;
+    expect(within(row).getByText("da grattugiare")).toBeInTheDocument();
+    expect(within(row).getByText("180 g")).toBeInTheDocument();
+    // le righe senza nota non mostrano niente in più
+    expect(screen.getAllByText("da grattugiare")).toHaveLength(1);
+  });
 });
 
 describe("il costo nel dettaglio si legge e basta (T3 Consegna 5)", () => {

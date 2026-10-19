@@ -4011,3 +4011,43 @@ test("il campo «Quanto ne fai?» e la dose fissata si leggono nei due temi, coi
   await torna.click();
   await expect(page.getByRole("button", { name: "180 g: riscala da pasta" })).toBeVisible();
 });
+
+test("la nota di una riga della ricetta si legge nei due temi", async ({ page }) => {
+  // La nota nasce dalla pulizia delle dosi dell'import (spec 2026-10-13): il seme non ne
+  // ha, quindi `perOgniLuogo` non la vede. Una ricetta con la nota, scritta con
+  // `page.request`, e tolta alla fine.
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const farro = (
+    (await (await page.request.get("/api/v1/ingredients/search?q=farro")).json()) as {
+      id: string;
+      name: string;
+    }[]
+  ).find((voce) => voce.name === "farro");
+  expect(farro, "«farro» non è nel seme").toBeDefined();
+  const creata = await page.request.post("/api/v1/recipes", {
+    data: {
+      title: `Nota e2e ${Date.now()}`,
+      instructions: "Cuoci.",
+      servings: 2,
+      source: "manual",
+      ingredients: [
+        { ingredient_id: farro!.id, role: "primary", quantity_text: "160 g", note: "da sciacquare" },
+      ],
+    },
+  });
+  expect(creata.ok()).toBe(true);
+  const id = ((await creata.json()) as { id: string }).id;
+  try {
+    await page.goto(`/ricette/${id}`);
+    await expect(page.getByText("da sciacquare", { exact: true })).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `dettaglio con la nota, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    const tolta = await page.request.patch(`/api/v1/recipes/${id}`, { data: { archived: true } });
+    expect.soft(tolta.ok(), `pulizia: la ricetta ${id} non si è eliminata`).toBe(true);
+  }
+});

@@ -9,6 +9,7 @@ quando non si ricava non si inventa.
 import re
 from dataclasses import dataclass
 from decimal import Decimal, DivisionByZero, InvalidOperation, ROUND_HALF_UP
+from enum import StrEnum
 
 # tre decimali bastano a un terzo, e `Numeric` invece di `Float` perché un giorno
 # queste righe si sommeranno per la nutrizione
@@ -23,14 +24,28 @@ PRECISION = Decimal("0.001")
 # nessun `except` di questo progetto intercetta.
 UNIT_MAX_LENGTH = 30
 
-# numero in testa (intero, decimale con virgola o punto, frazione), e subito dopo
-# la parola dell'unità se c'è. Tutto quel che segue è prosa e non ci riguarda:
-# «1 litro di brodo» è un litro, e «di brodo» sta già in quantity_text.
+# Le frazioni scritte con un carattere solo, come le scrive GialloZafferano («½
+# cucchiaino»). Solo le tre misurate in produzione il 2026-10-13: un'altra resta una
+# dose che non si legge, che è il contratto di questo parser.
+VULGAR_FRACTIONS = {"½": Decimal("0.5"), "¼": Decimal("0.25"), "¾": Decimal("0.75")}
+_FRACTION_CHARS = "".join(VULGAR_FRACTIONS)
+
+# numero in testa (intero, decimale con virgola o punto, frazione con la barra, intero
+# seguito da ½ ¼ ¾, oppure ½ ¼ ¾ da soli), e subito dopo la parola dell'unità se c'è.
+# Tutto quel che segue è prosa e non ci riguarda: «1 litro di brodo» è un litro, e «di
+# brodo» sta già in quantity_text. ½ ¼ ¾ sono «lettere» per `\w`: senza escluderle
+# dall'unità, «1 ½» sarebbe un ½ come unità.
 _DOSE = re.compile(
-    r"^\s*(?:(?P<num>\d+)\s*/\s*(?P<den>\d+)|(?P<dec>\d+(?:[.,]\d+)?))"
-    r"\s*(?P<unit>[^\W\d_]+)?",
+    rf"^\s*(?:(?P<num>\d+)\s*/\s*(?P<den>\d+)"
+    rf"|(?P<dec>\d+(?:[.,]\d+)?)(?:\s*(?P<mixed>[{_FRACTION_CHARS}]))?"
+    rf"|(?P<vulgar>[{_FRACTION_CHARS}]))"
+    rf"\s*(?P<unit>[^\W\d_{_FRACTION_CHARS}]+)?",
     re.UNICODE,
 )
+
+# Un pezzo «quanto basta»: «q.b.», «qb», «Q. B.», anche seguito da parole («q.b. per
+# spolverare»). Non si somma e non si scala: accanto a una dose, la dose resta leggibile.
+_QB = re.compile(r"^\s*q\s*\.?\s*b\b\.?", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -53,13 +68,21 @@ def parse_quantity(text: str | None) -> tuple[Decimal | None, str | None]:
     Lo stesso vale per le due cose che si capirebbero male: una dose che continua
     con un altro numero («2 1/2 cucchiai») e una parola d'unità più lunga di
     `UNIT_MAX_LENGTH`. Nessuna delle due si scala, e dirlo è meglio che scalarle.
+
+    Un pezzo «q.b.» accanto a una dose non conta: «50 g + q.b.» sono 50 g. Le
+    frazioni ½ ¼ ¾ si leggono, da sole («½ cucchiaino») e dopo un intero («1 ½»).
     """
     if not text:
         return (None, None)
 
     # `merge_quantities` unisce con « + » due dosi della stessa fonte finite sullo
     # stesso ingrediente («500 g + 50 g»). Sommare è giusto solo a unità uguale.
-    pieces = [_parse_one(piece) for piece in text.split("+")]
+    # Un pezzo «q.b.» non è una dose da sommare: «50 g + q.b.» sono 50 g che si
+    # riscalano, e il «+ q.b.» lo rimette accanto `with_qb_tail` (Mattia, 2026-10-13).
+    measured = [piece for piece in text.split("+") if not _QB.match(piece)]
+    if not measured:
+        return (None, None)
+    pieces = [_parse_one(piece) for piece in measured]
     if any(value is None for value, _ in pieces):
         return (None, None)
     units = {unit for _, unit in pieces}
@@ -76,8 +99,12 @@ def _parse_one(piece: str) -> tuple[Decimal | None, str | None]:
     try:
         if found["den"] is not None:
             value = (Decimal(found["num"]) / Decimal(found["den"])).quantize(PRECISION)
+        elif found["vulgar"] is not None:
+            value = VULGAR_FRACTIONS[found["vulgar"]]
         else:
             value = Decimal(found["dec"].replace(",", "."))
+            if found["mixed"] is not None:
+                value += VULGAR_FRACTIONS[found["mixed"]]
     except (InvalidOperation, DivisionByZero, ZeroDivisionError):
         return (None, None)
     unit = found["unit"].lower() if found["unit"] else None
@@ -94,6 +121,125 @@ def _parse_one(piece: str) -> tuple[Decimal | None, str | None]:
         # di tutta la ricetta più a valle.
         return (None, None)
     return (value, unit)
+
+
+def with_qb_tail(display: str, text: str | None) -> str:
+    """La dose riscalata, con accanto i pezzi «q.b.» che la riga scriveva.
+
+    `parse_quantity` legge «50 g + q.b.» come 50 g; riscalata, la riga direbbe «100 g»
+    e perderebbe il «q.b.». Mattia (2026-10-13): «+ q.b.» resta scritto accanto.
+    """
+    if not text:
+        return display
+    tails = [" ".join(piece.split()) for piece in text.split("+") if _QB.match(piece)]
+    return " + ".join([display, *tails])
+
+
+# --- La pulizia delle dosi dell'import (spec 2026-10-13-pulizia-dosi-design.md) -------
+
+# La lunghezza di `recipe_ingredients.note`. Il modello non la importa da qui (la colonna
+# c'era prima): la tiene allineata `test_note_max_chars_e_la_colonna`.
+NOTE_MAX_CHARS = 300
+
+# Una dose «nella forma dell'import»: GialloZafferano la scrive con gli a capo e le
+# tabulazioni del suo HTML («fredda\n\t\t\t330\n\t\t\tg»). Il campo del modulo è una riga
+# sola, quindi una dose senza è scritta a mano, o è già pulita, e non si tocca: la
+# decisione 3 di Mattia (2026-10-13) resa misurabile.
+_IMPORT_WHITESPACE = re.compile(r"[\n\r\t]")
+_STARTS_A_DOSE = re.compile(rf"^[\d{_FRACTION_CHARS}]")
+
+
+class DoseShape(StrEnum):
+    """Che cosa la pulizia ha trovato in una dose: il comando conta per forma."""
+
+    UNCHANGED = "unchanged"  # non ha la forma dell'import: non si tocca
+    SPACES = "spaces"  # solo a capo e tabulazioni
+    WORDS_BEFORE = "words_before"  # parole davanti alla dose, ora nella nota
+    NUMBER_IN_NAME = "number_in_name"  # «36 mesi ⏎ 50 ⏎ g»: la nota comincia con un numero
+    NOTE_QB = "note_qb"  # «secco ⏎⏎ q.b.»: una nota e «q.b.»
+
+
+@dataclass(frozen=True)
+class CleanDose:
+    quantity_text: str | None
+    note: str | None
+    shape: DoseShape
+
+
+def clean_dose(text: str | None) -> CleanDose:
+    """La dose dell'import ripulita: le parole davanti nella nota, gli spazi a uno.
+
+    Non legge numeri e non sa di unità: separa e basta. Leggere resta di
+    `parse_quantity`, che sulla dose pulita trova il numero in testa.
+    """
+    if text is None or not _IMPORT_WHITESPACE.search(text):
+        return CleanDose(text, None, DoseShape.UNCHANGED)
+    doses: list[str] = []
+    notes: list[str] = []
+    # le dosi unite da `merge_quantities` si puliscono pezzo per pezzo
+    for piece in text.split("+"):
+        dose, note = _split_note(piece)
+        if dose:
+            doses.append(dose)
+        if note:
+            notes.append(note)
+    quantity = " + ".join(doses) or None
+    return CleanDose(quantity, merge_notes(*notes), _shape(quantity, notes))
+
+
+def _split_note(piece: str) -> tuple[str, str | None]:
+    lines = [" ".join(line.split()) for line in piece.splitlines()]
+    lines = [line for line in lines if line]
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if _STARTS_A_DOSE.match(line) or _QB.match(line)
+    ]
+    if not starts:
+        return (" ".join(lines), None)
+    # l'ultima riga che comincia come una dose: in «36 mesi ⏎ 50 ⏎ g» anche la prima
+    # comincia con un numero, ma è il nome
+    first = starts[-1]
+    # il numero della dose può essere esso stesso spezzato su più righe, «1 ⏎ ½»: una
+    # riga senza lettere accanto alla dose è dose, non nota. Si risale finché le righe
+    # non hanno lettere; la prima con una lettera (il nome, «36 mesi») ferma la salita
+    while first > 0 and not any(char.isalpha() for char in lines[first - 1]):
+        first -= 1
+    before = " ".join(lines[:first])
+    if not any(char.isalpha() for char in before):
+        # «2 ⏎ 1/2 ⏎ cucchiai»: davanti solo numeri, è tutta dose. Una nota fatta di
+        # numeri sarebbe un'invenzione, e il parser dirà da sé che non la legge
+        return (" ".join(lines), None)
+    return (" ".join(lines[first:]), _unwrap(before))
+
+
+def _unwrap(note: str) -> str:
+    """«(da pulire)» → «da pulire»: in una nota le parentesi della fonte non servono."""
+    if note.startswith("(") and note.endswith(")") and note.count("(") == note.count(")") == 1:
+        return note[1:-1].strip()
+    return note
+
+
+def _shape(quantity: str | None, notes: list[str]) -> DoseShape:
+    if not notes:
+        return DoseShape.SPACES
+    if any(note[:1].isdigit() for note in notes):
+        return DoseShape.NUMBER_IN_NAME
+    if quantity is not None and all(_QB.match(piece) for piece in quantity.split("+")):
+        return DoseShape.NOTE_QB
+    return DoseShape.WORDS_BEFORE
+
+
+def merge_notes(*notes: str | None) -> str | None:
+    """Più note sulla stessa riga diventano una: nell'ordine, senza ripetersi, con «; »
+    fra l'una e l'altra, dentro i caratteri della colonna. La prima resta davanti: chi
+    chiama ci mette la nota già scritta."""
+    kept: list[str] = []
+    for note in notes:
+        cleaned = note.strip() if note else ""
+        if cleaned and cleaned not in kept:
+            kept.append(cleaned)
+    return "; ".join(kept)[:NOTE_MAX_CHARS] or None
 
 
 def scale_quantity(value: Decimal, factor: Decimal) -> Decimal:

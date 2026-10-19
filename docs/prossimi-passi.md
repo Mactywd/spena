@@ -3131,6 +3131,18 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   singolare e plurale, non se sia un'unità. Il rimedio è quello della voce sopra:
   ripulire `quantity_text` all'ingresso, poi `reparse_quantities`. Chi lo fa tenga
   conto che le unità spurie restano in `units` finché qualcuno non le toglie.
+  **Fatte tutte e due il 2026-10-18**, sul ramo `night/pulizia-dosi` (da revisionare),
+  con le decisioni di Mattia del 2026-10-13 (spec
+  `docs/superpowers/specs/2026-10-13-pulizia-dosi-design.md`). Le misure del 2026-10-13
+  dicevano molto più di settanta e novanta: 9.767 righe con le parole davanti, 202 col
+  numero nel nome, ~1.042 frazioni e ~3.547 «+ q.b.» non lette. Le parole davanti passano
+  nella nota della riga, che l'import non aveva mai usato e che adesso il dettaglio mostra
+  sotto il nome; il parser legge ½ ¼ ¾ e «50 g + q.b.» (riscalata «100 g + q.b.»);
+  l'import pulisce dove il `payload` diventa ricetta; `python -m app.cli.clean_doses`
+  (prima `--dry-run`) pulisce le righe che ci sono, anche delle ricette adottate ma solo
+  dove resta la forma dell'import, le rilegge e toglie le unità rimaste senza righe. In
+  produzione lo lancia Mattia dopo il deploy, con il backup prima: i comandi sono nel
+  piano, «Dopo il deploy (solo Mattia)».
 - **Ogni test di schermata si costruisce il proprio client react-query con
   `retry: false`, mentre `frontend/src/App.tsx` usa
   `defaultQueryRetryPredicate`.** È esattamente la prima lezione di `CLAUDE.md` —

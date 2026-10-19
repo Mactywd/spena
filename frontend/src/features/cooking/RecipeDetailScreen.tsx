@@ -123,6 +123,12 @@ function IngredientRow({
           {line.availability === "low" && !line.satisfied && (
             <span className="ml-2 text-xs font-medium text-low">non basta</span>
           )}
+          {/* la nota della riga: le parole che l'import scriveva davanti alla dose («da
+              grattugiare», «36 mesi»), o quella scritta a mano. Sotto il nome e piccola:
+              dice com'è l'ingrediente, non quanto — la dose resta a destra */}
+          {line.note && (
+            <span className="block break-words text-xs text-ink-soft">{line.note}</span>
+          )}
         </span>
         {line.quantity_display &&
           (line.anchorable ? (

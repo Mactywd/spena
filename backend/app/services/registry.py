@@ -37,6 +37,7 @@ from app.db.models.recipe_import import (
 from app.db.models.shopping import ShoppingListItem, ShoppingStatus
 from app.domain.barcodes import has_valid_check_digit
 from app.domain.emoji import NO_EMOJI, canonical_emoji
+from app.domain.quantities import merge_notes
 from app.domain.rules import IngredientKind, IngredientRole, kind_for_category
 from app.repositories.ingredients import (
     canonical_name,
@@ -676,6 +677,9 @@ async def merge_ingredients(
             continue
         twin.role = stronger(IngredientRole(twin.role), IngredientRole(line.role))
         twin.quantity_text = merge_quantities(twin.quantity_text, line.quantity_text)
+        # le note delle due righe, come le dosi: da quando l'import le scrive («da
+        # grattugiare», «36 mesi») perderne una vuol dire perdere com'è l'ingrediente
+        twin.note = merge_notes(twin.note, line.note)
         # «500 g + 50 g» non è una dose che il riporziona sappia leggere: la riga
         # smette di scalare, che è onesto, invece di scalare solo metà.
         twin.quantity_value = None

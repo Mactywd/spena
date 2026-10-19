@@ -51,7 +51,15 @@ from app.domain.quantities import (
         ("1 + 2", (Decimal("3"), None)),
         # ...unità diverse no: la somma di due cose diverse non è un numero
         ("500 g + 2 cucchiai", (None, None)),
-        ("300 g + q.b.", (None, None)),
+        # «q.b.» accanto a una dose non la rende illeggibile: i 300 g si riscalano, e il
+        # «+ q.b.» lo rimette accanto `with_qb_tail` (Mattia, 2026-10-13)
+        ("300 g + q.b.", (Decimal("300"), "g")),
+        ("10 g + q.b.", (Decimal("10"), "g")),
+        ("1 pizzico + q.b.", (Decimal("1"), "pizzico")),
+        ("q.b. per spolverare + 50 g", (Decimal("50"), "g")),
+        # solo «q.b.», o «q.b.» con quel che non si legge: niente da riscalare
+        ("q.b. + q.b.", (None, None)),
+        ("abbondante + q.b.", (None, None)),
         # maiuscole e spazi non contano
         ("  300  G  ", (Decimal("300"), "g")),
         # numero misto: «2 1/2» sono due e mezzo, e leggerne solo il 2 vorrebbe dire
@@ -59,6 +67,19 @@ from app.domain.quantities import (
         ("2 1/2 cucchiai", (None, None)),
         ("1 1/2", (None, None)),
         ("2  1/2 tazze", (None, None)),
+        # le frazioni di un carattere solo, come le scrive GialloZafferano
+        ("½", (Decimal("0.5"), None)),
+        ("½ cucchiaino", (Decimal("0.5"), "cucchiaino")),
+        ("¼ cucchiaino", (Decimal("0.25"), "cucchiaino")),
+        ("¾ tazza", (Decimal("0.75"), "tazza")),
+        # col numero intero davanti è una dose sola, e «½» non è mai un'unità
+        ("1 ½ cucchiai", (Decimal("1.5"), "cucchiai")),
+        ("1½", (Decimal("1.5"), None)),
+        ("1 ½", (Decimal("1.5"), None)),
+        # le somme di merge_quantities con le frazioni: «½ + ½» sono due metà dello
+        # stesso limone, cioè uno
+        ("1 + ½", (Decimal("1.5"), None)),
+        ("½ + ½", (Decimal("1"), None)),
     ],
 )
 def test_parse_quantity(text, expected):

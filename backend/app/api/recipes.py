@@ -15,6 +15,7 @@ from app.domain.quantities import (
     decimal_text,
     render_quantity,
     scale_quantity,
+    with_qb_tail,
 )
 from app.domain.rules import (
     Availability,
@@ -140,7 +141,9 @@ async def _to_out(
                 if resolved is not None and ri is resolved.line
                 else scale_quantity(ri.quantity_value, factor)
             )
-            display = render_quantity(value, unit_forms(ri))
+            # «50 g + q.b.» riscalata è «100 g + q.b.»: il q.b. resta scritto accanto,
+            # anche sulla riga dell'ancora
+            display = with_qb_tail(render_quantity(value, unit_forms(ri)), ri.quantity_text)
             scaled = True
         else:
             display = ri.quantity_text
