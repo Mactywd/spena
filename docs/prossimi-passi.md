@@ -1804,7 +1804,7 @@ sezione, per giorno, riusciti e falliti); `python -m app.cli.llm_prices` stampa 
 i prezzi di listino per provider, che è un'altra cosa e serve semmai a scegliere il
 modello.
 
-## H2. Connettore Samsung Health **[TBD]**
+## H2. Connettore Samsung Health **[FATTO 2026-10-19 — sul ramo `night/h2-health-connect`, non ancora in produzione]**
 Serve a Pasti: l'attività fisica cambia il fabbisogno, e inserirla a mano non si fa.
 
 **TODO (sottoagente):** verificare se esiste una via praticabile. L'SDK ufficiale
@@ -1812,6 +1812,33 @@ chiede di diventare partner e non conviene; da capire se ci sono strade alternat
 davvero utilizzabili. **Finché non c'è una risposta, il fabbisogno calorico di P2 non
 può dipendere dall'attività**: va progettato per funzionare senza, e migliorare se
 arriva.
+
+**Il TODO è risolto** (ricerca del 2026-10-13): Samsung Health scrive in Health Connect
+passi, allenamenti, peso e altro (non il riepilogo delle calorie attive), e **HC Webhook**,
+un'app Android libera, legge Health Connect e manda i dati a un indirizzo. Mattia ha deciso
+il 2026-10-13: HC Webhook subito, con la PWA (col wrapper Capacitor la lettura passerà
+dentro l'app, il backend resta); Spena legge passi, allenamenti e peso; il dispendio lo
+calcola Spena, ma è di P2 e H3. Spec:
+`docs/superpowers/specs/2026-10-13-h2-health-connect-design.md` (il §9 dice cosa resta a P2).
+
+**Fatto il 2026-10-19**, sul ramo `night/h2-health-connect` (da revisionare):
+`POST /api/v1/activity/hc-webhook` fuori dalla sessione, aperto da una chiave sua in
+`X-Spena-Token` (si vede una volta, si rigenera; nel database solo l'impronta), rifiuto
+silenzioso, 2 MB letti a pezzi, mai un 500 su un corpo inatteso. I passi solo nella forma
+«Giornaliero» di HC Webhook, l'unica in cui Health Connect toglie i doppioni fra telefono e
+orologio, e un totale per giorno di Roma che non si somma mai (`merge_steps_day` in
+`backend/app/domain/activity.py`); allenamenti e pesate unici per app e istante. Migrazione
+`0018`, cinque tabelle `activity_*`. A video «Attività» dal ☰ (l'ultima sincronizzazione,
+7 giorni di passi, allenamenti, pesate) e «Collega HC Webhook» coi dieci passi da fare sul
+telefono.
+
+**Ora P2 può contare l'attività**: la frase sopra («il fabbisogno calorico di P2 non può
+dipendere dall'attività») non vale più, ma resta vero che P2 deve funzionare anche senza:
+un giorno senza dati è un giorno senza dispendio calcolato, non uno zero.
+
+**Da provare sul telefono e coi dati veri:** la prova dei 10 minuti in Health Connect, il
+collegamento coi dieci passi, i passi di ieri uguali a quelli di Samsung Health, una
+settimana di sincronizzazioni senza buchi (l'ottimizzazione della batteria).
 
 ## H3. Profilo **[D]** ↳ P2
 Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.

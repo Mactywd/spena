@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-14 (fase giorno: altri nove piani `pronto`, dal 12 al 20 — uno in coda alla catena, uno dal ramo del piano prima, sette da `master`; le domande rimaste decise da Mattia)_
+_Ultimo aggiornamento: 2026-10-19 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -54,6 +54,7 @@ sola. Ogni piano ha la sua sezione «Al merge» e «Dopo il deploy».
 - [tbd] P3 · P2, NutriScore sul periodo — TBD: la funzione non lineare, e come dichiarare i dati parziali [P2]
 
 ### Idee
+- [idea] P3 · P2: il dispendio del giorno dall'attività di H2 — MET per tipo di allenamento su `exercise_type`, i passi fuori dagli allenamenti, il tempo in comune fra due app contato una volta, il peso dall'ultima pesata; vedi il §9 di `docs/superpowers/specs/2026-10-13-h2-health-connect-design.md` [P2]
 - [idea] P3 · Annullando una decisione nella coda la riga sparisce e il fuoco cade sulla pagina: portarlo alla scheda del termine tornato in coda [T3 Consegna 6b]
 - [idea] P3 · Il titolo del foglio della cottura, per una confezione senza prodotto, è il nome dell'ingrediente in minuscolo: `capitalizeFirst` come nelle righe [T3 Consegna 6b]
 - [idea] P3 · La domanda di Open Food Facts in Sistema la spesa dice sempre «È un «…»?» (`OffSuggestionQuestion.tsx`): con un nome femminile esce «È un «zucchina»?». Riformulare senza articolo, per esempio «È «zucchina»?» o «Va bene come «zucchina»?» [giro nel browser 2026-10-07]
@@ -116,6 +117,7 @@ stato, installazione) o dati che il seme non ha (foto delle ricette, termini ver
 coda). Difetti trovati: i pulsanti spenti a `opacity` 0,4 in scuro, già nella voce del tema
 scuro; «È un «zucchina»?», fra le idee; il nome in minuscolo nel foglio della cottura, già
 fra le idee._
+- [tbd] P2 · H2 sul telefono, dopo il deploy: Samsung Health › Impostazioni › Health Connect (passi, esercizio, peso; sincronizzazione Samsung Cloud attiva); la prova dei 10 minuti in Health Connect › Dati e accesso (i dati di ieri ci sono); HC Webhook installato e fuori dall'ottimizzazione della batteria; la chiave e i dieci passi di «Collega HC Webhook»; «Testa Webhook»; i passi di ieri uguali a Samsung Health. Nel browser passati la chiave, il webhook attraverso Nginx, i 401, il doppio invio, il rifiuto dei 3 MB, la prova, il contrasto nei due temi, i 375 px [H2]
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
 - [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)
@@ -128,9 +130,10 @@ fra le idee._
 - [tbd] P3 · Prova sul telefono delle pulizie: con la tastiera vera aperta, l'ultimo suggerimento della barra della Lista si raggiunge senza scorrere la pagina. Nel browser passato senza tastiera: l'elenco scorre nel suo riquadro (`overscroll-behavior: contain`) e la pagina resta ferma
 
 ## In corso
-- [in corso] P3 · H2, l'attività da Health Connect via HC Webhook: passi, allenamenti e pesate in «Attività» dal ☰, la chiave del webhook, migrazione `0018` — piano `docs/superpowers/plans/2026-10-13-h2-health-connect.md` → branch night/h2-health-connect [H2]
+_(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-10-19 · H2, l'attività da Health Connect via HC Webhook: il webhook con la sua chiave (`X-Spena-Token`, rifiuto silenzioso, 2 MB, mai un 500), i passi solo «Giornaliero» e un totale per giorno di Roma, allenamenti e pesate senza doppioni, migrazione `0018`; «Attività» dal ☰ e «Collega HC Webhook» coi dieci passi [H2] → branch night/h2-health-connect (da revisionare)
 - [fatto] 2026-09-30 · T3 Consegna 6b, l'ultima del ridisegno: il modulo della ricetta con «Salva» principale e il motivo sotto, caselle da 44, R12 («Aggiungi «…»» e il passo del nome, l'ingrediente nasce salvando); `CategorySelect` unico; la coda d'import senza rosso né variabili e senza messaggio a coda vuota, «Forse» della misura del resto, l'annullamento nell'avviso; il guasto dell'AI ambra ovunque; «il server», niente «dataset», «ad astice», le maiuscole solo a video [T3, R12, Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · `CategorySelect` sostituisce i quattro `<select>` del reparto (anche quello copiato da `NewIngredientFields`) [T3] → `master` 69cd9b2, in produzione dal 2026-09-30
 - [fatto] 2026-09-30 · «Ingrediente» o «voce», rivisti caso per caso: cambia la frase della barra della Lista [Parte X] → `master` 69cd9b2, in produzione dal 2026-09-30
