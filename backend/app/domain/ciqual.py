@@ -79,8 +79,13 @@ REQUIRED_KEYS: tuple[str, ...] = ("kcal", "protein", "carbs", "fat")
 
 _EMPTY = frozenset({"", "-", "–", "—"})
 # «Fer (mg/100 g)»: il nome, poi fra parentesi l'unità per 100 g. Il nome può avere una
-# barra sua («1169/2011»), l'unità no.
-_HEADER = re.compile(r"^(?P<name>.+?)\s*\((?P<unit>[^()/]+)/\s*100\s*g\)\s*$")
+# barra sua («1169/2011»), l'unità no. Il file del 2025 va a capo dentro l'intestazione,
+# anche al posto della barra: «Fer (mg\n100 g)», «Energie,\nRèglement\nUE N°\n1169\n2011
+# (kcal\n100 g)». Nell'unità l'a capo prima di «100 g» è la barra; nel nome è uno spazio,
+# e `_comparable` toglie la differenza fra barra e spazio quando si confrontano i nomi.
+_HEADER = re.compile(
+    r"^(?P<name>.+?)\s*\(\s*(?P<unit>[^()/\s]+)(?:\s*/\s*|\s+)100\s*g\)\s*$", re.DOTALL
+)
 _FLOAT_CODE = re.compile(r"^\d+\.0+$")
 
 
@@ -111,6 +116,17 @@ def split_header(header: str) -> tuple[str, str] | None:
     if found is None:
         return None
     return normalize_name(found["name"]), normalize_unit(found["unit"])
+
+
+def _comparable(name: str) -> str:
+    """Un nome normalizzato con la barra contata come uno spazio: «n°1169/2011» scritto su
+    una riga e «n°1169\\n2011» scritto a capo sono la stessa colonna."""
+    return " ".join(name.replace("/", " ").split())
+
+
+def _one_line(header: str) -> str:
+    """L'intestazione su una riga, per dirla in un messaggio o fra le colonne non usate."""
+    return " ".join(header.split())
 
 
 def parse_teneur(raw: str | None) -> float | None:
@@ -163,7 +179,7 @@ class ColumnMap:
 
 def map_columns(headers: list[str | None]) -> ColumnMap:
     """Quale colonna è quale. Solleva `CiqualFormatError` se il file non va."""
-    wanted = {name: key for key, names in CIQUAL_NAMES.items() for name in names}
+    wanted = {_comparable(name): key for key, names in CIQUAL_NAMES.items() for name in names}
     identity: dict[str, int] = {}
     # (posizione, intestazione) delle colonne di costituente che nessuna chiave usa
     skipped: list[tuple[int, str]] = []
@@ -172,15 +188,15 @@ def map_columns(headers: list[str | None]) -> ColumnMap:
     for index, header in enumerate(headers):
         if header is None:
             continue
-        plain = header.strip()
+        plain = _one_line(header)
         if plain in (CODE_COLUMN, NAME_COLUMN, GROUP_COLUMN, SUBGROUP_COLUMN):
             identity.setdefault(plain, index)
             continue
-        split = split_header(plain)
+        split = split_header(header)
         if split is None:
             continue
         name, unit = split
-        key = wanted.get(name)
+        key = wanted.get(_comparable(name))
         if key is None:
             skipped.append((index, plain))
             continue
