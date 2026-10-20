@@ -74,7 +74,7 @@ def test_dice_quanti_valori_ha_ogni_nutriente_e_cosa_manca(tmp_path):
     assert letto.with_value["vitamin_c"] == 12
     assert letto.with_value["iodine"] == 11
     assert "vitamin_d" in letto.absent
-    assert letto.unused == ("Eau (g/100 g)",)
+    assert letto.unused == ("Eau (g 100 g)",)
 
 
 def test_l_intestazione_puo_stare_sotto_un_titolo(tmp_path):
