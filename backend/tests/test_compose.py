@@ -19,6 +19,7 @@ PyYAML non è dichiarato tra le dipendenze di questo pacchetto: arriva con
 `uvicorn[standard]`, che lo è (verificato nei metadati del pacchetto installato).
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -206,4 +207,39 @@ def test_la_cache_del_modello_vive_in_un_volume(nome_file):
     assert any(b.startswith("/root/.cache") for b in bersagli), (
         f"{nome_file}: nessun volume sulla cache del modello; montaggi {bersagli!r}. "
         "Con INSTALL_EMBEDDINGS=1 il modello si riscarica a ogni `up -d --build`."
+    )
+
+
+NGINX = REPO_ROOT / "frontend" / "nginx.conf"
+NOMI_CONDIVISI = {"backend", "api", "app", "server", "web"}
+
+
+@pytest.mark.parametrize("nome_file", COMPOSE_FILES)
+def test_nginx_raggiunge_il_backend_con_un_nome_solo_suo(nome_file):
+    """Nginx inoltra /api/ a un nome che sulla rete può avere solo il backend di spena.
+
+    Il frontend sta anche sulla rete `web` di Traefik, dove altri progetti hanno un
+    servizio `backend` (Aurora, Sostituzioni: Django). Docker risolve un nome su tutte
+    le reti del container e Nginx lo risolve una volta sola, all'avvio. Il 2026-11-04 il
+    server si è riavviato, il frontend è partito 0,35 s prima del backend di spena, e
+    Nginx ha legato `backend` a `aurora_backend_staging`: ogni chiamata all'API riceveva
+    il 400 di Django per l'host non ammesso, mentre il service worker continuava a
+    mostrare l'app. Lista e dispensa vuote, nessun errore nei log di spena.
+    """
+    destinazioni = set(re.findall(r"proxy_pass http://([^:/;]+)", NGINX.read_text()))
+    assert destinazioni, f"{NGINX}: nessun proxy_pass trovato"
+    condivisi = destinazioni & NOMI_CONDIVISI
+    assert not condivisi, (
+        f"{NGINX}: proxy_pass verso {sorted(condivisi)}, un nome che anche altri progetti "
+        "sulla rete `web` danno al loro servizio"
+    )
+
+    reti = yaml.safe_load((REPO_ROOT / nome_file).read_text())["services"]["backend"].get(
+        "networks"
+    )
+    alias = set(((reti or {}).get("default") or {}).get("aliases", []))
+    mancanti = destinazioni - alias
+    assert not mancanti, (
+        f"{nome_file}: il backend non dichiara sulla rete default gli alias {sorted(mancanti)} "
+        "che frontend/nginx.conf usa: Nginx non partirebbe (host not found in upstream)"
     )

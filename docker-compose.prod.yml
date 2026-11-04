@@ -76,6 +76,14 @@ services:
       db: {condition: service_healthy}
     restart: unless-stopped
     logging: *default-logging
+    # Nginx inoltra a `spena-backend`, non a `backend`: il frontend sta anche sulla
+    # rete `web`, dove altri progetti hanno un servizio `backend`, e Docker risolve il
+    # nome su tutte le reti. Il 2026-11-04, dopo un riavvio del server, Nginx si è
+    # legato al backend Django di Aurora e ogni chiamata all'API riceveva un 400.
+    # Lo difende tests/test_compose.py.
+    networks:
+      default:
+        aliases: [spena-backend]
 
   frontend:
     build: ./frontend
