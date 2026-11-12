@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-10-19 (rilascio: 19 rami della notte del 2026-10-18 uniti su master)_
+_Ultimo aggiornamento: 2026-11-12 (fase giorno: spec e quattro piani della sezione Pasti con Claude e degli Utensili, pronti; tolte P1, P2, P3, M1, H3)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -26,15 +26,23 @@ del ramo.
 
 4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
 
+Dal 2026-11-12 c'è anche la catena **Pasti con Claude** (spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, approvata da Mattia): quattro piani in fila, ogni ramo parte dal precedente, nell'ordine 5 → 6a → 6b → 6c. Prima del deploy del 6b Mattia rilegge l'«Avvertenza» in testa al piano `2026-11-12-pasti-claude.md` (abbonamento o chiave API).
+
+5. [pronto] P3 · Utensili, una sezione di spena con gli strumenti che Mattia ha in cucina, così le ricette scritte dall'AI non chiedono strumenti che non ha: elenco dal ☰ (nome e nota), anche nei prompt della bozza e della variante [H4] → `docs/superpowers/plans/2026-11-12-utensili.md`, ramo `night/utensili` da `master`
+6. [pronto] P3 · Sezione Pasti, al posto del planner sul reMarkable e della skill `pasti`: la settimana con pranzo e cena, il piatto con la sua ricetta e la chat con Claude Opus sotto, la pianificazione con bozza e ufficializzazione, le schede dei cambi a dispensa e lista. Tre piani in fila:
+   - 6a → `docs/superpowers/plans/2026-11-12-pasti-settimana.md`, ramo `night/pasti-settimana` da `night/utensili`
+   - 6b → `docs/superpowers/plans/2026-11-12-pasti-claude.md`, ramo `night/pasti-claude` da `night/pasti-settimana`
+   - 6c → `docs/superpowers/plans/2026-11-12-pasti-pianificazione.md`, ramo `night/pasti-pianificazione` da `night/pasti-claude`
+
 ## Da approfondire (giorno)
 
 ### Voci decise, da portare a spec e piano
 - [tbd] P2 · S3, la serie della scansione e la riga nuova portata in vista: dopo ogni «Metti in dispensa» la pagina scorre fino alla riga nuova (`revealId`, decisione 2 di Mattia) e il pannello dello scanner, che sta sopra le righe, esce dallo schermo; con una dispensa lunga, a ogni codice bisogna risalire. TBD: nella serie saltare il `revealId` finché il pannello resta aperto (l'avviso «In dispensa: …» conferma già) e portare in vista l'ultima riga alla ✕? Va deciso con i piani S14/S15, che si agganciano ad `afterEntry` [S3]
 - [tbd] P2 · S15, il riepilogo delle scadenze che si spegne da solo richiude i reparti che aveva aperto: con «Latticini» chiuso, si preme il riepilogo, si segna «Finito» l'ultimo yogurt in scadenza (o se ne toglie la data), il riepilogo sparisce e si spegne, e «Latticini» si richiude sotto il dito, portandosi via la riga col suo «In lista». Non è un vicolo cieco (il titolo chiuso dice «1 finito», un tocco lo riapre) ed è quel che dice la spec («spento il riepilogo torna il salvato»), che però non distingue chi spegne il filtro. TBD: quando è lo schermo a spegnere il filtro, i reparti che il filtro aveva aperto restano aperti a video finché non si tocca qualcosa, senza salvarli? [S15]
 - [tbd] P3 · S4 fetta 3, il tasto «Stima» sul prodotto senza valori: prima la media del suo ingrediente (CIQUAL), poi l'AI con la ricerca web, ogni valore segnato come stima e mai come lettura d'etichetta — deciso il 2026-10-13, serve il piano (e prima una misura del costo della ricerca web su OpenRouter) [S4] → spec `docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md` §8
-- [tbd] P3 · P1, creazione di un pasto per tipo, ricette adatte senza nascondere il resto — TBD: la stima calorica da foto [P1]
-- [tbd] P3 · P2, NutriScore sul periodo — TBD: la funzione non lineare, e come dichiarare i dati parziali [P2]
 - [tbd] P3 · R6, cucinabili con sostituti: la regola è nella spec R5 §8, e R5 è unita col rilascio del 2026-10-19 — TBD: la forma della scala («cucinabile con sostituti» come gradino) e il calcolo sul ricettario intero (in SQL o in blocco); serve il piano [R6]
+- [tbd] P3 · L'LLM passa da OpenRouter (Gemma) all'API di Anthropic con Claude Haiku 5.5, sui crediti API di Claude di Mattia (deciso da Mattia il 2026-10-20): un client al posto di quello di OpenRouter in `services/llm.py`, non un secondo fornitore, e la regola «one provider» di `CLAUDE.md` cambia insieme. Stima sui consumi misurati in `llm_calls`, quasi tutti `term_decision`: pochi dollari in tutto, meno con la cache sul prefisso dell'anagrafica e con le Batch API per i `decide_*` — TBD: il costo in `llm_calls` e in H1 (oggi è il `usage.cost` di OpenRouter; Anthropic dà solo i token, quindi token × listino, che `llm_call.py` oggi evita di proposito); l'output strutturato al posto di `require_parameters`; cosa resta di `llm_prices` e delle variabili `OPENROUTER_*`; serve la spec
+- [tbd] P3 · Gli avvisi di `docker compose` sul server stampano pezzi dell'hash della password (visto il 2026-10-19): Compose usa `.env` anche per interpolare il file, e legge i `$` dell'hash argon2 come variabili. Come Training il 2026-10-04: l'hash in un file a parte (`password.env`, `env_file` in forma lunga con `format: raw`), mai in `.env`, e un test sul compose; dopo il deploy Mattia cambia la password, perché i pezzi sono già usciti — serve il piano
 
 ### Idee
 - [idea] P3 · «Chiudi tutto / apri tutto» sui reparti della dispensa, se sul telefono toccarli uno per uno non basta (deciso di no per ora, spec S15 §6.5) [S15]
@@ -93,9 +101,7 @@ del ramo.
 - [idea] P3 · H1: il dettaglio di un giorno per sezione (oggi le colonne non si toccano: a 375 px sarebbero bersagli da 10 px) [H1]
 
 ## Bloccati
-- [bloccato] P3 · H3, Profilo — attende: la spec di P2, che dice cosa serve
-- [bloccato] P3 · P3, pianificare più giorni — attende: P2 e S4 (deciso il 2026-09-24 di non partire prima); aperti anche i profili di budget [P3]
-- [bloccato] P3 · M1, motore di suggerimento — attende: pasti, nutrienti e sostituti (P2, S4, R5)
+_(niente: H3, P3 e M1 sono usciti il 2026-11-12, sostituiti dalla sezione Pasti con Claude)_
 
 ## Da fare a mano (solo Mattia)
 
