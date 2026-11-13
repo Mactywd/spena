@@ -14,6 +14,7 @@ from app.db.models.activity import (
 )
 from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.llm_call import LlmCall
+from app.db.models.meal import Meal
 from app.db.models.nutrition import CiqualFood, IngredientNutrition, IngredientUnitGrams
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
@@ -39,6 +40,7 @@ __all__ = [
     "IngredientSubstitution",
     "IngredientUnitGrams",
     "LlmCall",
+    "Meal",
     "PantryItem",
     "Product",
     "Recipe",

@@ -6,6 +6,7 @@ from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Computed,
     DateTime,
@@ -17,9 +18,12 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
     func,
+    true,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -73,6 +77,9 @@ class Recipe(UUIDMixin, TimestampMixin, Base):
     # di ricette la esclude; il dettaglio no, perché un collegamento vecchio non deve
     # finire in un 404.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Falso per le ricette nate da un pasto, finché non si salvano nel ricettario (spec
+    # 2026-11-12 §4.2). Ogni elenco del ricettario lo legge da `in_the_book()`.
+    in_book: Mapped[bool] = mapped_column(Boolean, server_default=true(), default=True)
     # La ricetta da cui questa nasce, per una variante scritta con l'AI (R8). `SET NULL`:
     # cancellare l'originale non cancella la variante (vedi la migrazione 0014), e se a
     # cancellarla è l'import che la rifà, il legame torna con `materialize_ready`
@@ -158,3 +165,10 @@ class CookingEvent(UUIDMixin, Base):
     cooked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     servings: Mapped[int | None] = mapped_column(Integer, nullable=True)
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+def in_the_book() -> ColumnElement[bool]:
+    """**La** condizione di ogni elenco del ricettario: la ricetta è nel ricettario e non è
+    eliminata. Va messa dentro la query che porta il limite, mai come filtro sul risultato.
+    """
+    return and_(Recipe.in_book.is_(True), Recipe.archived_at.is_(None))
