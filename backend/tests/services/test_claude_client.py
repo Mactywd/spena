@@ -126,11 +126,25 @@ async def test_le_opzioni_di_produzione(monkeypatch):
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
         "ENABLE_TOOL_SEARCH": "false",
         "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1",
+        "ANTHROPIC_API_KEY": "",
+        "ANTHROPIC_AUTH_TOKEN": "",
     }
     # la cartella di lavoro viene creata
     import os
 
     assert os.path.isdir(o.cwd)
+
+
+def test_una_chiave_api_nell_ambiente_non_prende_il_posto_del_token(monkeypatch):
+    """L'SDK passa al CLI `{**os.environ, **options.env}` e il CLI preferisce la chiave
+    API al token del piano: la chiave dell'ambiente si spegne con una stringa vuota, che il
+    CLI legge come assente."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "finta-chiave-per-il-test")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "finto-auth-per-il-test")
+    o = build_options(system_prompt="x", tools=[_ping], effort="low", max_turns=1)
+    assert o.env["ANTHROPIC_API_KEY"] == ""
+    assert o.env["ANTHROPIC_AUTH_TOKEN"] == ""
+    assert o.env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN_FINTO
 
 
 def test_build_options_e_quello_che_gira():
@@ -283,3 +297,29 @@ def test_prova_con_un_giro_riuscito(monkeypatch, capsys):
     _fake_query(monkeypatch, [_assistant("ok"), _result(usage={})])
     assert check_claude.main(["--prova"]) == 0
     assert "prova: ok" in capsys.readouterr().out
+
+
+async def test_chi_smette_di_leggere_chiude_subito_la_query_dell_sdk(monkeypatch):
+    """Il giro esce dal flusso al primo `TurnFinished` (o al tempo massimo) e chiude il
+    nostro generatore: la `query()` dell'SDK, e con lei il processo del CLI, si chiude
+    subito, nel task del giro, non quando passa il garbage collector."""
+    closed: list[bool] = []
+
+    async def fake(*, prompt, options):
+        try:
+            yield _delta("ciao")
+            yield _result(usage={})
+            yield _delta("dopo")
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(client_module, "query", fake)
+    stream = SdkClaudeClient().run(
+        system_prompt="x", prompt="ciao", tools=[], effort="low", max_turns=1
+    )
+    async for event in stream:
+        if isinstance(event, TurnFinished):
+            break
+    await stream.aclose()
+
+    assert closed == [True]

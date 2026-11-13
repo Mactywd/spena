@@ -10,6 +10,7 @@ e i `StreamEvent`), sessions (ogni giro è una `query()` nuova: la cronologia st
 massimo non sta qui ma nel giro (Task 6).
 """
 
+import contextlib
 import os
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
@@ -119,6 +120,11 @@ def build_options(
             "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
             "ENABLE_TOOL_SEARCH": "false",
             "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1",
+            # L'SDK passa al CLI `{**os.environ, **env}`, e il CLI preferisce una chiave API
+            # al token del piano: una chiave nell'ambiente del server farebbe pagare la chat
+            # a consumo senza che niente lo mostri. Vuote, il CLI le legge come assenti.
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_AUTH_TOKEN": "",
         },
     )
 
@@ -241,11 +247,15 @@ class SdkClaudeClient:
             options = build_options(
                 system_prompt=system_prompt, tools=tools, effort=effort, max_turns=max_turns
             )
-            async for message in query(prompt=prompt, options=options):
-                for event in translate(message, state):
-                    if isinstance(event, TurnFinished | TurnFailed):
-                        ended = True
-                    yield event
+            # `aclosing`: un `async for` non chiude il generatore interno quando chi legge
+            # esce (PEP 533). Senza, la `query()` dell'SDK, e il processo del CLI, si
+            # chiuderebbero al garbage collector, in un altro task.
+            async with contextlib.aclosing(query(prompt=prompt, options=options)) as messages:
+                async for message in messages:
+                    for event in translate(message, state):
+                        if isinstance(event, TurnFinished | TurnFailed):
+                            ended = True
+                        yield event
         except ResultError as exc:
             if not ended:
                 kind = state.failure.kind if state.failure else _classify_status(exc.api_error_status)

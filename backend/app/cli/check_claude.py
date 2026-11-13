@@ -5,7 +5,8 @@
 
 Senza argomenti non usa la rete: stampa la versione dell'SDK, lancia il binario di
 Claude Code con `--version` (con un HOME temporaneo) e dice se il token c'è, mai il suo
-valore. Esce con 1 se il binario manca o non parte. Con `--prova` fa una sola chiamata
+valore. Avvisa se nell'ambiente c'è `ANTHROPIC_API_KEY`, che la chat spegne (mai il
+valore). Esce con 1 se il binario manca o non parte. Con `--prova` fa una sola chiamata
 minima a Claude, per Mattia dopo il deploy.
 """
 
@@ -69,6 +70,12 @@ def main(argv: list[str]) -> int:
 
     token = bool(get_settings().claude_code_oauth_token)
     print("token: presente" if token else "token: assente")
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        # mai il valore: solo che c'è
+        print(
+            "attenzione: ANTHROPIC_API_KEY è nell'ambiente; la chat la ignora e usa il token "
+            "del piano."
+        )
 
     if args.prova:
         return asyncio.run(_prova())
