@@ -10,16 +10,37 @@ minima a Claude, per Mattia dopo il deploy.
 """
 
 import argparse
+import asyncio
 import os
 import subprocess
 import sys
 import tempfile
+from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
 
 import claude_agent_sdk
 
 from app.core.config import get_settings
+from app.domain.meal_chat import FailureKind, failure_notice
+from app.services.claude.client import SdkClaudeClient, TurnFailed, TurnFinished
+
+
+async def _prova() -> int:
+    """Un giro minimo con il client di produzione: «prova: ok» o «prova: <avviso>»."""
+    client = SdkClaudeClient()
+    async for event in client.run(
+        system_prompt="Rispondi solo: ok", prompt="ok?", tools=[], effort="low", max_turns=1
+    ):
+        if isinstance(event, TurnFinished):
+            print("prova: ok")
+            return 0
+        if isinstance(event, TurnFailed):
+            f = event.failure
+            print(f"prova: {failure_notice(f.kind, f.resets_at, datetime.now(UTC))}")
+            return 1
+    print(f"prova: {failure_notice(FailureKind.INTERRUPTED, None, datetime.now(UTC))}")
+    return 1
 
 
 def main(argv: list[str]) -> int:
@@ -50,9 +71,7 @@ def main(argv: list[str]) -> int:
     print("token: presente" if token else "token: assente")
 
     if args.prova:
-        # il client arriva col Task 4, che sostituisce questo ramo
-        print("prova: il client arriva col Task 4")
-        return 2
+        return asyncio.run(_prova())
     return 0
 
 
