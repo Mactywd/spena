@@ -13,6 +13,8 @@ import { NotFoundScreen } from "./features/not-found/NotFoundScreen";
 import { IngredientScreen } from "./features/registry/IngredientScreen";
 import { ProductScreen } from "./features/registry/ProductScreen";
 import { RegistryScreen } from "./features/registry/RegistryScreen";
+import { MealRecipeNewScreen } from "./features/meals/MealRecipeNewScreen";
+import { MealRecipePickScreen } from "./features/meals/MealRecipePickScreen";
 import { MealScreen } from "./features/meals/MealScreen";
 import { NewMealScreen } from "./features/meals/NewMealScreen";
 import { WeekScreen } from "./features/meals/WeekScreen";
@@ -68,6 +70,8 @@ export default function App() {
               {/* dichiarata SOPRA /pasti/:id: "nuovo" non deve mai essere letto come un id */}
               <Route path="/pasti/nuovo" element={<NewMealScreen />} />
               <Route path="/pasti/:id" element={<MealScreen />} />
+              <Route path="/pasti/:id/ricetta/nuova" element={<MealRecipeNewScreen />} />
+              <Route path="/pasti/:id/ricetta/scegli" element={<MealRecipePickScreen />} />
               <Route path="/anagrafica" element={<RegistryScreen />} />
               <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
               <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />

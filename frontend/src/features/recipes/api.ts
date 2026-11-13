@@ -119,7 +119,13 @@ export function fetchRecipe(id: string, scale?: RecipeScale) {
 /** Una ricetta nuova. `derived_from_id` solo per una variante (R8): la ricetta da cui
  * nasce, che il salvataggio non tocca. */
 export function createRecipe(
-  body: RecipeBody & { source: RecipeSource; source_ref: string | null; derived_from_id?: string }
+  body: RecipeBody & {
+    source: RecipeSource;
+    source_ref: string | null;
+    derived_from_id?: string;
+    /** La ricetta nasce fuori dal ricettario, legata a questo pasto. */
+    meal_id?: string;
+  }
 ) {
   return apiFetch<RecipeDetail>("/recipes", { method: "POST", body: JSON.stringify(body) });
 }
