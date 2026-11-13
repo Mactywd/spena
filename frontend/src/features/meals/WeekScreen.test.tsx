@@ -29,9 +29,16 @@ const WEEK: MealWeek = {
   ],
 };
 
-function stubFetch(handler: (path: string) => [unknown, number] = () => [WEEK, 200]) {
+// Le schede dei cambi da applicare in testa alla settimana (piano 6c) hanno la loro GET:
+// risponde qui, vuota se il test non ne chiede, così `handler` vede solo la settimana
+function stubFetch(
+  handler: (path: string) => [unknown, number] = () => [WEEK, 200],
+  pendingCards: unknown[] = []
+) {
   const spy = vi.fn((url: unknown) => {
-    const [body, status] = handler(String(url));
+    const [body, status] = String(url).includes("/change-cards")
+      ? [pendingCards, 200]
+      : handler(String(url));
     return Promise.resolve(new Response(JSON.stringify(body), { status }));
   });
   vi.stubGlobal("fetch", spy);
@@ -45,6 +52,7 @@ function renderWeek(start = "/pasti") {
         <Routes>
           <Route path="/pasti" element={<WeekScreen />} />
           <Route path="/pasti/nuovo" element={<p>modulo</p>} />
+          <Route path="/pasti/pianifica" element={<p>pianificazione</p>} />
           <Route path="/pasti/:id" element={<p>piatto</p>} />
         </Routes>
       </MemoryRouter>
@@ -64,8 +72,9 @@ describe("la settimana", () => {
     }
     expect(screen.getAllByText("Pranzo")).toHaveLength(7);
     expect(screen.getAllByText("Cena")).toHaveLength(7);
+    // «Pianifica con Claude» (piano 6c) porta a `/pasti/pianifica`: non è un posto
     const places = screen.getAllByRole("link").filter(
-      (a) => a.getAttribute("href")?.startsWith("/pasti/")
+      (a) => a.getAttribute("href")?.startsWith("/pasti/") && a.getAttribute("href") !== "/pasti/pianifica"
     );
     expect(places).toHaveLength(14);
     expect(screen.getAllByText("+ da pianificare")).toHaveLength(10);
@@ -122,7 +131,26 @@ describe("la settimana", () => {
     const spy = stubFetch(() => (++calls <= 3 ? [{ detail: "x" }, 500] : [WEEK, 200]));
     renderWeek();
     await userEvent.click(await screen.findByRole("button", { name: "Riprova" }));
-    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThanOrEqual(4));
+    // le letture della settimana: quella delle schede dei cambi non conta
+    const weekCalls = () => spy.mock.calls.filter(([u]) => !String(u).includes("/change-cards"));
+    await waitFor(() => expect(weekCalls().length).toBeGreaterThanOrEqual(4));
     await screen.findByText("Lunedì 10");
+  });
+  it("in fondo «Pianifica con Claude»; in testa le schede dei cambi da applicare", async () => {
+    stubFetch(undefined, [
+      {
+        id: "c1", kind: "forward", status: "proposed", list_only: false,
+        title: "Cambi per la cena di martedì", meals: [], rows: [],
+        created_at: "2025-11-11T10:00:00Z", applied_at: null,
+      },
+    ]);
+    renderWeek();
+    await screen.findByText("Lunedì 10");
+    expect(await screen.findByText("Schede dei cambi da applicare")).toBeInTheDocument();
+    expect(screen.getByText("Cambi per la cena di martedì")).toBeInTheDocument();
+    const plan = screen.getByRole("link", { name: "Pianifica con Claude" });
+    expect(plan).toHaveAttribute("href", "/pasti/pianifica");
+    await userEvent.click(plan);
+    expect(await screen.findByText("pianificazione")).toBeInTheDocument();
   });
 });

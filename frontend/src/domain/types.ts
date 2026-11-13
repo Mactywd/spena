@@ -548,6 +548,10 @@ export interface ChatMessage {
   notice: string | null;
   created_at: string;
   changes: RecipeChange[];
+  /** Le proposte e le schede del giro, sotto il messaggio (piano 6c). Facoltative: le
+   * risposte vecchie in cache non le hanno. */
+  proposals?: MealProposal[];
+  cards?: ChangeCard[];
 }
 /** Le parti della ricetta cambiate dall'ultimo giro, da evidenziare nel dettaglio. */
 export interface RecipeHighlight {
@@ -566,15 +570,19 @@ export interface DishChat {
   claude_ready: boolean;
   claude_notice: string | null;
 }
-/** Gli eventi dello streaming di `POST /meals/{id}/chat/messages`, già letti. */
-export type ChatStreamEvent =
+/** Gli eventi dello streaming di una chat con Claude, già letti: `TChat` è la vista che
+ * `done` ed `error` portano, quella del piatto (`POST /meals/{id}/chat/messages`) o quella
+ * della pianificazione (`POST /planning/conversations/{id}/messages`). */
+export type ChatStreamEvent<TChat = DishChat> =
   | { name: "start"; message: ChatMessage }
   | { name: "delta"; text: string }
   | { name: "change"; change: RecipeChange }
-  | { name: "done"; chat: DishChat }
+  | { name: "proposal"; proposal: MealProposal }
+  | { name: "card"; card: ChangeCard }
+  | { name: "done"; chat: TChat }
   // `chat` è null quando il server non ha potuto rileggerla (il pasto è sparito, o la
   // rilettura dopo un crollo è fallita): allora la chat si rilegge.
-  | { name: "error"; code: string; notice: string; chat: DishChat | null };
+  | { name: "error"; code: string; notice: string; chat: TChat | null };
 
 /** Una riga della scheda dei cambi (`ChangeRowOut`): «Ora», le note e chi si può
  * correggere li decide il backend. */
@@ -628,4 +636,11 @@ export interface PlanningChat {
   concluded: boolean;
   claude_ready: boolean;
   claude_notice: string | null;
+}
+/** La risposta di «Metti nella settimana» (`PlaceOut`): `follow_up` è il messaggio che il
+ * telefono manda subito a Claude, scritto dal backend. */
+export interface PlaceResult {
+  chat: PlanningChat;
+  meals: Meal[];
+  follow_up: string;
 }

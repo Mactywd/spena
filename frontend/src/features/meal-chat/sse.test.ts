@@ -63,4 +63,29 @@ describe("readSse", () => {
       { name: "error", code: "timeout", notice: "Tardi.", chat },
     ]);
   });
+  it("legge `proposal` e `card` interi", async () => {
+    const proposal = {
+      id: "p1", kind: "official", status: "open", created_at: "2026-11-13T10:00:00Z",
+      rows: [
+        { day: "2026-11-13", slot: "dinner", dish: "Frittata", sides: "insalata", effect: "new",
+          occupant: null, meal_id: null },
+      ],
+    };
+    const card = {
+      id: "c1", kind: "forward", status: "proposed", list_only: false, title: "Cambi per la cena",
+      meals: [], created_at: "2026-11-13T10:00:00Z", applied_at: null,
+      rows: [
+        { id: "r1", kind: "pantry", label: "Uova", from_status: "available", to_status: "low",
+          listed: false, checked: true, editable: true, note: null, applied: null },
+      ],
+    };
+    const response = streamed([
+      `event: proposal\ndata: ${JSON.stringify({ proposal })}\n\n`,
+      `event: card\ndata: ${JSON.stringify({ card })}\n\n`,
+    ]);
+    expect(await eventsOf(response)).toEqual([
+      { name: "proposal", proposal },
+      { name: "card", card },
+    ]);
+  });
 });

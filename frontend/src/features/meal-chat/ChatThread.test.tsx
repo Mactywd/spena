@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatThread } from "./ChatThread";
 import type { ChatMessage, RecipeChange } from "../../domain/types";
@@ -72,5 +72,32 @@ describe("ChatThread", () => {
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
     expect(onRetry).toHaveBeenCalledWith(failed);
+  });
+  it("`renderExtras` mette il suo contenuto sotto il messaggio giusto; senza, niente cambia", () => {
+    const messages = [
+      message(),
+      message({ id: "a1", role: "assistant", text: "Ecco la proposta." }),
+    ];
+    const { rerender } = render(
+      <ChatThread
+        messages={messages}
+        streaming={null}
+        onUndo={vi.fn()}
+        onRetry={vi.fn()}
+        renderExtras={(m) => (m.id === "a1" ? <p>la scheda di a1</p> : null)}
+      />
+    );
+    const items = screen.getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(within(items[1]).getByText("la scheda di a1")).toBeInTheDocument();
+    expect(within(items[0]).queryByText("la scheda di a1")).not.toBeInTheDocument();
+    // la scheda sta sotto il fumetto, non sopra
+    const bubble = within(items[1]).getByText("Ecco la proposta.");
+    const extra = within(items[1]).getByText("la scheda di a1");
+    expect(bubble.compareDocumentPosition(extra) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    rerender(<ChatThread messages={messages} streaming={null} onUndo={vi.fn()} onRetry={vi.fn()} />);
+    expect(screen.queryByText("la scheda di a1")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
 });

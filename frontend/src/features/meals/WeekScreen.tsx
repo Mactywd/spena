@@ -4,7 +4,9 @@ import { Chip } from "../../components/ui/Chip";
 import { ErrorState } from "../../components/ui/ErrorState";
 import { IconChevronLeft, IconChevronRight } from "../../components/ui/icons";
 import { Screen } from "../../components/ui/Screen";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Meal, MealSlot } from "../../domain/types";
+import { PendingCards } from "../change-cards/PendingCards";
 import { fetchWeek } from "./api";
 import { SLOT_LABELS, dayLabel, mealMarks, weekLabel } from "./format";
 
@@ -21,6 +23,10 @@ export function WeekScreen() {
 
   return (
     <Screen title="Pasti">
+      {/* le schede dei cambi ancora da applicare, in testa; vuoto, niente */}
+      <div className="pb-3 empty:hidden">
+        <PendingCards />
+      </div>
       {week.isError ? (
         <ErrorState
           message="La settimana non si carica."
@@ -67,7 +73,10 @@ export function WeekScreen() {
           </ul>
         </>
       )}
-      {/* qui, sotto la settimana, il piano 4 mette «Pianifica con Claude» */}
+      {/* una navigazione e non un'azione: un collegamento con la forma del pulsante */}
+      <Link to="/pasti/pianifica" className={`${buttonClasses("primary", "block")} mt-3`}>
+        Pianifica con Claude
+      </Link>
     </Screen>
   );
 }

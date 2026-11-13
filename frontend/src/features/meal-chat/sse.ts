@@ -1,8 +1,8 @@
-import type { ChatStreamEvent } from "../../domain/types";
+import type { ChatStreamEvent, DishChat } from "../../domain/types";
 
 /** Un blocco SSE (le righe fra due `\n\n`) ridotto a un evento della chat, o a niente:
  * i commenti (`: ping`), i nomi sconosciuti e un `data` che non è JSON si saltano. */
-function parseBlock(block: string): ChatStreamEvent | null {
+function parseBlock<TChat>(block: string): ChatStreamEvent<TChat> | null {
   let name = "message";
   const data: string[] = [];
   for (const line of block.split("\n")) {
@@ -24,15 +24,19 @@ function parseBlock(block: string): ChatStreamEvent | null {
   }
   switch (name) {
     case "start":
-      return { name, message: payload.message } as ChatStreamEvent;
+      return { name, message: payload.message } as ChatStreamEvent<TChat>;
     case "delta":
-      return { name, text: payload.text } as ChatStreamEvent;
+      return { name, text: payload.text } as ChatStreamEvent<TChat>;
     case "change":
-      return { name, change: payload.change } as ChatStreamEvent;
+      return { name, change: payload.change } as ChatStreamEvent<TChat>;
+    case "proposal":
+      return { name, proposal: payload.proposal } as ChatStreamEvent<TChat>;
+    case "card":
+      return { name, card: payload.card } as ChatStreamEvent<TChat>;
     case "done":
-      return { name, chat: payload.chat } as ChatStreamEvent;
+      return { name, chat: payload.chat } as ChatStreamEvent<TChat>;
     case "error":
-      return { name, code: payload.code, notice: payload.notice, chat: payload.chat } as ChatStreamEvent;
+      return { name, code: payload.code, notice: payload.notice, chat: payload.chat } as ChatStreamEvent<TChat>;
     default:
       return null;
   }
@@ -40,9 +44,9 @@ function parseBlock(block: string): ChatStreamEvent | null {
 
 /** Legge una risposta `text/event-stream` fino in fondo, passando gli eventi in ordine.
  * I pezzi arrivano tagliati dove capita: si accumulano finché un `\n\n` chiude il blocco. */
-export async function readSse(
+export async function readSse<TChat = DishChat>(
   response: Response,
-  onEvent: (event: ChatStreamEvent) => void
+  onEvent: (event: ChatStreamEvent<TChat>) => void
 ): Promise<void> {
   if (!response.body) return;
   const reader = response.body.getReader();
@@ -52,13 +56,13 @@ export async function readSse(
     buffer = buffer.replace(/\r\n/g, "\n");
     let end = buffer.indexOf("\n\n");
     while (end !== -1) {
-      const event = parseBlock(buffer.slice(0, end));
+      const event = parseBlock<TChat>(buffer.slice(0, end));
       buffer = buffer.slice(end + 2);
       if (event) onEvent(event);
       end = buffer.indexOf("\n\n");
     }
     if (final && buffer.trim() !== "") {
-      const event = parseBlock(buffer);
+      const event = parseBlock<TChat>(buffer);
       buffer = "";
       if (event) onEvent(event);
     }

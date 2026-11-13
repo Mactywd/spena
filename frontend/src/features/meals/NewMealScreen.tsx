@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert } from "../../components/ui/Alert";
 import { useNotice } from "../../components/ui/noticeContext";
 import { Screen } from "../../components/ui/Screen";
+import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { MealSlot } from "../../domain/types";
 import { MEALS_KEY, createMeal, fetchLeftoverCandidates } from "./api";
 import { MealForm } from "./MealForm";
@@ -45,7 +46,13 @@ export function NewMealScreen() {
       subtitle={`${longDayLabel(day)} · ${SLOT_LABELS[slot]}`}
       back={{ to: `/pasti?settimana=${day}`, label: "Pasti" }}
     >
-      {/* qui, sopra il modulo, il piano 4 mette «Chiedilo a Claude» */}
+      {/* il posto passa alla pianificazione, che ci punta la conversazione */}
+      <Link
+        to={`/pasti/pianifica?giorno=${day}&posto=${slot}`}
+        className={`${buttonClasses("secondary", "block")} mb-3`}
+      >
+        Chiedilo a Claude
+      </Link>
       <MealForm
         initial={{ day, slot, dish: "", sides: null, away: false, leftover_of_id: null }}
         slotEditable={false}

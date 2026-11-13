@@ -94,4 +94,22 @@ describe("il nuovo pasto", () => {
       expect(screen.getByRole("alert")).toHaveTextContent("Il piatto non può essere vuoto.")
     );
   });
+  it("«Chiedilo a Claude» porta alla pianificazione con il posto", async () => {
+    stubFetch(() => [[], 200]);
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <NoticeProvider>
+          <MemoryRouter initialEntries={["/pasti/nuovo?giorno=2026-11-10&posto=lunch"]}>
+            <Routes>
+              <Route path="/pasti/nuovo" element={<NewMealScreen />} />
+            </Routes>
+          </MemoryRouter>
+        </NoticeProvider>
+      </QueryClientProvider>
+    );
+    expect(screen.getByRole("link", { name: "Chiedilo a Claude" })).toHaveAttribute(
+      "href",
+      "/pasti/pianifica?giorno=2026-11-10&posto=lunch"
+    );
+  });
 });
