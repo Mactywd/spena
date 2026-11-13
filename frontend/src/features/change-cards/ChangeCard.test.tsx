@@ -3,6 +3,9 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChangeCard } from "./ChangeCard";
 import { card, pantryItem, posts, renderWith, row, stubFetch } from "./testkit";
+import { createTestQueryClient } from "../../test/queryClient";
+import { PLANNING_KEY, planningChatKey } from "../planning/api";
+import { dishChatKey } from "../meal-chat/api";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -61,6 +64,23 @@ describe("ChangeCard", () => {
       { id: "r2", checked: false, to_status: "finished" },
     ]);
     expect(await screen.findByText("Applicata.")).toBeInTheDocument();
+  });
+
+  it("dopo «Applica» si rileggono anche la pianificazione e la chat del piatto", async () => {
+    // la scheda applicata dalla sua pagina: la chat che l'ha proposta (pianificazione o
+    // piatto) non deve restare con la scheda «da applicare» e con «concluded» vecchio
+    stubFetch((url) => (url.includes("/apply") ? [card({ status: "applied" }), 200] : [[], 200]));
+    const client = createTestQueryClient();
+    const current = [...PLANNING_KEY, "current"];
+    client.setQueryData(current, { conversation_id: "conv1", concluded: false });
+    client.setQueryData(planningChatKey("conv1"), { conversation_id: "conv1", concluded: false });
+    client.setQueryData(dishChatKey("m1"), { messages: [] });
+    renderWith(<ChangeCard card={card()} />, "/", client);
+    await userEvent.click(screen.getByRole("button", { name: "Applica" }));
+    expect(await screen.findByText("Scheda applicata.")).toBeInTheDocument();
+    for (const key of [current, planningChatKey("conv1"), dishChatKey("m1")]) {
+      expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    }
   });
 
   it("«Applica» toccato due volte manda una richiesta sola", async () => {

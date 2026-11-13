@@ -48,9 +48,9 @@ export function posts(spy: ReturnType<typeof stubFetch>) {
     }));
 }
 
-export function renderWith(ui: ReactNode, path = "/") {
+export function renderWith(ui: ReactNode, path = "/", client = createTestQueryClient()) {
   return render(
-    <QueryClientProvider client={createTestQueryClient()}>
+    <QueryClientProvider client={client}>
       <NoticeProvider>
         <MemoryRouter initialEntries={[path]}>
           <Routes>

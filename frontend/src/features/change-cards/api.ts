@@ -1,6 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../../api/client";
 import type { ChangeCard, PantryStatus } from "../../domain/types";
+import { DISH_CHATS_KEY } from "../meal-chat/api";
+import { PLANNING_KEY } from "../planning/api";
 
 export const cardKey = (id: string) => ["change-card", id] as const;
 export const PENDING_CARDS_KEY = ["change-cards", "proposed"] as const;
@@ -36,9 +38,15 @@ export function addCardRow(id: string, body: { pantry_item_id: string } | { raw_
   });
 }
 
-/** Chi scrive in una scheda tocca anche pasti, dispensa e lista: si rileggono tutti. */
+/** Chi scrive in una scheda tocca anche pasti, dispensa e lista: si rileggono tutti, e
+ * con loro le chat che mostrano la scheda (la pianificazione, col suo «concluded», e i
+ * piatti), anche quando la scheda si applica dalla sua pagina. */
 export function invalidateAfterCard(queryClient: QueryClient) {
-  for (const key of [["change-card"], ["change-cards"], ["meals"], ["pantry"], ["shopping-list"]]) {
+  const keys = [
+    ["change-card"], ["change-cards"], ["meals"], ["pantry"], ["shopping-list"],
+    PLANNING_KEY, DISH_CHATS_KEY,
+  ];
+  for (const key of keys) {
     void queryClient.invalidateQueries({ queryKey: key });
   }
 }

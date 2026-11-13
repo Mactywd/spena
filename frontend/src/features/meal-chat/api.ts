@@ -3,9 +3,12 @@ import { apiFetch, apiStream } from "../../api/client";
 import type { ChatStreamEvent, DishChat } from "../../domain/types";
 import { readSse } from "./sse";
 
+/** Tutte le chat dei piatti in cache. */
+export const DISH_CHATS_KEY = ["meal-chat"] as const;
+
 /** La chat di un pasto in cache. */
 export function dishChatKey(mealId: string) {
-  return ["meal-chat", mealId] as const;
+  return [...DISH_CHATS_KEY, mealId] as const;
 }
 
 export function fetchDishChat(mealId: string) {
