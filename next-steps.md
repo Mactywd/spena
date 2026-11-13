@@ -28,7 +28,7 @@ del ramo.
 
 Dal 2026-11-12 c'è anche la catena **Pasti con Claude** (spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, approvata da Mattia): quattro piani in fila, ogni ramo parte dal precedente, nell'ordine 5 → 6a → 6b → 6c. Prima del deploy del 6b Mattia rilegge l'«Avvertenza» in testa al piano `2026-11-12-pasti-claude.md` (abbonamento o chiave API).
 
-5. [pronto] P3 · Utensili, una sezione di spena con gli strumenti che Mattia ha in cucina, così le ricette scritte dall'AI non chiedono strumenti che non ha: elenco dal ☰ (nome e nota), anche nei prompt della bozza e della variante [H4] → `docs/superpowers/plans/2026-11-12-utensili.md`, ramo `night/utensili` da `master`
+5. [in corso] P3 · Utensili, una sezione di spena con gli strumenti che Mattia ha in cucina, così le ricette scritte dall'AI non chiedono strumenti che non ha: elenco dal ☰ (nome e nota), anche nei prompt della bozza e della variante [H4] → `docs/superpowers/plans/2026-11-12-utensili.md`, ramo `night/utensili` da `master`
 6. [pronto] P3 · Sezione Pasti, al posto del planner sul reMarkable e della skill `pasti`: la settimana con pranzo e cena, il piatto con la sua ricetta e la chat con Claude Opus sotto, la pianificazione con bozza e ufficializzazione, le schede dei cambi a dispensa e lista. Tre piani in fila:
    - 6a → `docs/superpowers/plans/2026-11-12-pasti-settimana.md`, ramo `night/pasti-settimana` da `night/utensili`
    - 6b → `docs/superpowers/plans/2026-11-12-pasti-claude.md`, ramo `night/pasti-claude` da `night/pasti-settimana`
