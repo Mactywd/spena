@@ -1920,7 +1920,13 @@ come 422 con la frase, accanto a «Salva», e la riga si toglie con la sua ✕.
 
 # Parte IV — Pasti (sezione primaria nuova) ↳ D1, D2, D3
 
-## P1. Creazione di un pasto **[D]**
+> **Sostituita il 2026-11-12** dalla spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`
+> (Pasti con Claude e Utensili, decisa con Mattia). P1, P2 e P3 qui sotto, M1 (Parte V) e
+> H3 (Parte VI) sono sostituiti (spec §11) e restano come archivio del ragionamento. Il
+> primo pezzo senza Claude — la settimana, i pasti a mano, le ricette fuori dal ricettario —
+> è sul ramo `night/pasti-settimana` (2026-11-13, da revisionare).
+
+## P1. Creazione di un pasto **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]**
 Si sceglie il tipo — Colazione, Pranzo, Merenda, Cena, Spuntino — e l'app mostra
 ricette adatte **senza nascondere il resto**: a colazione la bistecca non sta fra i
 primi risultati, ma l'elenco completo resta raggiungibile. Si scelgono più ricette, o
@@ -1928,7 +1934,7 @@ se ne inserisce una nuova, o **si fotografa un piatto per la stima calorica**.
 
 TBD: la stima da foto è un pezzo suo, con la stessa domanda sul modello di S4.
 
-## P2. NutriScore **[D, con TBD]**
+## P2. NutriScore **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]**
 Per il periodo scelto — pasto, giorno, settimana — confronta quel che si doveva
 mangiare con quel che si è mangiato, e dà un punteggio.
 
@@ -1943,7 +1949,7 @@ mangiare con quel che si è mangiato, e dà un punteggio.
 
 ↳ P1 per i dati mangiati, S4 per i nutrienti, D1 per le quantità.
 
-## P3. Pianificare più giorni **[D in parte il 2026-09-24, con TBD]** ↳ P1, P2, M1, R9
+## P3. Pianificare più giorni **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]** ↳ P1, P2, M1, R9
 Nella sezione Pasti, oltre al pasto singolo, si pianifica un periodo — una settimana,
 o più.
 
@@ -1998,7 +2004,7 @@ senza nutrienti resta scritta qui come ripiego, non come piano.
 
 # Parte V — Motori
 
-## M1. Motore di suggerimento ricette **[TBD]** ↳ P2, S4
+## M1. Motore di suggerimento ricette **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]** ↳ P2, S4
 Chiamato ogni volta che l'app propone ricette. Tiene conto di:
 - tipo di pasto;
 - calorie e nutrienti già mangiati, **sia sull'ultimo giorno che sull'ultima
@@ -2082,7 +2088,7 @@ un giorno senza dati è un giorno senza dispendio calcolato, non uno zero.
 collegamento coi dieci passi, i passi di ieri uguali a quelli di Samsung Health, una
 settimana di sincronizzazioni senza buchi (l'ottimizzazione della batteria).
 
-## H3. Profilo **[D]** ↳ P2
+## H3. Profilo **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]** ↳ P2
 Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.
 
 ## H4. Utensili **[FATTO 2026-11-13 — sul ramo `night/utensili`, non ancora in produzione]**

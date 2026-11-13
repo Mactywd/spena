@@ -254,6 +254,20 @@ recipes are never checked against it. Spec: `docs/superpowers/specs/2026-11-12-p
   would come back with a non-food line. Spec:
   `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`.
 
+  **A recipe written for a meal stays out of the recipe book** (`recipes.in_book`
+  false, decided by Mattia on 2026-11-12) until «Salva nel ricettario». Every book
+  listing and search — browse, the cookable count, text and semantic search, the
+  categories, the substitution engine's voices — excludes it inside the query that
+  carries the limit, through the one expression `in_the_book()` beside the column, the
+  same rule as archived recipes; the registry's usage lists include it and mark it
+  «(da un pasto)», for the reason they include archived ones, and `reindex` gives it a
+  vector for the day it is saved. A meal owns its recipe one to one
+  (`meals.recipe_id` is unique): picking from the book makes a copy, and deleting a
+  meal archives its recipe unless it is in the book. A live recipe out of the book
+  always has a meal: «Togli dal ricettario» refuses one without, and restoring one
+  without puts it back in the book. Spec:
+  `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §4.
+
   A response that cannot be verified against the real registry is never applied — the
   term stays in the queue. Specs are
   `docs/superpowers/specs/2026-09-12-import-ricette-design.md` and

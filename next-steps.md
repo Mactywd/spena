@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-13 (fase notte)_
+_Ultimo aggiornamento: 2026-11-13 (fase notte: sezione Pasti, piano 2 di 4)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -29,11 +29,20 @@ del ramo.
 Dal 2026-11-12 c'è anche la catena **Pasti con Claude** (spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, approvata da Mattia): quattro piani in fila, ogni ramo parte dal precedente, nell'ordine 5 → 6a → 6b → 6c. Prima del deploy del 6b Mattia rilegge l'«Avvertenza» in testa al piano `2026-11-12-pasti-claude.md` (abbonamento o chiave API).
 
 6. [in corso] P3 · Sezione Pasti, al posto del planner sul reMarkable e della skill `pasti`: la settimana con pranzo e cena, il piatto con la sua ricetta e la chat con Claude Opus sotto, la pianificazione con bozza e ufficializzazione, le schede dei cambi a dispensa e lista. Tre piani in fila:
-   - 6a → `docs/superpowers/plans/2026-11-12-pasti-settimana.md`, ramo `night/pasti-settimana` da `night/utensili`
+   - 6a → `docs/superpowers/plans/2026-11-12-pasti-settimana.md`, ramo `night/pasti-settimana` da `night/utensili` · piano 2 di 4 (pasti e settimana senza Claude) fatto il 2026-11-13 → branch night/pasti-settimana (da revisionare); il prossimo è il piano 3, night/pasti-claude
    - 6b → `docs/superpowers/plans/2026-11-12-pasti-claude.md`, ramo `night/pasti-claude` da `night/pasti-settimana`
    - 6c → `docs/superpowers/plans/2026-11-12-pasti-pianificazione.md`, ramo `night/pasti-pianificazione` da `night/pasti-claude`
 
 ## Da approfondire (giorno)
+- [idea] P3 · Pasti: spostare un pasto d'origine dopo il suo avanzo lascia l'avanzo legato a un pasto successivo [Parte IV]
+- [idea] P3 · Pasti: la scrittura non controlla la finestra di 3 giorni dell'avanzo (la offre solo il modulo) [Parte IV]
+- [idea] P3 · Pasti: «Fuori casa» e «Sostituisci» archiviano in silenzio una ricetta fuori dal ricettario (avvisa solo «Elimina») [Parte IV]
+- [idea] P3 · Pasti: il legame di un avanzo non si cambia da «Correggi», quindi spostarlo prima del suo pasto d'origine dà un rifiuto senza uscita da quella schermata [Parte IV]
+- [idea] P3 · Pasti: `/pasti?settimana=<non valida>` mostra «La settimana non si carica.» con un «Riprova» che non può riuscire: aggiungere «Torna a oggi» [Parte IV]
+- [idea] P3 · Pasti: la ricetta in sola lettura di un avanzo mostra ancora «Metti in lista ciò che manca», lo stepper delle porzioni e i sostituti [Parte IV]
+- [idea] P3 · Pasti: «Elimina» da `/ricette/:id` su una ricetta di un pasto salvata nel ricettario lascia il pasto su una ricetta archiviata (la schermata del pasto mostra la lapide con «Ripristina») [Parte IV]
+- [idea] P3 · Pasti: ripristinare dalla lapide nella modalità pasto non aggiorna la cache dei pasti [Parte IV]
+- [idea] P3 · Pasti: due «Annulla» affiancati nell'avviso del posto occupato (quello del modulo e quello dell'avviso) [Parte IV]
 
 ### Voci decise, da portare a spec e piano
 - [tbd] P2 · S3, la serie della scansione e la riga nuova portata in vista: dopo ogni «Metti in dispensa» la pagina scorre fino alla riga nuova (`revealId`, decisione 2 di Mattia) e il pannello dello scanner, che sta sopra le righe, esce dallo schermo; con una dispensa lunga, a ogni codice bisogna risalire. TBD: nella serie saltare il `revealId` finché il pannello resta aperto (l'avviso «In dispensa: …» conferma già) e portare in vista l'ultima riga alla ✕? Va deciso con i piani S14/S15, che si agganciano ad `afterEntry` [S3]
@@ -148,6 +157,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-11-13 · Sezione Pasti, piano 2 di 4: la scheda Pasti con la settimana, i pasti a mano (piatto, accompagnamenti, fuori casa, avanzo, bozza «non registrata»), spostati e cancellati; la ricetta del pasto scritta col modulo o copiata dal ricettario, fuori dal ricettario finché non la si salva lì, esclusa da sfoglio, ricerche, cucinabili e sostituti; il piatto senza «Cucina» [Parte IV] → branch night/pasti-settimana (da revisionare)
 - [fatto] 2026-11-13 · Utensili: l'elenco degli strumenti di cucina dal ☰, accanto all'Anagrafica (nome e nota, si aggiunge, si corregge, si toglie con «Annulla»), e la bozza e la variante dell'AI che usano solo quelli; vuoto, nessun vincolo; migrazione `0019` [H4] → branch night/utensili (da revisionare)
 - [fatto] 2026-10-19 · Le etichette delle spese dell'AI al merge di H1: `recipe_variant` (R8) e `ingredient_emoji` (S12) restano in `CALL_SITE_LABELS`, e ci sono anche quelle di R5 e delle due fette di S4 [R8, H1] → ramo rilascio/2026-10-19 (ae7de12)
 - [fatto] 2026-10-18 · Pulizie dei test e del backend: attese di Testing Library a 4 s e prove a 15 s (la Lista e l'Anagrafica cadevano sotto carico); un client react-query solo per l'app e i test (`createAppQueryClient`, `createTestQueryClient` con i tentativi veri senza attesa), e una prova che nessun test se ne faccia uno; le date dell'e2e nel giorno di Roma; `HTTP_422_UNPROCESSABLE_CONTENT` e gli avvisi di Starlette come errori; l'annullamento riconta `occurrences` con una `COUNT`; il 409 delle due righe nomina l'ingrediente; i test della coda con una decisione in volo [Parte X, T3] → branch night/pulizie-test (da revisionare)
