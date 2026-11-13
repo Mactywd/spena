@@ -7,7 +7,7 @@ import { IconChevronLeft, IconChevronRight } from "../../components/ui/icons";
 import { Screen } from "../../components/ui/Screen";
 import type { Meal, MealSlot } from "../../domain/types";
 import { fetchWeek } from "./api";
-import { SLOT_LABELS, dayLabel, weekLabel } from "./format";
+import { SLOT_LABELS, dayLabel, mealMarks, weekLabel } from "./format";
 
 const SLOTS: MealSlot[] = ["lunch", "dinner"];
 const ARROW = "inline-flex size-11 items-center justify-center rounded-full text-ink-soft";
@@ -105,13 +105,7 @@ function DayCard({ day, isToday, meals }: { day: string; isToday: boolean; meals
 }
 
 function MealLink({ meal }: { meal: Meal }) {
-  // un solo segno dopo «Fuori casa»: «Non registrata» prima di «Bozza» (una bozza nel
-  // passato è quella non registrata), poi «Avanzo»
-  const marks: string[] = [];
-  if (meal.away) marks.push("Fuori casa");
-  if (meal.unrecorded) marks.push("Non registrata");
-  else if (meal.status === "draft") marks.push("Bozza");
-  if (meal.leftover_of) marks.push("Avanzo");
+  const marks = mealMarks(meal);
   return (
     <Link
       to={`/pasti/${meal.id}`}

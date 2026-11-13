@@ -38,3 +38,20 @@ export function weekLabel(monday: string, sunday: string): string {
   }
   return `${parts(monday, { day: "numeric" })}–${parts(sunday, { day: "numeric", month: "long" })}`;
 }
+
+/** I segni di un pasto, come nella settimana e nella sua schermata: un solo segno dopo
+ * «Fuori casa», «Non registrata» prima di «Bozza» (una bozza nel passato è quella non
+ * registrata), poi «Avanzo». */
+export function mealMarks(meal: {
+  away: boolean;
+  unrecorded: boolean;
+  status: "draft" | "official";
+  leftover_of: unknown;
+}): string[] {
+  const marks: string[] = [];
+  if (meal.away) marks.push("Fuori casa");
+  if (meal.unrecorded) marks.push("Non registrata");
+  else if (meal.status === "draft") marks.push("Bozza");
+  if (meal.leftover_of) marks.push("Avanzo");
+  return marks;
+}
