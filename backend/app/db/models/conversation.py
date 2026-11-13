@@ -7,11 +7,12 @@ ai riavvii del container: ogni giro ricostruisce il contesto da qui (decisione 9
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -57,12 +58,20 @@ class Conversation(UUIDMixin, TimestampMixin, Base):
         CheckConstraint(
             "kind <> 'planning' OR meal_id IS NULL", name="ck_conversation_planning_no_meal"
         ),
+        CheckConstraint(
+            "(focus_day IS NULL) = (focus_slot IS NULL) "
+            "AND (focus_slot IS NULL OR focus_slot IN ('lunch', 'dinner'))",
+            name="ck_conversation_focus",
+        ),
     )
 
     kind: Mapped[str] = mapped_column(String(10))  # dish | planning
     meal_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("meals.id", ondelete="CASCADE"), nullable=True
     )
+    # il posto (data + pranzo/cena) su cui sta lavorando la chat di pianificazione
+    focus_day: Mapped[date | None] = mapped_column(Date, nullable=True)
+    focus_slot: Mapped[str | None] = mapped_column(String(10), nullable=True)  # lunch | dinner
 
     meal: Mapped[Meal | None] = relationship(lazy="raise")
     messages: Mapped[list["ConversationMessage"]] = relationship(

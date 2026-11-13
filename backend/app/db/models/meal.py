@@ -8,9 +8,19 @@ pasto solo (`uq_meals_recipe`), e le regole sono vincoli del database, non solo 
 """
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, String, UniqueConstraint, false
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    false,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,6 +64,10 @@ class Meal(UUIDMixin, TimestampMixin, Base):
     leftover_of_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("meals.id", ondelete="SET NULL"), nullable=True
     )
+    recipe_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    recipe_notice: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # `lazy="raise"`: le letture le caricano con `selectinload`, mai per caso
     recipe: Mapped[Recipe | None] = relationship(lazy="raise")
