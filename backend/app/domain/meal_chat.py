@@ -17,6 +17,10 @@ MAX_MEALS_RANGE_DAYS = 28
 HISTORY_MESSAGES = 40
 DISH_EFFORT = "medium"
 DISH_MAX_TURNS = 12
+PLANNING_EFFORT = "high"
+PLANNING_MAX_TURNS = 20
+RECIPE_EFFORT = "medium"
+RECIPE_MAX_TURNS = 12
 
 BUSY_NOTICE = "Claude sta ancora rispondendo al messaggio di prima."
 

@@ -25,6 +25,8 @@ from app.db.models.meal import Meal
 from app.db.models.planning import MealProposal, ProposalKind, ProposalStatus
 from app.domain.meals import MealSlot, MealStatus, slot_rank
 from app.repositories.meals import meal_at
+from app.schemas.meal import MealRefOut
+from app.schemas.meal_proposal import MealProposalOut, ProposalRowOut
 from app.services.claude.prompts import SLOT_NAMES, day_name
 from app.services.meals import create_meal, update_meal
 
@@ -166,6 +168,42 @@ async def row_occupants(
         occupant = await meal_at(session, day, slot)
         found.append((row, occupant, _effect(proposal, occupant)))
     return found
+
+
+def _ref(meal: Meal) -> MealRefOut:
+    return MealRefOut(
+        id=meal.id, day=meal.day, slot=MealSlot(meal.slot), dish=meal.dish,
+        recipe_id=meal.recipe_id,
+    )
+
+
+async def proposal_out(session: AsyncSession, proposal: MealProposal) -> MealProposalOut:
+    """La proposta per la chat. Finché è aperta, ogni riga dice che cosa farebbe al suo
+    posto adesso (`row_occupants`, dal vivo). Messa o sostituita non fa più niente: le
+    righe sono `new` senza occupante, perché l'occupante di una proposta messa sarebbe il
+    pasto che lei stessa ha messo."""
+    if proposal.status == ProposalStatus.OPEN.value:
+        live = await row_occupants(session, proposal)
+    else:
+        live = [(row, None, "new") for row in proposal.rows]
+    return MealProposalOut(
+        id=proposal.id,
+        kind=proposal.kind,  # type: ignore[arg-type]
+        status=proposal.status,  # type: ignore[arg-type]
+        rows=[
+            ProposalRowOut(
+                day=date.fromisoformat(row["day"]),
+                slot=MealSlot(row["slot"]),
+                dish=row["dish"],
+                sides=row.get("sides"),
+                effect=effect,
+                occupant=_ref(occupant) if occupant is not None else None,
+                meal_id=uuid.UUID(row["meal_id"]) if row.get("meal_id") else None,
+            )
+            for row, occupant, effect in live
+        ],
+        created_at=proposal.created_at,
+    )
 
 
 def _follow_up(kind: ProposalKind, rows: Sequence[dict[str, Any]]) -> str:

@@ -11,6 +11,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, StringConstraints
 
 from app.domain.meal_chat import MESSAGE_MAX_CHARS
+from app.schemas.change_card import ChangeCardOut
+from app.schemas.meal_proposal import MealProposalOut
 
 
 class RecipeChangeOut(BaseModel):
@@ -29,6 +31,10 @@ class ChatMessageOut(BaseModel):
     notice: str | None
     created_at: datetime
     changes: list[RecipeChangeOut]
+    # le proposte e le schede del giro, sotto la risposta (o sotto il messaggio di Mattia
+    # se la risposta non c'è), come le modifiche
+    proposals: list[MealProposalOut] = []
+    cards: list[ChangeCardOut] = []
 
 
 class HighlightOut(BaseModel):

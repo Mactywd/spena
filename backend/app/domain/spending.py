@@ -46,11 +46,13 @@ CALL_SITE_LABELS: dict[str, str] = {
     "ciqual_match": "Abbinare gli ingredienti a CIQUAL",
     "unit_grams": "Pesare le dosi delle ricette",
     "meal_chat": "Chat dei piatti",
+    "meal_planning": "Pianificazione dei pasti",
+    "meal_recipe": "Ricette dei pasti",
 }
 
 # Le sezioni che girano sul piano di Claude e non a consumo (decisione 20): le loro righe
 # hanno token ma `cost_usd` NULL, e stanno fuori dal conto a consumo.
-PLAN_CALL_SITES: frozenset[str] = frozenset({"meal_chat"})
+PLAN_CALL_SITES: frozenset[str] = frozenset({"meal_chat", "meal_planning", "meal_recipe"})
 PLAN_NOTE = "sul piano di Claude, non a consumo"
 
 

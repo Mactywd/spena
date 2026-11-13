@@ -45,6 +45,10 @@ class LlmCallSite(StrEnum):
     # la chat dei piatti (Pasti): su Claude via Agent SDK, sul piano di Mattia e non a
     # consumo, quindi senza costo (decisione 2); il giro la registra lui, non questo client
     MEAL_CHAT = "meal_chat"
+    # la pianificazione con Claude e le ricette scritte dopo l'ufficializzazione: sullo
+    # stesso piano, registrate dal giro e dalla coda delle ricette
+    MEAL_PLANNING = "meal_planning"
+    MEAL_RECIPE = "meal_recipe"
 
 
 @dataclass(frozen=True)
