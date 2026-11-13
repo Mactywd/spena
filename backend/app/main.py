@@ -18,6 +18,7 @@ from app.api import (
     shopping,
     spending,
     substitutions,
+    utensils,
 )
 from app.core.config import get_settings
 from app.core.security import (
@@ -91,6 +92,7 @@ app.include_router(nutrition.recipe_router)
 app.include_router(activity.webhook_router)
 app.include_router(activity.router)
 app.include_router(spending.router)
+app.include_router(utensils.router)
 
 
 @app.get("/api/v1/health")
