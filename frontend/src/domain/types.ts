@@ -459,3 +459,15 @@ export interface ProductDetail {
   /** Solo gli attivi: quelli che chi guarda la dispensa vede. */
   pantry_items: { id: string; status: PantryStatus; expires_on: string | null }[];
 }
+
+/** Uno strumento di cucina (spec 2026-11-12 §4.4). Il server pulisce nome e nota. */
+export interface Utensil {
+  id: string;
+  name: string;
+  note: string | null;
+}
+
+export interface UtensilInput {
+  name: string;
+  note: string | null;
+}

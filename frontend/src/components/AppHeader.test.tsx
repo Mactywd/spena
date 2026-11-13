@@ -70,6 +70,7 @@ describe("AppHeader", () => {
       "href", "/ricette/importa"
     );
     expect(within(menu).getByRole("link", { name: "Anagrafica" })).toHaveAttribute("href", "/anagrafica");
+    expect(within(menu).getByRole("link", { name: "Utensili" })).toHaveAttribute("href", "/utensili");
     expect(within(menu).getByRole("link", { name: "Spese dell'AI" })).toHaveAttribute("href", "/spese-ai");
     expect(within(menu).getByRole("link", { name: "Attività" })).toHaveAttribute("href", "/attivita");
   });

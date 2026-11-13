@@ -7,12 +7,14 @@ import { IconMenu2, IconX } from "./ui/icons";
 // L'indice completo (D3, T1): le sezioni che la barra in basso non porta. «Spese
 // dell'AI» (H1) è la prima sezione secondaria; «dell'AI» perché sotto «Sistema la
 // spesa» un «Spese» da solo si leggerebbe come lo scontrino. «Attività» (H2) è il
-// connettore di Samsung Health, via Health Connect e HC Webhook: in fondo. Pasti e
+// connettore di Samsung Health, via Health Connect e HC Webhook: in fondo. «Utensili»
+// sta accanto all'Anagrafica (spec 2026-11-12 §5.4): è un elenco da correggere come lei. Pasti e
 // Profilo si aggiungeranno qui quando esisteranno.
 const INDEX = [
   { to: "/sistema", label: "Sistema la spesa" },
   { to: "/ricette/importa", label: "Ingredienti da abbinare" },
   { to: "/anagrafica", label: "Anagrafica" },
+  { to: "/utensili", label: "Utensili" },
   { to: "/spese-ai", label: "Spese dell'AI" },
   { to: "/attivita", label: "Attività" },
 ];

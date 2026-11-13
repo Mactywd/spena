@@ -13,6 +13,7 @@ import { NotFoundScreen } from "./features/not-found/NotFoundScreen";
 import { IngredientScreen } from "./features/registry/IngredientScreen";
 import { ProductScreen } from "./features/registry/ProductScreen";
 import { RegistryScreen } from "./features/registry/RegistryScreen";
+import { UtensilsScreen } from "./features/utensils/UtensilsScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
 import { ActivityScreen } from "./features/activity/ActivityScreen";
@@ -63,6 +64,7 @@ export default function App() {
               <Route path="/anagrafica" element={<RegistryScreen />} />
               <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
               <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
+              <Route path="/utensili" element={<UtensilsScreen />} />
               <Route path="/attivita" element={<ActivityScreen />} />
               <Route path="/attivita/collega" element={<ConnectScreen />} />
               <Route path="/spese-ai" element={<SpendingScreen />} />
