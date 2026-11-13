@@ -325,3 +325,24 @@ async def test_open_card_for_meal(db_session, mondo):
     assert (
         await db_session.execute(select(ChangeCardRow).where(ChangeCardRow.card_id == card.id))
     ).scalars().all()
+
+
+async def test_niente_non_alimentari_nemmeno_fra_le_cose_da_comprare(db_session, mondo):
+    # C-R5: la scheda è di ciò che usano i pasti; il detersivo va in lista da sé
+    detersivo = mondo["ing"]["detersivo"]
+    for proposta in (ListProposal(detersivo.id, "Detersivo"), ListProposal(None, "detersivo")):
+        with pytest.raises(CardRefusal) as exc:
+            await propose_card(db_session, meals=[mondo["A"]], pantry=[], shopping=[proposta])
+        assert exc.value.code == CardRefusalCode.NOT_FOOD
+    card = await create_empty_card(db_session, mondo["A"])
+    with pytest.raises(CardRefusal) as exc:
+        await add_row(db_session, card, pantry_item_id=mondo["voci"]["detersivo"].id)
+    assert exc.value.code == CardRefusalCode.NOT_FOOD
+    with pytest.raises(CardRefusal) as exc:
+        await add_row(db_session, card, raw_text="Detersivo")
+    assert exc.value.code == CardRefusalCode.NOT_FOOD
+    card = await get_card(db_session, card.id)
+    assert list(card.rows) == []
+    # un testo libero che non è niente dell'anagrafica resta permesso
+    card = await add_row(db_session, card, raw_text="zenzero candito")
+    assert riga(card, "list", "zenzero candito").ingredient_id is None

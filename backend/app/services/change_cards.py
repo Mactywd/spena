@@ -25,6 +25,7 @@ from app.db.models.change_card import (
     ChangeCardRow,
     RowKind,
 )
+from app.db.models.ingredient import Ingredient
 from app.db.models.meal import Meal
 from app.db.models.pantry import PantryItem
 from app.domain.change_cards import adds_to_list, most_consumed
@@ -111,13 +112,36 @@ async def _live_pantry_item(session: AsyncSession, item_id: uuid.UUID) -> Pantry
             CardRefusalCode.NOT_IN_PANTRY, "Quella voce non è più in dispensa."
         )
     await session.refresh(item, ["ingredient", "product"])
-    if item.ingredient.kind != "food":
+    _refuse_if_not_food(item.ingredient)
+    return item
+
+
+def _refuse_if_not_food(ingredient: Ingredient | None) -> None:
+    """La scheda è di ciò che usano i pasti, in dispensa e fra le cose da comprare
+    (C-R5): un non alimentare non ci va mai, nemmeno come riga della lista. Il
+    detersivo si scrive in lista da sé."""
+    if ingredient is not None and ingredient.kind != "food":
         raise CardRefusal(
             CardRefusalCode.NOT_FOOD,
-            f"«{item.ingredient.name}» non è un alimento: la scheda dei cambi tocca la "
+            f"«{ingredient.name}» non è un alimento: la scheda dei cambi tocca la "
             "dispensa di cibo.",
         )
-    return item
+
+
+async def _list_ingredient(
+    session: AsyncSession, ingredient_id: uuid.UUID | None, raw_text: str
+) -> uuid.UUID | None:
+    """L'ingrediente di una riga della lista: quello dato, o la coincidenza esatta del
+    testo (come `add_item`). Un non alimentare si rifiuta; un testo che non è niente
+    dell'anagrafica resta libero."""
+    if ingredient_id is not None:
+        ingredient = await session.get(Ingredient, ingredient_id)
+    else:
+        ingredient = await exact_ingredient(session, raw_text)
+    _refuse_if_not_food(ingredient)
+    if ingredient_id is not None:
+        return ingredient_id
+    return ingredient.id if ingredient is not None else None
 
 
 async def _list_row_fields(
@@ -187,10 +211,9 @@ async def propose_card(
         if adds_to_list(row["to_status"]):
             add_list(row["item"].ingredient_id, _label(row["item"]), row["meal_ids"])
     for proposal in shopping:
-        ingredient_id = proposal.ingredient_id
-        if ingredient_id is None:
-            match = await exact_ingredient(session, proposal.raw_text)
-            ingredient_id = match.id if match is not None else None
+        ingredient_id = await _list_ingredient(
+            session, proposal.ingredient_id, proposal.raw_text
+        )
         add_list(ingredient_id, proposal.raw_text.strip(), _ids(proposal.meal_ids) or card_meals)
 
     card = _new_card(
@@ -270,8 +293,7 @@ async def add_row(
         ))
     else:
         text = (raw_text or "").strip()
-        match = await exact_ingredient(session, text)
-        ingredient_id = match.id if match is not None else None
+        ingredient_id = await _list_ingredient(session, None, text)
         for r in rows:
             if r.kind != RowKind.LIST.value:
                 continue
