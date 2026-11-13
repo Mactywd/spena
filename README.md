@@ -570,6 +570,9 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `OPENROUTER_PROVIDER_ONLY` | vuoto | vuoto: instradamento per prezzo scelto da OpenRouter. Valorizzata (es. `darkbloom`): pinni il provider a mano, e perdi la caduta automatica sul successivo |
 | `LLM_TIMEOUT_SECONDS` | `60` | oltre il quale una chiamata al modello si considera persa |
 | `LLM_MAX_CONCURRENCY` | `8` | quante domande in volo nel riconoscimento parallelo dei termini |
+| `CLAUDE_CODE_OAUTH_TOKEN` | vuoto | la chat dei Pasti con Claude: il token del piano di Mattia, da `claude setup-token` (dura un anno), **solo nel `.env` del server**. Vuoto, la chat dice che Claude non è collegato e il resto dei Pasti funziona a mano |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | il modello dei Pasti, sul piano di Claude (non su OpenRouter) |
+| `CLAUDE_REPLY_TIMEOUT_SECONDS` | `240` | il tempo massimo di una risposta della chat; oltre, il messaggio resta con l'avviso e «Riprova» |
 | `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
 | `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale; cambiandolo va rimisurata `SEMANTIC_MAX_DISTANCE` (vedi sotto) |
@@ -591,6 +594,17 @@ Nessuna di queste, mancando, porta a un vicolo cieco nell'interfaccia: senza
 dalla coda, senza modello di embedding la ricerca resta quella testuale, con Open
 Food Facts irraggiungibile il prodotto si crea a mano. È una regola di casa, non un
 caso fortunato.
+
+**Claude per i Pasti** si controlla dentro l'immagine che gira:
+`docker compose -f docker-compose.prod.yml exec backend python -m app.cli.check_claude [--prova]`.
+Senza argomenti non usa la rete: stampa la versione di `claude-agent-sdk`, la versione
+del binario di Claude Code incluso e `token: presente` o `token: assente` (mai il
+valore). Con `--prova` fa una sola chiamata minima e deve dire «prova: ok». La chat
+spegne `ANTHROPIC_API_KEY` e `ANTHROPIC_AUTH_TOKEN` nell'ambiente del CLI, così usa
+sempre il token del piano anche se il `.env` del server ha ancora la chiave;
+`check_claude` avvisa se la chiave c'è (senza stamparla), e la prova vera resta
+`--prova` con «prova: ok». Che il valore vuoto basti a spegnere la chiave è stato
+verificato leggendo il codice dell'SDK e del CLI, non con una chiamata vera.
 
 ### La ricerca semantica è facoltativa, e per default è spenta
 

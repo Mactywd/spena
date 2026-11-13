@@ -178,8 +178,9 @@ Two external dependencies, each behind its own service with a narrow interface:
 An LLM (`google/gemma-4-26b-a4b-it`, reached through OpenRouter via
 `services/llm.py`) drafts recipes and decides the import's unknown ingredient
 terms. It never produces nutrient values. There is one provider and one client
-on purpose: a second implementation behind a config switch would never run in
-production, which is the first defect listed above.
+on purpose — for the jobs Gemma does; the meals are the exception explained below.
+A second implementation behind a config switch would never run in production,
+which is the first defect listed above.
 
 The drafts and the variants (R8) are told which utensils the kitchen has: the list
 Mattia keeps in «Utensili», from the hamburger (`utensils` table, `/api/v1/utensils`),
@@ -187,6 +188,28 @@ goes at the end of their system prompt through `utensils_prompt_block` in
 `backend/app/services/utensils.py`, read at every call. An empty list means no
 constraint, not no tools: the prompt is then exactly the one of before. Imported
 recipes are never checked against it. Spec: `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, §4.4 and §8.
+
+**A second path to a model, on purpose: Claude for the meals.** The meal chat (and,
+next, the planning) runs on Claude Opus (`claude-opus-5-5`) through the Claude Agent
+SDK for Python (`claude-agent-sdk`, pinned, with its bundled Claude Code binary),
+authenticated with Mattia's own subscription through `CLAUDE_CODE_OAUTH_TOKEN` from
+`claude setup-token`, kept only in the server's `.env` (decided by Mattia on
+2026-11-10; check the authentication terms in the spec's plan before changing it).
+This is not what the one-provider rule above forbids: that rule is against two
+implementations behind a switch, one of which never runs. Here there are two paths
+with two jobs, and both run in production — Gemma via OpenRouter for import, drafts
+and variants; Claude via the Agent SDK for the meals. The SDK is driven with every
+built-in tool off (`tools=[]`), no settings or `CLAUDE.md` loaded
+(`setting_sources=[]`), `permission_mode="dontAsk"`, and spena's own tools as an
+in-process MCP server (`backend/app/services/claude/`). Its calls go into `llm_calls`
+as `meal_chat` with their tokens and `cost_usd` NULL: they are on the plan, not paid
+per use, and «Spese dell'AI» shows them apart. Claude writes a meal's recipe only
+through `write_meal_recipe` (`backend/app/services/meal_recipes.py`), which goes
+through the `write_recipe_ingredients` funnel, inside a savepoint, and stores the
+version before for «Annulla». Tests never run the SDK: `get_claude_client` is
+injected, the fake calls the very tool objects production builds, and the production
+client is tested against the SDK's real message types. Spec:
+`docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §3, §6, §7, §9.
 
 ## Conventions worth knowing
 
