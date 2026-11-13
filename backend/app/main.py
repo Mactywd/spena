@@ -11,6 +11,7 @@ from app.api import (
     cooking,
     imports,
     ingredients,
+    meals,
     nutrition,
     pantry,
     products,
@@ -93,6 +94,7 @@ app.include_router(activity.webhook_router)
 app.include_router(activity.router)
 app.include_router(spending.router)
 app.include_router(utensils.router)
+app.include_router(meals.router)
 
 
 @app.get("/api/v1/health")
