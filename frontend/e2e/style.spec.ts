@@ -963,6 +963,7 @@ const SCHERMATE = [
   "/ricette",
   "/ricette/nuova-ai",
   "/ricette/importa",
+  "/pasti",
   "/anagrafica",
   "/utensili",
   "/attivita",
@@ -4524,5 +4525,113 @@ test("gli utensili a 375px: un nome lungo con la nota e la correzione aperta si 
   } finally {
     const tolto = await page.request.delete(`/api/v1/utensils/${id}`);
     expect.soft(tolto.ok(), `pulizia: l'utensile ${id} non si è tolto`).toBe(true);
+  }
+});
+
+test("la settimana dei pasti a 375 px: si legge nei due temi, oggi si distingue, niente scorre di lato", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const creati: string[] = [];
+  const crea = async (data: Record<string, unknown>) => {
+    const risposta = await page.request.post("/api/v1/meals", { data });
+    expect(risposta.ok()).toBe(true);
+    const id = ((await risposta.json()) as { id: string }).id;
+    creati.push(id);
+    return id;
+  };
+  try {
+    await crea({
+      day: giornoDiRoma(0),
+      slot: "lunch",
+      dish: "Pasta al pomodoro e basilico di prova",
+      sides: "insalata · pane · una banana",
+    });
+    const passata = "2026-01-05";
+    const pranzoLunedi = await crea({ day: passata, slot: "lunch", dish: "Bozza di prova", status: "draft" });
+    await crea({ day: passata, slot: "dinner", dish: "Pizzeria di prova", away: true });
+    // un avanzo del pranzo di lunedì (un fuori casa non può essere l'origine di un avanzo)
+    await crea({ day: "2026-01-06", slot: "lunch", dish: "Avanzo di prova", leftover_of_id: pranzoLunedi });
+
+    for (const indirizzo of ["/pasti", `/pasti?settimana=${passata}`]) {
+      for (const tema of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: tema });
+        await page.goto(indirizzo);
+        await expect(page.getByRole("heading", { name: "Pasti", level: 1 })).toBeVisible();
+        await fermo(page);
+        expect(await testiIlleggibili(page), `${indirizzo}, tema ${tema}`).toEqual([]);
+        const misura = await page.evaluate<{ s: number; c: number }>(
+          "({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth })"
+        );
+        expect(misura.s, `${indirizzo}, tema ${tema}: scorre di lato`).toBeLessThanOrEqual(misura.c);
+        if (indirizzo === "/pasti") {
+          const sfondi = await page.evaluate<{ oggi: string; altro: string }>(
+            `({
+              oggi: getComputedStyle(document.querySelector('[aria-current="date"]').closest('li')).backgroundColor,
+              altro: getComputedStyle(document.querySelector('ul > li:not(:has([aria-current="date"]))')).backgroundColor,
+            })`
+          );
+          const sfondoOggi = sfondi.oggi;
+          const sfondoAltro = sfondi.altro;
+          expect(sfondoOggi, `oggi non si distingue, tema ${tema}`).not.toBe(sfondoAltro);
+        } else {
+          await expect(page.getByText("Non registrata", { exact: true })).toBeVisible();
+          await expect(page.getByText("Fuori casa", { exact: true })).toBeVisible();
+          await expect(page.getByText("Avanzo", { exact: true })).toBeVisible();
+        }
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    for (const id of creati.reverse()) {
+      const tolto = await page.request.delete(`/api/v1/meals/${id}`);
+      expect.soft([200, 204, 404], `pulizia: il pasto ${id} non si è tolto`).toContain(tolto.status());
+    }
+  }
+});
+
+test("il piatto con la ricetta a 375 px, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const trovate = (await (await page.request.get("/api/v1/ingredients/search?q=uova")).json()) as {
+    id: string;
+    name: string;
+  }[];
+  const uova = trovate.find((voce) => voce.name === "uova") ?? trovate[0];
+  expect(uova, "nessun ingrediente «uova» nel seme").toBeDefined();
+  const pasto = await page.request.post("/api/v1/meals", {
+    data: { day: giornoDiRoma(4), slot: "dinner", dish: "Frittata di prova stile" },
+  });
+  expect(pasto.ok()).toBe(true);
+  const pastoId = ((await pasto.json()) as { id: string }).id;
+  try {
+    const ricetta = await page.request.post("/api/v1/recipes", {
+      data: {
+        title: "Frittata di prova stile",
+        instructions: "Sbatti le uova, cuoci in padella.",
+        servings: 1,
+        source: "manual",
+        meal_id: pastoId,
+        ingredients: [{ ingredient_id: uova.id, role: "primary", quantity_text: "3" }],
+      },
+    });
+    expect(ricetta.ok()).toBe(true);
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${pastoId}`);
+      const salva = page.getByRole("button", { name: "Salva nel ricettario" });
+      await expect(salva).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il piatto, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `il piatto, tema ${tema}`);
+      const alto = (await salva.boundingBox())?.height ?? 0;
+      expect(alto, "«Salva nel ricettario» è troppo basso").toBeGreaterThanOrEqual(44);
+      await expect(page.getByRole("button", { name: /Cucina/ })).toHaveCount(0);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    const tolto = await page.request.delete(`/api/v1/meals/${pastoId}`);
+    expect.soft([200, 204, 404], `pulizia: il pasto ${pastoId} non si è tolto`).toContain(tolto.status());
   }
 });

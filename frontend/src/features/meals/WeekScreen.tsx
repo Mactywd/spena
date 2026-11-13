@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { Card } from "../../components/ui/Card";
 import { Chip } from "../../components/ui/Chip";
 import { ErrorState } from "../../components/ui/ErrorState";
 import { IconChevronLeft, IconChevronRight } from "../../components/ui/icons";
@@ -75,7 +74,9 @@ export function WeekScreen() {
 
 function DayCard({ day, isToday, meals }: { day: string; isToday: boolean; meals: Meal[] }) {
   return (
-    <Card as="li" className={isToday ? "bg-brand-tint" : ""}>
+    // niente `Card`: `bg-card` e `bg-brand-tint` sulla stessa classe si pestano e vince
+    // l'ultimo nel CSS (misurato: oggi restava bianco come gli altri giorni)
+    <li className={`rounded-card p-3 ${isToday ? "bg-brand-tint" : "bg-card"}`}>
       <div aria-current={isToday ? "date" : undefined}>
         <h2 className="text-sm font-semibold">
           {dayLabel(day)}
@@ -100,7 +101,7 @@ function DayCard({ day, isToday, meals }: { day: string; isToday: boolean; meals
           );
         })}
       </div>
-    </Card>
+    </li>
   );
 }
 
