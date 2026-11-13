@@ -108,6 +108,14 @@ test("la settimana a mano: scrivere, ricetta fuori dal ricettario, salvarla, spo
     await page.getByRole("button", { name: "Sì, elimina" }).click();
     await expect(page).toHaveURL(/\/pasti\?settimana=/);
     await expect(page.getByText(piatto)).toHaveCount(0);
+    // il posto torna vuoto: nella card di domani, il pranzo offre di nuovo «+ da pianificare»
+    const giornoDomani = new Intl.DateTimeFormat("it-IT", { timeZone: "UTC", weekday: "long", day: "numeric" })
+      .format(new Date(`${domani}T00:00:00Z`));
+    const cardDomani = page
+      .locator("li")
+      .filter({ has: page.getByRole("heading", { name: new RegExp(`^${giornoDomani}`, "i") }) });
+    await expect(cardDomani).toHaveCount(1);
+    await expect(cardDomani.getByRole("link", { name: "+ da pianificare" })).toHaveCount(2);
     expect((await page.request.get(`/api/v1/meals/${pastoId}`)).status()).toBe(404);
     pastoId = undefined;
     const ricetta = (await (await page.request.get(`/api/v1/recipes/${ricettaId}`)).json()) as Ricetta;

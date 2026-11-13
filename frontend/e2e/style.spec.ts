@@ -4567,10 +4567,14 @@ test("la settimana dei pasti a 375 px: si legge nei due temi, oggi si distingue,
         expect(misura.s, `${indirizzo}, tema ${tema}: scorre di lato`).toBeLessThanOrEqual(misura.c);
         if (indirizzo === "/pasti") {
           const sfondi = await page.evaluate<{ oggi: string; altro: string }>(
-            `({
-              oggi: getComputedStyle(document.querySelector('[aria-current="date"]').closest('li')).backgroundColor,
-              altro: getComputedStyle(document.querySelector('ul > li:not(:has([aria-current="date"]))')).backgroundColor,
-            })`
+            `(() => {
+              const oggi = document.querySelector('[aria-current="date"]').closest('li');
+              const altro = [...oggi.parentElement.children].find((li) => li !== oggi);
+              return {
+              oggi: getComputedStyle(oggi).backgroundColor,
+              altro: getComputedStyle(altro).backgroundColor,
+              };
+            })()`
           );
           const sfondoOggi = sfondi.oggi;
           const sfondoAltro = sfondi.altro;
