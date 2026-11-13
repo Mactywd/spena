@@ -499,6 +499,12 @@ export interface Meal {
   leftover_of: MealRef | null;
   /** Se il pasto ha la chat con Claude: lo decide il backend (`MealOut.can_chat`). */
   can_chat?: boolean;
+  /** La ricetta in preparazione o non arrivata: lo dice il backend (piano 6c). */
+  recipe_state?: "none" | "preparing" | "failed";
+  recipe_notice?: string | null;
+  can_ask_recipe?: boolean;
+  /** La scheda dei cambi ancora da applicare che riguarda questo pasto. */
+  open_card_id?: string | null;
 }
 export interface MealWeek {
   monday: string;
@@ -508,6 +514,8 @@ export interface MealWeek {
   next: string;
   days: string[];
   meals: Meal[];
+  /** Qualche pasto della settimana ha la ricetta in preparazione. */
+  preparing?: boolean;
 }
 export interface MealBody {
   day: string;
@@ -567,3 +575,57 @@ export type ChatStreamEvent =
   // `chat` è null quando il server non ha potuto rileggerla (il pasto è sparito, o la
   // rilettura dopo un crollo è fallita): allora la chat si rilegge.
   | { name: "error"; code: string; notice: string; chat: DishChat | null };
+
+/** Una riga della scheda dei cambi (`ChangeRowOut`): «Ora», le note e chi si può
+ * correggere li decide il backend. */
+export interface ChangeRow {
+  id: string;
+  kind: "pantry" | "list" | "unlist";
+  label: string;
+  from_status: PantryStatus | null;
+  to_status: PantryStatus | null;
+  listed: boolean;
+  checked: boolean;
+  editable: boolean;
+  note: string | null;
+  applied: boolean | null;
+}
+export interface ChangeCard {
+  id: string;
+  kind: "forward" | "inverse";
+  status: "proposed" | "applied" | "discarded";
+  list_only: boolean;
+  title: string;
+  meals: MealRef[];
+  rows: ChangeRow[];
+  created_at: string;
+  applied_at: string | null;
+}
+
+/** Una riga della proposta di pasti (`ProposalRowOut`). */
+export interface ProposalRow {
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  sides: string | null;
+  effect: "new" | "officialize" | "replace";
+  occupant: MealRef | null;
+  meal_id: string | null;
+}
+export interface MealProposal {
+  id: string;
+  kind: "official" | "draft";
+  status: "open" | "placed" | "superseded";
+  rows: ProposalRow[];
+  created_at: string;
+}
+/** La chat di pianificazione (`PlanningChatOut`). */
+export interface PlanningChat {
+  conversation_id: string | null;
+  focus: { day: string; slot: MealSlot } | null;
+  messages: ChatMessage[];
+  replying: boolean;
+  concluded: boolean;
+  claude_ready: boolean;
+  claude_notice: string | null;
+}
