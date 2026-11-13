@@ -314,10 +314,11 @@ export function RecipeDetailView({
     placeholderData: keepPreviousData,
   });
 
-  // (nel piatto non si cucina: `enabled` la spegne.) Serve solo per aprire il foglio di cottura: senza dispensa non si può dire
-  // quali vasetti esistono, quindi un fallimento qui non può travestirsi da
-  // "nessun vasetto da aggiornare" — altrimenti "Cucina" apparirebbe disponibile
-  // ma produrrebbe un foglio vuoto, silenziosamente sbagliato.
+  // Serve solo per aprire il foglio di cottura (nel piatto non si cucina: `enabled` la
+  // spegne). Senza dispensa non si può dire quali vasetti esistono, quindi un
+  // fallimento qui non può travestirsi da "nessun vasetto da aggiornare" — altrimenti
+  // "Cucina" apparirebbe disponibile ma produrrebbe un foglio vuoto, silenziosamente
+  // sbagliato.
   const {
     data: pantry,
     isLoading: isPantryLoading,
@@ -450,18 +451,25 @@ export function RecipeDetailView({
     return (
       <div className={inMeal ? "pb-4" : "px-4 pt-2 pb-4"}>
         {!inMeal && <BackLink to="/ricette" label="Ricette" />}
-        <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
+        {inMeal ? (
+          <h2 className="text-xl font-semibold tracking-tight">{recipe.title}</h2>
+        ) : (
+          <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
+        )}
         <p className="pt-2 text-ink-soft">Questa ricetta è stata eliminata.</p>
-        <Button
-          variant="primary"
-          shape="block"
-          icon={IconRestore}
-          busy={restore.isPending}
-          onClick={() => restore.mutate()}
-          className="mt-4"
-        >
-          {restore.isPending ? "Ripristino…" : "Ripristina"}
-        </Button>
+        {/* di sola lettura (un avanzo) la ricetta non è di questo pasto: niente «Ripristina» */}
+        {!meal?.readOnly && (
+          <Button
+            variant="primary"
+            shape="block"
+            icon={IconRestore}
+            busy={restore.isPending}
+            onClick={() => restore.mutate()}
+            className="mt-4"
+          >
+            {restore.isPending ? "Ripristino…" : "Ripristina"}
+          </Button>
+        )}
         {restore.isError && (
           <Alert className="pt-2">Non sono riuscito a ripristinarla. Riprova.</Alert>
         )}
@@ -524,33 +532,33 @@ export function RecipeDetailView({
             </IconToolbar>
           )
         ) : (
-        <IconToolbar label="Azioni della ricetta">
-          <Link
-            to={`/ricette/${recipe.id}/modifica`}
-            aria-label="Modifica"
-            className={buttonClasses("ghost", "icon")}
-          >
-            <IconPencil aria-hidden="true" className="size-5" stroke={1.8} />
-          </Link>
-          {/* R8: fra le due azioni rare, perché è una modifica; la scintilla è l'icona di
-              «scrivi con l'AI» (spec T3 §3.3) */}
-          <Button
-            ref={variantButtonRef}
-            variant="ghost"
-            icon={IconSparkles}
-            label="Modifica con AI"
-            aria-expanded={variantOpen}
-            aria-controls={VARIANT_PANEL_ID}
-            onClick={() => setVariantOpen((open) => !open)}
-          />
-          <Button
-            variant="ghost"
-            icon={IconTrash}
-            label="Elimina"
-            busy={archiving}
-            onClick={() => archive({ id: recipe.id, title: recipe.title })}
-          />
-        </IconToolbar>
+          <IconToolbar label="Azioni della ricetta">
+            <Link
+              to={`/ricette/${recipe.id}/modifica`}
+              aria-label="Modifica"
+              className={buttonClasses("ghost", "icon")}
+            >
+              <IconPencil aria-hidden="true" className="size-5" stroke={1.8} />
+            </Link>
+            {/* R8: fra le due azioni rare, perché è una modifica; la scintilla è l'icona di
+                «scrivi con l'AI» (spec T3 §3.3) */}
+            <Button
+              ref={variantButtonRef}
+              variant="ghost"
+              icon={IconSparkles}
+              label="Modifica con AI"
+              aria-expanded={variantOpen}
+              aria-controls={VARIANT_PANEL_ID}
+              onClick={() => setVariantOpen((open) => !open)}
+            />
+            <Button
+              variant="ghost"
+              icon={IconTrash}
+              label="Elimina"
+              busy={archiving}
+              onClick={() => archive({ id: recipe.id, title: recipe.title })}
+            />
+          </IconToolbar>
         )}
       </div>
 
@@ -698,28 +706,39 @@ export function RecipeDetailView({
             {inMeal ? (
               // nel piatto non si cucina (decisione 9): al posto di «Cucina», il destino
               // della ricetta. Di sola lettura, niente
-              !meal.readOnly &&
-              ((recipe.in_book ?? true) ? (
-                <Button
-                  variant="ghost"
-                  shape="block"
-                  icon={IconBookmarkOff}
-                  busy={setInBook.isPending}
-                  onClick={() => setInBook.mutate(false)}
-                >
-                  Togli dal ricettario
-                </Button>
-              ) : (
-                <Button
-                  variant="secondary"
-                  shape="block"
-                  icon={IconBookmarkPlus}
-                  busy={setInBook.isPending}
-                  onClick={() => setInBook.mutate(true)}
-                >
-                  Salva nel ricettario
-                </Button>
-              ))
+              !meal.readOnly && (
+                <>
+                  {(recipe.in_book ?? true) ? (
+                    <Button
+                      variant="ghost"
+                      shape="block"
+                      icon={IconBookmarkOff}
+                      busy={setInBook.isPending}
+                      onClick={() => setInBook.mutate(false)}
+                    >
+                      Togli dal ricettario
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      shape="block"
+                      icon={IconBookmarkPlus}
+                      busy={setInBook.isPending}
+                      onClick={() => setInBook.mutate(true)}
+                    >
+                      Salva nel ricettario
+                    </Button>
+                  )}
+                  {/* un rifiuto dice sempre cosa è successo: mai un pulsante che non risponde */}
+                  {setInBook.isError && (
+                    <Alert>
+                      {setInBook.error instanceof ApiError
+                        ? setInBook.error.message
+                        : "Non sono riuscito a farlo. Riprova fra poco."}
+                    </Alert>
+                  )}
+                </>
+              )
             ) : isPantryError ? (
               // il foglio ha bisogno della dispensa per elencare i vasetti concreti:
               // senza, il posto di «Cucina» dice perché non si può procedere invece di

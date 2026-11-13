@@ -33,8 +33,11 @@ export function MealForm({
   const [leftover, setLeftover] = useState(initial.leftover_of_id ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // l'occupante di un posto preso: il `detail` del server dice già «C'è già «X» …»
-  const [taken, setTaken] = useState<string | null>(null);
+  // l'occupante di un posto preso: il `detail` del server dice già «C'è già «X» …».
+  // Con il corpo rifiutato: «Sostituisci» rimanda quello, non il modulo com'è ora (che
+  // può già dire un altro posto, e cancellerebbe un pasto mai confermato). Se cambiano
+  // giorno o pasto la domanda non vale più e sparisce.
+  const [taken, setTaken] = useState<{ message: string; body: MealBody } | null>(null);
 
   const body = (replace: boolean): MealBody => ({
     day,
@@ -46,12 +49,12 @@ export function MealForm({
     ...(replace ? { replace: true } : {}),
   });
 
-  async function send(replace: boolean) {
+  async function send(replace: boolean, sent?: MealBody) {
     setBusy(true);
     setError(null);
     setTaken(null);
     try {
-      await save(body(replace));
+      await save(sent ?? body(replace));
       onSaved();
     } catch (err) {
       const code =
@@ -59,7 +62,7 @@ export function MealForm({
           ? (err.body as { code?: unknown }).code
           : null;
       if (err instanceof ApiError && err.status === 409 && code === "slot_taken") {
-        setTaken(err.message);
+        setTaken({ message: err.message, body: sent ?? body(replace) });
       } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
@@ -111,7 +114,11 @@ export function MealForm({
               id="meal-day"
               type="date"
               value={day}
-              onChange={(e) => e.target.value && setDay(e.target.value)}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                setDay(e.target.value);
+                setTaken(null);
+              }}
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -121,7 +128,10 @@ export function MealForm({
             <select
               id="meal-slot"
               value={slot}
-              onChange={(e) => setSlot(e.target.value as MealSlot)}
+              onChange={(e) => {
+                setSlot(e.target.value as MealSlot);
+                setTaken(null);
+              }}
             >
               <option value="lunch">{SLOT_LABELS.lunch}</option>
               <option value="dinner">{SLOT_LABELS.dinner}</option>
@@ -155,9 +165,9 @@ export function MealForm({
 
       {taken && (
         <div className="flex flex-col gap-2">
-          <Alert tone="note">{taken}</Alert>
+          <Alert tone="note">{taken.message}</Alert>
           <div className="flex gap-2">
-            <Button variant="danger" busy={busy} onClick={() => void send(true)}>
+            <Button variant="danger" busy={busy} onClick={() => void send(true, { ...taken.body, replace: true })}>
               Sostituisci
             </Button>
             <Button onClick={() => setTaken(null)}>Annulla</Button>

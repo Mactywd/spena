@@ -119,6 +119,23 @@ describe("la schermata del piatto", () => {
     expect(calls(spy, "PATCH")[1].body).toEqual({ slot: "lunch", replace: true });
   });
 
+  it("cambiare giorno dopo un posto occupato toglie la domanda: «Sostituisci» non cancella un pasto mai confermato", async () => {
+    const spy = stubFetch((_url, init) =>
+      init?.method === "PATCH"
+        ? [{ detail: "C'è già «Pizza» in questo posto.", code: "slot_taken" }, 409]
+        : [meal(), 200]
+    );
+    renderMeal();
+    await userEvent.click(await screen.findByRole("button", { name: "Correggi" }));
+    await userEvent.selectOptions(screen.getByLabelText("Pasto"), "lunch");
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+    expect(await screen.findByText("C'è già «Pizza» in questo posto.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Giorno"), { target: { value: "2026-11-12" } });
+    expect(screen.queryByText("C'è già «Pizza» in questo posto.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sostituisci" })).toBeNull();
+    expect(calls(spy, "PATCH")).toHaveLength(1);
+  });
+
   it("«Elimina» con una ricetta fuori dal ricettario lo dice, poi torna alla settimana", async () => {
     const spy = stubFetch((_url, init) =>
       init?.method === "DELETE" ? [null, 204] : [meal({ recipe: { id: "r1", title: "Pollo", in_book: false } }), 200]
@@ -194,6 +211,17 @@ describe("la schermata del piatto", () => {
       await vi.waitFor(() => expect(calls(spy, "PATCH")).toHaveLength(1));
       expect(calls(spy, "PATCH")[0]).toEqual({ url: "/api/v1/recipes/r1", body: { in_book: true } });
       expect(await screen.findByText("Salvata nel ricettario.")).toBeInTheDocument();
+    });
+
+    it("se «Salva nel ricettario» fallisce, lo dice con le parole del server", async () => {
+      stubFetch((url, init) =>
+        init?.method === "PATCH" && url.includes("/recipes/r1")
+          ? [{ detail: "Questa ricetta non ha più un pasto.", code: "no_meal" }, 409]
+          : withRecipe(withR(), { r1: recipeDetail() })(url, init)
+      );
+      renderMeal();
+      await userEvent.click(await screen.findByRole("button", { name: "Salva nel ricettario" }));
+      expect(await screen.findByText("Questa ricetta non ha più un pasto.")).toBeInTheDocument();
     });
 
     it("con la ricetta nel ricettario c'è «Togli dal ricettario»", async () => {
