@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-13 (fase notte: sezione Pasti, piano 4 di 4 in corso)_
+_Ultimo aggiornamento: 2026-11-13 (fase notte: sezione Pasti, piano 4 di 4)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -26,13 +26,6 @@ del ramo.
 
 4. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — criterio B col pavimento a 0,30, l'inizio di parola anche negli alias, `%` e `_` non più jolly, la nota di ripiego in `IngredientPicker` [T3, esito del giro] → `docs/superpowers/plans/2026-10-08-suggerimenti-soglia.md`, ramo `night/suggerimenti-soglia` da `master`
 
-Dal 2026-11-12 c'è anche la catena **Pasti con Claude** (spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, approvata da Mattia): quattro piani in fila, ogni ramo parte dal precedente, nell'ordine 5 → 6a → 6b → 6c. Prima del deploy del 6b Mattia rilegge l'«Avvertenza» in testa al piano `2026-11-12-pasti-claude.md` (abbonamento o chiave API).
-
-6. [in corso] P3 · Sezione Pasti, al posto del planner sul reMarkable e della skill `pasti`: la settimana con pranzo e cena, il piatto con la sua ricetta e la chat con Claude Opus sotto, la pianificazione con bozza e ufficializzazione, le schede dei cambi a dispensa e lista. Tre piani in fila: · piano 3 di 4 (Claude e la chat del piatto) fatto il 2026-11-13 → branch night/pasti-claude (da revisionare); il prossimo è il piano 4, night/pasti-pianificazione · piano 4 di 4 (pianificazione e schede dei cambi) in corso su night/pasti-pianificazione
-   - 6a → `docs/superpowers/plans/2026-11-12-pasti-settimana.md`, ramo `night/pasti-settimana` da `night/utensili` · piano 2 di 4 (pasti e settimana senza Claude) fatto il 2026-11-13 → branch night/pasti-settimana (da revisionare); il prossimo è il piano 3, night/pasti-claude
-   - 6b → `docs/superpowers/plans/2026-11-12-pasti-claude.md`, ramo `night/pasti-claude` da `night/pasti-settimana`
-   - 6c → `docs/superpowers/plans/2026-11-12-pasti-pianificazione.md`, ramo `night/pasti-pianificazione` da `night/pasti-claude`
-
 ## Da approfondire (giorno)
 - [idea] P3 · Pasti: spostare un pasto d'origine dopo il suo avanzo lascia l'avanzo legato a un pasto successivo [Parte IV]
 - [idea] P3 · Pasti: la scrittura non controlla la finestra di 3 giorni dell'avanzo (la offre solo il modulo) [Parte IV]
@@ -45,9 +38,12 @@ Dal 2026-11-12 c'è anche la catena **Pasti con Claude** (spec `docs/superpowers
 - [idea] P3 · Pasti: due «Annulla» affiancati nell'avviso del posto occupato (quello del modulo e quello dell'avviso) [Parte IV]
 - [idea] P3 · Pasti con Claude: un token finto con la forma di uno vero resta nella storia del commit `3df53ee` (corretto dopo); il repo è pubblico, e se la protezione dei push di GitHub lo rifiuta, riscrivere la storia del ramo è una decisione di Mattia [Parte IV]
 - [idea] P3 · Pasti con Claude: il controllo «Claude sta rispondendo» di «Annulla» e l'annullamento non stanno sotto lo stesso lucchetto (una finestra minima, con due dispositivi) [Parte IV]
-- [idea] P3 · Pasti con Claude: le modifiche alla ricetta di un giro fallito non entrano nella cronologia che Claude rilegge; da fare col piano 4 (decisione 28), insieme a «Riprova» [Parte IV]
 - [idea] P3 · Pasti con Claude: una risposta che si interrompe dopo l'inizio non mostra un avviso; la chat si rilegge da sola e mostra lo stato vero [Parte IV]
-- [idea] P3 · Pasti con Claude: `write_meal_recipe` ricarica il pasto su ogni errore ma non su una cancellazione (`except Exception`): il chiamante a più pasti del piano 4 non deve rileggere un pasto dopo una scrittura cancellata [Parte IV]
+- [idea] P3 · Pasti con Claude: un pasto «fuori casa» che torna a casa tiene proposta la sua scheda inversa (quella del «fuori casa»): resta fra le «Schede dei cambi da applicare» finché non la si scarta a mano [Parte IV]
+- [idea] P3 · Pasti con Claude: una proposta il cui giorno è passato si mette ancora nella settimana (una proposta non nasce nel passato, ma «Metti nella settimana» non lo ricontrolla) [Parte IV]
+- [idea] P3 · Pasti con Claude: dopo un 503 la pianificazione mostra due volte «Claude non è collegato: manca il token del piano sul server.» (l'avviso della schermata e quello del rifiuto) [Parte IV]
+- [idea] P3 · Pasti con Claude: una proposta che arriva mentre Claude scrive si ridisegna quando la risposta si salva, e una conferma «Questi posti sono occupati» aperta in quel momento si chiude: va ritoccato «Metti nella settimana» [Parte IV]
+- [idea] P3 · Pasti con Claude: «Pianifica con Claude» guarda solo l'ultima conversazione: se l'ultima è conclusa e una più vecchia no, si apre vuota (la spec dice «l'ultima non conclusa»; il piano diceva l'ultima) [Parte IV]
 
 ### Voci decise, da portare a spec e piano
 - [tbd] P2 · S3, la serie della scansione e la riga nuova portata in vista: dopo ogni «Metti in dispensa» la pagina scorre fino alla riga nuova (`revealId`, decisione 2 di Mattia) e il pannello dello scanner, che sta sopra le righe, esce dallo schermo; con una dispensa lunga, a ogni codice bisogna risalire. TBD: nella serie saltare il `revealId` finché il pannello resta aperto (l'avviso «In dispensa: …» conferma già) e portare in vista l'ultima riga alla ✕? Va deciso con i piani S14/S15, che si agganciano ad `afterEntry` [S3]
@@ -123,6 +119,7 @@ _(niente: H3, P3 e M1 sono usciti il 2026-11-12, sostituiti dalla sezione Pasti 
 ## Da fare a mano (solo Mattia)
 
 - [tbd] P2 · Prima del deploy dei Pasti con Claude: confermare l'uso del token del piano con l'Agent SDK (vedi l'avvertenza in testa a `docs/superpowers/plans/2026-11-12-pasti-claude.md`), poi `claude setup-token` e il token nel `.env` del server [Parte IV]
+- [tbd] P3 · Dopo il deploy dei Pasti con Claude: provare il giro completo bozza → spesa → ufficializzazione (bozza della settimana, scheda della lista applicata, spesa, «Sistema la spesa», ufficializzazione con Claude, ricette arrivate, scheda della dispensa applicata), togliere un pasto e applicare la scheda inversa; poi decidere se ritirare o ridurre la skill `pasti` [Parte IV]
 - [tbd] P3 · Dopo il deploy degli utensili: scrivere in «Utensili» gli strumenti veri della cucina, e provare una bozza AI che di solito chiede uno strumento che manca (per esempio montare gli albumi senza frusta), per vedere se la ricetta lo evita [H4]
 
 _Il 2026-10-07 Claude ha fatto il giro nel browser, a 375 px e nei due temi, sullo stack e2e
@@ -163,6 +160,9 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-11-13 · Sezione Pasti, piani 1–4: utensili; la settimana e i pasti a mano con le ricette fuori dal ricettario; la chat con Claude sotto ogni piatto; la pianificazione con Claude nei due giri (con quello che c'è, e bozza prima della spesa con l'ufficializzazione dopo «Sistema la spesa»), le ricette scritte dopo l'ufficializzazione, le schede dei cambi a dispensa e lista e la scheda inversa [Parte IV] → branch night/utensili, night/pasti-settimana, night/pasti-claude, night/pasti-pianificazione, da unire in quest'ordine (da revisionare)
+- [fatto] 2026-11-13 · Pasti con Claude, risolta col piano 4: le modifiche alla ricetta di un giro fallito non entravano nella cronologia che Claude rilegge. Con «Riprova» proposte, schede e modifiche del giro fallito passano al messaggio nuovo e tornano nella cronologia (decisione 28, `move_turn_products`); un messaggio fallito lasciato senza «Riprova» resta fuori, ma la ricetta com'è adesso è comunque nel prompt [Parte IV] → branch night/pasti-pianificazione (da revisionare)
+- [fatto] 2026-11-13 · Pasti con Claude, risolta col piano 4: `write_meal_recipe` non ricarica il pasto su una cancellazione, e la coda delle ricette non rilegge mai un pasto dopo una scrittura cancellata: la fine di ogni giro lo rilegge per id in una sessione nuova (`_settle_meal` in `recipe_jobs.py`); `write_meal_recipe` non è cambiata [Parte IV] → branch night/pasti-pianificazione (da revisionare)
 - [fatto] 2026-11-13 · Sezione Pasti, piano 3 di 4: la chat con Claude sotto la ricetta di ogni pasto (Opus via Agent SDK sul piano di Mattia, token da `claude setup-token`), con dispensa, lista, pasti, utensili e anagrafica in lettura; Claude riscrive la ricetta (o la scrive da zero) passando dall'imbuto, con «Ricetta aggiornata: …», «Annulla» e le righe evidenziate; avvisi quando Claude non c'è; le chiamate nelle spese «sul piano di Claude, non a consumo» [Parte IV] → branch night/pasti-claude (da revisionare)
 - [fatto] 2026-11-13 · Sezione Pasti, piano 2 di 4: la scheda Pasti con la settimana, i pasti a mano (piatto, accompagnamenti, fuori casa, avanzo, bozza «non registrata»), spostati e cancellati; la ricetta del pasto scritta col modulo o copiata dal ricettario, fuori dal ricettario finché non la si salva lì, esclusa da sfoglio, ricerche, cucinabili e sostituti; il piatto senza «Cucina» [Parte IV] → branch night/pasti-settimana (da revisionare)
 - [fatto] 2026-11-13 · Utensili: l'elenco degli strumenti di cucina dal ☰, accanto all'Anagrafica (nome e nota, si aggiunge, si corregge, si toglie con «Annulla»), e la bozza e la variante dell'AI che usano solo quelli; vuoto, nessun vincolo; migrazione `0019` [H4] → branch night/utensili (da revisionare)

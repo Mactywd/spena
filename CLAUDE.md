@@ -189,8 +189,8 @@ goes at the end of their system prompt through `utensils_prompt_block` in
 constraint, not no tools: the prompt is then exactly the one of before. Imported
 recipes are never checked against it. Spec: `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, §4.4 and §8.
 
-**A second path to a model, on purpose: Claude for the meals.** The meal chat (and,
-next, the planning) runs on Claude Opus (`claude-opus-5-5`) through the Claude Agent
+**A second path to a model, on purpose: Claude for the meals.** The meal chat, the
+planning and the meals' recipes run on Claude Opus (`claude-opus-5-5`) through the Claude Agent
 SDK for Python (`claude-agent-sdk`, pinned, with its bundled Claude Code binary),
 authenticated with Mattia's own subscription through `CLAUDE_CODE_OAUTH_TOKEN` from
 `claude setup-token`, kept only in the server's `.env` (decided by Mattia on
@@ -202,8 +202,8 @@ and variants; Claude via the Agent SDK for the meals. The SDK is driven with eve
 built-in tool off (`tools=[]`), no settings or `CLAUDE.md` loaded
 (`setting_sources=[]`), `permission_mode="dontAsk"`, and spena's own tools as an
 in-process MCP server (`backend/app/services/claude/`). Its calls go into `llm_calls`
-as `meal_chat` with their tokens and `cost_usd` NULL: they are on the plan, not paid
-per use, and «Spese dell'AI» shows them apart. Claude writes a meal's recipe only
+as `meal_chat`, `meal_planning` and `meal_recipe` with their tokens and `cost_usd` NULL:
+they are on the plan, not paid per use, and «Spese dell'AI» shows them apart. Claude writes a meal's recipe only
 through `write_meal_recipe` (`backend/app/services/meal_recipes.py`), which goes
 through the `write_recipe_ingredients` funnel, inside a savepoint, and stores the
 version before for «Annulla». Tests never run the SDK: `get_claude_client` is
@@ -290,6 +290,21 @@ client is tested against the SDK's real message types. Spec:
   always has a meal: «Togli dal ricettario» refuses one without, and restoring one
   without puts it back in the book. Spec:
   `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §4.
+
+  **Claude proposes, Mattia applies.** No Claude tool writes the pantry or the shopping
+  list: the meal planning and the dish chat send a change card (`propose_changes`), one
+  row per pantry item and per ingredient to buy, with the state it becomes, and Mattia
+  ticks, corrects and applies it (`backend/app/services/change_cards.py`). Applying is
+  one transaction that locks the card first, through `set_status` and `add_item` — the
+  one rule against duplicates in the list — and keeps the state each item had before.
+  That is what makes the inverse possible without quantities: when an official meal is
+  deleted, replaced or goes «fuori casa», spena itself proposes the inverse card, never
+  restoring what another meal still uses, what changed since, or what was bought again.
+  A `low` sauce is a started jar: only a row that becomes `finished` brings its list row
+  along. Planned meals arrive from a proposal card («Metti nella settimana»); their
+  recipes are written afterwards by an in-process queue, one meal at a time, each in its
+  own transaction, so a plan limit halfway leaves every meal usable by hand. Spec:
+  `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §5.2, §6.2.
 
   A response that cannot be verified against the real registry is never applied — the
   term stays in the queue. Specs are

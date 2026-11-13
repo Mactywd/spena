@@ -1925,7 +1925,10 @@ come 422 con la frase, accanto a «Salva», e la riga si toglie con la sua ✕.
 > H3 (Parte VI) sono sostituiti (spec §11) e restano come archivio del ragionamento. Il
 > primo pezzo senza Claude — la settimana, i pasti a mano, le ricette fuori dal ricettario —
 > è sul ramo `night/pasti-settimana` (2026-11-13, da revisionare). Il secondo pezzo — Claude e
-> la chat del piatto — è sul ramo `night/pasti-claude` (2026-11-13, da revisionare).
+> la chat del piatto — è sul ramo `night/pasti-claude` (2026-11-13, da revisionare). Il quarto e
+> ultimo pezzo — la pianificazione con Claude, la bozza e l'ufficializzazione, le schede dei cambi
+> e la scheda inversa — è sul ramo `night/pasti-pianificazione` (2026-11-13, da revisionare). La
+> skill `pasti` resta finché la sezione non è in produzione e provata.
 
 ## P1. Creazione di un pasto **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]**
 Si sceglie il tipo — Colazione, Pranzo, Merenda, Cena, Spuntino — e l'app mostra
