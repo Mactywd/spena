@@ -7,6 +7,9 @@ dependencies = [
   "argon2-cffi>=23.1",
   "asyncpg>=0.30",
   "beautifulsoup4>=4.12",
+  # Claude Code come libreria, per i Pasti: porta il suo binario, niente Node.
+  # Fissata: il binario segue la versione.
+  "claude-agent-sdk==0.2.180",
   "fastapi>=0.115",
   "httpx>=0.28",
   "itsdangerous>=2.2",
