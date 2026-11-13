@@ -23,6 +23,7 @@ from enum import StrEnum
 from sqlalchemy import delete, func, inspect, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.change_card import ChangeCardRow
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
@@ -660,6 +661,9 @@ async def merge_ingredients(
 
     pantry_items = await _repoint(session, PantryItem, loser_id, winner.id)
     shopping_items, shopping_dropped = await _repoint_shopping(session, loser_id, winner.id)
+    # le righe delle schede dei cambi (piano 6c): l'ingrediente è una chiave debole
+    # (SET NULL), ma una riga che ha perso il suo ingrediente non si aggancia più a niente
+    await _repoint(session, ChangeCardRow, loser_id, winner.id)
     products = await _repoint(session, Product, loser_id, winner.id)
 
     # Le righe rimaste sono di ricette che non vengono dall'import (scritte a mano o
