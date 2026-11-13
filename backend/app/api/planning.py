@@ -20,7 +20,7 @@ from app.db.models.meal import Meal
 from app.db.models.planning import MealProposal, ProposalKind
 from app.domain.meal_chat import FailureKind, failure_notice
 from app.domain.rules import today_in_pantry
-from app.repositories.conversations import create_planning, latest_planning, set_focus
+from app.repositories.conversations import create_planning, set_focus
 from app.schemas.meal import MealOut
 from app.schemas.meal_chat import ChatMessageIn
 from app.schemas.planning import (
@@ -38,7 +38,7 @@ from app.services.planning import (
     PlanningRefusal,
     PlanningRefusalCode,
     place_proposal,
-    planning_concluded,
+    planning_to_reopen,
 )
 from app.services.planning_chat import planning_view, run_planning_turn
 from app.services.recipe_jobs import RecipeJobs, get_recipe_jobs, recipe_run, wants_recipe
@@ -83,13 +83,9 @@ async def get_current(
     session: AsyncSession = Depends(get_session),
     registry: TurnRegistry = Depends(get_turn_registry),
 ):
-    """«Pianifica con Claude»: l'ultima conversazione se non è conclusa (decisione 26),
-    altrimenti la vista vuota, da cui il primo messaggio ne apre una nuova."""
-    conversation = await latest_planning(session)
-    if conversation is not None and await planning_concluded(
-        session, conversation, today_in_pantry(datetime.now(UTC))
-    ):
-        conversation = None
+    """«Pianifica con Claude»: l'ultima conversazione non conclusa (`planning_to_reopen`,
+    decisione 26), altrimenti la vista vuota, da cui il primo messaggio ne apre una nuova."""
+    conversation = await planning_to_reopen(session, today_in_pantry(datetime.now(UTC)))
     return await _view(session, registry, conversation)
 
 

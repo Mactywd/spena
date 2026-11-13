@@ -16,14 +16,15 @@ from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.change_card import CardStatus, ChangeCard
-from app.db.models.conversation import Conversation
+from app.db.models.conversation import Conversation, ConversationKind
 from app.db.models.meal import Meal
 from app.db.models.planning import MealProposal, ProposalKind, ProposalStatus
 from app.domain.meals import MealSlot, MealStatus, slot_rank
+from app.repositories.conversations import latest_planning
 from app.repositories.meals import meal_at
 from app.schemas.meal import MealRefOut
 from app.schemas.meal_proposal import MealProposalOut, ProposalRowOut
@@ -358,6 +359,52 @@ async def planning_concluded(
         )
     ).scalar_one_or_none()
     return open_draft is None
+
+
+async def planning_to_reopen(session: AsyncSession, today: date) -> Conversation | None:
+    """Quella che «Pianifica con Claude» riapre: l'ultima non conclusa (spec §5.2,
+    decisione 26). Se la più recente è aperta, è lei. Se è conclusa, si torna indietro
+    solo per un giro della bozza ancora aperto: la conversazione più recente che ha messo
+    una bozza ancora bozza da oggi in avanti, così dopo la spesa Mattia ritrova la bozza
+    anche se nel frattempo ha concluso una conversazione nuova. Una vecchia lasciata a metà
+    per altri motivi non si riapre da sola (lettura prudente).
+
+    Il filtro sta prima di ogni limite: le candidate sono tutte le conversazioni che hanno
+    messo una delle bozze aperte (poche: solo bozze da oggi in avanti), e «conclusa» resta
+    quella di `planning_concluded`."""
+    newest = await latest_planning(session)
+    if newest is None or not await planning_concluded(session, newest, today):
+        return newest
+
+    drafts = (
+        await session.execute(
+            select(Meal.id).where(Meal.status == MealStatus.DRAFT.value, Meal.day >= today)
+        )
+    ).scalars().all()
+    if not drafts:
+        return None
+    holders = (
+        select(MealProposal.conversation_id)
+        .where(
+            MealProposal.status == ProposalStatus.PLACED.value,
+            or_(*(MealProposal.rows.contains([{"meal_id": str(d)}]) for d in drafts)),
+        )
+        .scalar_subquery()
+    )
+    candidates = (
+        await session.execute(
+            select(Conversation)
+            .where(
+                Conversation.kind == ConversationKind.PLANNING.value,
+                Conversation.id.in_(holders),
+            )
+            .order_by(Conversation.created_at.desc(), Conversation.id.desc())
+        )
+    ).scalars().all()
+    for candidate in candidates:
+        if not await planning_concluded(session, candidate, today):
+            return candidate
+    return None
 
 
 async def conversation_for_meal(

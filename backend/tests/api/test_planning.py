@@ -433,6 +433,85 @@ async def test_conclusa_e_nuova(chat, ricotta):
     assert [c["id"] for c in letta["messages"][3]["cards"]] == [card["id"]]
 
 
+async def _giro(chat, meals: list[dict], kind: str, cambi: dict) -> str:
+    """Una conversazione nuova con un giro intero: la proposta, la messa nella settimana
+    (la ricetta, se c'è, non arriva) e la scheda dei cambi applicata."""
+    conversation_id = await nuova(chat)
+    chat.fake = FakeClaude(
+        [UseTool("propose_meals", {"kind": kind, "meals": meals}), Say("Ecco."), Finish()]
+    )
+    risposta = await scrivi(chat, conversation_id)
+    proposal = next(d for n, d in eventi(risposta.text) if n == "proposal")["proposal"]
+    chat.fake = FakeClaude([Say("niente"), Finish()])  # il giro della ricetta
+    messa = await metti(chat, proposal["id"])
+    assert messa.status_code == 200, messa.text
+    places = [{"day": m["day"], "slot": m["slot"]} for m in meals]
+    chat.fake = FakeClaude(
+        [UseTool("propose_changes", {"meals": places, **cambi}), Say("La scheda."), Finish()]
+    )
+    risposta = await scrivi(chat, conversation_id, messa.json()["follow_up"])
+    card = next(d for n, d in eventi(risposta.text) if n == "card")["card"]
+    applicata = await chat.client.post(f"/api/v1/change-cards/{card['id']}/apply", json={})
+    assert applicata.status_code == 200, applicata.text
+    return conversation_id
+
+
+async def test_dopo_la_spesa_riapre_il_giro_della_bozza_anche_dopo_una_conclusa(
+    chat, uova, ricotta
+):
+    """Decisione 26: sabato la bozza della settimana con la sua lista (A resta aperta, le
+    bozze sono da oggi in avanti); martedì una cena veloce in una conversazione nuova, messa
+    e con la scheda applicata (B conclusa). «Pianifica con Claude» riporta ad A."""
+    bozza = await _giro(
+        chat,
+        [{"day": d.isoformat(), "slot": "dinner", "dish": "Frittata"} for d in (DAY1, DAY2)],
+        "draft",
+        {"shopping": [{"ingredient_id": str(uova.id)}]},
+    )
+    veloce = await _giro(
+        chat,
+        [{"day": DAY1.isoformat(), "slot": "lunch", "dish": "Insalata di ricotta"}],
+        "official",
+        {"pantry": [{"pantry_item_id": str(ricotta.id), "to": "finished"}]},
+    )
+    assert (await chat.client.get(f"{BASE}/conversations/{veloce}")).json()["concluded"] is True
+
+    current = (await chat.client.get(f"{BASE}/current")).json()
+    assert current["conversation_id"] == bozza
+    assert current["concluded"] is False
+
+
+async def test_tutte_concluse_la_vista_e_vuota(chat, ricotta):
+    for slot in ("lunch", "dinner"):
+        await _giro(
+            chat,
+            [{"day": DAY1.isoformat(), "slot": slot, "dish": "Insalata di ricotta"}],
+            "official",
+            {"pantry": [{"pantry_item_id": str(ricotta.id), "to": "low"}]},
+        )
+    current = (await chat.client.get(f"{BASE}/current")).json()
+    assert current["conversation_id"] is None and current["concluded"] is False
+
+
+async def test_una_vecchia_lasciata_a_meta_senza_bozze_non_si_riapre(chat, ricotta):
+    """La lettura prudente: dopo una conclusa si torna indietro solo per un giro della bozza
+    ancora aperto. Una conversazione vecchia lasciata a metà (una proposta mai messa) non
+    si riapre da sola: resta raggiungibile dal suo indirizzo."""
+    abbandonata = await nuova(chat)
+    chat.fake = FakeClaude([UseTool("propose_meals", cene("Pasta")), Say("Ecco."), Finish()])
+    assert (await scrivi(chat, abbandonata)).status_code == 200
+    await _giro(
+        chat,
+        [{"day": DAY1.isoformat(), "slot": "lunch", "dish": "Insalata di ricotta"}],
+        "official",
+        {"pantry": [{"pantry_item_id": str(ricotta.id), "to": "low"}]},
+    )
+    letta = (await chat.client.get(f"{BASE}/conversations/{abbandonata}")).json()
+    assert letta["concluded"] is False
+    current = (await chat.client.get(f"{BASE}/current")).json()
+    assert current["conversation_id"] is None
+
+
 async def test_una_conversazione_del_piatto_non_e_una_pianificazione(chat, db_session):
     meal = await create_meal(db_session, day=DAY1, slot=MealSlot.DINNER, dish="Frittata")
     conversation = await get_or_create_dish_conversation(db_session, meal.id)

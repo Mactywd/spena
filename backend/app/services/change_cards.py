@@ -420,7 +420,9 @@ async def apply_card(
     dalla lista con `patch_item` (la strada di «Togli») una voce ancora da comprare o
     nel carrello; ogni sua riga applicata segna la riga d'origine con `reversed_at`, e
     una riga la cui origine è già annullata si salta con la sua nota, senza toccare
-    niente: due inverse non rimettono mai due volte.
+    niente: due inverse non rimettono mai due volte, nemmeno applicate insieme, perché le
+    righe d'origine si bloccano (`FOR UPDATE`, in ordine di id) prima di leggere
+    `reversed_at`.
     """
     card = await _locked(session, card_id)
     _must_be_proposed(card)
@@ -443,15 +445,26 @@ async def apply_card(
         if override.to_status is not None and row.kind == RowKind.PANTRY.value:
             row.to_status = PantryStatus(override.to_status).value
 
+    # Le righe d'origine di un'inversa si bloccano anche loro, in ordine di id (niente
+    # stalli), prima di leggere `reversed_at`: due inverse **diverse** con la stessa
+    # origine applicate insieme si mettono in fila, e la seconda la trova già annullata.
+    source_ids = sorted({row.source_row_id for row in rows if row.source_row_id is not None})
+    sources: dict[uuid.UUID, ChangeCardRow] = {}
+    if source_ids:
+        locked = await session.execute(
+            select(ChangeCardRow)
+            .where(ChangeCardRow.id.in_(source_ids))
+            .order_by(ChangeCardRow.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        sources = {source.id: source for source in locked.scalars()}
+
     for row in rows:
         if not row.checked:
             row.applied = False
             continue
-        source = (
-            await session.get(ChangeCardRow, row.source_row_id)
-            if row.source_row_id is not None
-            else None
-        )
+        source = sources.get(row.source_row_id) if row.source_row_id is not None else None
         if source is not None and source.reversed_at is not None:
             # un'altra inversa l'ha già rimessa: rimetterla di nuovo cancellerebbe
             # quello che è successo dopo (decisione 22)
