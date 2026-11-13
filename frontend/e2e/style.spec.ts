@@ -964,6 +964,7 @@ const SCHERMATE = [
   "/ricette/nuova-ai",
   "/ricette/importa",
   "/anagrafica",
+  "/utensili",
   "/attivita",
   "/attivita/collega",
   "/spese-ai",
@@ -4484,5 +4485,44 @@ test("le spese dell'AI a 375px: barre e colonne si distinguono dalla scheda, e i
     } catch (guasto) {
       expect.soft(false, `pulizia: non sono riuscito a togliere le spese seminate (${guasto})`).toBe(true);
     }
+  }
+});
+
+test("gli utensili a 375px: un nome lungo con la nota e la correzione aperta si leggono nei due temi, e niente scorre di lato", async ({
+  page,
+}) => {
+  // lo stato vuoto lo misura `perOgniLuogo` (`/utensili` è in SCHERMATE); qui l'elenco
+  // pieno e la correzione aperta, che solo questa prova apre. L'utensile si crea con
+  // `page.request` e si toglie alla fine
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const nome = "padella antiaderente in alluminio pressofuso per induzione";
+  const creato = await page.request.post("/api/v1/utensils", {
+    data: { name: nome, note: "da 28 cm, con il coperchio di vetro" },
+  });
+  expect(creato.ok()).toBe(true);
+  const id = ((await creato.json()) as { id: string }).id;
+  try {
+    await page.goto("/utensili");
+    // il nome e la nota stanno nello stesso elemento: si cerca la riga
+    await expect(page.getByRole("listitem").filter({ hasText: nome })).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `utensili, tema ${tema}`).toEqual([]);
+    }
+    await senzaScorrimentoLaterale(page, "gli utensili con un nome lungo");
+    await page.getByRole("button", { name: `Correggi «${nome}»` }).click();
+    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue(nome);
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `utensili, correzione aperta, tema ${tema}`).toEqual([]);
+    }
+    await senzaScorrimentoLaterale(page, "la correzione di un utensile");
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    const tolto = await page.request.delete(`/api/v1/utensils/${id}`);
+    expect.soft(tolto.ok(), `pulizia: l'utensile ${id} non si è tolto`).toBe(true);
   }
 });
