@@ -964,6 +964,7 @@ const SCHERMATE = [
   "/ricette/nuova-ai",
   "/ricette/importa",
   "/pasti",
+  "/pasti/pianifica",
   "/anagrafica",
   "/utensili",
   "/attivita",
@@ -4713,5 +4714,167 @@ test("la chat con l'avviso e il campo, nei due temi", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "light" });
   } finally {
     aiutanteChat("clean");
+  }
+});
+
+// La pianificazione con Claude e le schede dei cambi. Le proposte e le schede nascono solo
+// quando Claude chiama i suoi strumenti, e lo stack e2e non ha il token: le semina
+// `backend/tests/e2e_planning.py` nel container del backend, passando dai servizi veri, e
+// le toglie nel `finally`. Vedi `frontend/e2e/pianificazione.spec.ts`.
+function aiutantePianificazione(comando: "seed" | "clean"): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_planning.py", comando],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+type PianificazioneSeminata = {
+  conversation: string;
+  proposal_draft: string;
+  proposal_official: string;
+  card: string;
+  meal: string;
+};
+
+function pulisciPianificazione() {
+  try {
+    aiutantePianificazione("clean");
+  } catch (guasto) {
+    expect.soft(false, `pulizia: non sono riuscito a togliere la pianificazione seminata (${guasto})`).toBe(true);
+  }
+}
+
+/** Ogni bersaglio nominato è alto almeno 44 px, la regola di casa (`min-h-11`). */
+async function bersagliDaPollice(bersagli: [string, Locator][], luogo: string) {
+  for (const [nome, bersaglio] of bersagli) {
+    await expect(bersaglio, `${luogo}: «${nome}» non c'è`).toBeVisible();
+    const alto = (await bersaglio.boundingBox())?.height ?? 0;
+    expect(alto, `${luogo}: «${nome}» è troppo basso`).toBeGreaterThanOrEqual(44);
+  }
+}
+
+test("la pianificazione con le proposte, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/pianifica?conversazione=${seminato.conversation}`);
+      const metti = page.getByRole("button", { name: "Metti nella settimana" });
+      await expect(metti).toBeVisible();
+      // la proposta ufficiale sostituita dalla bozza: anche il suo stato si legge
+      await expect(page.getByText("Sostituita da una proposta più nuova.")).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la pianificazione con le proposte, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la pianificazione con le proposte, tema ${tema}`);
+      await bersagliDaPollice(
+        [
+          ["Metti nella settimana", metti],
+          ["Invia", page.getByRole("button", { name: "Invia", exact: true })],
+        ],
+        `la pianificazione, tema ${tema}`
+      );
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
+  }
+});
+
+test("la scheda dei cambi, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/cambi/${seminato.card}`);
+      const applica = page.getByRole("button", { name: "Applica", exact: true });
+      await expect(applica).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la scheda dei cambi, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la scheda dei cambi, tema ${tema}`);
+      // la casella si tocca dal suo contenitore, la `label` che porta anche la voce
+      const caselle = page.getByRole("checkbox");
+      expect(await caselle.count(), "la scheda seminata ha tre righe").toBe(3);
+      const contenitori: [string, Locator][] = [];
+      for (let i = 0; i < 3; i++) {
+        contenitori.push([`la casella ${i + 1}`, caselle.nth(i).locator("xpath=ancestor::label[1]")]);
+      }
+      await bersagliDaPollice(
+        [
+          ["Applica", applica],
+          ["Scarta", page.getByRole("button", { name: "Scarta", exact: true })],
+          ...contenitori,
+        ],
+        `la scheda dei cambi, tema ${tema}`
+      );
+      // il valore di un `select` non è un nodo di testo, e `testiIlleggibili` non lo vede:
+      // si misura qui, sul fondo che il campo dipinge
+      const selettori = page.locator("select");
+      expect(await selettori.count(), "due righe di dispensa, due selettori").toBe(2);
+      for (let i = 0; i < 2; i++) {
+        const misura = await contrastoAVideo(selettori.nth(i));
+        expect(misura.opacita, `il selettore ${i + 1} è velato, tema ${tema}`).toBe(1);
+        expect(
+          misura.rapporto,
+          `il selettore ${i + 1}: ${misura.colore} su ${misura.fondo}, tema ${tema}`
+        ).toBeGreaterThanOrEqual(4.5);
+        const alto = (await selettori.nth(i).boundingBox())?.height ?? 0;
+        expect(alto, `il selettore ${i + 1} è troppo basso, tema ${tema}`).toBeGreaterThanOrEqual(44);
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
+  }
+});
+
+test("la settimana con le schede da applicare e il piatto con l'avviso della ricetta, nei due temi", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+
+      await page.goto("/pasti");
+      await expect(page.getByText("Schede dei cambi da applicare")).toBeVisible();
+      const scheda = page
+        .getByRole("listitem")
+        .filter({ hasText: "Per «e2e-plan Pasta ricotta e parmigiano»" });
+      await expect(scheda).toHaveCount(1);
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la settimana con le schede, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la settimana con le schede, tema ${tema}`);
+      await bersagliDaPollice(
+        [["Apri", scheda.getByRole("link", { name: "Apri" })]],
+        `la settimana con le schede, tema ${tema}`
+      );
+
+      await page.goto(`/pasti/${seminato.meal}`);
+      const chiedi = page.getByRole("button", { name: "Chiedi la ricetta a Claude" });
+      await expect(chiedi).toBeVisible();
+      await expect(page.getByText(/^Claude non risponde: hai raggiunto il limite del piano/)).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il piatto con l'avviso della ricetta, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `il piatto con l'avviso della ricetta, tema ${tema}`);
+      await bersagliDaPollice(
+        [
+          ["Chiedi la ricetta a Claude", chiedi],
+          ["Scrivi la ricetta", page.getByRole("link", { name: "Scrivi la ricetta" })],
+          ["Scheda dei cambi da applicare", page.getByRole("link", { name: "Scheda dei cambi da applicare" })],
+        ],
+        `il piatto con l'avviso della ricetta, tema ${tema}`
+      );
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
   }
 });
