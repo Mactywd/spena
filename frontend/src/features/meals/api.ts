@@ -36,3 +36,16 @@ export function copyRecipeToMeal(mealId: string, recipeId: string) {
     body: JSON.stringify({ recipe_id: recipeId }),
   });
 }
+
+/** Claude scrive la ricetta del pasto, in coda: 202 col pasto che adesso è «in preparazione». */
+export function askMealRecipe(id: string) {
+  return apiFetch<Meal>(`/meals/${id}/recipe/ask`, { method: "POST" });
+}
+
+/** Ogni quanto si rilegge finché una ricetta è in preparazione. */
+export const PREPARING_POLL_MS = 3000;
+
+/** L'intervallo di rilettura: solo finché c'è qualcosa in preparazione, poi niente. */
+export function pollWhilePreparing(preparing: boolean | undefined): number | false {
+  return preparing ? PREPARING_POLL_MS : false;
+}

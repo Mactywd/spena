@@ -6,6 +6,7 @@ import { apiFetch } from "../../api/client";
 import { createTestQueryClient } from "../../test/queryClient";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import { DishChat } from "./DishChat";
+import { card } from "../change-cards/testkit";
 import type { ChatMessage, DishChat as DishChatData, Meal } from "../../domain/types";
 
 const NOT_CONFIGURED = "Claude non è collegato: manca il token del piano sul server.";
@@ -314,5 +315,13 @@ describe("la chat del piatto", () => {
     stream.close();
     await waitFor(() => expect(requests(spy, "GET", "/api/v1/meals/m1/chat")).toHaveLength(2));
     await waitFor(() => expect(screen.queryByText("Claude sta scrivendo…")).not.toBeInTheDocument());
+  });
+
+  it("una scheda dei cambi arriva sotto il fumetto, con «Applica»", async () => {
+    const answer = message({ id: "a1", role: "assistant", text: "Ecco i cambi.", cards: [card()] });
+    stubFetch((url) => (url.includes("/pantry") ? [[], 200] : [chat({ messages: [answer] }), 200]));
+    renderChat();
+    expect(await screen.findByText("Ecco i cambi.")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Applica" })).toBeInTheDocument();
   });
 });

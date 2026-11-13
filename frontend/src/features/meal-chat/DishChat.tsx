@@ -2,7 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "../../components/ui/Alert";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { useNotice } from "../../components/ui/noticeContext";
-import type { DishChat as DishChatData, Meal } from "../../domain/types";
+import type { ChatMessage, DishChat as DishChatData, Meal } from "../../domain/types";
+import { ChangeCard } from "../change-cards/ChangeCard";
 import { MEALS_KEY } from "../meals/api";
 import { dishChatKey, sendDishMessage, undoRecipeChange, useDishChat } from "./api";
 import { ChatComposer, ChatThread } from "./ChatThread";
@@ -51,6 +52,19 @@ export function DishChat({ mealId, hasRecipe }: { mealId: string; hasRecipe: boo
     });
   }
 
+  /** Le schede dei cambi di un messaggio, sotto il fumetto (anche quella che arriva in diretta). */
+  function extras(message: ChatMessage) {
+    const cards = message.cards ?? [];
+    if (cards.length === 0) return null;
+    return (
+      <>
+        {cards.map((c) => (
+          <ChangeCard key={c.id} card={c} />
+        ))}
+      </>
+    );
+  }
+
   const data = chat.data;
   const { replying, shown, streaming, empty } = sender.thread(data);
 
@@ -74,6 +88,7 @@ export function DishChat({ mealId, hasRecipe }: { mealId: string; hasRecipe: boo
           onUndo={undoChange}
           onRetry={sender.retry}
           busy={replying || undo.isPending}
+          renderExtras={extras}
         />
         {refusal && <Alert tone={refusal.tone}>{refusal.text}</Alert>}
         <ChatComposer

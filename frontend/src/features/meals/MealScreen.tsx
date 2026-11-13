@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -13,7 +13,9 @@ import { useNotice } from "../../components/ui/noticeContext";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Meal, MealBody, MealPatch } from "../../domain/types";
 import { RecipeDetailView } from "../cooking/RecipeDetailScreen";
-import { MEALS_KEY, deleteMeal, fetchMeal, updateMeal } from "./api";
+import {
+  MEALS_KEY, askMealRecipe, deleteMeal, fetchMeal, pollWhilePreparing, updateMeal,
+} from "./api";
 import { DishChat } from "../meal-chat/DishChat";
 import { useDishChat } from "../meal-chat/api";
 import { MealForm } from "./MealForm";
@@ -35,7 +37,10 @@ function patchFrom(meal: Meal, body: MealBody): MealPatch {
  * eliminano i pasti (decisione 12); la ricetta è del Task 8. */
 export function MealScreen() {
   const { id = "" } = useParams();
-  const meal = useQuery({ queryKey: [...MEALS_KEY, "meal", id], queryFn: () => fetchMeal(id) });
+  const meal = useQuery({ queryKey: [...MEALS_KEY, "meal", id], queryFn: () => fetchMeal(id),
+    // finché la ricetta è in preparazione il pasto si rilegge; poi basta
+    refetchInterval: (query) => pollWhilePreparing(query.state.data?.recipe_state === "preparing"),
+  });
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const notice = useNotice();
@@ -43,6 +48,10 @@ export function MealScreen() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+  // un tocco alla volta: lo stato di React arriva tardi per due tocchi ravvicinati
+  const askInFlight = useRef(false);
   // le righe che Claude ha appena cambiato: le dice il server, finché Mattia non scrive
   // il messaggio dopo. La lettura è della chat e si condivide con `DishChat` (stessa chiave)
   const canChat = meal.data?.can_chat === true;
@@ -80,12 +89,33 @@ export function MealScreen() {
     setBusy(true);
     setError(null);
     try {
-      await updateMeal(m.id, { status: "official" });
+      const next = await updateMeal(m.id, { status: "official" });
       await refresh();
+      // il server ha aperto una scheda dei cambi per questo pasto: si va a lei
+      if (next.open_card_id) navigate(`/pasti/cambi/${next.open_card_id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Non sono riuscito a farlo. Riprova fra poco.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function askRecipe() {
+    if (askInFlight.current) return;
+    askInFlight.current = true;
+    setAsking(true);
+    setAskError(null);
+    try {
+      await askMealRecipe(m.id);
+      void refresh();
+      notice({ text: "Ricetta chiesta a Claude." });
+    } catch (err) {
+      setAskError(err instanceof ApiError ? err.message : "Non sono riuscito a chiederla. Riprova fra poco.");
+      // un 409 vuol dire che è già in preparazione: il pasto lo mostra
+      void refresh();
+    } finally {
+      askInFlight.current = false;
+      setAsking(false);
     }
   }
 
@@ -135,6 +165,14 @@ export function MealScreen() {
         </IconToolbar>
       </div>
       {m.sides && <p className="break-words text-sm text-ink-soft">{m.sides}</p>}
+      {m.open_card_id && (
+        <Link
+          to={`/pasti/cambi/${m.open_card_id}`}
+          className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-brand"
+        >
+          Scheda dei cambi da applicare
+        </Link>
+      )}
       {marks.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-2">
           {marks.map((mark) => (
@@ -190,7 +228,6 @@ export function MealScreen() {
       )}
       {error && <Alert className="pt-3">{error}</Alert>}
 
-      {/* qui il piano 4 aggancia la scheda dei cambi di un pasto */}
       {m.status === "draft" && (
         <div className="pt-4">
           <Button variant="secondary" busy={busy} onClick={() => void makeOfficial()}>
@@ -206,10 +243,20 @@ export function MealScreen() {
           <p className="text-sm text-ink-soft">
             È una bozza: la ricetta arriva quando diventa ufficiale.
           </p>
+        ) : !m.recipe && !m.leftover_of && m.recipe_state === "preparing" ? (
+          <p aria-live="polite" className="text-sm text-ink-soft">
+            Ricetta in preparazione: arriva fra poco.
+          </p>
         ) : !m.recipe && !m.leftover_of ? (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-ink-soft">Questo pasto non ha ancora una ricetta.</p>
+            {m.recipe_notice && <Alert>{m.recipe_notice}</Alert>}
             <div className="flex flex-wrap gap-2">
+              {m.can_ask_recipe && (
+                <Button variant="secondary" busy={asking} onClick={() => void askRecipe()}>
+                  Chiedi la ricetta a Claude
+                </Button>
+              )}
               <Link to={`/pasti/${m.id}/ricetta/nuova`} className={buttonClasses("secondary")}>
                 Scrivi la ricetta
               </Link>
@@ -217,6 +264,7 @@ export function MealScreen() {
                 Scegli dal ricettario
               </Link>
             </div>
+            {askError && <Alert>{askError}</Alert>}
           </div>
         ) : null}
         {m.recipe && (

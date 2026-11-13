@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createTestQueryClient } from "../../test/queryClient";
 import { WeekScreen } from "./WeekScreen";
+import { pollWhilePreparing } from "./api";
 import type { Meal, MealSlot, MealWeek } from "../../domain/types";
 
 function meal(id: string, day: string, slot: MealSlot, extra: Partial<Meal> = {}): Meal {
@@ -78,6 +79,23 @@ describe("la settimana", () => {
     );
     expect(places).toHaveLength(14);
     expect(screen.getAllByText("+ da pianificare")).toHaveLength(10);
+  });
+
+  it("un pasto con la ricetta in preparazione lo dice, e la settimana si rilegge finché dura", async () => {
+    const preparing = {
+      ...WEEK,
+      preparing: true,
+      meals: [meal("m1", "2025-11-10", "dinner", { dish: "Pollo arrosto", recipe_state: "preparing" })],
+    };
+    stubFetch(() => [preparing, 200]);
+    renderWeek();
+    expect(await screen.findByText("Ricetta in preparazione")).toBeInTheDocument();
+  });
+
+  it("la rilettura ogni 3 s dura solo finché c'è una ricetta in preparazione", () => {
+    expect(pollWhilePreparing(true)).toBe(3000);
+    expect(pollWhilePreparing(false)).toBe(false);
+    expect(pollWhilePreparing(undefined)).toBe(false);
   });
 
   it("oggi è evidenziato", async () => {

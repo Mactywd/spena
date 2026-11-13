@@ -42,6 +42,7 @@ function renderMeal() {
         <MemoryRouter initialEntries={["/pasti/m1"]}>
           <Routes>
             <Route path="/pasti" element={<p>la settimana</p>} />
+            <Route path="/pasti/cambi/:id" element={<p>la scheda</p>} />
             <Route path="/pasti/:id" element={<MealScreen />} />
           </Routes>
         </MemoryRouter>
@@ -164,6 +165,68 @@ describe("la schermata del piatto", () => {
     await userEvent.click(screen.getByRole("button", { name: "Rendi ufficiale" }));
     await vi.waitFor(() => expect(calls(spy, "PATCH")).toHaveLength(1));
     expect(calls(spy, "PATCH")[0].body).toEqual({ status: "official" });
+  });
+
+  it("con la ricetta in preparazione: l'attesa al posto dei pulsanti", async () => {
+    stubFetch(reads(meal({ recipe_state: "preparing", can_ask_recipe: false })));
+    renderMeal();
+    const wait = await screen.findByText("Ricetta in preparazione: arriva fra poco.");
+    expect(wait.closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
+    expect(screen.queryByRole("link", { name: "Scrivi la ricetta" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Chiedi la ricetta a Claude" })).toBeNull();
+  });
+
+  it("la ricetta fallita: l'avviso e tre strade; «Chiedi la ricetta a Claude» manda la richiesta", async () => {
+    const spy = stubFetch((url, init) =>
+      init?.method === "POST"
+        ? [meal({ recipe_state: "preparing" }), 202]
+        : (reads(meal({
+            recipe_state: "failed", can_ask_recipe: true,
+            recipe_notice: "Claude non risponde: hai raggiunto il limite del piano.",
+          }))(url, init))
+    );
+    renderMeal();
+    expect(await screen.findByText("Claude non risponde: hai raggiunto il limite del piano.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Scrivi la ricetta" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Scegli dal ricettario" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Chiedi la ricetta a Claude" }));
+    await vi.waitFor(() => expect(calls(spy, "POST")).toHaveLength(1));
+    expect(calls(spy, "POST")[0].url).toBe("/api/v1/meals/m1/recipe/ask");
+    expect(await screen.findByText("Ricetta chiesta a Claude.")).toBeInTheDocument();
+  });
+
+  it("un 503 sulla richiesta mostra il motivo e i pulsanti restano", async () => {
+    stubFetch((url, init) =>
+      init?.method === "POST"
+        ? [{ code: "claude_not_configured", detail: "Claude non è collegato." }, 503]
+        : (reads(meal({ can_ask_recipe: true }))(url, init))
+    );
+    renderMeal();
+    await userEvent.click(await screen.findByRole("button", { name: "Chiedi la ricetta a Claude" }));
+    expect(await screen.findByText("Claude non è collegato.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chiedi la ricetta a Claude" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Scrivi la ricetta" })).toBeInTheDocument();
+  });
+
+  it("un pasto con una scheda aperta ha il collegamento alla scheda", async () => {
+    stubFetch(reads(meal({ open_card_id: "c9" })));
+    renderMeal();
+    expect(await screen.findByRole("link", { name: "Scheda dei cambi da applicare" })).toHaveAttribute(
+      "href",
+      "/pasti/cambi/c9"
+    );
+  });
+
+  it("«Rendi ufficiale» con una scheda nella risposta porta alla scheda", async () => {
+    const spy = stubFetch((url, init) =>
+      init?.method === "PATCH"
+        ? [meal({ open_card_id: "c9" }), 200]
+        : (reads(meal({ status: "draft" }))(url, init))
+    );
+    renderMeal();
+    await userEvent.click(await screen.findByRole("button", { name: "Rendi ufficiale" }));
+    await vi.waitFor(() => expect(calls(spy, "PATCH")).toHaveLength(1));
+    expect(await screen.findByText("la scheda")).toBeInTheDocument();
   });
 
   it("un pasto ufficiale senza ricetta offre le due strade; fuori casa nessuna", async () => {

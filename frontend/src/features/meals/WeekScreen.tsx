@@ -7,7 +7,7 @@ import { Screen } from "../../components/ui/Screen";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Meal, MealSlot } from "../../domain/types";
 import { PendingCards } from "../change-cards/PendingCards";
-import { fetchWeek } from "./api";
+import { fetchWeek, pollWhilePreparing } from "./api";
 import { SLOT_LABELS, dayLabel, mealMarks, weekLabel } from "./format";
 
 const SLOTS: MealSlot[] = ["lunch", "dinner"];
@@ -19,7 +19,10 @@ const ARROW = "inline-flex size-11 items-center justify-center rounded-full text
 export function WeekScreen() {
   const [params] = useSearchParams();
   const of = params.get("settimana");
-  const week = useQuery({ queryKey: ["meals", "week", of], queryFn: () => fetchWeek(of) });
+  const week = useQuery({ queryKey: ["meals", "week", of], queryFn: () => fetchWeek(of),
+    // finché una ricetta è in preparazione la settimana si rilegge; poi basta
+    refetchInterval: (query) => pollWhilePreparing(query.state.data?.preparing),
+  });
 
   return (
     <Screen title="Pasti">
@@ -116,6 +119,7 @@ function DayCard({ day, isToday, meals }: { day: string; isToday: boolean; meals
 
 function MealLink({ meal }: { meal: Meal }) {
   const marks = mealMarks(meal);
+  const preparing = meal.recipe_state === "preparing";
   return (
     <Link
       to={`/pasti/${meal.id}`}
@@ -126,6 +130,7 @@ function MealLink({ meal }: { meal: Meal }) {
         {meal.sides && <span className="block break-words text-xs text-ink-soft">{meal.sides}</span>}
       </span>
       <span className="flex shrink-0 flex-wrap justify-end gap-1">
+        {preparing && <Chip tone="bg-low-tint text-ink">Ricetta in preparazione</Chip>}
         {marks.map((mark) => (
           <Chip key={mark} tone="bg-low-tint text-ink">
             {mark}
