@@ -12,6 +12,7 @@ from app.core.db import get_session
 from app.core.security import require_session
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe
+from app.domain.meal_chat import can_chat
 from app.domain.meals import MealSlot, MealStatus, is_unrecorded, week_bounds
 from app.domain.rules import today_in_pantry
 from app.repositories.meals import get_meal, leftover_candidates, meals_between
@@ -64,6 +65,7 @@ def meal_out(meal: Meal, today: date) -> MealOut:
                 dish=origin.dish, recipe_id=origin.recipe_id,
             )
         ),
+        can_chat=can_chat(meal),
     )
 
 

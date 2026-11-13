@@ -11,6 +11,7 @@ from app.api import (
     cooking,
     imports,
     ingredients,
+    meal_chat,
     meals,
     nutrition,
     pantry,
@@ -95,6 +96,7 @@ app.include_router(activity.router)
 app.include_router(spending.router)
 app.include_router(utensils.router)
 app.include_router(meals.router)
+app.include_router(meal_chat.router)
 
 
 @app.get("/api/v1/health")

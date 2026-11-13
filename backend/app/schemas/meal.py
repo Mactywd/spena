@@ -36,6 +36,7 @@ class MealOut(BaseModel):
     unrecorded: bool
     recipe: MealRecipeOut | None
     leftover_of: MealRefOut | None
+    can_chat: bool
 
 
 class WeekOut(BaseModel):
