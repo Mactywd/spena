@@ -14,6 +14,16 @@ export interface SectionSpend {
   calls: number;
 }
 
+/** Le chiamate sul piano di Claude: senza costo, contate a parte. */
+export interface PlanSection {
+  call_site: string;
+  label: string;
+  calls: number;
+  /** prompt più completamento */
+  tokens: number;
+  note: string;
+}
+
 export interface DaySpend {
   /** il giorno di calendario a Roma, `AAAA-MM-GG` */
   day: string;
@@ -33,4 +43,6 @@ export interface Spending {
   sections: SectionSpend[];
   /** ogni giorno del periodo, in ordine; quelli senza spesa a 0 */
   days: DaySpend[];
+  /** facoltativo: una risposta vecchia in cache non l'ha */
+  plan_sections?: PlanSection[];
 }

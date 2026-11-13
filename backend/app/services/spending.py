@@ -9,6 +9,8 @@ from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.spending import (
+    PLAN_CALL_SITES,
+    PLAN_NOTE,
     SpendingPeriod,
     call_site_label,
     daily_series,
@@ -18,7 +20,7 @@ from app.domain.spending import (
     share,
 )
 from app.repositories.llm_calls import first_call_day, spend_by_day, spend_by_section
-from app.schemas.spending import DaySpendOut, SectionSpendOut, SpendingOut
+from app.schemas.spending import DaySpendOut, PlanSectionOut, SectionSpendOut, SpendingOut
 
 
 async def spending_report(
@@ -28,7 +30,12 @@ async def spending_report(
     first, last = period_days(period, today, first_call)
     start, end = day_start(first), day_start(last + timedelta(days=1))
 
-    sections = await spend_by_section(session, start, end)
+    all_sections = await spend_by_section(session, start, end)
+    # le chiamate sul piano non hanno costo: non entrano nel conto a consumo
+    sections = [s for s in all_sections if s.call_site not in PLAN_CALL_SITES]
+    plan = sorted(
+        (s for s in all_sections if s.call_site in PLAN_CALL_SITES), key=lambda s: s.call_site
+    )
     by_day = await spend_by_day(session, start, end)
     total = money(sum(section.cost_usd for section in sections))
     # dalla più cara; a parità, quella con più chiamate, poi il nome: un ordine fisso, così
@@ -53,6 +60,16 @@ async def spending_report(
                 calls=section.calls,
             )
             for section in ordered
+        ],
+        plan_sections=[
+            PlanSectionOut(
+                call_site=section.call_site,
+                label=call_site_label(section.call_site),
+                calls=section.calls,
+                tokens=section.prompt_tokens + section.completion_tokens,
+                note=PLAN_NOTE,
+            )
+            for section in plan
         ],
         days=[
             DaySpendOut(day=day, cost_usd=money(cost))

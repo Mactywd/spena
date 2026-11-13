@@ -17,6 +17,15 @@ class SectionSpendOut(BaseModel):
     calls: int
 
 
+class PlanSectionOut(BaseModel):
+    call_site: str
+    label: str
+    calls: int
+    # prompt più completamento
+    tokens: int
+    note: str
+
+
 class DaySpendOut(BaseModel):
     # il giorno di calendario a Roma
     day: date
@@ -37,3 +46,5 @@ class SpendingOut(BaseModel):
     sections: list[SectionSpendOut]
     # ogni giorno del periodo, in ordine; quelli senza spesa a 0
     days: list[DaySpendOut]
+    # le chiamate sul piano di Claude: senza costo, contate a parte, fuori da totale e chiamate
+    plan_sections: list[PlanSectionOut] = []
