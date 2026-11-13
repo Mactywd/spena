@@ -22,6 +22,7 @@ from app.db.models.recipe_import import ImportTerm, RecipeImport
 from app.db.models.shopping import ShoppingListItem
 from app.db.models.substitution import IngredientSubstitution, SubstitutionOption
 from app.db.models.unit import Unit
+from app.db.models.utensil import Utensil
 
 __all__ = [
     "ActivityExercise",
@@ -46,4 +47,5 @@ __all__ = [
     "ShoppingListItem",
     "SubstitutionOption",
     "Unit",
+    "Utensil",
 ]
