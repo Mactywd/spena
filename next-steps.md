@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-12 (fase giorno: spec e quattro piani della sezione Pasti con Claude e degli Utensili, pronti; tolte P1, P2, P3, M1, H3)_
+_Ultimo aggiornamento: 2026-11-13 (fase notte)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -28,7 +28,6 @@ del ramo.
 
 Dal 2026-11-12 c'è anche la catena **Pasti con Claude** (spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, approvata da Mattia): quattro piani in fila, ogni ramo parte dal precedente, nell'ordine 5 → 6a → 6b → 6c. Prima del deploy del 6b Mattia rilegge l'«Avvertenza» in testa al piano `2026-11-12-pasti-claude.md` (abbonamento o chiave API).
 
-5. [in corso] P3 · Utensili, una sezione di spena con gli strumenti che Mattia ha in cucina, così le ricette scritte dall'AI non chiedono strumenti che non ha: elenco dal ☰ (nome e nota), anche nei prompt della bozza e della variante [H4] → `docs/superpowers/plans/2026-11-12-utensili.md`, ramo `night/utensili` da `master`
 6. [pronto] P3 · Sezione Pasti, al posto del planner sul reMarkable e della skill `pasti`: la settimana con pranzo e cena, il piatto con la sua ricetta e la chat con Claude Opus sotto, la pianificazione con bozza e ufficializzazione, le schede dei cambi a dispensa e lista. Tre piani in fila:
    - 6a → `docs/superpowers/plans/2026-11-12-pasti-settimana.md`, ramo `night/pasti-settimana` da `night/utensili`
    - 6b → `docs/superpowers/plans/2026-11-12-pasti-claude.md`, ramo `night/pasti-claude` da `night/pasti-settimana`
@@ -45,6 +44,10 @@ Dal 2026-11-12 c'è anche la catena **Pasti con Claude** (spec `docs/superpowers
 - [tbd] P3 · Gli avvisi di `docker compose` sul server stampano pezzi dell'hash della password (visto il 2026-10-19): Compose usa `.env` anche per interpolare il file, e legge i `$` dell'hash argon2 come variabili. Come Training il 2026-10-04: l'hash in un file a parte (`password.env`, `env_file` in forma lunga con `format: raw`), mai in `.env`, e un test sul compose; dopo il deploy Mattia cambia la password, perché i pezzi sono già usciti — serve il piano
 
 ### Idee
+- [idea] P3 · La regola del prompt finisce «se senza quello strumento il piatto non si fa, dillo», ma bozza e variante rispondono con un `json_schema` stretto: il modello può dirlo solo dentro descrizione o istruzioni; una riga apposta per la bozza e la variante, tipo «dillo nella descrizione» [H4]
+- [idea] P3 · Chiudendo il modulo di correzione di un utensile il fuoco resta sul corpo della pagina; farlo tornare su «Correggi» [H4]
+- [idea] P3 · `useArchiveRecipe.test.tsx` fallisce un test (ogni volta uno diverso) quando tutta la suite vitest gira su una macchina occupata, e da solo passa: è un'attesa a tempo da sistemare [Parte X]
+- [idea] P3 · L'elenco dei comandi e2e nei piani del 2026-11-12 non ha le due righe della fixture CIQUAL del piano S4 (senza, 6 prove S4 danno 409): README e modello dei piani devono portarle [Parte X]
 - [idea] P3 · «Chiudi tutto / apri tutto» sui reparti della dispensa, se sul telefono toccarli uno per uno non basta (deciso di no per ora, spec S15 §6.5) [S15]
 - [idea] P3 · Un errore su una riga di un reparto chiuso (una tacca rifiutata dopo averlo chiuso) si vede solo riaprendolo: il titolo chiuso potrebbe dirlo [S15]
 - [idea] P3 · P2: il dispendio del giorno dall'attività di H2 — MET per tipo di allenamento su `exercise_type`, i passi fuori dagli allenamenti, il tempo in comune fra due app contato una volta, il peso dall'ultima pesata; vedi il §9 di `docs/superpowers/specs/2026-10-13-h2-health-connect-design.md`. Attenzione ai giorni parziali: il giorno più vecchio di ogni invio di HC Webhook parte dall'inizio della sua finestra (48 ore, o i 30 giorni della sincronizzazione manuale), non dalla mezzanotte, e resta salvato come se fosse intero: una riga di `activity_steps_days` con `covered_from` diverso dalla mezzanotte di Roma è un giorno parziale [P2]
@@ -105,6 +108,8 @@ _(niente: H3, P3 e M1 sono usciti il 2026-11-12, sostituiti dalla sezione Pasti 
 
 ## Da fare a mano (solo Mattia)
 
+- [tbd] P3 · Dopo il deploy degli utensili: scrivere in «Utensili» gli strumenti veri della cucina, e provare una bozza AI che di solito chiede uno strumento che manca (per esempio montare gli albumi senza frusta), per vedere se la ricetta lo evita [H4]
+
 _Il 2026-10-07 Claude ha fatto il giro nel browser, a 375 px e nei due temi, sullo stack e2e
 usa e getta (seme, nessun dato di produzione): quel che lì è passato è tolto dalle voci qui
 sotto, e resta solo ciò che vuole il telefono vero (tastiera, fotocamera, pollice, barra di
@@ -143,6 +148,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-11-13 · Utensili: l'elenco degli strumenti di cucina dal ☰, accanto all'Anagrafica (nome e nota, si aggiunge, si corregge, si toglie con «Annulla»), e la bozza e la variante dell'AI che usano solo quelli; vuoto, nessun vincolo; migrazione `0019` [H4] → branch night/utensili (da revisionare)
 - [fatto] 2026-10-19 · Le etichette delle spese dell'AI al merge di H1: `recipe_variant` (R8) e `ingredient_emoji` (S12) restano in `CALL_SITE_LABELS`, e ci sono anche quelle di R5 e delle due fette di S4 [R8, H1] → ramo rilascio/2026-10-19 (ae7de12)
 - [fatto] 2026-10-18 · Pulizie dei test e del backend: attese di Testing Library a 4 s e prove a 15 s (la Lista e l'Anagrafica cadevano sotto carico); un client react-query solo per l'app e i test (`createAppQueryClient`, `createTestQueryClient` con i tentativi veri senza attesa), e una prova che nessun test se ne faccia uno; le date dell'e2e nel giorno di Roma; `HTTP_422_UNPROCESSABLE_CONTENT` e gli avvisi di Starlette come errori; l'annullamento riconta `occurrences` con una `COUNT`; il 409 delle due righe nomina l'ingrediente; i test della coda con una decisione in volo [Parte X, T3] → branch night/pulizie-test (da revisionare)
 - [fatto] 2026-10-19 · R5, sostituisci ingrediente: risposte per ingrediente × {dolce, salato} decise dall'AI (`decide_substitutes`, a lotti, `--limit`/`--dry-run`) o al primo tocco, l'icona «Sostituisci» in fondo a ogni riga col pannello sotto, «Non va bene qui» per la ricetta, la sezione «Sostituti» in Anagrafica con le voci dell'AI da rivedere, la fusione che sposta tutto; migrazione `0015` [R5] → branch night/r5-sostituti (da revisionare)

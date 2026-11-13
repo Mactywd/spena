@@ -2085,6 +2085,16 @@ settimana di sincronizzazioni senza buchi (l'ottimizzazione della batteria).
 ## H3. Profilo **[D]** ↳ P2
 Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.
 
+## H4. Utensili **[FATTO 2026-11-13 — sul ramo `night/utensili`, non ancora in produzione]**
+Chiesto da Mattia il 2026-11-10: le ricette scritte dall'AI non devono dire di usare
+strumenti che in cucina non ci sono. Spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`
+(§4.4, §5.4, §8), piano `docs/superpowers/plans/2026-11-12-utensili.md`. Dal ☰, accanto
+all'Anagrafica: nome e nota facoltativa («padella antiaderente», «da 24 cm»), senza
+legami con le righe delle ricette. L'elenco va in coda al prompt di sistema della bozza
+AI e della variante (R8), e nel piano 3 dei pasti in quello di Claude; vuoto, nessun
+vincolo. Le ricette importate non si controllano: segnalare quelle che chiedono uno
+strumento mancante resta un'idea.
+
 ---
 
 # Parte VII — Trasversali

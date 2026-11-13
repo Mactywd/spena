@@ -181,6 +181,13 @@ terms. It never produces nutrient values. There is one provider and one client
 on purpose: a second implementation behind a config switch would never run in
 production, which is the first defect listed above.
 
+The drafts and the variants (R8) are told which utensils the kitchen has: the list
+Mattia keeps in «Utensili», from the hamburger (`utensils` table, `/api/v1/utensils`),
+goes at the end of their system prompt through `utensils_prompt_block` in
+`backend/app/services/utensils.py`, read at every call. An empty list means no
+constraint, not no tools: the prompt is then exactly the one of before. Imported
+recipes are never checked against it. Spec: `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, §4.4 and §8.
+
 ## Conventions worth knowing
 
 - **Never a dead end.** Every failure of an external dependency degrades to manual
