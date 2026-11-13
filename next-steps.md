@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-13 (fase notte: sezione Pasti, piano 3 di 4)_
+_Ultimo aggiornamento: 2026-11-13 (fase notte: sezione Pasti, piano 4 di 4 in corso)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -28,7 +28,7 @@ del ramo.
 
 Dal 2026-11-12 c'è anche la catena **Pasti con Claude** (spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, approvata da Mattia): quattro piani in fila, ogni ramo parte dal precedente, nell'ordine 5 → 6a → 6b → 6c. Prima del deploy del 6b Mattia rilegge l'«Avvertenza» in testa al piano `2026-11-12-pasti-claude.md` (abbonamento o chiave API).
 
-6. [in corso] P3 · Sezione Pasti, al posto del planner sul reMarkable e della skill `pasti`: la settimana con pranzo e cena, il piatto con la sua ricetta e la chat con Claude Opus sotto, la pianificazione con bozza e ufficializzazione, le schede dei cambi a dispensa e lista. Tre piani in fila: · piano 3 di 4 (Claude e la chat del piatto) fatto il 2026-11-13 → branch night/pasti-claude (da revisionare); il prossimo è il piano 4, night/pasti-pianificazione
+6. [in corso] P3 · Sezione Pasti, al posto del planner sul reMarkable e della skill `pasti`: la settimana con pranzo e cena, il piatto con la sua ricetta e la chat con Claude Opus sotto, la pianificazione con bozza e ufficializzazione, le schede dei cambi a dispensa e lista. Tre piani in fila: · piano 3 di 4 (Claude e la chat del piatto) fatto il 2026-11-13 → branch night/pasti-claude (da revisionare); il prossimo è il piano 4, night/pasti-pianificazione · piano 4 di 4 (pianificazione e schede dei cambi) in corso su night/pasti-pianificazione
    - 6a → `docs/superpowers/plans/2026-11-12-pasti-settimana.md`, ramo `night/pasti-settimana` da `night/utensili` · piano 2 di 4 (pasti e settimana senza Claude) fatto il 2026-11-13 → branch night/pasti-settimana (da revisionare); il prossimo è il piano 3, night/pasti-claude
    - 6b → `docs/superpowers/plans/2026-11-12-pasti-claude.md`, ramo `night/pasti-claude` da `night/pasti-settimana`
    - 6c → `docs/superpowers/plans/2026-11-12-pasti-pianificazione.md`, ramo `night/pasti-pianificazione` da `night/pasti-claude`
