@@ -183,6 +183,10 @@ export interface RecipeDetail extends RecipeSummary {
   /** Da quale ricetta nasce, se è una variante scritta con l'AI (R8); `null` altrimenti.
    * Lo dice il server: il client non cerca l'originale da sé. */
   derived_from: RecipeOrigin | null;
+  /** Pasti (decisione 22): facoltativi, perché un backend vecchio in cache non li manda.
+   * Si legge `in_book ?? true`. */
+  in_book?: boolean;
+  meal?: MealRef | null;
 }
 
 /** Una riga come la si scrive: un ingrediente esistente, oppure nome e categoria con
@@ -423,7 +427,7 @@ export type RegistryRefusal =
       recipe_count: number;
       /** Le ricette che lo usano, eliminate comprese (R10): una ricetta eliminata si
        * ripristina con le sue righe, quindi blocca come le altre, ma va segnata. */
-      recipes: { id: string; title: string; archived: boolean }[];
+      recipes: { id: string; title: string; archived: boolean; from_meal?: boolean }[];
       /** Le pagine dell'import in attesa che, materializzate, lo userebbero. */
       pending_import_count: number;
       /** I termini che le legano qui, al più dieci per nome; il conto dice il resto. */
@@ -471,3 +475,48 @@ export interface UtensilInput {
   name: string;
   note: string | null;
 }
+
+export type MealSlot = "lunch" | "dinner";
+export type MealStatus = "draft" | "official";
+export interface MealRef {
+  id: string;
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  recipe_id: string | null;
+}
+export interface Meal {
+  id: string;
+  day: string;
+  slot: MealSlot;
+  week: string;
+  dish: string;
+  sides: string | null;
+  away: boolean;
+  status: MealStatus;
+  unrecorded: boolean;
+  recipe: { id: string; title: string; in_book: boolean } | null;
+  leftover_of: MealRef | null;
+}
+export interface MealWeek {
+  monday: string;
+  sunday: string;
+  today: string;
+  previous: string;
+  next: string;
+  days: string[];
+  meals: Meal[];
+}
+export interface MealBody {
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  sides: string | null;
+  away: boolean;
+  leftover_of_id: string | null;
+  replace?: boolean;
+}
+export type MealPatch = Partial<Pick<MealBody, "day" | "slot" | "dish" | "sides" | "away">> & {
+  status?: "official";
+  replace?: boolean;
+};

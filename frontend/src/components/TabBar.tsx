@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { IconBox, IconListCheck, IconToolsKitchen2, type IconComponent } from "./ui/icons";
+import { IconBox, IconCalendarWeek, IconListCheck, IconToolsKitchen2, type IconComponent } from "./ui/icons";
 
 // `also`: i percorsi che stanno dentro una scheda senza cominciare col suo indirizzo.
 // «Sistema la spesa» è una parte della lista (dal giro di T3: su /sistema la barra
@@ -8,6 +8,7 @@ const TABS: { to: string; label: string; icon: IconComponent; also?: string[] }[
   { to: "/lista", label: "Lista", icon: IconListCheck, also: ["/sistema"] },
   { to: "/dispensa", label: "Dispensa", icon: IconBox },
   { to: "/ricette", label: "Ricette", icon: IconToolsKitchen2 },
+  { to: "/pasti", label: "Pasti", icon: IconCalendarWeek },
 ];
 
 export function TabBar() {
@@ -19,7 +20,7 @@ export function TabBar() {
     >
       {/* la stessa larghezza massima del contenuto: su uno schermo largo una barra
           che attraversa tutto mentre l'app sta in mezzo sembra di un'altra pagina */}
-      <div className="mx-auto grid max-w-md grid-cols-3">
+      <div className="mx-auto grid max-w-md grid-cols-4">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           // `NavLink` (react-router 7) rifiuta un `aria-current` passato a mano: quando il

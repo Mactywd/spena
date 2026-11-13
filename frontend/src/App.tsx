@@ -13,6 +13,7 @@ import { NotFoundScreen } from "./features/not-found/NotFoundScreen";
 import { IngredientScreen } from "./features/registry/IngredientScreen";
 import { ProductScreen } from "./features/registry/ProductScreen";
 import { RegistryScreen } from "./features/registry/RegistryScreen";
+import { WeekScreen } from "./features/meals/WeekScreen";
 import { UtensilsScreen } from "./features/utensils/UtensilsScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
               <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
               <Route path="/ricette/:id/variante" element={<RecipeVariantScreen />} />
+              <Route path="/pasti" element={<WeekScreen />} />
               <Route path="/anagrafica" element={<RegistryScreen />} />
               <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
               <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
