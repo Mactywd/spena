@@ -39,7 +39,7 @@ import { useArchiveRecipe } from "../recipes/useArchiveRecipe";
 import { revealAtTop } from "../../lib/revealAtTop";
 import { capitalizeFirst } from "../../lib/text";
 import { SubstitutePanel } from "../substitutes/SubstitutePanel";
-import type { CookResult, RecipeDetail, RecipeIngredientLine } from "../../domain/types";
+import type { CookResult, RecipeDetail, RecipeHighlight, RecipeIngredientLine } from "../../domain/types";
 
 // Il numero viene dal backend, non da un conteggio fatto qui: quante voci sono
 // tornate in lista lo sa solo chi ha applicato le transizioni (una lista può già
@@ -98,6 +98,16 @@ type AnchorOutcome =
   | { kind: "refused"; problem: string }
   | { kind: "dropped" };
 
+/** Il segno di «Claude l'ha appena cambiato»: un attributo per i test e per chi cerca, il
+ * fondo `brand-tint` (testo `ink`) per chi guarda. Il «(cambiata)» per chi ascolta sta nel
+ * pezzo stesso (`ChangedNote`). Senza `on` non aggiunge niente. */
+function changedMark(on: boolean): { className: string; "data-changed"?: "" } {
+  return on ? { className: "bg-brand-tint text-ink", "data-changed": "" } : { className: "" };
+}
+function ChangedNote({ on }: { on: boolean }) {
+  return on ? <span className="sr-only"> (cambiata)</span> : null;
+}
+
 /** Una riga d'ingrediente: il pallino dello stato, il nome, la dose.
  *
  * Il verdetto non si calcola qui: `availability` e `satisfied` arrivano dal server, che
@@ -110,6 +120,7 @@ type AnchorOutcome =
 function IngredientRow({
   line,
   recipeId,
+  changed,
   anchoredAmount,
   open,
   onOpen,
@@ -118,6 +129,8 @@ function IngredientRow({
 }: {
   line: RecipeIngredientLine;
   recipeId: string;
+  /** Claude ha appena cambiato questa riga (`highlight` della chat del piatto). */
+  changed: boolean;
   /** La dose fissata su questa riga, se è lei l'ancora (R2), come la manda il server. */
   anchoredAmount: string | null;
   /** Se il campo «Quanto ne fai?» di questa riga è aperto: uno alla volta. */
@@ -135,15 +148,21 @@ function IngredientRow({
   // fastidio, e uscire dalla ricetta li chiude tutti
   const [substituting, setSubstituting] = useState(false);
   return (
-    <li className="px-3 py-2.5">
+    <li
+      className={changed ? "bg-brand-tint px-3 py-2.5 text-ink" : "px-3 py-2.5"}
+      {...(changed ? { "data-changed": "" } : {})}
+    >
       <div className="flex items-center gap-2.5">
         <StatusDot availability={line.availability} />
         <span className="min-w-0 flex-1">
           {/* la maiuscola solo a video (spec T3 §4.7): apre la riga, non è dentro una
               frase né in un nome accessibile */}
           <span>{capitalizeFirst(line.ingredient_name)}</span>
+          {changed && <span className="sr-only"> (cambiata)</span>}
           {line.availability === "low" && !line.satisfied && (
-            <span className="ml-2 text-xs font-medium text-low">non basta</span>
+            <span className={`ml-2 text-xs font-medium ${changed ? "text-ink" : "text-low"}`}>
+              non basta
+            </span>
           )}
           {/* la nota della riga: le parole che l'import scriveva davanti alla dose («da
               grattugiare», «36 mesi»), o quella scritta a mano. Sotto il nome e piccola:
@@ -235,9 +254,13 @@ export function RecipeDetailScreen() {
 export function RecipeDetailView({
   id,
   meal,
+  highlight = null,
 }: {
   id: string;
   meal?: { mealId: string; readOnly: boolean };
+  /** Cosa ha appena cambiato Claude (chat del piatto): quelle parti si segnano, fino al
+   * messaggio dopo. Senza, la ricetta è com'è sempre. */
+  highlight?: RecipeHighlight | null;
 }) {
   const inMeal = meal !== undefined;
   const [cooking, setCooking] = useState(false);
@@ -508,8 +531,12 @@ export function RecipeDetailView({
       <div className="flex items-start gap-2 pt-3">
         {/* nel piatto l'h1 è il piatto: la ricetta è un h2 */}
         {inMeal ? (
-          <h2 className="min-w-0 flex-1 pt-1.5 text-xl font-semibold tracking-tight">
+          <h2
+            {...changedMark(highlight?.title === true)}
+            className={`min-w-0 flex-1 pt-1.5 text-xl font-semibold tracking-tight ${changedMark(highlight?.title === true).className}`}
+          >
             {recipe.title}
+            <ChangedNote on={highlight?.title === true} />
           </h2>
         ) : (
           <h1 className="min-w-0 flex-1 pt-1.5 text-2xl font-semibold tracking-tight">
@@ -584,7 +611,15 @@ export function RecipeDetailView({
           <CostMeter cost={recipe.cost} />
         </p>
       )}
-      {recipe.description && <p className="pt-2 text-ink-soft">{recipe.description}</p>}
+      {recipe.description && (
+        <p
+          {...changedMark(highlight?.description === true)}
+          className={`pt-2 ${highlight?.description === true ? "bg-brand-tint text-ink" : "text-ink-soft"}`}
+        >
+          {recipe.description}
+          <ChangedNote on={highlight?.description === true} />
+        </p>
+      )}
 
       {/* L'attribuzione a un tocco, alta 44 px (dal giro: era alta 19). Solo se la
           provenienza è davvero un indirizzo: per le ricette del seme `source_ref` è una
@@ -626,6 +661,8 @@ export function RecipeDetailView({
               fissata dice le porzioni che fa, «≈ 1,5», e toccarlo torna alle porzioni
               intere (R2: un modo alla volta) */}
           <div className="pt-3">
+            <div {...changedMark(highlight?.servings === true)}>
+              <ChangedNote on={highlight?.servings === true} />
             <ServingsStepper
               value={
                 recipe.servings === null
@@ -640,6 +677,7 @@ export function RecipeDetailView({
                 setScale({ servings: next });
               }}
             />
+            </div>
             {anchorLine !== null && (
               // da quale dose è riscalata, e l'uscita: sulle ricette senza porzioni − e +
               // sono spenti, e sarebbe l'unica strada per tornare indietro
@@ -671,6 +709,7 @@ export function RecipeDetailView({
                       key={line.ingredient_id}
                       line={line}
                       recipeId={recipe.id}
+                      changed={highlight?.ingredient_ids.includes(line.ingredient_id) ?? false}
                       anchoredAmount={
                         anchor !== null && anchor.ingredient_id === line.ingredient_id
                           ? anchor.amount
@@ -792,7 +831,13 @@ export function RecipeDetailView({
             {/* leggere mentre si cucina: interlinea larga, perché si torna a cercare
                 il punto in cui si era con le mani sporche e lo sguardo di sbieco */}
             <Card>
-              <p className="leading-relaxed whitespace-pre-line">{recipe.instructions}</p>
+              <p
+                {...changedMark(highlight?.instructions === true)}
+                className={`leading-relaxed whitespace-pre-line ${changedMark(highlight?.instructions === true).className}`}
+              >
+                {recipe.instructions}
+                <ChangedNote on={highlight?.instructions === true} />
+              </p>
             </Card>
           </section>
 

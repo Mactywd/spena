@@ -14,6 +14,8 @@ import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Meal, MealBody, MealPatch } from "../../domain/types";
 import { RecipeDetailView } from "../cooking/RecipeDetailScreen";
 import { MEALS_KEY, deleteMeal, fetchMeal, updateMeal } from "./api";
+import { DishChat } from "../meal-chat/DishChat";
+import { useDishChat } from "../meal-chat/api";
 import { MealForm } from "./MealForm";
 import { SLOT_LABELS, longDayLabel, mealMarks } from "./format";
 
@@ -41,6 +43,10 @@ export function MealScreen() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // le righe che Claude ha appena cambiato: le dice il server, finché Mattia non scrive
+  // il messaggio dopo. La lettura è della chat e si condivide con `DishChat` (stessa chiave)
+  const canChat = meal.data?.can_chat === true;
+  const chat = useDishChat(id, canChat);
 
   if (meal.isError) {
     const gone = meal.error instanceof ApiError && meal.error.status === 404;
@@ -218,6 +224,7 @@ export function MealScreen() {
             key={m.recipe.id}
             id={m.recipe.id}
             meal={{ mealId: m.id, readOnly: false }}
+            highlight={canChat ? (chat.data?.highlight ?? null) : null}
           />
         )}
         {m.leftover_of && (
@@ -240,7 +247,7 @@ export function MealScreen() {
             )}
           </div>
         )}
-        {/* qui, sotto la ricetta, il piano 3 mette la chat del piatto */}
+        {m.can_chat && <DishChat mealId={m.id} hasRecipe={m.recipe !== null} />}
       </div>
     </div>
   );

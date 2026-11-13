@@ -131,7 +131,12 @@ export function ChatComposer({
         // il limite di `ChatMessageIn` nel backend: oltre, il server risponderebbe 422
         maxLength={4000}
       />
-      <Button type="submit" variant="primary" busy={replying} disabled={empty}>
+      <Button
+        type="submit"
+        variant="primary"
+        busy={replying}
+        unavailableReason={empty ? "Scrivi prima il messaggio." : undefined}
+      >
         Invia
       </Button>
     </form>

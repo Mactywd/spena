@@ -97,6 +97,16 @@ function stubFetch(overrides: Partial<typeof DETAIL>) {
 }
 
 describe("RecipeDetailScreen", () => {
+  it("senza `highlight` nessuna riga ha `data-changed`", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(DETAIL), { status: 200 })
+    ));
+    const { container } = renderScreen();
+    await screen.findByText("Principali");
+    expect(container.querySelector("[data-changed]")).toBeNull();
+    expect(screen.queryByText("(cambiata)")).toBeNull();
+  });
+
   it("distingue ingredienti principali e secondari", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify(DETAIL), { status: 200 })

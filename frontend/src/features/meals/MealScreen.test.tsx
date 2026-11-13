@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createTestQueryClient } from "../../test/queryClient";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import { MealScreen } from "./MealScreen";
-import type { Meal, RecipeDetail } from "../../domain/types";
+import type { DishChat, Meal, RecipeDetail } from "../../domain/types";
 
 function meal(extra: Partial<Meal> = {}): Meal {
   return {
@@ -262,5 +262,66 @@ describe("la schermata del piatto", () => {
       renderMeal();
       expect(await screen.findByText("Il pasto da cui viene non ha una ricetta.")).toBeInTheDocument();
     });
+  });
+});
+
+describe("la chat sotto la ricetta del piatto", () => {
+  const chatData = (extra: Partial<DishChat> = {}): DishChat => ({
+    meal_id: "m1", conversation_id: "k1", messages: [], replying: false, highlight: null,
+    claude_ready: true, claude_notice: null, ...extra,
+  });
+  const line = (id: string, name: string) => ({
+    ingredient_id: id, ingredient_name: name, role: "primary" as const, quantity_text: "200 g",
+    quantity_display: "200 g", quantity_scaled: false, anchorable: false, anchor_unit: null,
+    note: null, availability: "available" as const, satisfied: true,
+  });
+  const withChat = (m: Meal, data: DishChat, recipe?: RecipeDetail): Handler => (url) => {
+    if (url.includes("/chat")) return [data, 200];
+    if (recipe && url.includes("/recipes/r1")) return [recipe, 200];
+    if (url.includes("/meals/")) return [m, 200];
+    return [[], 200];
+  };
+  const cooking = () =>
+    meal({ can_chat: true, recipe: { id: "r1", title: "Pollo al limone", in_book: false } });
+
+  it("con `can_chat` e una ricetta: «Chat con Claude» e il campo «Messaggio per Claude»", async () => {
+    stubFetch(withChat(cooking(), chatData(), recipeDetail()));
+    renderMeal();
+    expect(await screen.findByRole("heading", { name: "Chat con Claude" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Messaggio per Claude" })).toBeInTheDocument();
+  });
+
+  it("fuori casa (`can_chat: false`) non c'è la chat", async () => {
+    stubFetch(withChat(meal({ can_chat: false, away: true }), chatData()));
+    renderMeal();
+    await screen.findByRole("heading", { level: 1, name: "Pollo arrosto" });
+    expect(screen.queryByRole("heading", { name: "Chat con Claude" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Messaggio per Claude" })).toBeNull();
+  });
+
+  it("le righe che Claude ha cambiato portano `data-changed`, le altre no", async () => {
+    const detail = recipeDetail({ ingredients: [line("i1", "spinaci"), line("i2", "pasta")] });
+    stubFetch(
+      withChat(
+        cooking(),
+        chatData({ highlight: { ingredient_ids: ["i1"], title: false, servings: false, instructions: false, description: false } }),
+        detail
+      )
+    );
+    renderMeal();
+    const spinaci = (await screen.findByText("Spinaci")).closest("li")!;
+    const pasta = screen.getByText("Pasta").closest("li")!;
+    await vi.waitFor(() => expect(spinaci).toHaveAttribute("data-changed"));
+    expect(pasta).not.toHaveAttribute("data-changed");
+    expect(within(spinaci).getByText("(cambiata)")).toBeInTheDocument();
+  });
+
+  it("senza ricetta, la chat sta insieme a «Scrivi la ricetta» e alla riga d'aiuto", async () => {
+    stubFetch(withChat(meal({ can_chat: true }), chatData()));
+    renderMeal();
+    expect(await screen.findByRole("link", { name: "Scrivi la ricetta" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("Chiedi a Claude di scrivere la ricetta di questo piatto.")
+    ).toBeInTheDocument();
   });
 });

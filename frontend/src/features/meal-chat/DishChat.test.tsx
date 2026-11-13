@@ -124,7 +124,12 @@ describe("la chat del piatto", () => {
     );
     renderChat();
     const field = await screen.findByRole("textbox", { name: "Messaggio per Claude" });
-    expect(screen.getByRole("button", { name: "Invia" })).toBeDisabled();
+    // campo vuoto = «non ancora»: aria-disabled col perché, mai `disabled` nativo
+    const invia = screen.getByRole("button", { name: "Invia" });
+    expect(invia).toHaveAttribute("aria-disabled", "true");
+    expect(invia.hasAttribute("disabled")).toBe(false);
+    expect(invia).toHaveAccessibleDescription("Scrivi prima il messaggio.");
+    expect(screen.getByText("Scrivi prima il messaggio.")).toBeInTheDocument();
     await userEvent.type(field, "Fallo con gli spinaci");
     await userEvent.click(screen.getByRole("button", { name: "Invia" }));
 
@@ -162,6 +167,25 @@ describe("la chat del piatto", () => {
     stream.send("start", { message: message({ status: "pending", text: "spinaci" }) });
     stream.send("change", { change: CHANGE });
     await waitFor(() => expect(requests(spy, "GET", "/api/v1/recipes/r1")).toHaveLength(2));
+    stream.close();
+  });
+
+  it("mentre Claude risponde «Invia» è `busy`: aria-disabled, niente `disabled` nativo, e non rimanda", async () => {
+    const stream = liveStream();
+    const spy = stubFetch((_url, init) =>
+      init?.method === "POST" ? stream.response : [chat(), 200]
+    );
+    renderChat();
+    const field = await screen.findByRole("textbox", { name: "Messaggio per Claude" });
+    await userEvent.type(field, "uno");
+    await userEvent.click(screen.getByRole("button", { name: "Invia" }));
+    await waitFor(() => expect(requests(spy, "POST", "/api/v1/meals/m1/chat/messages")).toHaveLength(1));
+    await userEvent.type(field, "due");
+    const invia = screen.getByRole("button", { name: "Invia" });
+    expect(invia).toHaveAttribute("aria-disabled", "true");
+    expect(invia.hasAttribute("disabled")).toBe(false);
+    await userEvent.click(invia);
+    expect(requests(spy, "POST", "/api/v1/meals/m1/chat/messages")).toHaveLength(1);
     stream.close();
   });
 
