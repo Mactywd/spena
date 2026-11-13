@@ -176,9 +176,8 @@ async def update_meal(
     return updated
 
 
-def check_can_take_recipe(meal: Meal) -> None:
-    if meal.recipe_id is not None:
-        raise MealRefusal(MealRefusalCode.HAS_RECIPE, "Il pasto ha già una ricetta.")
+def refuse_if_no_recipe_here(meal: Meal) -> None:
+    """Un avanzo, un pasto fuori casa e una bozza non hanno una ricetta propria."""
     if meal.leftover_of_id is not None:
         message = "Un avanzo usa la ricetta del pasto da cui viene."
     elif meal.away:
@@ -188,6 +187,12 @@ def check_can_take_recipe(meal: Meal) -> None:
     else:
         return
     raise MealRefusal(MealRefusalCode.NO_RECIPE_HERE, message)
+
+
+def check_can_take_recipe(meal: Meal) -> None:
+    if meal.recipe_id is not None:
+        raise MealRefusal(MealRefusalCode.HAS_RECIPE, "Il pasto ha già una ricetta.")
+    refuse_if_no_recipe_here(meal)
 
 
 async def link_recipe(session: AsyncSession, meal: Meal, recipe: Recipe) -> None:

@@ -22,7 +22,7 @@ from app.services.meal_recipes import (
     undo_recipe_change,
     write_meal_recipe,
 )
-from app.services.meals import MealRefusal, create_meal
+from app.services.meals import MealRefusal, MealRefusalCode, create_meal
 from app.services.registry import merge_ingredients
 
 DAY = date(2026, 11, 11)
@@ -105,6 +105,7 @@ async def _two_writes(db_session, voci, meal):
         draft(
             line(voci["uova"], text="2"),
             line(voci["spinaci"], text="150 g", note="congelati"),
+            dish="Frittata di spinaci", sides="pane",
         ),
     )
     await db_session.flush()
@@ -209,8 +210,15 @@ async def test_chi_non_puo_avere_una_ricetta(db_session, voci, case):
             db_session, day=DAY, slot=MealSlot.LUNCH, dish="Ragù avanzato",
             leftover_of_id=origin.id,
         )
-    with pytest.raises(MealRefusal):
+    expected = {
+        "bozza": "È una bozza: la ricetta arriva quando diventa ufficiale.",
+        "fuori casa": "Un pasto fuori casa non ha una ricetta.",
+        "avanzo": "Un avanzo usa la ricetta del pasto da cui viene.",
+    }[case]
+    with pytest.raises(MealRefusal) as caught:
         await write_meal_recipe(db_session, target, draft(line(voci["uova"])))
+    assert caught.value.code == MealRefusalCode.NO_RECIPE_HERE
+    assert caught.value.message == expected
     assert (await db_session.execute(select(Recipe))).scalars().all() == []
 
 
@@ -222,7 +230,7 @@ async def test_annulla_rimette_la_versione_di_prima(db_session, voci, meal):
     spin = rows[voci["spinaci"].id]
     assert spin.quantity_text == "200 g" and spin.note is None and spin.quantity_value == 200
     assert second.undone_at is not None
-    assert meal.dish == "Frittata"
+    assert meal.dish == "Frittata" and meal.sides == "insalata"
 
 
 async def test_annulla_una_ricetta_scritta_da_zero_la_stacca_dal_pasto(db_session, voci, meal):
@@ -288,3 +296,74 @@ async def test_annulla_con_un_ingrediente_sparito(db_session, voci, meal):
         "Un ingrediente della versione di prima non c'è più: correggi la ricetta dal modulo."
     )
     assert await meal_snapshot(db_session, meal) == before
+
+
+async def test_un_nome_senza_reparto_e_sconosciuto_si_rifiuta(db_session, voci, meal):
+    before = (await db_session.execute(select(Ingredient.name))).scalars().all()
+    with pytest.raises(RecipeWriteRefused) as caught:
+        await write_meal_recipe(db_session, meal, draft(line(voci["uova"]), named("carta forno")))
+    assert caught.value.message == (
+        "carta forno non è in anagrafica: per crearlo serve anche il reparto."
+    )
+    assert (await db_session.execute(select(Ingredient.name))).scalars().all() == before
+    await db_session.refresh(meal)
+    assert meal.recipe_id is None
+
+
+async def test_una_nota_vuota_si_salva_come_none(db_session, voci, meal):
+    await write_meal_recipe(db_session, meal, draft(line(voci["uova"], note="   ")))
+    assert (await lines_of(db_session, meal))[voci["uova"].id].note is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"lines": "quantity_text"},
+        {"servings": 0},
+        {"servings": 51},
+        {"title": "   "},
+        {"instructions": ""},
+        {"title": "x" * 201},
+    ],
+    ids=["dose lunga", "porzioni 0", "porzioni 51", "titolo vuoto", "procedimento vuoto",
+         "titolo lungo"],
+)
+async def test_i_campi_fuori_regola_si_rifiutano(db_session, voci, meal, bad):
+    import dataclasses
+
+    base = draft(line(voci["uova"]))
+    if "lines" in bad:
+        base = draft(line(voci["uova"], text="x" * 101))
+    else:
+        base = dataclasses.replace(base, **bad)
+    with pytest.raises(RecipeWriteRefused):
+        await write_meal_recipe(db_session, meal, base)
+    await db_session.refresh(meal)
+    assert meal.recipe_id is None
+
+
+async def test_la_ricetta_eliminata_si_rifiuta(db_session, voci, meal):
+    from datetime import UTC, datetime
+
+    change = await write_meal_recipe(db_session, meal, draft(line(voci["uova"])))
+    recipe = await db_session.get(Recipe, change.recipe_id)
+    recipe.archived_at = datetime.now(UTC)
+    await db_session.flush()
+    with pytest.raises(RecipeWriteRefused) as caught:
+        await write_meal_recipe(db_session, meal, draft(line(voci["uova"])))
+    assert caught.value.message == (
+        "La ricetta di questo pasto è stata eliminata: Mattia deve ripristinarla prima."
+    )
+
+
+async def test_annulla_con_un_ingrediente_diventato_non_alimentare(db_session, voci, meal):
+    await write_meal_recipe(
+        db_session, meal, draft(line(voci["uova"]), line(voci["parmigiano"], text="30 g"))
+    )
+    change = await write_meal_recipe(db_session, meal, draft(line(voci["uova"])))
+    voci["parmigiano"].category = IngredientCategory.CASA
+    await db_session.flush()
+    with pytest.raises(ChangeRefusal) as caught:
+        await undo_recipe_change(db_session, change)
+    assert caught.value.code == ChangeRefusalCode.STALE
+    assert "non c'è più" in caught.value.message

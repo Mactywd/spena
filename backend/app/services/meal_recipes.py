@@ -8,13 +8,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe, RecipeSource
 from app.db.models.recipe_change import RecipeChange
-from app.domain.meals import MealStatus
 from app.domain.recipe_changes import (
     LineSnapshot,
     MealSnapshot,
@@ -24,7 +24,7 @@ from app.domain.recipe_changes import (
     snapshot_from_json,
     snapshot_to_json,
 )
-from app.domain.rules import IngredientRole
+from app.domain.rules import IngredientKind, IngredientRole
 from app.repositories.meals import get_meal
 from app.repositories.recipes import (
     IngredientLine,
@@ -33,11 +33,11 @@ from app.repositories.recipes import (
     get_recipe,
     write_recipe_ingredients,
 )
-from app.schemas.recipe import RecipeIngredientIn
+from app.schemas.recipe import RecipeFields, RecipeIngredientIn
+from app.services.ingredient_match import ingredient_for_new_name
 from app.services.meals import (
-    MealRefusal,
-    MealRefusalCode,
     link_recipe,
+    refuse_if_no_recipe_here,
     release_recipe,
 )
 from app.services.recipe_writing import RepeatedIngredient, embedding_for, resolve_lines
@@ -139,34 +139,62 @@ async def meal_snapshot(session: AsyncSession, meal: Meal) -> MealSnapshot:
     return MealSnapshot(dish=meal.dish, sides=meal.sides, recipe=recipe_snapshot)
 
 
-def _check_meal_can_have_recipe(meal: Meal) -> None:
-    """Come `check_can_take_recipe`, ma un pasto che ha già la ricetta si riscrive."""
-    if meal.leftover_of_id is not None:
-        message = "Un avanzo usa la ricetta del pasto da cui viene."
-    elif meal.away:
-        message = "Un pasto fuori casa non ha una ricetta."
-    elif meal.status == MealStatus.DRAFT:
-        message = "È una bozza: la ricetta arriva quando diventa ufficiale."
-    else:
-        return
-    raise MealRefusal(MealRefusalCode.NO_RECIPE_HERE, message)
+def _invalid(exc: ValidationError, what: str) -> RecipeWriteRefused:
+    first = exc.errors()[0]
+    field = ".".join(str(part) for part in first["loc"]) or what
+    return RecipeWriteRefused(f"{what}: il campo {field} non è valido ({first['msg']}).")
 
 
-def _to_form_lines(lines: tuple[DraftLine, ...]) -> list[RecipeIngredientIn]:
-    # `model_construct`: il modulo esige `category` con un nome nuovo, ma un nome che
-    # l'anagrafica già conosce si aggancia senza reparto (`ingredient_for_new_name`), e
-    # `resolve_lines` legge soltanto i campi
-    return [
-        RecipeIngredientIn.model_construct(
-            ingredient_id=line.ingredient_id,
-            name=None if line.ingredient_id is not None else line.name,
-            category=None if line.ingredient_id is not None else line.category,
-            role=line.role,
-            quantity_text=line.quantity_text,
-            note=line.note,
+def _check_fields(draft: "MealRecipeDraft") -> None:
+    """Le regole dei campi della ricetta, quelle del modulo (`RecipeFields`)."""
+    try:
+        RecipeFields.model_validate(
+            {
+                "title": draft.title.strip(),
+                "description": draft.description,
+                "instructions": draft.instructions,
+                "servings": draft.servings,
+            }
         )
-        for line in lines
-    ]
+    except ValidationError as exc:
+        raise _invalid(exc, "La ricetta") from exc
+
+
+async def _to_form_lines(
+    session: AsyncSession, lines: tuple[DraftLine, ...]
+) -> list[RecipeIngredientIn]:
+    """Le righe passano dallo schema del modulo, con le sue regole: note ripulite, lunghezze,
+    un nome nuovo solo con il reparto. Un nome senza reparto che l'anagrafica conosce si
+    aggancia (`ingredient_for_new_name`, come il modulo); uno che non conosce si rifiuta,
+    e non nasce in «altro»."""
+    out: list[RecipeIngredientIn] = []
+    for number, line in enumerate(lines, start=1):
+        ingredient_id, name, category = line.ingredient_id, line.name, line.category
+        if ingredient_id is not None:
+            name = category = None
+        elif name and name.strip() and category is None:
+            linked = await ingredient_for_new_name(session, name)
+            if linked is None:
+                raise RecipeWriteRefused(
+                    f"{name} non è in anagrafica: per crearlo serve anche il reparto."
+                )
+            ingredient_id, name = linked.id, None
+        try:
+            out.append(
+                RecipeIngredientIn.model_validate(
+                    {
+                        "ingredient_id": ingredient_id,
+                        "name": name,
+                        "category": category,
+                        "role": line.role,
+                        "quantity_text": line.quantity_text,
+                        "note": line.note,
+                    }
+                )
+            )
+        except ValidationError as exc:
+            raise _invalid(exc, f"Riga {number}") from exc
+    return out
 
 
 def _apply_meal_fields(
@@ -199,7 +227,8 @@ async def write_meal_recipe(
     chiamante che scrive più pasti in una transazione perde solo quello rifiutato. Salva la
     versione di prima in un `RecipeChange`, per «Annulla». Fa `flush`, mai `commit`.
     """
-    _check_meal_can_have_recipe(meal)
+    refuse_if_no_recipe_here(meal)
+    _check_fields(draft)
     meal_id = meal.id
     before = await meal_snapshot(session, meal)
     recipe: Recipe | None = None
@@ -232,7 +261,7 @@ async def write_meal_recipe(
                         f"L'ingrediente {line.ingredient_id} non esiste: "
                         "cercalo di nuovo con search_ingredients."
                     )
-            lines = await resolve_lines(session, _to_form_lines(draft.lines))
+            lines = await resolve_lines(session, await _to_form_lines(session, draft.lines))
             if recipe is None:
                 recipe = await create_recipe(
                     session,
@@ -321,10 +350,25 @@ async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> Non
     if before.recipe is not None:
         wanted = {line.ingredient_id for line in before.recipe.lines}
         for ingredient_id in wanted:
-            if await session.get(Ingredient, ingredient_id) is None:
+            found = await session.get(Ingredient, ingredient_id)
+            # sparito, o diventato non alimentare: l'imbuto lo rifiuterebbe
+            if found is None or found.kind == IngredientKind.NON_FOOD:
                 raise ChangeRefusal(ChangeRefusalCode.STALE, INGREDIENT_GONE_MESSAGE)
 
     meal_id = meal.id
+    restored_embedding: list[float] | None = None
+    recompute = False
+    if not change.created_recipe:
+        assert before.recipe is not None
+        current = await get_recipe(session, change.recipe_id)
+        assert current is not None
+        recompute = (before.recipe.title, before.recipe.description) != (
+            current.title, current.description
+        )
+        if recompute:
+            restored_embedding = await embedding_for(
+                before.recipe.title, before.recipe.description
+            )
     async with session.begin_nested():
         if change.created_recipe:
             await release_recipe(session, meal)
@@ -337,12 +381,8 @@ async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> Non
                 for line in before.recipe.lines
             ]
             await write_recipe_ingredients(session, recipe, lines)
-            if (before.recipe.title, before.recipe.description) != (
-                recipe.title, recipe.description
-            ):
-                recipe.embedding = await embedding_for(
-                    before.recipe.title, before.recipe.description
-                )
+            if recompute:
+                recipe.embedding = restored_embedding
             recipe.title = before.recipe.title
             recipe.description = before.recipe.description
             recipe.instructions = before.recipe.instructions

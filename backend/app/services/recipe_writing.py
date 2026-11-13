@@ -14,6 +14,7 @@ from app.repositories.ingredients import create_ingredient
 from app.repositories.recipes import IngredientLine
 from app.schemas.recipe import RecipeIngredientIn
 from app.services.embeddings import (
+    EmbeddingProvider,
     EmbeddingUnavailable,
     get_embedding_provider,
     log_degradation_once,
@@ -79,7 +80,7 @@ async def resolve_lines(
 
 
 async def embedding_for(
-    title: str, description: str | None, *, provider=None
+    title: str, description: str | None, *, provider: EmbeddingProvider | None = None
 ) -> list[float] | None:
     """L'embedding è un ornamento: se il modello non c'è, la ricetta si salva comunque,
     con il vettore a `NULL`, e `app.cli.reindex` lo ritrova (riempie solo i `NULL`).

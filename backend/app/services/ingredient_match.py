@@ -125,8 +125,8 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
 async def ingredient_for_new_name(session: AsyncSession, raw_name: str) -> Ingredient | None:
     """L'ingrediente a cui un nome nuovo del modulo si collega salvando, o `None`.
 
-    `None` vuol dire che salvando l'ingrediente nasce (`_resolve_lines` in
-    `app/api/recipes.py`). La regola è una sola e sta qui: la usa il salvataggio, e il
+    `None` vuol dire che salvando l'ingrediente nasce (`resolve_lines` in
+    `app/services/recipe_writing.py`). La regola è una sola e sta qui: la usa il salvataggio, e il
     passo del nome del modulo la chiede in anticipo (`GET /ingredients/match`), che così
     dice la stessa cosa che il salvataggio farà — per esempio che quel nome porta a un
     non alimentare, che l'imbuto `write_recipe_ingredients` rifiuterebbe. Solo la

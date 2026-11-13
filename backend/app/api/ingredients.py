@@ -65,8 +65,8 @@ async def match_new_name(
     """Dove finirebbe questo nome, scritto nel passo del nome del modulo, salvando la
     ricetta (piano 20). Sola lettura.
 
-    La risposta è `ingredient_for_new_name`, la stessa funzione che `_resolve_lines`
-    chiama salvando: se dice un non alimentare, il salvataggio lo rifiuterebbe, e il
+    La risposta è `ingredient_for_new_name`, la stessa funzione che `resolve_lines`
+    (`app/services/recipe_writing.py`) chiama salvando: se dice un non alimentare, il salvataggio lo rifiuterebbe, e il
     modulo lo dice prima. Dichiarata prima di `/{ingredient_id}`, che altrimenti la
     prenderebbe e risponderebbe 422 su «match», che non è un UUID.
     """
