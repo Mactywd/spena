@@ -18,6 +18,13 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Per chi apre le sue sessioni fuori dalla richiesta: il giro della chat (decisione 11)
+    gira in un task che sopravvive alla richiesta, e la sessione di `get_session` si chiude
+    con lei. Una dipendenza, così i test la legano alla connessione del test."""
+    return SessionLocal
+
+
 # SQLSTATE di Postgres: 23503 = violazione di chiave esterna, 23505 = unicità.
 # Distinguerli serve perché sono due risposte diverse: un riferimento pendente è
 # "non trovato" (404), un duplicato è "conflitto" (409).
