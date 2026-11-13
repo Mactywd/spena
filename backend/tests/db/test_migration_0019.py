@@ -72,5 +72,5 @@ async def test_la_0019_crea_gli_utensili_e_scende(scratch_url):
 
 async def test_un_nome_di_soli_spazi_non_entra(scratch_url):
     alembic(scratch_url, "upgrade", "0019")
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError, match="ck_utensils_name_not_blank"):
         await _execute(scratch_url, UTENSILE, id=uuid.uuid4(), nome="   ", nota=None)

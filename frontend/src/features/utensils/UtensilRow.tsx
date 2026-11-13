@@ -28,7 +28,12 @@ export function UtensilRow({ utensil }: { utensil: Utensil }) {
       await invalidate();
     },
     // un utensile già sparito: l'elenco riletto non ha più questa riga
-    onError: (error) => (isNotFound(error) ? invalidate() : undefined),
+    // la riga sparirà con l'elenco riletto, e un Alert dentro di lei con lei: lo dice l'avviso
+    onError: async (error) => {
+      if (!isNotFound(error)) return;
+      notice({ text: "Questo utensile non c'è più." });
+      await invalidate();
+    },
   });
 
   const remove = useMutation({
@@ -101,12 +106,9 @@ export function UtensilRow({ utensil }: { utensil: Utensil }) {
               Annulla
             </Button>
           </div>
-          {save.isError &&
-            (isNotFound(save.error) ? (
-              <Alert>Questo utensile non c'è più.</Alert>
-            ) : (
-              <Alert>La correzione non è stata salvata: riprova tra poco.</Alert>
-            ))}
+          {save.isError && !isNotFound(save.error) && (
+            <Alert>La correzione non è stata salvata: riprova tra poco.</Alert>
+          )}
         </form>
       </li>
     );

@@ -148,10 +148,15 @@ describe("UtensilsScreen", () => {
     await waitFor(() => expect(screen.queryByLabelText("Nome")).not.toBeInTheDocument());
   });
 
-  it("una correzione su un utensile sparito lo dice e rilegge l'elenco", async () => {
-    const calls = stubRoutedFetch((m) =>
-      m === "GET" ? [[PADELLA], 200] : m === "PATCH" ? [{ detail: "non trovato" }, 404] : undefined
-    );
+  it("una correzione su un utensile sparito lo dice con un avviso e rilegge l'elenco", async () => {
+    let patched = false;
+    const calls = stubRoutedFetch((m) => {
+      if (m === "PATCH") {
+        patched = true;
+        return [{ detail: "non trovato" }, 404];
+      }
+      return m === "GET" ? [patched ? [] : [PADELLA], 200] : undefined;
+    });
     renderScreen();
 
     await userEvent.click(
@@ -159,8 +164,12 @@ describe("UtensilsScreen", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Salva" }));
 
+    // la riga sparisce con l'elenco riletto: il testo sta nell'avviso, che resta
     expect(await screen.findByText("Questo utensile non c'è più.")).toBeInTheDocument();
-    await waitFor(() => expect(gets(calls)).toBe(2));
+    await waitFor(() => expect(screen.queryByRole("listitem")).not.toBeInTheDocument());
+    expect(screen.getByText("Questo utensile non c'è più.")).toBeInTheDocument();
+    const patchAt = calls.findIndex((c) => c.method === "PATCH");
+    expect(calls.slice(patchAt + 1).some((c) => c.method === "GET" && c.path === LIST)).toBe(true);
   });
 
   it("«Togli» toglie, e «Annulla» lo rimette com'era", async () => {
