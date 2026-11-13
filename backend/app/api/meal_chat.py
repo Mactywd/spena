@@ -4,17 +4,23 @@ annullare una modifica della ricetta (spec 2026-11-12 §5, §9)."""
 import asyncio
 import json
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.security import require_session
-from app.db.models.conversation import ConversationMessage, MessageRole, MessageStatus
+from app.db.models.conversation import (
+    Conversation,
+    ConversationKind,
+    ConversationMessage,
+    MessageRole,
+    MessageStatus,
+)
 from app.db.models.meal import Meal
 from app.db.models.recipe_change import RecipeChange
 from app.domain.meal_chat import (
@@ -26,8 +32,8 @@ from app.domain.meal_chat import (
 )
 from app.repositories.conversations import (
     dish_conversation,
-    get_or_create_dish_conversation,
     messages_of,
+    move_turn_products,
 )
 from app.repositories.meals import get_meal
 from app.schemas.meal_chat import ChatMessageIn, ChatMessageOut, DishChatOut
@@ -106,6 +112,113 @@ async def _stream(events: AsyncIterator[ChatEvent], start: dict) -> AsyncIterato
             await aclose()
 
 
+TurnRun = Callable[..., Awaitable[None]]
+
+
+async def start_turn_stream(
+    session: AsyncSession,
+    registry: TurnRegistry,
+    client: ClaudeClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    conversation: Conversation,
+    body: ChatMessageIn,
+    run: TurnRun,
+    settings: Settings,
+) -> Response:
+    """Il corpo comune della `POST` dei messaggi, per la chat del piatto e per quella di
+    pianificazione: i controlli, il messaggio in attesa, l'avvio del giro e lo stream.
+
+    I controlli arrivano prima di salvare, in quest'ordine (quelli del pasto, 404 e
+    `no_chat_here`, li fa prima la rotta): 503 senza Claude, 409 `claude_busy` con un giro
+    vivo o un'attesa non ancora orfana. `conversation` può essere ancora da salvare (la
+    chat del piatto nasce col primo messaggio): si salva qui, insieme al messaggio, così un
+    rifiuto non lascia niente.
+
+    Con `retry_of` (decisione 28) quello che il giro fallito aveva prodotto — proposte,
+    schede, modifiche della ricetta — passa al messaggio nuovo **prima** che il fallito si
+    cancelli: altrimenti `ON DELETE SET NULL` lo staccherebbe dalla chat.
+
+    `run` è il giro (`run_dish_turn` o `run_planning_turn`): stessa firma, chiamato con
+    `session_factory`, `client`, gli id della conversazione e del messaggio, `emit` e il
+    tempo massimo delle impostazioni."""
+    now = datetime.now(UTC)
+    if not claude_configured():
+        return _refuse(
+            503, "claude_not_configured", failure_notice(FailureKind.NOT_CONFIGURED, None, now)
+        )
+    timeout = settings.claude_reply_timeout_seconds
+    # una conversazione ancora da salvare non ha né giri né messaggi
+    saved = conversation.id is not None
+    busy = saved and (
+        registry.running(conversation.id)
+        or any(
+            m.status == MessageStatus.PENDING.value
+            and not pending_is_stale(m.created_at, now, timeout)
+            for m in await messages_of(session, conversation.id)
+        )
+    )
+    if busy:
+        return _refuse(409, "claude_busy", BUSY_NOTICE)
+
+    if not saved:
+        session.add(conversation)
+        await session.flush()
+    failed: ConversationMessage | None = None
+    if body.retry_of is not None:
+        failed = await session.get(ConversationMessage, body.retry_of)
+        if (
+            failed is None
+            or failed.conversation_id != conversation.id
+            or failed.role != MessageRole.USER.value
+            or failed.status != MessageStatus.FAILED.value
+        ):
+            await session.rollback()
+            raise HTTPException(404, "messaggio inesistente")
+    message = ConversationMessage(
+        conversation_id=conversation.id,
+        role=MessageRole.USER.value,
+        text=body.text,
+        status=MessageStatus.PENDING.value,
+        created_at=datetime.now(UTC),
+    )
+    session.add(message)
+    await session.flush()
+    if failed is not None:
+        await move_turn_products(session, from_message_id=failed.id, to_message_id=message.id)
+        await session.delete(failed)
+    await session.commit()
+
+    conversation_id, message_id = conversation.id, message.id
+    start = {
+        "message": ChatMessageOut(
+            id=message.id, role="user", text=message.text, status="pending",
+            notice=None, created_at=message.created_at, changes=[],
+        ).model_dump(mode="json")
+    }
+
+    async def turn(emit: Emit) -> None:
+        await run(
+            session_factory, client, conversation_id=conversation_id,
+            user_message_id=message_id, emit=emit, timeout_seconds=timeout,
+        )
+
+    try:
+        events = registry.start(conversation_id, turn)
+    except TurnBusy:
+        # una corsa: un altro giro è partito fra il controllo e qui. Il messaggio salvato
+        # non avrebbe un giro: si toglie.
+        await session.delete(message)
+        await session.commit()
+        return _refuse(409, "claude_busy", BUSY_NOTICE)
+
+    return StreamingResponse(
+        _stream(events, start),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.post("/messages")
 async def post_message(
     meal_id: uuid.UUID,
@@ -118,70 +231,13 @@ async def post_message(
     meal = await _meal_or_404(session, meal_id)
     if not can_chat(meal):
         return _refuse(409, "no_chat_here", NO_CHAT_NOTICE)
-    now = datetime.now(UTC)
-    if not claude_configured():
-        return _refuse(
-            503, "claude_not_configured", failure_notice(FailureKind.NOT_CONFIGURED, None, now)
-        )
-    timeout = get_settings().claude_reply_timeout_seconds
-    existing = await dish_conversation(session, meal.id)
-    if existing is not None:
-        busy = registry.running(existing.id) or any(
-            m.status == MessageStatus.PENDING.value and not pending_is_stale(m.created_at, now, timeout)
-            for m in await messages_of(session, existing.id)
-        )
-        if busy:
-            return _refuse(409, "claude_busy", BUSY_NOTICE)
-
-    conversation = await get_or_create_dish_conversation(session, meal.id)
-    if body.retry_of is not None:
-        failed = await session.get(ConversationMessage, body.retry_of)
-        if (
-            failed is None
-            or failed.conversation_id != conversation.id
-            or failed.role != MessageRole.USER.value
-            or failed.status != MessageStatus.FAILED.value
-        ):
-            await session.rollback()
-            raise HTTPException(404, "messaggio inesistente")
-        await session.delete(failed)
-    message = ConversationMessage(
-        conversation_id=conversation.id,
-        role=MessageRole.USER.value,
-        text=body.text,
-        status=MessageStatus.PENDING.value,
-        created_at=datetime.now(UTC),
+    # la conversazione nasce col primo messaggio: la salva `start_turn_stream`, dopo i controlli
+    conversation = await dish_conversation(session, meal.id) or Conversation(
+        kind=ConversationKind.DISH.value, meal_id=meal.id
     )
-    session.add(message)
-    await session.commit()
-
-    conversation_id, message_id = conversation.id, message.id
-    start = {
-        "message": ChatMessageOut(
-            id=message.id, role="user", text=message.text, status="pending",
-            notice=None, created_at=message.created_at, changes=[],
-        ).model_dump(mode="json")
-    }
-
-    async def run(emit: Emit) -> None:
-        await run_dish_turn(
-            factory, client, conversation_id=conversation_id, user_message_id=message_id,
-            emit=emit, timeout_seconds=timeout,
-        )
-
-    try:
-        events = registry.start(conversation_id, run)
-    except TurnBusy:
-        # una corsa: un altro giro è partito fra il controllo e qui. Il messaggio salvato
-        # non avrebbe un giro: si toglie.
-        await session.delete(message)
-        await session.commit()
-        return _refuse(409, "claude_busy", BUSY_NOTICE)
-
-    return StreamingResponse(
-        _stream(events, start),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    return await start_turn_stream(
+        session, registry, client, factory, conversation=conversation, body=body,
+        run=run_dish_turn, settings=get_settings(),
     )
 
 
