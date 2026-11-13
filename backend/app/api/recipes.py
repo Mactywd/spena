@@ -11,6 +11,7 @@ from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient
 from app.db.models.recipe import Recipe
+from app.domain.meals import MealSlot
 from app.domain.quantities import (
     ANCHOR_AMOUNT_CEILING,
     decimal_text,
@@ -26,7 +27,9 @@ from app.domain.rules import (
     main_department,
     missing_count,
 )
+from app.api.refusals import meal_refusal_response
 from app.repositories.ingredients import create_ingredient
+from app.repositories.meals import get_meal, meal_of_recipe
 from app.repositories.pantry import availability_map
 from app.repositories.imports import adopt_import_page, owned_by_import
 from app.repositories.recipes import (
@@ -53,6 +56,7 @@ from app.schemas.recipe import (
     RecipeUpdate,
     SearchModeOut,
 )
+from app.schemas.meal import MealRefOut
 from app.services.ai_recipes import RecipeDraft, draft_recipe, draft_variant
 from app.services.embeddings import (
     EmbeddingUnavailable,
@@ -62,6 +66,7 @@ from app.services.embeddings import (
 )
 from app.services.ingredient_match import ingredient_for_new_name
 from app.services.llm import LlmUnavailable
+from app.services.meals import MealRefusal, check_can_take_recipe, link_recipe
 from app.services.recipe_search import search_recipes, semantic_search_usable
 from app.services.rescale import (
     AnchorRefused,
@@ -76,6 +81,9 @@ router = APIRouter(
 )
 
 RECIPE_ARCHIVED = "Questa ricetta è stata eliminata: ripristinala prima di modificarla."
+NOT_A_MEAL_RECIPE = (
+    "Questa ricetta non è di un pasto: per toglierla dal ricettario eliminala."
+)
 
 # R2: le due regole dei parametri del dettaglio. Il frontend non le viola mai, quindi
 # non sono frasi a video: dicono il contratto a chi chiama la rotta a mano
@@ -170,6 +178,7 @@ async def _to_out(
     # qui: ricalcolarli in linea fa sì che il test a tabella difenda una copia che
     # non gira, ed è la metà aggregata della regola del capitolo 7 della spec
     origin = await recipe_origin(session, recipe)
+    meal = await meal_of_recipe(session, recipe.id)
     return RecipeOut(
         id=recipe.id, title=recipe.title, description=recipe.description,
         instructions=recipe.instructions, servings=recipe.servings, source=recipe.source,
@@ -202,6 +211,15 @@ async def _to_out(
             RecipeOriginOut(id=origin.id, title=origin.title, archived=origin.archived)
             if origin is not None
             else None
+        ),
+        in_book=recipe.in_book,
+        meal=(
+            None
+            if meal is None
+            else MealRefOut(
+                id=meal.id, day=meal.day, slot=MealSlot(meal.slot), dish=meal.dish,
+                recipe_id=meal.recipe_id,
+            )
         ),
     )
 
@@ -336,13 +354,30 @@ async def update(
     )
     if "cost" in payload.model_fields_set and archived_after:
         raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+    # «Salva» e «Togli dal ricettario» si decidono prima di scrivere qualunque cosa
+    in_book_change = payload.in_book
+    if in_book_change is not None:
+        if archived_after:
+            raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+        if not in_book_change and await meal_of_recipe(session, recipe.id) is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, NOT_A_MEAL_RECIPE)
     if payload.archived is True:
         # la prima data resta: eliminare due volte non sposta l'eliminazione
         if recipe.archived_at is None:
             recipe.archived_at = datetime.now(UTC)
         await adopt_import_page(session, recipe.id)
     elif payload.archived is False:
+        # decisione 18: una ricetta viva fuori dal ricettario ha sempre un pasto; se il
+        # pasto non c'è più (eliminato), ripristinarla la rimette nel ricettario
+        if (
+            recipe.archived_at is not None
+            and not recipe.in_book
+            and await meal_of_recipe(session, recipe.id) is None
+        ):
+            recipe.in_book = True
         recipe.archived_at = None
+    if in_book_change is not None:
+        recipe.in_book = in_book_change
     if "cost" in payload.model_fields_set:
         recipe.cost = payload.cost
     await session.commit()
@@ -520,6 +555,16 @@ async def _writing_recipe(session: AsyncSession):
 async def create(
     payload: RecipeCreate, session: AsyncSession = Depends(get_session)
 ) -> RecipeOut:
+    # il pasto si cerca e si controlla prima di scrivere: un rifiuto non lascia ricette
+    meal = None
+    if payload.meal_id is not None:
+        meal = await get_meal(session, payload.meal_id)
+        if meal is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "pasto inesistente")
+        try:
+            check_can_take_recipe(meal)
+        except MealRefusal as exc:
+            return meal_refusal_response(exc)
     await _check_category(session, payload.category)
     embedding = await _embedding_for(payload.title, payload.description)
     # R8: un'originale che nel frattempo non c'è più (l'import l'ha rifatta mentre si
@@ -546,7 +591,10 @@ async def create(
             image_url=copied.image_url,
             prep_minutes=copied.prep_minutes,
             cook_minutes=copied.cook_minutes,
+            in_book=meal is None,
         )
+        if meal is not None:
+            await link_recipe(session, meal, recipe)
         await session.commit()
     stored = await get_recipe(session, recipe.id)
     return await _to_out(session, stored)
