@@ -90,3 +90,12 @@ async def test_due_utensili_con_lo_stesso_nome_convivono(logged_client):
 async def test_senza_sessione_non_si_legge_ne_si_scrive(client):
     assert (await client.get(U)).status_code == 401
     assert (await client.post(U, json={"name": "colino"})).status_code == 401
+
+
+async def test_un_valore_che_non_e_testo_e_un_422(logged_client):
+    assert (await logged_client.post(U, json={"name": 123})).status_code == 422
+    assert (await logged_client.post(U, json={"name": ["a"]})).status_code == 422
+    assert (await logged_client.post(U, json={"name": "a", "note": 5})).status_code == 422
+    creato = (await logged_client.post(U, json={"name": "colino"})).json()
+    assert (await logged_client.patch(f"{U}/{creato['id']}", json={"name": 123})).status_code == 422
+    assert (await logged_client.patch(f"{U}/{creato['id']}", json={"note": 5})).status_code == 422

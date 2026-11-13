@@ -36,9 +36,8 @@ class UtensilIn(BaseModel):
     name: str
     note: str | None = None
 
-    # "after" non serve: la lunghezza si controlla dopo la pulizia, dentro il validatore
-    _name = field_validator("name", mode="before")(_clean_name)
-    _note = field_validator("note", mode="before")(_clean_note)
+    _name = field_validator("name", mode="after")(_clean_name)
+    _note = field_validator("note", mode="after")(_clean_note)
 
 
 class UtensilPatch(BaseModel):
@@ -46,9 +45,9 @@ class UtensilPatch(BaseModel):
     name: str | None = None
     note: str | None = None
 
-    # `validate_default` non serve: i validatori girano solo sui campi passati
-    _name = field_validator("name", mode="before")(_clean_name)
-    _note = field_validator("note", mode="before")(_clean_note)
+    # i validatori girano solo sui campi passati; il tipo str lo controlla pydantic prima (123 -> 422)
+    _name = field_validator("name", mode="after")(_clean_name)
+    _note = field_validator("note", mode="after")(_clean_note)
 
 
 class UtensilOut(BaseModel):
