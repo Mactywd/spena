@@ -4639,3 +4639,75 @@ test("il piatto con la ricetta a 375 px, nei due temi", async ({ page }) => {
     expect.soft([200, 204, 404], `pulizia: il pasto ${pastoId} non si è tolto`).toContain(tolto.status());
   }
 });
+
+/** Lancia l'aiutante della chat del piatto nel container del backend e torna la sua ultima riga. */
+function aiutanteChat(comando: "seed" | "clean"): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_chat.py", comando],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+test("la chat del piatto a 375 px, con la modifica evidenziata, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutanteChat("seed")) as { meal_change: string; meal_failed: string };
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${seminato.meal_change}`);
+      const annulla = page.getByRole("button", { name: "Annulla", exact: true });
+      await expect(annulla).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la chat con la modifica, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la chat con la modifica, tema ${tema}`);
+      const alto = (await annulla.boundingBox())?.height ?? 0;
+      expect(alto, "«Annulla» è troppo basso").toBeGreaterThanOrEqual(44);
+      const fondi = await page.evaluate<{ cambiata: string; normale: string }>(
+        `(() => {
+          const cambiata = document.querySelector('li[data-changed]');
+          const normale = [...cambiata.parentElement.children].find((li) => li !== cambiata);
+          return {
+            cambiata: getComputedStyle(cambiata).backgroundColor,
+            normale: getComputedStyle(normale).backgroundColor,
+          };
+        })()`
+      );
+      const fondoCambiata = fondi.cambiata;
+      const fondoNormale = fondi.normale;
+      expect(fondoCambiata, `la riga cambiata non si distingue, tema ${tema}`).not.toBe(fondoNormale);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    aiutanteChat("clean");
+  }
+});
+
+test("la chat con l'avviso e il campo, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutanteChat("seed")) as { meal_change: string; meal_failed: string };
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${seminato.meal_failed}`);
+      const riprova = page.getByRole("button", { name: "Riprova", exact: true });
+      await expect(riprova).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la chat con l'avviso, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la chat con l'avviso, tema ${tema}`);
+      for (const [nome, bottone] of [
+        ["Riprova", riprova],
+        ["Invia", page.getByRole("button", { name: "Invia", exact: true })],
+      ] as const) {
+        const alto = (await bottone.boundingBox())?.height ?? 0;
+        expect(alto, `«${nome}» è troppo basso`).toBeGreaterThanOrEqual(44);
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    aiutanteChat("clean");
+  }
+});
