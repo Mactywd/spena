@@ -181,9 +181,18 @@ export function PlanningScreen() {
       title="Pianifica con Claude"
       back={{ to: "/pasti", label: "Pasti" }}
       action={
-        <Button variant="ghost" busy={create.isPending || sender.sending} onClick={startNew}>
-          Nuova
-        </Button>
+        // una colonna: il perché di «non ancora» sta sotto il pulsante
+        <div className="flex flex-col items-end">
+          <Button
+            variant="ghost"
+            busy={create.isPending}
+            // mentre la risposta arriva, una conversazione nuova la coprirebbe
+            unavailableReason={sender.sending ? "Aspetta che Claude finisca di rispondere." : undefined}
+            onClick={startNew}
+          >
+            Nuova
+          </Button>
+        </div>
       }
     >
       <div className="flex flex-col gap-2">

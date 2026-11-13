@@ -145,23 +145,83 @@ describe("Pianifica con Claude", () => {
     stream.close();
   });
 
-  it("messa mentre Claude scrive: il seguito aspetta nel campo, nessun secondo giro", async () => {
-    const stream = liveStream();
+  it("messa mentre Claude scrive: il seguito parte da solo dopo `done`, e il campo resta com'è", async () => {
+    const first = liveStream();
+    const second = liveStream();
+    const streams = [first, second];
     const spy = stubFetch((url, init) => {
       if (url.endsWith("/place")) return [{ chat: planningChat(), meals: [], follow_up: FOLLOW_UP }, 200];
-      if (init?.method === "POST" && url.endsWith("/messages")) return stream.response;
+      if (init?.method === "POST" && url.endsWith("/messages")) return streams.shift()!.response;
       return [planningChat(), 200];
     });
     renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
     const field = await screen.findByRole("textbox", { name: "Messaggio per Claude" });
     await userEvent.type(field, "Cosa ceno stasera?");
     await userEvent.click(screen.getByRole("button", { name: "Invia" }));
-    stream.send("start", { message: message({ status: "pending", text: "Cosa ceno stasera?" }) });
-    stream.send("proposal", { proposal: proposal() });
+    first.send("start", { message: message({ status: "pending", text: "Cosa ceno stasera?" }) });
+    first.send("proposal", { proposal: proposal() });
     await userEvent.click(await screen.findByRole("button", { name: "Metti nella settimana" }));
-    await waitFor(() => expect(field).toHaveValue(FOLLOW_UP));
-    expect(requests(spy, "POST", `${CONVERSATIONS}/k1/messages`)).toHaveLength(1);
+    await userEvent.type(field, "e domani?");
+    // finché il giro è in volo, nessun secondo messaggio
+    await screen.findByText("Pasti messi nella settimana.");
+    expect(requests(spy, "POST", `${CONVERSATIONS}/k1/messages`)).toEqual([{ text: "Cosa ceno stasera?" }]);
+    first.send("done", { chat: planningChat() });
+    first.close();
+    await waitFor(() =>
+      expect(requests(spy, "POST", `${CONVERSATIONS}/k1/messages`)).toEqual([
+        { text: "Cosa ceno stasera?" },
+        { text: FOLLOW_UP },
+      ])
+    );
+    expect(field).toHaveValue("e domani?");
+    second.close();
+  });
+
+  it("il seguito rifiutato non si perde e non tocca il testo scritto", async () => {
+    const first = liveStream();
+    let messages = 0;
+    stubFetch((url, init) => {
+      if (url.endsWith("/place")) return [{ chat: planningChat(), meals: [], follow_up: FOLLOW_UP }, 200];
+      if (init?.method === "POST" && url.endsWith("/messages")) {
+        messages += 1;
+        return messages === 1
+          ? first.response
+          : [{ code: "claude_not_configured", detail: NOT_CONFIGURED }, 503];
+      }
+      return [planningChat(), 200];
+    });
+    renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
+    const field = await screen.findByRole("textbox", { name: "Messaggio per Claude" });
+    await userEvent.type(field, "Cosa ceno stasera?");
+    await userEvent.click(screen.getByRole("button", { name: "Invia" }));
+    first.send("start", { message: message({ status: "pending", text: "Cosa ceno stasera?" }) });
+    first.send("proposal", { proposal: proposal() });
+    await userEvent.click(await screen.findByRole("button", { name: "Metti nella settimana" }));
+    await userEvent.type(field, "e domani?");
+    first.send("done", { chat: planningChat() });
+    first.close();
+    expect(await screen.findByText(NOT_CONFIGURED)).toBeInTheDocument();
+    await waitFor(() => expect(field).toHaveValue(`e domani?\n\n${FOLLOW_UP}`));
+  });
+
+  it("mentre Claude risponde «Nuova» dice perché non si può ancora", async () => {
+    const stream = liveStream();
+    const spy = stubFetch((url, init) =>
+      init?.method === "POST" && url.endsWith("/messages") ? stream.response : [planningChat(), 200]
+    );
+    renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Messaggio per Claude" }), "Ciao");
+    await userEvent.click(screen.getByRole("button", { name: "Invia" }));
+    const nuova = screen.getByRole("button", { name: "Nuova" });
+    await waitFor(() => expect(nuova).toHaveAttribute("aria-disabled", "true"));
+    expect(nuova.hasAttribute("disabled")).toBe(false);
+    expect(nuova).toHaveAccessibleDescription("Aspetta che Claude finisca di rispondere.");
+    await userEvent.click(nuova);
+    expect(requests(spy, "POST", CONVERSATIONS)).toEqual([]);
+    stream.send("done", { chat: planningChat() });
     stream.close();
+    await waitFor(() => expect(nuova).not.toHaveAttribute("aria-disabled"));
+    expect(screen.queryByText("Aspetta che Claude finisca di rispondere.")).not.toBeInTheDocument();
   });
 
   it("«Nuova» crea una conversazione e l'indirizzo passa a lei", async () => {

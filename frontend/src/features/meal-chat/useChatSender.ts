@@ -47,6 +47,9 @@ export function useChatSender<TChat>({
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   // un giro alla volta: lo stato di React arriva tardi per due invii ravvicinati
   const inFlight = useRef(false);
+  // i testi che non vengono dal campo arrivati durante un giro (il seguito di «Metti nella
+  // settimana» toccato mentre Claude scrive): partono da soli quando il giro finisce
+  const queued = useRef<string[]>([]);
 
   // Una mutazione e non una chiamata nuda: un 401 riporta all'accesso come ogni altra
   // scrittura (la `MutationCache` dell'app).
@@ -55,14 +58,14 @@ export function useChatSender<TChat>({
       send(body, onEvent),
   });
 
-  /** `fromField`: il testo viene dal campo, che si svuota. Un testo che non viene dal campo
-   * (il seguito di «Metti nella settimana») lo lascia com'è; in entrambi i casi, se il
-   * messaggio non parte, il testo torna nel campo (se intanto non se n'è scritto un altro). */
+  /** `fromField`: il testo viene dal campo, che si svuota; se il messaggio non parte torna
+   * nel campo, se intanto non se n'è scritto un altro. Un testo che non viene dal campo (il
+   * seguito di «Metti nella settimana») non tocca il campo: se un giro è in volo aspetta che
+   * finisca e parte da solo; se il messaggio non parte, entra nel campo — vuoto, da solo;
+   * con un testo scritto da Mattia, dopo quel testo, che resta com'è. Mai perso. */
   async function submit(text: string, retryOf: string | null, fromField: boolean) {
     if (inFlight.current) {
-      // un giro è già in volo (il seguito della messa arrivato mentre Claude scrive): il
-      // testo aspetta nel campo, da mandare quando Claude ha finito
-      if (!fromField && retryOf === null) setDraft((current) => (current === "" ? text : current));
+      if (!fromField && retryOf === null) queued.current.push(text);
       return;
     }
     inFlight.current = true;
@@ -119,7 +122,11 @@ export function useChatSender<TChat>({
       // Rotto a metà: il messaggio è salvato, e lo dice la rilettura qui sotto.
       if (!started) {
         setRefusal(refusalOf(error));
-        if (retryOf === null) setDraft((current) => (current === "" ? text : current));
+        if (fromField) setDraft((current) => (current === "" ? text : current));
+        else if (retryOf === null)
+          setDraft((current) =>
+            current === "" ? text : current.includes(text) ? current : `${current}\n\n${text}`
+          );
       }
     } finally {
       // Senza `done` né `error` (il giro è caduto dopo aver salvato, o la connessione si è
@@ -128,6 +135,8 @@ export function useChatSender<TChat>({
       if (!ended) refetch();
       setTurn(null);
       inFlight.current = false;
+      const next = queued.current.shift();
+      if (next !== undefined) void submit(next, null, false);
     }
   }
 
