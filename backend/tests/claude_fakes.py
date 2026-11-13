@@ -58,10 +58,15 @@ Step = Say | UseTool | Finish | Fail | Hang
 
 
 class FakeClaude(ClaudeClient):
-    def __init__(self, script: Sequence[Step]):
+    def __init__(self, script: Sequence[Step], *, scripts: Sequence[Sequence[Step]] | None = None):
         self.script = list(script)
+        self._scripts = None if scripts is None else [list(x) for x in scripts]
         self.calls: list[dict[str, Any]] = []
         self.tool_results: list[dict[str, Any]] = []
+
+    @classmethod
+    def per_call(cls, *scripts: Sequence[Step]) -> "FakeClaude":
+        return cls([], scripts=scripts)
 
     async def run(
         self,
@@ -81,9 +86,15 @@ class FakeClaude(ClaudeClient):
                 "max_turns": max_turns,
             }
         )
+        script = self.script
+        if self._scripts is not None:
+            # la n-esima `run` usa l'n-esimo copione; una in più è un errore del test
+            n = len(self.calls) - 1
+            assert n < len(self._scripts), f"run numero {n + 1}: i copioni sono {len(self._scripts)}"
+            script = self._scripts[n]
         by_name = {t.name: t for t in tools}
         said: list[str] = []
-        for step in self.script:
+        for step in script:
             if isinstance(step, Say):
                 said.append(step.text)
                 for i in range(0, len(step.text), 5):

@@ -7,9 +7,11 @@ pasto, la ricetta com'è adesso), la storia della chat e il messaggio nuovo.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from app.db.models.recipe import Recipe
+from app.db.models.planning import MealProposal
 from app.domain.meals import MealSlot
 
 # il backend non ha i nomi italiani di giorni e mesi: stanno qui, in due tuple
@@ -67,16 +69,58 @@ La ricetta la cambi tu, direttamente, con write_recipe: Mattia la vede aggiornat
 - se write_recipe rifiuta, non è stato scritto niente: correggi e riprova, oppure spiega a Mattia cosa non torna;
 - se il pasto non ha ancora una ricetta e Mattia la chiede, scrivila da zero con write_recipe."""
 
-# Il piano 4 sostituisce questa regola con quella delle schede (§6.2): lì Claude propone
-# cambi alla dispensa e alla lista, che Mattia conferma.
-DISH_PANTRY_RULE = """Non scrivi in dispensa né nella lista della spesa. Se una modifica cambia quello che si usa («non ho spinaci, uso le zucchine»), dillo in una riga: Mattia aggiorna spena a mano."""
+CHANGES_RULE = """In dispensa e nella lista della spesa non scrivi mai: i cambi li proponi con propose_changes, una scheda con le voci, com'è adesso ogni voce e cosa diventa. Mattia la rivede, toglie o corregge le righe e la applica lui.
+- Ogni voce della dispensa si indica con il suo id, letto con read_pantry. Uno stato per voce, proposto da te: una confezione da una porzione (una ricotta, una scatola di legumi, una vaschetta di affettato) diventa finito; una confezione grande (pasta, riso, olio, farina) resta com'è e non va nella scheda; un vasetto di sugo appena aperto diventa quasi finito.
+- Un pesto, un sugo pronto o un ragù già quasi finito è avviato: non va in lista per questo.
+- Le voci che diventano finite spena le mette da sé fra le cose da comprare: non ripeterle. Non proporre quello che è già nella lista.
+- Quando la scheda è per più pasti, ogni voce dice per quali pasti serve: se poi un pasto si toglie, spena propone di rimettere solo quello che serviva a lui.
+- Nella chat di un piatto, proponi la scheda quando una modifica cambia quello che si usa («non ho spinaci, uso le zucchine»), anche per rimettere disponibile quello che non si usa più."""
+
+PLANNING_PROMPT = """Questa è la chat di pianificazione: Mattia decide con te i pranzi e le cene dei prossimi giorni. In testa a ogni messaggio trovi il contesto: adesso (giorno e ora), il posto da cui Mattia è partito se ce n'è uno, e la proposta che è sul tavolo.
+
+Mattia pianifica in due modi, e da come ne parla capisci quale; se non è chiaro, chiedilo:
+- con quello che c'è in casa: proponi pasti fatti con la dispensa di adesso, che entrano nella settimana subito ufficiali;
+- prima della spesa: proponi una bozza dei pasti, che serve a compilare la lista; i pasti entrano come bozza e la dispensa non si tocca. Quando Mattia torna dalla spesa e ha sistemato la dispensa, ti dice cosa ha trovato e cosa no («il merluzzo non c'era, ho preso il salmone in offerta»): rileggi la dispensa, rivedi la bozza cambiando solo quello che serve, e riproponila come pasti ufficiali.
+
+Qui si pianifica, quindi il quadro della settimana serve. Prima di proporre leggi i pasti di questa settimana e della precedente (read_meals), la dispensa e la lista. Il quadro dillo in breve: i pasti registrati e i loro gruppi, gli squilibri con i numeri dei pasti, il sale stimato contro i 5 g al giorno. Poi le proposte: varie, con la precedenza alle voci in scadenza, ai sughi avviati e alle confezioni aperte, e per ognuna una riga su perché aiuta l'equilibrio («porta legumi, che mancano da sabato»).
+
+I posti: si pianifica da adesso in avanti, mai nel passato. Un pasto già ufficiale non si ripianifica da capo: lo giudichi, al massimo proponi un ritocco, e passi ai posti vuoti. Un pasto fuori casa resta com'è.
+
+I pasti li proponi con propose_meals, mai solo a parole: Mattia vede una scheda con il posto, il piatto e gli accompagnamenti, e la mette nella settimana con un tocco. Il piatto è il nome breve che si legge nella settimana («Frittata di spinaci e parmigiano»); gli accompagnamenti sono pane, frutta e contorni semplici, scritti corti («piadina · banana»). kind è official per i pasti con quello che c'è e per l'ufficializzazione di una bozza, draft per la bozza prima della spesa. Se Mattia vuole cambiare qualcosa, manda una proposta nuova intera: sostituisce la precedente. Se un posto è occupato, la scheda lo dice a Mattia e sostituire chiede la sua conferma: non chiederla tu.
+
+Le ricette non le scrivi qui: quando i pasti ufficiali entrano nella settimana, spena le fa scrivere una per pasto, e Mattia le trova aprendo il piatto.
+
+Quando Mattia ti dice che ha messo i pasti nella settimana, manda con propose_changes la scheda dei cambi per quei pasti: per pasti ufficiali le voci della dispensa che usano, con lo stato che diventano, e le cose da comprare che mancano; per una bozza solo le cose da comprare che mancano per quei piatti, perché la dispensa si aggiorna quando i pasti diventano ufficiali."""
+
+RECIPE_PROMPT = """Scrivi la ricetta di un pasto che Mattia ha appena messo nella settimana. Nel messaggio trovi il pasto (giorno, pranzo o cena, piatto, accompagnamenti) e, se c'è, la conversazione in cui l'avete deciso: segui quello che vi siete detti.
+- Leggi la dispensa e scrivi la ricetta con quello che c'è, con le dosi del pasto come lo si mangerà (di norma 1 porzione), misurate sulle confezioni.
+- Scrivila con write_recipe, una volta: titolo, porzioni, procedimento a passi numerati e tutte le righe degli ingredienti; summary è una riga su cosa hai scritto. Non cambiare dish e sides.
+- Se un contorno ha bisogno di una ricetta, mettilo nella ricetta del piatto.
+- Non c'è nessuno a cui fare domande: se qualcosa non è chiaro, scegli la strada più semplice e dillo nel procedimento.
+- Dopo write_recipe rispondi solo: fatta."""
+
+
+def _compose(*parts: str | None) -> str:
+    return "\n\n".join(p for p in parts if p)
 
 
 def dish_system_prompt(utensils_block: str | None) -> str:
-    parts = [COMMON_PROMPT, DISH_PROMPT, DISH_PANTRY_RULE]
-    if utensils_block:
-        parts.append(utensils_block)
-    return "\n\n".join(parts)
+    return _compose(COMMON_PROMPT, DISH_PROMPT, CHANGES_RULE, utensils_block)
+
+
+def planning_system_prompt(utensils_block: str | None) -> str:
+    return _compose(COMMON_PROMPT, PLANNING_PROMPT, CHANGES_RULE, utensils_block)
+
+
+def recipe_system_prompt(utensils_block: str | None) -> str:
+    return _compose(COMMON_PROMPT, RECIPE_PROMPT, utensils_block)
+
+
+@dataclass(frozen=True)
+class PlanningContext:
+    now: datetime
+    focus: tuple[date, MealSlot] | None
+    open_proposal: MealProposal | None
 
 
 @dataclass(frozen=True)
@@ -133,4 +177,58 @@ def render_turn_prompt(context: DishContext, history: Sequence[HistoryItem], tex
             rows.extend(item.changes)
         parts.append("\n".join(rows))
     parts.append(f"Il messaggio nuovo di Mattia:\n{text}")
+    return "\n\n".join(parts)
+
+
+def _history_rows(history: Sequence[HistoryItem]) -> str | None:
+    if not history:
+        return None
+    rows = ["La conversazione finora:"]
+    for item in history:
+        who = "Mattia" if item.role == "user" else "Claude"
+        rows.append(f"{who}: {item.text}")
+        rows.extend(item.changes)
+    return "\n".join(rows)
+
+
+def _proposal_block(proposal: MealProposal | None) -> str:
+    if proposal is None:
+        return "Sul tavolo non c'è nessuna proposta."
+    kind = "bozza" if proposal.kind == "draft" else "ufficiale"
+    rows = [f"La proposta sul tavolo ({kind}):"]
+    for row in proposal.rows:
+        place = f"{day_name(date.fromisoformat(row['day']))}, {SLOT_NAMES[row['slot']]}"
+        text = f"- {place}: {row['dish']}"
+        if row.get("sides"):
+            text += f", con {row['sides']}"
+        rows.append(text)
+    return "\n".join(rows)
+
+
+def render_planning_prompt(
+    context: PlanningContext, history: Sequence[HistoryItem], text: str
+) -> str:
+    now = context.now if context.now.tzinfo else context.now.replace(tzinfo=UTC)
+    local = now.astimezone(ZoneInfo("Europe/Rome"))
+    parts = [f"Adesso: {day_with_year(local.date())}, {local:%H:%M}."]
+    if context.focus is not None:
+        day, slot = context.focus
+        parts.append(f"Mattia è partito da: {day_name(day)}, {SLOT_NAMES[MealSlot(slot).value]}.")
+    parts.append(_proposal_block(context.open_proposal))
+    block = _history_rows(history)
+    if block:
+        parts.append(block)
+    parts.append(f"Il messaggio nuovo di Mattia:\n{text}")
+    return "\n\n".join(parts)
+
+
+def render_recipe_prompt(context: DishContext, history: Sequence[HistoryItem]) -> str:
+    slot = SLOT_NAMES[MealSlot(context.slot).value]
+    meal = f"Il pasto: {day_name(context.day)}, {slot}. Piatto: {context.dish}."
+    meal += f" Accompagnamenti: {context.sides or 'nessuno'}."
+    parts = [f"Oggi: {day_with_year(context.today)}.", meal]
+    block = _history_rows(history)
+    if block:
+        parts.append(block)
+    parts.append("Scrivi la ricetta di questo pasto.")
     return "\n\n".join(parts)

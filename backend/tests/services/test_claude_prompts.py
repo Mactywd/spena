@@ -1,23 +1,63 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
+from app.db.models.planning import MealProposal
 from app.db.models.recipe import Recipe, RecipeIngredient
 from app.domain.meals import MealSlot
 from app.services.claude.prompts import (
     COMMON_PROMPT,
-    DISH_PANTRY_RULE,
+    CHANGES_RULE,
     DISH_PROMPT,
+    PLANNING_PROMPT,
+    RECIPE_PROMPT,
+    PlanningContext,
     DishContext,
     HistoryItem,
     dish_system_prompt,
+    planning_system_prompt,
+    recipe_system_prompt,
+    render_planning_prompt,
+    render_recipe_prompt,
     render_turn_prompt,
 )
 from app.services.utensils import render_utensils_block
 
 
 def test_il_prompt_del_piatto_senza_utensili():
-    assert dish_system_prompt(None) == COMMON_PROMPT + "\n\n" + DISH_PROMPT + "\n\n" + DISH_PANTRY_RULE
+    assert dish_system_prompt(None) == COMMON_PROMPT + "\n\n" + DISH_PROMPT + "\n\n" + CHANGES_RULE
+
+
+def test_il_prompt_della_pianificazione():
+    assert planning_system_prompt(None) == (
+        COMMON_PROMPT + "\n\n" + PLANNING_PROMPT + "\n\n" + CHANGES_RULE
+    )
+    block = render_utensils_block([("frusta elettrica", None)])
+    assert planning_system_prompt(block).endswith("\n\n" + block)
+
+
+def test_il_prompt_della_ricetta():
+    assert recipe_system_prompt(None) == COMMON_PROMPT + "\n\n" + RECIPE_PROMPT
+    block = render_utensils_block([("frusta elettrica", None)])
+    assert recipe_system_prompt(block) == COMMON_PROMPT + "\n\n" + RECIPE_PROMPT + "\n\n" + block
+
+
+def test_i_prompt_dicono_le_regole_degli_stati():
+    for frase in (
+        "diventa finito",
+        "resta com'è",
+        "appena aperto diventa quasi finito",
+        "è avviato: non va in lista",
+    ):
+        assert frase in CHANGES_RULE
+    for frase in (
+        "mai nel passato",
+        "5 g al giorno",
+        "perché aiuta l'equilibrio",
+        "propose_meals",
+        "draft per la bozza",
+    ):
+        assert frase in PLANNING_PROMPT
 
 
 def test_il_prompt_del_piatto_con_gli_utensili():
@@ -89,3 +129,50 @@ def test_render_turn_prompt():
         dish="Frittata", sides=None, recipe=None,
     )
     assert "Il pasto non ha ancora una ricetta." in render_turn_prompt(senza, [], "ciao")
+
+
+def test_render_planning_prompt():
+    proposal = MealProposal(
+        kind="official",
+        rows=[
+            {"day": "2026-11-13", "slot": "dinner", "dish": "Orata al forno", "sides": "patate"},
+            {"day": "2026-11-14", "slot": "lunch", "dish": "Pasta al pesto", "sides": None},
+        ],
+    )
+    context = PlanningContext(
+        now=datetime(2026, 11, 12, 17, 40, tzinfo=UTC),
+        focus=(date(2026, 11, 13), MealSlot.DINNER),
+        open_proposal=proposal,
+    )
+    history = [
+        HistoryItem("user", "Cosa mangio domani?", ()),
+        HistoryItem(
+            "assistant", "Ecco.",
+            ("Proposta: Orata al forno — messa nella settimana",),
+        ),
+    ]
+    text = render_planning_prompt(context, history, "Va bene")
+    assert "Adesso: giovedì 12 novembre 2026, 18:40" in text
+    assert "venerdì 13 novembre, cena" in text
+    assert "Orata al forno, con patate" in text and "Pasta al pesto" in text
+    assert "Proposta: Orata al forno — messa nella settimana" in text
+    assert text.endswith("Va bene")
+
+
+def test_render_planning_prompt_senza_posto_ne_proposta():
+    context = PlanningContext(
+        now=datetime(2026, 11, 12, 17, 40, tzinfo=UTC), focus=None, open_proposal=None
+    )
+    text = render_planning_prompt(context, [], "Ciao")
+    assert "nessuna proposta" in text and "partito da" not in text
+
+
+def test_render_recipe_prompt():
+    ctx = DishContext(
+        today=date(2026, 11, 12), day=date(2026, 11, 14), slot=MealSlot.LUNCH,
+        dish="Pasta al pesto", sides=None, recipe=None,
+    )
+    history = [HistoryItem("user", "Pesto di basilico", ())]
+    text = render_recipe_prompt(ctx, history)
+    assert "sabato 14 novembre, pranzo" in text and "Pasta al pesto" in text
+    assert "Pesto di basilico" in text

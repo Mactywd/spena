@@ -90,10 +90,11 @@ def recipe_args(voci, **extra):
     return args
 
 
-def test_dish_tools_sono_i_cinque_di_spena(ctx):
+def test_dish_tools_sono_i_sei_di_spena(ctx):
     tools = dish_tools(ctx)
     assert [t.name for t in tools] == [
         "read_pantry", "read_shopping_list", "read_meals", "search_ingredients", "write_recipe",
+        "propose_changes",
     ]
     assert all(t.annotations.read_only_hint is True for t in tools[:4])
     assert SPENA_SERVER == "spena"
@@ -116,6 +117,14 @@ async def test_read_pantry_per_reparto_senza_non_alimentari(ctx, db_session, voc
     assert "quasi finito" in text and "scade presto" in text
     assert "detersivo" not in text.lower()
     assert "Uova" in text
+
+
+async def test_read_pantry_porta_gli_id(ctx, db_session, voci):
+    item = PantryItem(ingredient_id=voci["uova"].id, status="available")
+    db_session.add(item)
+    await db_session.flush()
+    text = text_of(await by_name(ctx)["read_pantry"].handler({}))
+    assert f"id {item.id}" in text
 
 
 async def test_read_pantry_vuota(ctx):

@@ -176,6 +176,7 @@ async def test_il_giro_usa_prompt_strumenti_e_sforzo_della_chat_del_piatto(
     assert call["max_turns"] == 12
     assert call["tool_names"] == [
         "read_pantry", "read_shopping_list", "read_meals", "search_ingredients", "write_recipe",
+        "propose_changes",
     ]
     block = await utensils_prompt_block(db_session)
     assert block is not None
