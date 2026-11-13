@@ -8,6 +8,9 @@ modello linguistico.
 Gli ingredienti proposti vengono agganciati all'anagrafica per somiglianza. Un
 aggancio debole viene mostrato ma marcato incerto, perché un ingrediente
 sbagliato in silenzio avvelena la disponibilità di tutte le ricette.
+
+Le ricette scritte qui usano solo gli utensili dell'elenco (spec 2026-11-12 §8); con
+l'elenco vuoto il prompt è quello di sempre.
 """
 
 import json
@@ -23,6 +26,7 @@ from app.services.ingredient_match import match_name
 from app.repositories.llm_calls import record_llm_call
 from app.services.llm import LlmCallSite, LlmUnavailable, LlmUsage, complete_json
 from app.services.recipe_import.decide import CATEGORIES
+from app.services.utensils import utensils_prompt_block
 
 DRAFT_MAX_TOKENS = 2000
 # La variante rimanda indietro la ricetta intera, e un procedimento importato è lungo:
@@ -118,11 +122,18 @@ class RecipeDraft:
     cost: int | None = None
 
 
+def system_with_utensils(base: str, block: str | None) -> str:
+    """Il prompt di sistema con il blocco degli utensili; senza blocco, `base` com'è."""
+    return base if block is None else f"{base}\n{block}\n"
+
+
 async def draft_recipe(
     session: AsyncSession, prompt: str, client: object | None = None
 ) -> RecipeDraft:
+    block = await utensils_prompt_block(session)
     payload = await _ask(
-        session, call_site=LlmCallSite.RECIPE_DRAFT, system=SYSTEM_PROMPT, user=prompt,
+        session, call_site=LlmCallSite.RECIPE_DRAFT,
+        system=system_with_utensils(SYSTEM_PROMPT, block), user=prompt,
         max_tokens=DRAFT_MAX_TOKENS, client=client,
     )
     return await _draft_from(session, payload)
@@ -171,8 +182,10 @@ async def draft_variant(
     `commit` sulla sessione.
     """
     question = variant_question(recipe, prompt)
+    block = await utensils_prompt_block(session)
     payload = await _ask(
-        session, call_site=LlmCallSite.RECIPE_VARIANT, system=VARIANT_SYSTEM_PROMPT,
+        session, call_site=LlmCallSite.RECIPE_VARIANT,
+        system=system_with_utensils(VARIANT_SYSTEM_PROMPT, block),
         user=question, max_tokens=VARIANT_MAX_TOKENS, client=client,
     )
     return await _draft_from(session, payload)

@@ -1,4 +1,13 @@
 import uuid
+from types import SimpleNamespace
+
+from llm_fakes import FakeLlm
+
+import app.services.llm as llm
+from app.db.models.ingredient import Ingredient, IngredientCategory
+from app.db.models.recipe import RecipeSource
+from app.repositories.recipes import create_recipe
+from app.services.ai_recipes import SYSTEM_PROMPT, VARIANT_SYSTEM_PROMPT
 
 U = "/api/v1/utensils"
 
@@ -99,3 +108,52 @@ async def test_un_valore_che_non_e_testo_e_un_422(logged_client):
     creato = (await logged_client.post(U, json={"name": "colino"})).json()
     assert (await logged_client.patch(f"{U}/{creato['id']}", json={"name": 123})).status_code == 422
     assert (await logged_client.patch(f"{U}/{creato['id']}", json={"note": 5})).status_code == 422
+
+
+BOZZA = {
+    "title": "Frittata", "description": None, "instructions": "1. Sbatti le uova.",
+    "servings": 1, "cost": 1, "ingredients": [],
+}
+
+
+def _trasporto_finto(monkeypatch, *risposte) -> FakeLlm:
+    """Sostituisce il trasporto HTTP solo dentro `app.services.llm`: la rotta, la
+    sessione e `complete_json` sono quelli veri. Non si tocca `httpx.AsyncClient` nel
+    modulo `httpx`, che è lo stesso nome del client di prova di `conftest.py`."""
+    from app.core.config import get_settings
+
+    finto = FakeLlm(*risposte)
+    monkeypatch.setattr(llm, "httpx", SimpleNamespace(AsyncClient=lambda **_: finto))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    get_settings.cache_clear()
+    return finto
+
+
+async def test_la_rotta_della_bozza_manda_gli_utensili_scritti_dalla_rotta(logged_client, monkeypatch):
+    await logged_client.post(U, json={"name": "frusta elettrica"})
+    finto = _trasporto_finto(monkeypatch, BOZZA)
+    risposta = await logged_client.post("/api/v1/recipes/ai-draft", json={"prompt": "una frittata"})
+    assert risposta.status_code == 200
+    sistema = finto.bodies[0]["messages"][0]["content"]
+    assert "\n- frusta elettrica\n" in sistema
+    assert sistema.startswith(SYSTEM_PROMPT)
+
+
+async def test_la_rotta_della_variante_manda_gli_utensili(logged_client, db_session, monkeypatch):
+    await logged_client.post(U, json={"name": "padella antiaderente", "note": "da 24 cm"})
+    uova = Ingredient(name="uova", display_name="Uova", category=IngredientCategory.ALTRO)
+    db_session.add(uova)
+    await db_session.flush()
+    ricetta = await create_recipe(
+        db_session, title="Frittata", description=None, instructions="1. Sbatti le uova.",
+        servings=1, source=RecipeSource.MANUAL, source_ref=None,
+        ingredients=[(uova.id, "primary", "2", None)], embedding=None,
+    )
+    finto = _trasporto_finto(monkeypatch, BOZZA)
+    risposta = await logged_client.post(
+        f"/api/v1/recipes/{ricetta.id}/ai-variant", json={"prompt": "senza forno"}
+    )
+    assert risposta.status_code == 200
+    sistema = finto.bodies[0]["messages"][0]["content"]
+    assert "\n- padella antiaderente (da 24 cm)\n" in sistema
+    assert sistema.startswith(VARIANT_SYSTEM_PROMPT)
