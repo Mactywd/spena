@@ -286,9 +286,11 @@ async def write_meal_recipe(
                     recipe.embedding = embedding
             _apply_meal_fields(meal, dish=draft.dish, sides=draft.sides)
             await session.flush()
-    except (NonFoodInRecipe, RepeatedIngredient, RecipeWriteRefused) as exc:
+    except Exception as exc:
         # il rollback del SAVEPOINT scade gli oggetti: il pasto che chi chiama ha in mano
-        # si ricarica, o la prima lettura dopo il rifiuto sarebbe un MissingGreenlet
+        # si ricarica, o la prima lettura dopo il rifiuto sarebbe un MissingGreenlet. Vale
+        # per ogni eccezione, non solo per i rifiuti: un errore del database, a metà
+        # scrittura, scade il pasto allo stesso modo.
         await get_meal(session, meal_id)
         if isinstance(exc, NonFoodInRecipe):
             raise RecipeWriteRefused(

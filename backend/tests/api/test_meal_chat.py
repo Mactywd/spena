@@ -192,6 +192,29 @@ async def test_annulla_dalla_rotta(chat, frittata, voci):
     }
 
 
+async def test_annulla_mentre_claude_risponde_e_409(chat, frittata, voci, registry, db_session):
+    """Un'altra scheda può premere «Annulla» mentre `write_recipe` scrive: si rifiuta come
+    un secondo messaggio, con lo stesso corpo, e la ricetta resta com'è."""
+    change_id = await modifica(chat, frittata, voci)
+    conversation = await get_or_create_dish_conversation(db_session, frittata.id)
+    libera = asyncio.Event()
+
+    async def giro_vivo(emit):
+        await libera.wait()
+
+    registry.start(conversation.id, giro_vivo)
+    try:
+        risposta = await chat.client.post(url(frittata, f"/changes/{change_id}/undo"))
+        assert risposta.status_code == 409
+        assert risposta.json() == {"code": "claude_busy", "detail": BUSY_NOTICE}
+        assert "150 g" in await quantita(chat, frittata)
+    finally:
+        libera.set()
+        await registry.wait(conversation.id)
+    dopo = await chat.client.post(url(frittata, f"/changes/{change_id}/undo"))
+    assert dopo.status_code == 200
+
+
 async def test_annulla_dopo_il_modulo_e_409(chat, frittata, voci):
     change_id = await modifica(chat, frittata, voci)
     ricetta = (await chat.client.get(f"/api/v1/recipes/{frittata.recipe_id}")).json()

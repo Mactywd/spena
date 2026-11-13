@@ -8,6 +8,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.core.config import get_settings
 from app.db.models.conversation import ConversationMessage
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.llm_call import LlmCall
@@ -388,8 +389,16 @@ async def test_un_attesa_con_il_giro_vivo_resta_in_attesa(db_session, frittata):
     assert [m.status for m in view.messages] == ["pending"]
 
 
-async def test_la_vista_di_un_pasto_senza_chat(db_session, frittata):
-    view = await dish_chat_view(db_session, frittata, replying=False, now=datetime.now(UTC))
+async def test_la_vista_di_un_pasto_senza_chat(db_session, frittata, monkeypatch):
+    # il token si fissa vuoto: in un container che ce l'ha, l'esito non deve cambiare
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+    get_settings.cache_clear()
+    try:
+        view = await dish_chat_view(
+            db_session, frittata, replying=False, now=datetime.now(UTC)
+        )
+    finally:
+        get_settings.cache_clear()
 
     assert view.conversation_id is None and view.messages == []
     assert view.highlight is None
@@ -436,3 +445,79 @@ async def test_un_eccezione_inattesa_lascia_il_messaggio_fallito(
     saved = await dal_database(ConversationMessage, message.id)
     assert saved.status == "failed" and saved.failure == "unavailable"
     assert "guasto inatteso" in caplog.text
+
+
+class ScadeTutto(FakeClaude):
+    """Durante il giro scade tutto quello che la sessione del giro ha in mano, come un
+    SAVEPOINT annullato da un errore inatteso: dopo il flusso il giro non deve rileggere
+    gli oggetti caricati prima."""
+
+    def __init__(self, script, sessions):
+        super().__init__(script)
+        self.sessions = sessions
+
+    async def run(self, **kwargs):
+        for session in self.sessions:
+            session.expire_all()
+        async for event in super().run(**kwargs):
+            yield event
+
+
+def spia(factory, sessions):
+    def make():
+        session = factory()
+        sessions.append(session)
+        return session
+
+    return make
+
+
+async def test_un_successo_con_gli_oggetti_scaduti_finisce_con_done(
+    db_session, factory, frittata, dal_database
+):
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Ciao")
+    sessions: list = []
+    fake = ScadeTutto([Say("Ok."), Finish()], sessions)
+
+    events = await giro(spia(factory, sessions), fake, conversation, message)
+
+    assert [e.name for e in events][-1] == "done"
+    assert (await dal_database(ConversationMessage, message.id)).status == "sent"
+    [row] = await chiamate(db_session)
+    assert row.ok is True
+
+
+async def test_il_tempo_massimo_con_gli_oggetti_scaduti_resta_timeout(
+    db_session, factory, frittata, dal_database
+):
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Ciao")
+    sessions: list = []
+    fake = ScadeTutto([Say("Allora…"), Hang()], sessions)
+
+    events = await giro(spia(factory, sessions), fake, conversation, message, timeout=0.2)
+
+    assert events[-1].name == "error"
+    assert events[-1].data["code"] == "timeout"
+    assert (await dal_database(ConversationMessage, message.id)).failure == "timeout"
+    [row] = await chiamate(db_session)
+    assert row.ok is False
+
+
+async def test_il_giro_non_tiene_aperta_la_transazione_mentre_claude_pensa(
+    db_session, factory, frittata
+):
+    """Le letture del giro finiscono prima di chiamare Claude: la sessione non resta
+    «idle in transaction» per tutto il giro."""
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Ciao")
+    sessions: list = []
+    seen: list[bool] = []
+
+    class Guarda(FakeClaude):
+        async def run(self, **kwargs):
+            seen.append(sessions[0].in_transaction())
+            async for event in super().run(**kwargs):
+                yield event
+
+    await giro(spia(factory, sessions), Guarda([Say("Ok."), Finish()]), conversation, message)
+
+    assert seen == [False]

@@ -367,3 +367,25 @@ async def test_annulla_con_un_ingrediente_diventato_non_alimentare(db_session, v
         await undo_recipe_change(db_session, change)
     assert caught.value.code == ChangeRefusalCode.STALE
     assert "non c'è più" in caught.value.message
+
+
+async def test_un_errore_inatteso_nel_savepoint_lascia_il_pasto_leggibile(
+    db_session, voci, meal, monkeypatch
+):
+    """Non solo i tre rifiuti: qualsiasi eccezione che annulla il SAVEPOINT scade il pasto,
+    che si ricarica prima di risalire (un MissingGreenlet alla prima lettura, altrimenti)."""
+    from app.services import meal_recipes
+
+    original = meal_recipes.link_recipe
+
+    async def link_poi_guasto(session, target, recipe):
+        await original(session, target, recipe)
+        await session.flush()
+        raise RuntimeError("guasto del database")
+
+    monkeypatch.setattr(meal_recipes, "link_recipe", link_poi_guasto)
+    with pytest.raises(RuntimeError, match="guasto del database"):
+        await write_meal_recipe(db_session, meal, draft(line(voci["uova"])))
+    # letture sincrone: un oggetto scaduto qui alzerebbe MissingGreenlet
+    assert meal.recipe_id is None
+    assert meal.dish == "Frittata"

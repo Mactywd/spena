@@ -291,12 +291,17 @@ async def _turn(
     ):
         logger.warning("Il giro %s non ha un messaggio in attesa: niente da fare", user_message_id)
         return
+    # Da qui si usano solo questi id: un SAVEPOINT annullato dentro `write_recipe` (un
+    # tempo massimo a metà scrittura, un errore del database) scade gli oggetti caricati,
+    # e rileggerne uno dopo il flusso sarebbe un MissingGreenlet.
+    message_id = message.id
+    message_text = message.text
     conversation = await session.get(Conversation, conversation_id)
     meal_id = conversation.meal_id if conversation is not None else None
     meal = await get_meal(session, meal_id) if meal_id is not None else None
     if meal is None or not can_chat(meal):
         await _fail(
-            session, lock, message_id=message.id, meal_id=meal_id,
+            session, lock, message_id=message_id, meal_id=meal_id,
             failure=ClaudeFailure(FailureKind.INTERRUPTED, None, "il pasto non ha la chat"),
             record=False, emit=emit,
         )
@@ -309,8 +314,12 @@ async def _turn(
         today=today, day=meal.day, slot=MealSlot(meal.slot), dish=meal.dish,
         sides=meal.sides, recipe=recipe,
     )
-    history = await _history(session, conversation_id, exclude=message.id)
-    prompt = render_turn_prompt(context, history, message.text)
+    history = await _history(session, conversation_id, exclude=message_id)
+    prompt = render_turn_prompt(context, history, message_text)
+    # Le letture sono finite: si chiude la transazione, o la sessione resterebbe «idle in
+    # transaction» (con i lock di lettura sulle tabelle) per tutto il tempo di Claude.
+    # Non c'è niente in sospeso, e `expire_on_commit=False` tiene gli oggetti caricati.
+    await session.commit()
 
     async def on_change(change: RecipeChange) -> None:
         # chiamata da `write_recipe` dopo il suo commit, con `ctx.lock` già preso
@@ -318,8 +327,8 @@ async def _turn(
         await emit(ChatEvent("change", {"change": out.model_dump(mode="json")}))
 
     ctx = TurnContext(
-        session=session, lock=lock, today=today, meal_id=meal.id,
-        conversation_id=conversation_id, turn_message_id=message.id, on_change=on_change,
+        session=session, lock=lock, today=today, meal_id=meal_id,
+        conversation_id=conversation_id, turn_message_id=message_id, on_change=on_change,
     )
 
     deltas: list[str] = []
@@ -361,7 +370,7 @@ async def _turn(
 
     if isinstance(outcome, ClaudeFailure):
         await _fail(
-            session, lock, message_id=message.id, meal_id=meal.id, failure=outcome,
+            session, lock, message_id=message_id, meal_id=meal_id, failure=outcome,
             record=outcome.kind != FailureKind.NOT_CONFIGURED, emit=emit,
         )
         return
@@ -379,7 +388,7 @@ async def _turn(
                 role=MessageRole.ASSISTANT.value,
                 text=outcome.text or "".join(deltas),
                 status=MessageStatus.SENT.value,
-                reply_to_id=message.id,
+                reply_to_id=message_id,
                 created_at=datetime.now(UTC),
             )
         )
@@ -396,7 +405,7 @@ async def _turn(
             ok=True,
         )
         await session.commit()
-        chat = await _chat_data(session, meal.id)
+        chat = await _chat_data(session, meal_id)
     await emit(ChatEvent("done", {"chat": chat}))
 
 

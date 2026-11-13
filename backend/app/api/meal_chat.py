@@ -196,12 +196,17 @@ async def undo_change(
     change = await session.get(RecipeChange, change_id)
     if change is None or change.meal_id != meal.id:
         raise HTTPException(404, "modifica inesistente")
+    # Con un giro vivo, `write_recipe` può scrivere le stesse righe proprio ora: l'interfaccia
+    # spegne «Annulla», ma un'altra scheda no. Si rifiuta come un secondo messaggio.
+    conversation = await dish_conversation(session, meal.id)
+    conversation_id = conversation.id if conversation is not None else None
+    if conversation_id is not None and registry.running(conversation_id):
+        return _refuse(409, "claude_busy", BUSY_NOTICE)
     try:
         await undo_recipe_change(session, change)
     except ChangeRefusal as refusal:
         await session.rollback()
         return _refuse(409, str(refusal.code), refusal.message)
     await session.commit()
-    conversation = await dish_conversation(session, meal.id)
-    replying = conversation is not None and registry.running(conversation.id)
+    replying = conversation_id is not None and registry.running(conversation_id)
     return await dish_chat_view(session, meal, replying=replying, now=datetime.now(UTC))

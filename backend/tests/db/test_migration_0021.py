@@ -161,3 +161,41 @@ async def test_cancellare_il_pasto_porta_via_chat_messaggi_e_modifiche(scratch_u
     await _esegui(scratch_url, "DELETE FROM meals WHERE id = :id", id=pasto)
     for tabella in TABELLE:
         assert await _scalar(scratch_url, f"SELECT count(*) FROM {tabella}") == 0
+
+
+async def test_cancellare_messaggio_o_conversazione_lascia_la_modifica(scratch_url):
+    """«Riprova» cancella il messaggio fallito, ma la ricetta resta cambiata: la sua
+    modifica resta, con i riferimenti a NULL (ON DELETE SET NULL)."""
+    alembic(scratch_url, "upgrade", "head")
+    pasto, ricetta, conversazione = await _pasto(scratch_url), uuid.uuid4(), uuid.uuid4()
+    messaggio, modifica = uuid.uuid4(), uuid.uuid4()
+    await _esegui(scratch_url, RICETTA, id=ricetta)
+    await _esegui(scratch_url, CONVERSAZIONE, id=conversazione, kind="dish", meal_id=pasto)
+    await _esegui(
+        scratch_url, MESSAGGIO, id=messaggio, conversation_id=conversazione,
+        role="user", status="failed",
+    )
+    await _esegui(scratch_url, MODIFICA, id=modifica, meal_id=pasto, recipe_id=ricetta)
+    await _esegui(
+        scratch_url,
+        "UPDATE recipe_changes SET turn_message_id = :m, conversation_id = :c WHERE id = :id",
+        m=messaggio, c=conversazione, id=modifica,
+    )
+
+    await _esegui(scratch_url, "DELETE FROM conversation_messages WHERE id = :id", id=messaggio)
+    riga = "SELECT count(*) FROM recipe_changes WHERE id = :id"
+    assert await _scalar(scratch_url, riga, id=modifica) == 1
+    assert await _scalar(
+        scratch_url, "SELECT turn_message_id IS NULL FROM recipe_changes WHERE id = :id",
+        id=modifica,
+    ) is True
+    assert await _scalar(
+        scratch_url, "SELECT conversation_id FROM recipe_changes WHERE id = :id", id=modifica
+    ) == conversazione
+
+    await _esegui(scratch_url, "DELETE FROM conversations WHERE id = :id", id=conversazione)
+    assert await _scalar(scratch_url, riga, id=modifica) == 1
+    assert await _scalar(
+        scratch_url, "SELECT conversation_id IS NULL FROM recipe_changes WHERE id = :id",
+        id=modifica,
+    ) is True
