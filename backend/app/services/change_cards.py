@@ -41,6 +41,7 @@ GONE_NOTE = "La voce non è più in dispensa."
 CHANGED_NOTE = "Cambiata dopo la scheda: controlla prima di rimetterla."
 IN_CART_NOTE = "È già nel carrello."
 BOUGHT_NOTE = "Già comprata: resta com'è."
+REVERSED_NOTE = "Già rimessa da un'altra scheda."
 
 
 @dataclass(frozen=True)
@@ -392,7 +393,9 @@ async def apply_card(
 
     Una scheda inversa ha righe `pantry` come le altre e righe `unlist`, che tolgono
     dalla lista con `patch_item` (la strada di «Togli») una voce ancora da comprare o
-    nel carrello; ogni sua riga applicata segna la riga d'origine con `reversed_at`.
+    nel carrello; ogni sua riga applicata segna la riga d'origine con `reversed_at`, e
+    una riga la cui origine è già annullata si salta con la sua nota, senza toccare
+    niente: due inverse non rimettono mai due volte.
     """
     card = await _locked(session, card_id)
     _must_be_proposed(card)
@@ -418,6 +421,17 @@ async def apply_card(
     for row in rows:
         if not row.checked:
             row.applied = False
+            continue
+        source = (
+            await session.get(ChangeCardRow, row.source_row_id)
+            if row.source_row_id is not None
+            else None
+        )
+        if source is not None and source.reversed_at is not None:
+            # un'altra inversa l'ha già rimessa: rimetterla di nuovo cancellerebbe
+            # quello che è successo dopo (decisione 22)
+            row.applied = False
+            row.note = REVERSED_NOTE
             continue
         if row.kind == RowKind.PANTRY.value:
             item = (
@@ -454,11 +468,9 @@ async def apply_card(
                 continue
             await patch_item(session, listed.id, status=ShoppingStatus.ARCHIVED)
             row.applied = True
-        if row.applied and row.source_row_id is not None:
+        if row.applied and source is not None:
             # la riga della scheda in avanti è annullata: un'altra inversa non la rimette
-            source = await session.get(ChangeCardRow, row.source_row_id)
-            if source is not None:
-                source.reversed_at = datetime.now(UTC)
+            source.reversed_at = datetime.now(UTC)
 
     card.status = CardStatus.APPLIED.value
     card.applied_at = datetime.now(UTC)
@@ -541,6 +553,28 @@ async def _drop_meal_from_proposed(session: AsyncSession, meal_id: str) -> None:
         await session.flush()
 
 
+async def _discard_proposed_inverses(session: AsyncSession, meal_id: str) -> None:
+    """Una scheda inversa sola per pasto: quella nuova si ricalcola dalle stesse righe
+    d'origine sullo stato di adesso, quindi prende il posto delle vecchie ancora
+    proposte (per esempio quella del «fuori casa» quando poi il pasto si toglie)."""
+    cards = (
+        await session.execute(
+            select(ChangeCard)
+            .where(
+                ChangeCard.kind == CardKind.INVERSE.value,
+                ChangeCard.status == CardStatus.PROPOSED.value,
+                ChangeCard.meal_ids.contains([meal_id]),
+            )
+            .execution_options(populate_existing=True)
+        )
+    ).scalars().all()
+    for card in cards:
+        card.status = CardStatus.DISCARDED.value
+        card.discarded_at = datetime.now(UTC)
+    if cards:
+        await session.flush()
+
+
 async def _inverse_pantry_row(
     session: AsyncSession, source: ChangeCardRow
 ) -> dict[str, object] | None:
@@ -617,10 +651,12 @@ async def propose_inverse_card(
 
     Pulisce anche le schede in avanti ancora proposte del pasto, anche di una bozza:
     perdono le righe che servivano solo a lui, e si scartano se restano vuote e senza
-    pasti.
+    pasti. E scarta sempre, anche quando la nuova non nasce, le inverse ancora proposte
+    del pasto: una sola per pasto, la più recente.
     """
     meal_id = str(meal.id)
     await _drop_meal_from_proposed(session, meal_id)
+    await _discard_proposed_inverses(session, meal_id)
     if meal.status != MealStatus.OFFICIAL.value:
         return None
 

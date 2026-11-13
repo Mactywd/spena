@@ -299,3 +299,45 @@ async def test_le_schede_proposte_del_pasto_tolto_si_puliscono(db_session, mondo
             select(ChangeCardRow).where(ChangeCardRow.card_id == sola.id)
         )
     ).scalars().all() == []
+
+
+async def test_una_scheda_inversa_sola_per_pasto(db_session, mondo):
+    # fuori casa, l'inversa resta proposta; poi il pasto si toglie: la vecchia si scarta
+    a = mondo["A"]
+    await applicata(db_session, [a], [PantryProposal(mondo["voci"]["ricotta"].id, F)])
+    await update_meal(db_session, a, {"away": True})
+    (fuori,) = await inverse(db_session)
+    await delete_meal(db_session, a)
+
+    fuori = await get_card(db_session, fuori.id)
+    assert fuori.status == CardStatus.DISCARDED and fuori.discarded_at is not None
+    (proposta,) = [c for c in await inverse(db_session) if c.status == CardStatus.PROPOSED]
+    assert proposta.title == "Hai tolto «Pasta alla ricotta»: rimetti quello che usava?"
+
+
+async def test_una_riga_gia_rimessa_non_si_rimette_due_volte(db_session, mondo):
+    # la ricotta serve ad A e alla bozza: due pasti diversi, due inverse dalla stessa riga
+    a, bozza, v = mondo["A"], mondo["bozza"], mondo["voci"]
+    await applicata(db_session, [a, bozza], [PantryProposal(v["ricotta"].id, F)])
+    await update_meal(db_session, a, {"away": True})
+    await update_meal(db_session, bozza, {"status": MealStatus.OFFICIAL})
+    await update_meal(db_session, bozza, {"away": True})
+    prima, seconda = await inverse(db_session)
+    assert [r.kind for r in prima.rows] == [r.kind for r in seconda.rows] == ["pantry", "unlist"]
+
+    await apply_card(db_session, prima.id, [])
+    await set_status(db_session, v["ricotta"].id, F)  # Mattia la usa di nuovo
+    await db_session.refresh(v["ricotta"])
+    cambiata = v["ricotta"].status_changed_at
+
+    done = await apply_card(db_session, seconda.id, [])
+    assert [(r.applied, r.note) for r in done.rows] == [
+        (False, "Già rimessa da un'altra scheda."),
+        (False, "Già rimessa da un'altra scheda."),
+    ]
+    await db_session.refresh(v["ricotta"])
+    assert v["ricotta"].status == "finished"
+    assert v["ricotta"].status_changed_at == cambiata
+    voce = await voce_in_lista(db_session, mondo["ing"]["ricotta"])
+    await db_session.refresh(voce)
+    assert voce.status == ShoppingStatus.ARCHIVED
