@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 import pytest_asyncio
@@ -143,6 +143,7 @@ async def test_spostare_su_un_posto_occupato_chiede_la_sostituzione_e_poi_sostit
     assert exc.value.code == MealRefusalCode.SLOT_TAKEN
     assert exc.value.occupant.id == other_id
     assert (await meal_at(db_session, d(10), D)).id == m.id
+    assert (await meal_at(db_session, d(13), L)).id == other_id
     await update_meal(db_session, m, {"day": d(13), "slot": "lunch"}, replace=True)
     assert await get_meal(db_session, other_id) is None
     assert (await meal_at(db_session, d(13), L)).id == m.id
@@ -157,8 +158,25 @@ async def test_fuori_casa_toglie_la_ricetta_e_l_avanzo(db_session, frittata):
     await update_meal(db_session, origin, {"away": True})
     assert (await get_meal(db_session, origin.id)).recipe_id is None
     assert (await fresh(db_session, copy.id)).archived_at is not None
+    assert (await get_meal(db_session, left.id)).leftover_of_id is None
+
+
+async def test_un_avanzo_che_va_fuori_casa_perde_il_legame_e_l_origine_resta(db_session):
+    origin = await create_meal(db_session, day=d(10), slot=D, dish="Frittata")
+    left = await create_meal(
+        db_session, day=d(11), slot=L, dish="Frittata fredda", leftover_of_id=origin.id
+    )
     await update_meal(db_session, left, {"away": True})
     assert (await get_meal(db_session, left.id)).leftover_of_id is None
+    assert (await get_meal(db_session, origin.id)) is not None
+
+
+async def test_un_pasto_fuori_casa_si_crea_senza_legame_d_avanzo(db_session):
+    origin = await create_meal(db_session, day=d(10), slot=D, dish="Frittata")
+    m = await create_meal(
+        db_session, day=d(11), slot=L, dish="Ristorante", away=True, leftover_of_id=origin.id
+    )
+    assert (await get_meal(db_session, m.id)).leftover_of_id is None
 
 
 async def test_fuori_casa_lascia_nel_ricettario_la_ricetta_salvata(db_session, frittata):
@@ -269,8 +287,6 @@ async def test_la_copia_non_tocca_l_originale(db_session, frittata):
 
 async def test_non_si_copia_una_ricetta_eliminata(db_session, frittata):
     m = await create_meal(db_session, day=d(10), slot=D, dish="Frittata")
-    from datetime import UTC, datetime
-
     frittata.archived_at = datetime.now(UTC)
     await db_session.flush()
     with pytest.raises(MealRefusal) as exc:

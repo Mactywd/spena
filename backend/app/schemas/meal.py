@@ -78,12 +78,12 @@ class MealCreate(BaseModel):
     leftover_of_id: uuid.UUID | None = None
     replace: bool = False
 
-    @field_validator("dish", mode="before")
+    @field_validator("dish", mode="after")
     @classmethod
     def _dish(cls, v: str | None) -> str:
         return _clean_dish(v)
 
-    @field_validator("sides", mode="before")
+    @field_validator("sides", mode="after")
     @classmethod
     def _sides(cls, v: str | None) -> str | None:
         return _clean_sides(v)
@@ -100,12 +100,12 @@ class MealUpdate(BaseModel):
     status: MealStatus | None = None
     replace: bool = False
 
-    @field_validator("dish", mode="before")
+    @field_validator("dish", mode="after")
     @classmethod
     def _dish(cls, v: str | None) -> str:
         return _clean_dish(v)
 
-    @field_validator("sides", mode="before")
+    @field_validator("sides", mode="after")
     @classmethod
     def _sides(cls, v: str | None) -> str | None:
         return _clean_sides(v)

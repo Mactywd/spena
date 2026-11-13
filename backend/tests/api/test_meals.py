@@ -91,6 +91,53 @@ async def test_un_piatto_vuoto_e_422(logged_client, piatto):
     assert r.status_code == 422
 
 
+@pytest.mark.parametrize(
+    ("metodo", "corpo"),
+    [
+        ("post", {"dish": 123}),
+        ("post", {"sides": 5}),
+        ("patch", {"dish": [1]}),
+        ("patch", {"dish": None}),
+    ],
+)
+async def test_un_piatto_o_accompagnamenti_non_testo_e_422(logged_client, db_session, metodo, corpo):
+    if metodo == "post":
+        r = await logged_client.post(
+            M, json={"day": "2026-11-11", "slot": "lunch", "dish": "Pizza", **corpo}
+        )
+    else:
+        m = await pasto(db_session, d(11), L, "Pizza")
+        r = await logged_client.patch(f"{M}/{m.id}", json=corpo)
+    assert r.status_code == 422
+
+
+async def test_un_avanzo_valido_via_api(logged_client, db_session):
+    origine = (await pasto(db_session, d(10), D, "Lasagne")).id
+    r = await logged_client.post(
+        M, json={"day": "2026-11-11", "slot": "lunch", "dish": "Lasagne fredde",
+                 "leftover_of_id": str(origine)},
+    )
+    assert r.status_code == 201
+    assert r.json()["leftover_of"]["id"] == str(origine)
+
+
+async def test_un_avanzo_con_origine_dopo_il_posto_e_422(logged_client, db_session):
+    dopo = (await pasto(db_session, d(12), D, "Dopo")).id
+    r = await logged_client.post(
+        M, json={"day": "2026-11-11", "slot": "lunch", "dish": "Avanzo",
+                 "leftover_of_id": str(dopo)},
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "bad_leftover"
+
+
+async def test_una_bozza_ufficiale_non_torna_bozza(logged_client, db_session):
+    m = await pasto(db_session, d(11), L, "Pizza")
+    r = await logged_client.patch(f"{M}/{m.id}", json={"status": "draft"})
+    assert r.status_code == 422
+    assert r.json()["code"] == "stays_official"
+
+
 async def test_un_posto_occupato_e_409_con_chi_c_e(logged_client, db_session):
     await pasto(db_session, d(11), D, "Pizza")
     r = await logged_client.post(M, json={"day": "2026-11-11", "slot": "dinner", "dish": "Altro"})
