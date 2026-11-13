@@ -56,6 +56,7 @@ function renderScreen() {
         <MemoryRouter initialEntries={["/ricette/r1"]}>
           <Routes>
             <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+            <Route path="/pasti/:id" element={<p>il pasto</p>} />
           </Routes>
         </MemoryRouter>
       </NoticeProvider>
@@ -1052,5 +1053,23 @@ describe("RecipeDetailScreen — Sostituisci (R5)", () => {
     await userEvent.click(apri);
     expect(within(riga).queryByText("Si può omettere: il piatto riesce anche senza basilico.")).toBeNull();
     expect(apri).toHaveFocus();
+  });
+});
+
+describe("RecipeDetailScreen — la ricetta di un pasto", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const meal = { id: "m1", day: "2026-11-10", slot: "dinner" as const, dish: "Pollo", recipe_id: "r1" };
+
+  it("fuori dal ricettario porta al suo pasto", async () => {
+    stubFetch({ in_book: false, meal });
+    renderScreen();
+    expect(await screen.findByText("il pasto")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cucina" })).toBeNull();
+  });
+
+  it("nel ricettario, anche con un pasto, mostra «Cucina»", async () => {
+    stubFetch({ in_book: true, meal });
+    renderScreen();
+    expect(await screen.findByRole("button", { name: "Cucina" })).toBeInTheDocument();
   });
 });

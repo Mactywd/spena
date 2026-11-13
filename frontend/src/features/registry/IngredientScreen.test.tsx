@@ -314,6 +314,36 @@ describe("IngredientScreen", () => {
     expect(screen.getByText("(eliminata)")).toBeInTheDocument();
   });
 
+  it("una ricetta di un pasto nel rifiuto è segnata «(da un pasto)»", async () => {
+    stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        return [{
+          code: "non_food_in_recipes",
+          detail:
+            "«Pomodori» è in 1 ricetta: non può diventare non alimentare finché una ricetta lo usa.",
+          recipe_count: 1,
+          recipes: [{ id: "r1", title: "Sugo semplice", archived: false, from_meal: true }],
+          pending_import_count: 0,
+          pending_terms: [],
+          pending_term_count: 0,
+        }, 409];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia reparto" }));
+    await userEvent.selectOptions(screen.getByLabelText("Reparto"), "casa");
+    await userEvent.click(screen.getByRole("button", { name: "Salva il reparto" }));
+
+    // il link resta il titolo e basta: la segnatura gli sta accanto
+    expect(await screen.findByRole("link", { name: "Sugo semplice" })).toHaveAttribute(
+      "href", "/ricette/r1"
+    );
+    expect(screen.getByText("(da un pasto)")).toBeInTheDocument();
+    expect(screen.queryByText("(eliminata)")).toBeNull();
+  });
+
   it("il rifiuto per le ricette dell'import in attesa porta alla coda, dove la decisione si annulla", async () => {
     stubRoutedFetch((path, init) => {
       if (init?.method === "PATCH") {

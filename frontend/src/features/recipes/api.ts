@@ -137,6 +137,14 @@ export function setRecipeArchived(id: string, archived: boolean) {
   });
 }
 
+/** Fa entrare (`true`) o uscire (`false`) dal ricettario la ricetta di un pasto. */
+export function setRecipeInBook(id: string, inBook: boolean) {
+  return apiFetch<RecipeDetail>(`/recipes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ in_book: inBook }),
+  });
+}
+
 // Propone una ricetta, non la salva: il salvataggio passa da createRecipe come
 // per ogni altra fonte, una volta che l'utente ha visto e corretto la bozza.
 export function draftRecipe(prompt: string) {

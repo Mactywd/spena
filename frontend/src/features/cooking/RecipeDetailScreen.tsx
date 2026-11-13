@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
-import { fetchRecipe, setRecipeArchived, type RecipeScale } from "../recipes/api";
+import { Link, Navigate, useParams } from "react-router-dom";
+import { fetchRecipe, setRecipeArchived, setRecipeInBook, type RecipeScale } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { ApiError } from "../../api/client";
 import { AddMissingButton } from "./AddMissingButton";
@@ -19,6 +19,8 @@ import { StatusDot } from "../../components/ui/StatusDot";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import {
   IconArrowsExchange,
+  IconBookmarkOff,
+  IconBookmarkPlus,
   IconChefHat,
   IconChevronLeft,
   IconExternalLink,
@@ -58,7 +60,18 @@ function cookNote(result: CookResult): string {
  * l'intestazione fissa. Il fondo è pieno (`bg-card`): sopra una foto un testo senza
  * fondo avrebbe il contrasto della foto, cioè nessuno garantito. «Ricette» e non
  * `navigate(-1)`, per il motivo scritto in `BackLink`. */
-function RecipeHero({ recipe }: { recipe: RecipeDetail }) {
+function RecipeHero({ recipe, inMeal }: { recipe: RecipeDetail; inMeal: boolean }) {
+  // nel piatto il ritorno è quello del piatto: resta solo la foto, senza il margine
+  // negativo che la metteva sotto il tasto
+  if (inMeal) {
+    return (
+      <RecipeImage
+        url={recipe.image_url}
+        alt={recipe.title}
+        className="mt-2 block aspect-[3/2] w-full rounded-card object-cover"
+      />
+    );
+  }
   return (
     <div>
       <Link
@@ -215,7 +228,18 @@ export function RecipeDetailScreen() {
   return <RecipeDetailView key={id} id={id} />;
 }
 
-function RecipeDetailView({ id }: { id: string }) {
+/** Il dettaglio di una ricetta. Con `meal` è la «modalità pasto» (piano Pasti, decisioni
+ * 9 e 21): la ricetta sta dentro `MealScreen`, sotto il piatto, e non è più una pagina
+ * del ricettario. Le condizioni sulla modalità sono `inMeal`, usata in pochi punti:
+ * l'eroe, il titolo, la barra delle azioni e il posto di «Cucina». */
+export function RecipeDetailView({
+  id,
+  meal,
+}: {
+  id: string;
+  meal?: { mealId: string; readOnly: boolean };
+}) {
+  const inMeal = meal !== undefined;
   const [cooking, setCooking] = useState(false);
 
   // come si vuole vedere la ricetta: per porzioni, o da una dose fissata su una riga
@@ -259,6 +283,20 @@ function RecipeDetailView({ id }: { id: string }) {
       ]),
   });
 
+  // «Salva nel ricettario» / «Togli dal ricettario»: la ricetta del pasto entra o esce
+  // dal ricettario, e con lei le liste che la contano
+  const setInBook = useMutation({
+    mutationFn: (inBook: boolean) => setRecipeInBook(id, inBook),
+    onSuccess: async (_saved, inBook) => {
+      notice({ text: inBook ? "Salvata nel ricettario." : "Tolta dal ricettario." });
+      await Promise.all(
+        [["recipe", id], ["recipes"], ["recipe-categories"], ["meals"]].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        )
+      );
+    },
+  });
+
   const {
     data: recipe,
     error: recipeError,
@@ -276,7 +314,7 @@ function RecipeDetailView({ id }: { id: string }) {
     placeholderData: keepPreviousData,
   });
 
-  // Serve solo per aprire il foglio di cottura: senza dispensa non si può dire
+  // (nel piatto non si cucina: `enabled` la spegne.) Serve solo per aprire il foglio di cottura: senza dispensa non si può dire
   // quali vasetti esistono, quindi un fallimento qui non può travestirsi da
   // "nessun vasetto da aggiornare" — altrimenti "Cucina" apparirebbe disponibile
   // ma produrrebbe un foglio vuoto, silenziosamente sbagliato.
@@ -286,7 +324,7 @@ function RecipeDetailView({ id }: { id: string }) {
     isError: isPantryError,
     isFetching: isPantryFetching,
     refetch: refetchPantry,
-  } = useQuery({ queryKey: ["pantry"], queryFn: fetchPantry });
+  } = useQuery({ queryKey: ["pantry"], queryFn: fetchPantry, enabled: !inMeal });
 
   // Il foglio prende il posto di ciò che sta sotto la testa, e l'inizio del foglio —
   // con «Tocca solo ciò che è cambiato» — può restare fuori vista: si porta in vista
@@ -410,8 +448,8 @@ function RecipeDetailView({ id }: { id: string }) {
   // nient'altro — niente «Cucina», niente «Modifica» (R10 §6.1).
   if (recipe.archived_at !== null) {
     return (
-      <div className="px-4 pt-2 pb-4">
-        <BackLink to="/ricette" label="Ricette" />
+      <div className={inMeal ? "pb-4" : "px-4 pt-2 pb-4"}>
+        {!inMeal && <BackLink to="/ricette" label="Ricette" />}
         <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
         <p className="pt-2 text-ink-soft">Questa ricetta è stata eliminata.</p>
         <Button
@@ -431,6 +469,12 @@ function RecipeDetailView({ id }: { id: string }) {
     );
   }
 
+  // decisione 19: una ricetta fuori dal ricettario è del suo pasto, e il dettaglio del
+  // ricettario non le mostra mai «Cucina»
+  if (!inMeal && recipe.in_book === false && recipe.meal) {
+    return <Navigate to={`/pasti/${recipe.meal.id}`} replace />;
+  }
+
   const groups: { label: string; lines: RecipeIngredientLine[] }[] = [
     { label: "Principali", lines: recipe.ingredients.filter((line) => line.role === "primary") },
     { label: "Secondari", lines: recipe.ingredients.filter((line) => line.role === "secondary") },
@@ -447,16 +491,39 @@ function RecipeDetailView({ id }: { id: string }) {
         null);
 
   return (
-    <div className="px-4 pt-2 pb-4">
-      <RecipeHero recipe={recipe} />
+    <div className={inMeal ? "pb-4" : "px-4 pt-2 pb-4"}>
+      <RecipeHero recipe={recipe} inMeal={inMeal} />
 
       {/* le due azioni rare accanto al titolo, di sola icona (spec T3 §2): si correggono
           o si tolgono ricette di rado, e non devono competere con «Cucina». `ghost` anche
           «Elimina»: il rosso vuol dire «manca» e «non è andata» (spec §3.1) */}
       <div className="flex items-start gap-2 pt-3">
-        <h1 className="min-w-0 flex-1 pt-1.5 text-2xl font-semibold tracking-tight">
-          {recipe.title}
-        </h1>
+        {/* nel piatto l'h1 è il piatto: la ricetta è un h2 */}
+        {inMeal ? (
+          <h2 className="min-w-0 flex-1 pt-1.5 text-xl font-semibold tracking-tight">
+            {recipe.title}
+          </h2>
+        ) : (
+          <h1 className="min-w-0 flex-1 pt-1.5 text-2xl font-semibold tracking-tight">
+            {recipe.title}
+          </h1>
+        )}
+        {inMeal ? (
+          // la modifica sta nel modulo di sempre, che poi torna al pasto; «Modifica con AI»
+          // creerebbe una variante nel ricettario da una ricetta che non c'è, e si elimina
+          // il pasto, non la ricetta (decisione 21). Di sola lettura (un avanzo): niente
+          !meal.readOnly && (
+            <IconToolbar label="Azioni della ricetta">
+              <Link
+                to={`/ricette/${recipe.id}/modifica?pasto=${meal.mealId}`}
+                aria-label="Modifica"
+                className={buttonClasses("ghost", "icon")}
+              >
+                <IconPencil aria-hidden="true" className="size-5" stroke={1.8} />
+              </Link>
+            </IconToolbar>
+          )
+        ) : (
         <IconToolbar label="Azioni della ricetta">
           <Link
             to={`/ricette/${recipe.id}/modifica`}
@@ -484,12 +551,13 @@ function RecipeDetailView({ id }: { id: string }) {
             onClick={() => archive({ id: recipe.id, title: recipe.title })}
           />
         </IconToolbar>
+        )}
       </div>
 
       {/* R8, Mattia: nella variante, sotto il titolo, la ricetta da cui nasce */}
       {recipe.derived_from && <OriginLink origin={recipe.derived_from} />}
 
-      {variantOpen && (
+      {!inMeal && variantOpen && (
         <VariantPrompt
           recipe={recipe}
           onClose={() => {
@@ -627,7 +695,32 @@ function RecipeDetailView({ id }: { id: string }) {
               freccia ricetta → lista. Uno sotto l'altro e non affiancati: a 375 px i due
               testi con le icone non ci stanno su una riga */}
           <div className="mt-6 flex flex-col gap-2">
-            {isPantryError ? (
+            {inMeal ? (
+              // nel piatto non si cucina (decisione 9): al posto di «Cucina», il destino
+              // della ricetta. Di sola lettura, niente
+              !meal.readOnly &&
+              ((recipe.in_book ?? true) ? (
+                <Button
+                  variant="ghost"
+                  shape="block"
+                  icon={IconBookmarkOff}
+                  busy={setInBook.isPending}
+                  onClick={() => setInBook.mutate(false)}
+                >
+                  Togli dal ricettario
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  shape="block"
+                  icon={IconBookmarkPlus}
+                  busy={setInBook.isPending}
+                  onClick={() => setInBook.mutate(true)}
+                >
+                  Salva nel ricettario
+                </Button>
+              ))
+            ) : isPantryError ? (
               // il foglio ha bisogno della dispensa per elencare i vasetti concreti:
               // senza, il posto di «Cucina» dice perché non si può procedere invece di
               // aprire un foglio vuoto e muto

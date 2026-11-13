@@ -12,6 +12,7 @@ import { IconToolbar } from "../../components/ui/IconToolbar";
 import { useNotice } from "../../components/ui/noticeContext";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import type { Meal, MealBody, MealPatch } from "../../domain/types";
+import { RecipeDetailView } from "../cooking/RecipeDetailScreen";
 import { MEALS_KEY, deleteMeal, fetchMeal, updateMeal } from "./api";
 import { MealForm } from "./MealForm";
 import { SLOT_LABELS, longDayLabel, mealMarks } from "./format";
@@ -212,7 +213,34 @@ export function MealScreen() {
             </div>
           </div>
         ) : null}
-        {/* qui, sotto, il Task 8 mette la ricetta e il piano 3 la chat */}
+        {m.recipe && (
+          <RecipeDetailView
+            key={m.recipe.id}
+            id={m.recipe.id}
+            meal={{ mealId: m.id, readOnly: false }}
+          />
+        )}
+        {m.leftover_of && (
+          <div className="flex flex-col gap-3">
+            <Link
+              to={`/pasti/${m.leftover_of.id}`}
+              className="text-sm font-medium text-brand break-words"
+            >
+              Avanzo di «{m.leftover_of.dish}», {longDayLabel(m.leftover_of.day)} ·{" "}
+              {SLOT_LABELS[m.leftover_of.slot]}
+            </Link>
+            {m.leftover_of.recipe_id ? (
+              <RecipeDetailView
+                key={m.leftover_of.recipe_id}
+                id={m.leftover_of.recipe_id}
+                meal={{ mealId: m.id, readOnly: true }}
+              />
+            ) : (
+              <p className="text-sm text-ink-soft">Il pasto da cui viene non ha una ricetta.</p>
+            )}
+          </div>
+        )}
+        {/* qui, sotto la ricetta, il piano 3 mette la chat del piatto */}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createTestQueryClient } from "../../test/queryClient";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import { MealScreen } from "./MealScreen";
-import type { Meal } from "../../domain/types";
+import type { Meal, RecipeDetail } from "../../domain/types";
 
 function meal(extra: Partial<Meal> = {}): Meal {
   return {
@@ -48,6 +48,29 @@ function renderMeal() {
       </NoticeProvider>
     </QueryClientProvider>
   );
+}
+
+function recipeDetail(extra: Partial<RecipeDetail> = {}): RecipeDetail {
+  return {
+    id: "r1", title: "Pollo al limone", description: null, source: "manual",
+    missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null, cook_minutes: null,
+    category: null, cost: null, archived_at: null, main_department: null, instructions: "Cuoci il pollo.",
+    servings: 2, source_ref: null, scaled_to: null, owned_by_import: false, derived_from: null,
+    unscalable_lines: 0, dose_lines: 0, anchor: null, ingredients: [],
+    in_book: false,
+    meal: { id: "m1", day: "2026-11-10", slot: "dinner", dish: "Pollo arrosto", recipe_id: "r1" },
+    ...extra,
+  };
+}
+
+/** Il pasto su `/meals/…`, la ricetta su `/recipes/<id>` (anche la `PATCH`), il resto vuoto. */
+function withRecipe(m: Meal, recipes: Record<string, RecipeDetail>): Handler {
+  return (url) => {
+    const found = Object.entries(recipes).find(([id]) => url.includes(`/recipes/${id}`));
+    if (found) return [found[1], 200];
+    if (url.includes("/meals/")) return [m, 200];
+    return [[], 200];
+  };
 }
 
 const reads = (m: Meal): Handler => (_url, init) => (init?.method ? [m, 200] : [m, 200]);
@@ -140,5 +163,76 @@ describe("la schermata del piatto", () => {
     expect(screen.queryByRole("link", { name: "Scrivi la ricetta" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Scegli dal ricettario" })).toBeNull();
     expect(within(document.body).queryByText("Scegli dal ricettario")).toBeNull();
+  });
+
+  describe("la ricetta nel piatto", () => {
+    const withR = () => meal({ recipe: { id: "r1", title: "Pollo al limone", in_book: false } });
+
+    it("il titolo della ricetta è un h2 e non c'è «Cucina»", async () => {
+      stubFetch(withRecipe(withR(), { r1: recipeDetail() }));
+      renderMeal();
+      expect(await screen.findByRole("heading", { level: 2, name: "Pollo al limone" })).toBeInTheDocument();
+      expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "Cucina" })).toBeNull();
+    });
+
+    it("«Modifica» porta al modulo con `?pasto=`; niente «Modifica con AI» né «Elimina» della ricetta", async () => {
+      stubFetch(withRecipe(withR(), { r1: recipeDetail() }));
+      renderMeal();
+      const toolbar = await screen.findByRole("toolbar", { name: "Azioni della ricetta" });
+      expect(within(toolbar).getByRole("link", { name: "Modifica" })).toHaveAttribute(
+        "href", "/ricette/r1/modifica?pasto=m1"
+      );
+      expect(screen.queryByRole("button", { name: "Modifica con AI" })).toBeNull();
+      expect(within(toolbar).queryByRole("button", { name: "Elimina" })).toBeNull();
+    });
+
+    it("«Salva nel ricettario» manda `in_book: true` e lo dice", async () => {
+      const spy = stubFetch(withRecipe(withR(), { r1: recipeDetail() }));
+      renderMeal();
+      await userEvent.click(await screen.findByRole("button", { name: "Salva nel ricettario" }));
+      await vi.waitFor(() => expect(calls(spy, "PATCH")).toHaveLength(1));
+      expect(calls(spy, "PATCH")[0]).toEqual({ url: "/api/v1/recipes/r1", body: { in_book: true } });
+      expect(await screen.findByText("Salvata nel ricettario.")).toBeInTheDocument();
+    });
+
+    it("con la ricetta nel ricettario c'è «Togli dal ricettario»", async () => {
+      const spy = stubFetch(
+        withRecipe(
+          meal({ recipe: { id: "r1", title: "Pollo al limone", in_book: true } }),
+          { r1: recipeDetail({ in_book: true }) }
+        )
+      );
+      renderMeal();
+      await userEvent.click(await screen.findByRole("button", { name: "Togli dal ricettario" }));
+      await vi.waitFor(() => expect(calls(spy, "PATCH")).toHaveLength(1));
+      expect(calls(spy, "PATCH")[0].body).toEqual({ in_book: false });
+      expect(await screen.findByText("Tolta dal ricettario.")).toBeInTheDocument();
+    });
+
+    it("un avanzo rimanda al pasto d'origine e mostra la sua ricetta in sola lettura", async () => {
+      const leftover = meal({
+        id: "m2",
+        leftover_of: { id: "m0", day: "2026-11-10", slot: "dinner", dish: "Frittata di spinaci", recipe_id: "r1" },
+      });
+      stubFetch(withRecipe(leftover, { r1: recipeDetail() }));
+      renderMeal();
+      const link = await screen.findByRole("link", {
+        name: "Avanzo di «Frittata di spinaci», martedì 10 novembre · Cena",
+      });
+      expect(link).toHaveAttribute("href", "/pasti/m0");
+      expect(await screen.findByRole("heading", { level: 2, name: "Pollo al limone" })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Modifica" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Salva nel ricettario" })).toBeNull();
+    });
+
+    it("un avanzo la cui origine non ha ricetta lo dice", async () => {
+      const leftover = meal({
+        leftover_of: { id: "m0", day: "2026-11-10", slot: "dinner", dish: "Pizza", recipe_id: null },
+      });
+      stubFetch(withRecipe(leftover, {}));
+      renderMeal();
+      expect(await screen.findByText("Il pasto da cui viene non ha una ricetta.")).toBeInTheDocument();
+    });
   });
 });
