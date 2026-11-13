@@ -316,6 +316,22 @@ describe("la chat sotto la ricetta del piatto", () => {
     expect(within(spinaci).getByText("(cambiata)")).toBeInTheDocument();
   });
 
+  it("la tinta della riga cambiata sta sulla sua prima linea, non sul `<li>` che porta i pannelli", async () => {
+    const detail = recipeDetail({ ingredients: [line("i1", "spinaci"), line("i2", "pasta")] });
+    stubFetch(
+      withChat(
+        cooking(),
+        chatData({ highlight: { ingredient_ids: ["i1"], title: false, servings: false, instructions: false, description: false } }),
+        detail
+      )
+    );
+    renderMeal();
+    const spinaci = (await screen.findByText("Spinaci")).closest("li")!;
+    await vi.waitFor(() => expect(spinaci).toHaveAttribute("data-changed"));
+    expect(spinaci).not.toHaveClass("bg-brand-tint");
+    expect(spinaci.firstElementChild).toHaveClass("bg-brand-tint");
+  });
+
   it("senza ricetta, la chat sta insieme a «Scrivi la ricetta» e alla riga d'aiuto", async () => {
     stubFetch(withChat(meal({ can_chat: true }), chatData()));
     renderMeal();

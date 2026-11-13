@@ -83,9 +83,16 @@ export function DishChat({ mealId, hasRecipe }: { mealId: string; hasRecipe: boo
           refreshRecipe();
           break;
         case "done":
-        case "error":
           ended = true;
           settle(event.chat);
+          break;
+        case "error":
+          // Senza la chat (il server non l'ha potuta rileggere) non si scrive null nella
+          // cache: `ended` resta falso e il `finally` la rilegge.
+          if (event.chat !== null) {
+            ended = true;
+            settle(event.chat);
+          }
           break;
       }
     };

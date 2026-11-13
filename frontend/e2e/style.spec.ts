@@ -4665,19 +4665,23 @@ test("la chat del piatto a 375 px, con la modifica evidenziata, nei due temi", a
       await senzaScorrimentoLaterale(page, `la chat con la modifica, tema ${tema}`);
       const alto = (await annulla.boundingBox())?.height ?? 0;
       expect(alto, "«Annulla» è troppo basso").toBeGreaterThanOrEqual(44);
-      const fondi = await page.evaluate<{ cambiata: string; normale: string }>(
+      // La tinta sta sulla prima linea della riga cambiata, non sul `<li>`: il campo della
+      // dose e il pannello «Sostituisci», che stanno nel `<li>`, restano sul fondo della
+      // scheda («non basta» in `text-low` sulla tinta è sotto 4,5:1).
+      const fondi = await page.evaluate<{ linea: string; lineaNormale: string; riga: string; rigaNormale: string }>(
         `(() => {
           const cambiata = document.querySelector('li[data-changed]');
           const normale = [...cambiata.parentElement.children].find((li) => li !== cambiata);
           return {
-            cambiata: getComputedStyle(cambiata).backgroundColor,
-            normale: getComputedStyle(normale).backgroundColor,
+            linea: getComputedStyle(cambiata.firstElementChild).backgroundColor,
+            lineaNormale: getComputedStyle(normale.firstElementChild).backgroundColor,
+            riga: getComputedStyle(cambiata).backgroundColor,
+            rigaNormale: getComputedStyle(normale).backgroundColor,
           };
         })()`
       );
-      const fondoCambiata = fondi.cambiata;
-      const fondoNormale = fondi.normale;
-      expect(fondoCambiata, `la riga cambiata non si distingue, tema ${tema}`).not.toBe(fondoNormale);
+      expect(fondi.linea, `la riga cambiata non si distingue, tema ${tema}`).not.toBe(fondi.lineaNormale);
+      expect(fondi.riga, `la tinta è finita sul <li> dei pannelli, tema ${tema}`).toBe(fondi.rigaNormale);
     }
     await page.emulateMedia({ colorScheme: "light" });
   } finally {

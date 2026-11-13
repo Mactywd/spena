@@ -564,4 +564,6 @@ export type ChatStreamEvent =
   | { name: "delta"; text: string }
   | { name: "change"; change: RecipeChange }
   | { name: "done"; chat: DishChat }
-  | { name: "error"; code: string; notice: string; chat: DishChat };
+  // `chat` è null quando il server non ha potuto rileggerla (il pasto è sparito, o la
+  // rilettura dopo un crollo è fallita): allora la chat si rilegge.
+  | { name: "error"; code: string; notice: string; chat: DishChat | null };

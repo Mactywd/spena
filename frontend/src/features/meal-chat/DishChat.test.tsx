@@ -245,6 +245,27 @@ describe("la chat del piatto", () => {
     second.close();
   });
 
+  it("un `error` con `chat: null` non svuota la chat: la rilegge, e il messaggio fallito resta con «Riprova»", async () => {
+    const stream = liveStream();
+    const user = message({ status: "pending" });
+    const failed = chat({ messages: [{ ...user, status: "failed", notice: PLAN_LIMIT }] });
+    let gets = 0;
+    const spy = stubFetch((_url, init) => {
+      if (init?.method === "POST") return stream.response;
+      gets += 1;
+      return [gets === 1 ? chat() : failed, 200];
+    });
+    renderChat();
+    await userEvent.type(await screen.findByRole("textbox", { name: "Messaggio per Claude" }), "Fallo con gli spinaci");
+    await userEvent.click(screen.getByRole("button", { name: "Invia" }));
+    stream.send("start", { message: user });
+    stream.send("error", { code: "unavailable", notice: PLAN_LIMIT, chat: null });
+    stream.close();
+    await waitFor(() => expect(requests(spy, "GET", "/api/v1/meals/m1/chat")).toHaveLength(2));
+    expect(await screen.findByText(PLAN_LIMIT)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Riprova" })).toBeInTheDocument();
+  });
+
   it("«Annulla» manda l'annullamento e conferma «Modifica annullata.»", async () => {
     const answer = message({ id: "a1", role: "assistant", text: "Fatto.", changes: [CHANGE] });
     const spy = stubFetch((_url, init) =>

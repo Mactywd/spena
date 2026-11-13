@@ -147,12 +147,23 @@ function IngredientRow({
   // R5: lo stato del pannello è della riga. Due pannelli aperti insieme non si danno
   // fastidio, e uscire dalla ricetta li chiude tutti
   const [substituting, setSubstituting] = useState(false);
+  // La tinta di una riga cambiata sta sulla sua prima linea, non sul `<li>`: il campo della
+  // dose e il pannello «Sostituisci» restano sul fondo della scheda, dove i loro testi
+  // (`text-low` di «non basta», per primo) hanno il contrasto misurato. La linea tinta
+  // riprende da sé il padding della riga (`-mx-3 px-3 py-2.5`), così l'altezza non cambia.
+  const below = open || substituting;
   return (
     <li
-      className={changed ? "bg-brand-tint px-3 py-2.5 text-ink" : "px-3 py-2.5"}
+      className={changed ? `px-3${below ? " pb-2.5" : ""}` : "px-3 py-2.5"}
       {...(changed ? { "data-changed": "" } : {})}
     >
-      <div className="flex items-center gap-2.5">
+      <div
+        className={
+          changed
+            ? "-mx-3 flex items-center gap-2.5 bg-brand-tint px-3 py-2.5 text-ink"
+            : "flex items-center gap-2.5"
+        }
+      >
         <StatusDot availability={line.availability} />
         <span className="min-w-0 flex-1">
           {/* la maiuscola solo a video (spec T3 §4.7): apre la riga, non è dentro una
