@@ -129,6 +129,43 @@ async def create_recipe(
     return recipe
 
 
+async def copy_recipe(
+    session: AsyncSession, source: Recipe, *, in_book: bool = False
+) -> Recipe:
+    """Una ricetta nuova che porta quel che porta `source` (decisione 16 del piano dei pasti):
+    titolo, descrizione, procedimento, porzioni, categoria, costo, foto, tempi, righe con le
+    note e il vettore, copiato e non ricalcolato. Nasce `manual`, senza `source_ref` e senza
+    `derived_from_id`: non è una variante (R8), che a video direbbe «Variante di».
+
+    Le righe passano da `create_recipe`, quindi dall'imbuto: la ricetta di un pasto è una
+    ricetta vera.
+    """
+    full = await get_recipe(session, source.id)
+    assert full is not None
+    lines: list[IngredientLine] = [
+        (line.ingredient_id, line.role, line.quantity_text, line.note)
+        for line in full.ingredients
+    ]
+    return await create_recipe(
+        session,
+        title=full.title,
+        description=full.description,
+        instructions=full.instructions,
+        servings=full.servings,
+        source="manual",
+        source_ref=None,
+        ingredients=lines,
+        embedding=None if full.embedding is None else [float(x) for x in full.embedding],
+        cost=full.cost,
+        category=full.category,
+        derived_from_id=None,
+        image_url=full.image_url,
+        prep_minutes=full.prep_minutes,
+        cook_minutes=full.cook_minutes,
+        in_book=in_book,
+    )
+
+
 async def get_recipe(session: AsyncSession, recipe_id: uuid.UUID) -> Recipe | None:
     statement = (
         select(Recipe)
