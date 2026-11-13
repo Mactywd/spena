@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
@@ -38,6 +39,10 @@ class MealOut(BaseModel):
     leftover_of: MealRefOut | None
     can_chat: bool
     open_card_id: uuid.UUID | None = None  # la scheda dei cambi ancora da applicare
+    # la ricetta chiesta a Claude (decisioni 15, 16): in coda, o non arrivata con l'avviso
+    recipe_state: Literal["none", "preparing", "failed"] = "none"
+    recipe_notice: str | None = None
+    can_ask_recipe: bool = False
 
 
 class WeekOut(BaseModel):
@@ -48,6 +53,7 @@ class WeekOut(BaseModel):
     next: date
     days: list[date]
     meals: list[MealOut]
+    preparing: bool = False  # qualche pasto della settimana ha la ricetta in preparazione
 
 
 def _clean_dish(value: str | None) -> str:

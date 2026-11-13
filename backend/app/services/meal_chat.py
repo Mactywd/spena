@@ -318,11 +318,12 @@ async def dish_chat_view(
 
 
 async def chat_history(
-    session: AsyncSession, conversation_id: uuid.UUID, *, exclude: uuid.UUID
+    session: AsyncSession, conversation_id: uuid.UUID, *, exclude: uuid.UUID | None = None
 ) -> list[HistoryItem]:
     """Gli ultimi `HISTORY_MESSAGES` messaggi inviati, ognuno con le righe di quello che il
     suo giro ha prodotto (modifiche, proposte, schede, in ordine di tempo): il filtro prima
-    del limite, così un giro fallito non ruba un posto."""
+    del limite, così un giro fallito non ruba un posto. `exclude` è il messaggio del giro;
+    il giro della ricetta non ne ha uno (decisione 17)."""
     messages = await messages_of(session, conversation_id)
     products: list[TurnProduct] = [
         *await changes_of(session, conversation_id),
