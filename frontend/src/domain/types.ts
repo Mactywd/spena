@@ -497,6 +497,8 @@ export interface Meal {
   unrecorded: boolean;
   recipe: { id: string; title: string; in_book: boolean } | null;
   leftover_of: MealRef | null;
+  /** Se il pasto ha la chat con Claude: lo decide il backend (`MealOut.can_chat`). */
+  can_chat?: boolean;
 }
 export interface MealWeek {
   monday: string;
@@ -520,3 +522,46 @@ export type MealPatch = Partial<Pick<MealBody, "day" | "slot" | "dish" | "sides"
   status?: "official";
   replace?: boolean;
 };
+
+/** Una modifica della ricetta fatta da Claude, come la riga sotto la sua risposta
+ * (`RecipeChangeOut`). Se si può annullare lo dice il backend. */
+export interface RecipeChange {
+  id: string;
+  summary: string;
+  created_recipe: boolean;
+  undone: boolean;
+  undoable: boolean;
+}
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status: "pending" | "sent" | "failed";
+  notice: string | null;
+  created_at: string;
+  changes: RecipeChange[];
+}
+/** Le parti della ricetta cambiate dall'ultimo giro, da evidenziare nel dettaglio. */
+export interface RecipeHighlight {
+  ingredient_ids: string[];
+  title: boolean;
+  servings: boolean;
+  instructions: boolean;
+  description: boolean;
+}
+export interface DishChat {
+  meal_id: string;
+  conversation_id: string | null;
+  messages: ChatMessage[];
+  replying: boolean;
+  highlight: RecipeHighlight | null;
+  claude_ready: boolean;
+  claude_notice: string | null;
+}
+/** Gli eventi dello streaming di `POST /meals/{id}/chat/messages`, già letti. */
+export type ChatStreamEvent =
+  | { name: "start"; message: ChatMessage }
+  | { name: "delta"; text: string }
+  | { name: "change"; change: RecipeChange }
+  | { name: "done"; chat: DishChat }
+  | { name: "error"; code: string; notice: string; chat: DishChat };
