@@ -299,7 +299,8 @@ client is tested against the SDK's real message types. Spec:
   one rule against duplicates in the list — and keeps the state each item had before.
   That is what makes the inverse possible without quantities: when an official meal is
   deleted, replaced or goes «fuori casa», spena itself proposes the inverse card, never
-  restoring what another meal still uses, what changed since, or what was bought again.
+  restoring what another meal still uses or what was bought again; what changed since is
+  proposed unticked, with a note, for Mattia to decide.
   A `low` sauce is a started jar: only a row that becomes `finished` brings its list row
   along. Planned meals arrive from a proposal card («Metti nella settimana»); their
   recipes are written afterwards by an in-process queue, one meal at a time, each in its
