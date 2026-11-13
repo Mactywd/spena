@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -358,6 +359,30 @@ async def open_card_for_meal(session: AsyncSession, meal_id: uuid.UUID) -> Chang
         .execution_options(populate_existing=True)
     )
     return (await session.execute(statement)).scalar_one_or_none()
+
+
+async def open_cards_for_meals(
+    session: AsyncSession, meal_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """La scheda aperta di ciascun pasto, con una query sola (C-R7): per ogni pasto la
+    proposta più recente. Un pasto senza scheda aperta non compare."""
+    if not meal_ids:
+        return {}
+    wanted = {str(m): m for m in meal_ids}
+    statement = (
+        select(ChangeCard.id, ChangeCard.meal_ids)
+        .where(
+            ChangeCard.status == CardStatus.PROPOSED.value,
+            ChangeCard.meal_ids.has_any(array(list(wanted))),
+        )
+        .order_by(ChangeCard.created_at.desc(), ChangeCard.id)
+    )
+    found: dict[uuid.UUID, uuid.UUID] = {}
+    for card_id, card_meals in (await session.execute(statement)).all():
+        for meal in card_meals:
+            if meal in wanted:
+                found.setdefault(wanted[meal], card_id)
+    return found
 
 
 async def _locked(session: AsyncSession, card_id: uuid.UUID) -> ChangeCard:

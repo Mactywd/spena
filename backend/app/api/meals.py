@@ -25,6 +25,11 @@ from app.schemas.meal import (
     RecipeCopyIn,
     WeekOut,
 )
+from app.services.change_cards import (
+    create_empty_card,
+    open_card_for_meal,
+    open_cards_for_meals,
+)
 from app.services.meals import (
     MealRefusal,
     copy_recipe_to_meal,
@@ -38,7 +43,9 @@ router = APIRouter(
 )
 
 
-def meal_out(meal: Meal, today: date) -> MealOut:
+def meal_out(
+    meal: Meal, today: date, *, open_card_id: uuid.UUID | None = None
+) -> MealOut:
     """Serializza un pasto con `recipe` e `leftover_of` già caricati (sono `lazy="raise"`)."""
     origin = meal.leftover_of
     recipe = meal.recipe
@@ -66,6 +73,7 @@ def meal_out(meal: Meal, today: date) -> MealOut:
             )
         ),
         can_chat=can_chat(meal),
+        open_card_id=open_card_id,
     )
 
 
@@ -73,6 +81,19 @@ async def _refuse(session: AsyncSession, exc: MealRefusal):
     response = meal_refusal_response(exc)  # prima del rollback: legge l'occupante
     await session.rollback()
     return response
+
+
+async def _meals_out(
+    session: AsyncSession, meals: list[Meal], today: date
+) -> list[MealOut]:
+    """Una lista di pasti, con la scheda aperta di ciascuno letta con una query sola."""
+    open_cards = await open_cards_for_meals(session, [m.id for m in meals])
+    return [meal_out(m, today, open_card_id=open_cards.get(m.id)) for m in meals]
+
+
+async def _one_meal_out(session: AsyncSession, meal: Meal, today: date) -> MealOut:
+    card = await open_card_for_meal(session, meal.id)
+    return meal_out(meal, today, open_card_id=card.id if card else None)
 
 
 async def _meal_or_404(session: AsyncSession, meal_id: uuid.UUID) -> Meal:
@@ -96,7 +117,7 @@ async def get_week(
         previous=monday - timedelta(days=7),
         next=monday + timedelta(days=7),
         days=[monday + timedelta(days=i) for i in range(7)],
-        meals=[meal_out(m, today) for m in meals],
+        meals=await _meals_out(session, list(meals), today),
     )
 
 
@@ -105,14 +126,16 @@ async def get_leftover_candidates(
     day: date, slot: MealSlot, session: AsyncSession = Depends(get_session)
 ) -> list[MealOut]:
     today = today_in_pantry()
-    return [meal_out(m, today) for m in await leftover_candidates(session, day, slot)]
+    return await _meals_out(session, list(await leftover_candidates(session, day, slot)), today)
 
 
 @router.get("/{meal_id}", response_model=MealOut)
 async def get_one_meal(
     meal_id: uuid.UUID, session: AsyncSession = Depends(get_session)
 ) -> MealOut:
-    return meal_out(await _meal_or_404(session, meal_id), today_in_pantry())
+    return await _one_meal_out(
+        session, await _meal_or_404(session, meal_id), today_in_pantry()
+    )
 
 
 @router.post("", response_model=MealOut, status_code=201)
@@ -126,7 +149,7 @@ async def post_meal(payload: MealCreate, session: AsyncSession = Depends(get_ses
         )
     except MealRefusal as exc:
         return await _refuse(session, exc)
-    out = meal_out(meal, today_in_pantry())
+    out = await _one_meal_out(session, meal, today_in_pantry())
     await session.commit()
     return out
 
@@ -137,11 +160,15 @@ async def patch_meal(
 ):
     meal = await _meal_or_404(session, meal_id)
     changes = payload.model_dump(include=payload.model_fields_set - {"replace"})
+    was_draft = meal.status == MealStatus.DRAFT.value
     try:
         updated = await update_meal(session, meal, changes, replace=payload.replace)
+        if was_draft and updated.status == MealStatus.OFFICIAL.value:
+            # «Rendi ufficiale»: la scheda vuota, da compilare a mano
+            await create_empty_card(session, updated)
     except MealRefusal as exc:
         return await _refuse(session, exc)
-    out = meal_out(updated, today_in_pantry())
+    out = await _one_meal_out(session, updated, today_in_pantry())
     await session.commit()
     return out
 
@@ -168,6 +195,8 @@ async def copy_recipe_into_meal(
         await copy_recipe_to_meal(session, meal, source)
     except MealRefusal as exc:
         return await _refuse(session, exc)
-    out = meal_out(await _meal_or_404(session, meal_id), today_in_pantry())
+    out = await _one_meal_out(
+        session, await _meal_or_404(session, meal_id), today_in_pantry()
+    )
     await session.commit()
     return out

@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.api import (
     activity,
     auth,
+    change_cards,
     cooking,
     imports,
     ingredients,
@@ -96,6 +97,7 @@ app.include_router(activity.router)
 app.include_router(spending.router)
 app.include_router(utensils.router)
 app.include_router(meals.router)
+app.include_router(change_cards.router)
 app.include_router(meal_chat.router)
 
 

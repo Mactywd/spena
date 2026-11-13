@@ -37,6 +37,7 @@ class MealOut(BaseModel):
     recipe: MealRecipeOut | None
     leftover_of: MealRefOut | None
     can_chat: bool
+    open_card_id: uuid.UUID | None = None  # la scheda dei cambi ancora da applicare
 
 
 class WeekOut(BaseModel):
