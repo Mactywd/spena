@@ -18,7 +18,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.config import get_settings
 from app.db.models.ingredient import Ingredient
-from app.db.models.recipe import Recipe, RecipeIngredient
+from app.db.models.recipe import Recipe, RecipeIngredient, in_the_book
 from app.domain.rules import (
     Availability,
     IngredientRole,
@@ -283,10 +283,11 @@ async def semantic_search_usable(session: AsyncSession) -> bool:
 async def _any_recipe_has_a_vector(session: AsyncSession) -> bool:
     statement = (
         select(Recipe.id)
-        # un'eliminata non conta: la ricerca semantica su di essa non serve a
-        # nessuno, e altrimenti la rotta direbbe `semantic: true` mentre l'unico
-        # vettore del ricettario è su una ricetta che nessuna ricerca può trovare
-        .where(Recipe.embedding.is_not(None), Recipe.archived_at.is_(None))
+        # un'eliminata o una ricetta di un pasto non conta: la ricerca semantica su di
+        # esse non serve a nessuno, e altrimenti la rotta direbbe `semantic: true`
+        # mentre l'unico vettore del ricettario è su una ricetta che nessuna ricerca
+        # può trovare
+        .where(Recipe.embedding.is_not(None), in_the_book())
         .limit(1)
     )
     return await session.scalar(statement) is not None
@@ -315,8 +316,9 @@ async def _semantic_ranking(session: AsyncSession, query: str) -> list[uuid.UUID
         .where(
             Recipe.embedding.is_not(None),
             # dentro la query che ha il limite, non dopo: altrimenti cento archiviate
-            # vicine riempirebbero la piscina (R10, sesta lezione di CLAUDE.md)
-            Recipe.archived_at.is_(None),
+            # (o ricette dei pasti) vicine riempirebbero la piscina (R10, sesta
+            # lezione di CLAUDE.md)
+            in_the_book(),
             distance <= SEMANTIC_MAX_DISTANCE,
         )
         .order_by(distance)
@@ -329,7 +331,7 @@ async def _textual_ranking(session: AsyncSession, query: str) -> list[uuid.UUID]
     ts_query = func.plainto_tsquery("italian", query)
     statement = (
         select(Recipe.id)
-        .where(Recipe.search_tsv.op("@@")(ts_query), Recipe.archived_at.is_(None))
+        .where(Recipe.search_tsv.op("@@")(ts_query), in_the_book())
         .order_by(func.ts_rank(Recipe.search_tsv, ts_query).desc())
         .limit(CANDIDATE_POOL)
     )
@@ -462,8 +464,9 @@ async def _browse(
     statement = (
         select(Recipe.id, missing)
         .outerjoin(line, line.recipe_id == Recipe.id)
-        # prima della pagina, come ogni altro filtro dello sfoglio (R10)
-        .where(Recipe.archived_at.is_(None))
+        # prima della pagina, come ogni altro filtro dello sfoglio (R10): fuori le
+        # eliminate e le ricette dei pasti
+        .where(in_the_book())
         .group_by(Recipe.id)
     )
     if category is not None:

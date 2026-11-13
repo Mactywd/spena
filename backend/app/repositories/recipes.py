@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models.ingredient import Ingredient
-from app.db.models.recipe import Recipe, RecipeIngredient
+from app.db.models.recipe import Recipe, RecipeIngredient, in_the_book
 from app.domain.quantities import parse_quantity
 from app.domain.rules import IngredientKind
 from app.repositories.units import ensure_unit
@@ -113,12 +113,15 @@ async def create_recipe(
     image_url: str | None = None,
     prep_minutes: int | None = None,
     cook_minutes: int | None = None,
+    # falso per la ricetta di un pasto: resta fuori dal ricettario finché non si salva
+    in_book: bool = True,
 ) -> Recipe:
     recipe = Recipe(
         title=title, description=description, instructions=instructions, servings=servings,
         source=source, source_ref=source_ref, embedding=embedding, cost=cost,
         category=category, derived_from_id=derived_from_id,
         image_url=image_url, prep_minutes=prep_minutes, cook_minutes=cook_minutes,
+        in_book=in_book,
     )
     await write_recipe_ingredients(session, recipe, ingredients)
     session.add(recipe)
@@ -204,12 +207,12 @@ async def recipe_categories(session: AsyncSession) -> list[str]:
     e il controllo sulla categoria scelta nel modulo (R10). Solo quelle che esistono
     davvero: un filtro che offre voci vuote porta a una schermata vuota.
 
-    Le ricette eliminate non contano: una categoria che resta solo su quelle
-    porterebbe a un filtro vuoto (R10).
+    Le ricette eliminate e quelle dei pasti non contano: una categoria che resta solo
+    su quelle porterebbe a un filtro vuoto (R10).
     """
     rows = await session.execute(
         select(Recipe.category)
-        .where(Recipe.category.is_not(None), Recipe.archived_at.is_(None))
+        .where(Recipe.category.is_not(None), in_the_book())
         .distinct()
         .order_by(Recipe.category)
     )

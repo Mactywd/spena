@@ -34,7 +34,12 @@ def refusal_response(exc: RegistryRefusal) -> JSONResponse:
         ]
         content["pending_term_count"] = obstacle.pending_term_count
         content["recipes"] = [
-            {"id": str(recipe.id), "title": recipe.title, "archived": recipe.archived}
+            {
+                "id": str(recipe.id),
+                "title": recipe.title,
+                "archived": recipe.archived,
+                "from_meal": recipe.from_meal,
+            }
             for recipe in obstacle.recipes
         ]
     elif isinstance(obstacle, ImportTerm):
