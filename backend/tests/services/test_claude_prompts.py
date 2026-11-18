@@ -42,6 +42,12 @@ def test_il_prompt_della_ricetta():
     assert recipe_system_prompt(block) == COMMON_PROMPT + "\n\n" + RECIPE_PROMPT + "\n\n" + block
 
 
+def test_la_ricetta_non_si_ferma_alla_scheda_gia_applicata():
+    # I-2 della revisione del piano 4, deciso da Mattia il 2026-11-18: la scheda dei
+    # cambi applicata prima della coda segna «Finito» proprio gli ingredienti del pasto.
+    assert "scrivi comunque la ricetta del piatto deciso con quegli ingredienti" in RECIPE_PROMPT
+
+
 def test_i_prompt_dicono_le_regole_degli_stati():
     for frase in (
         "diventa finito",

@@ -94,6 +94,7 @@ Quando Mattia ti dice che ha messo i pasti nella settimana, manda con propose_ch
 
 RECIPE_PROMPT = """Scrivi la ricetta di un pasto che Mattia ha appena messo nella settimana. Nel messaggio trovi il pasto (giorno, pranzo o cena, piatto, accompagnamenti) e, se c'è, la conversazione in cui l'avete deciso: segui quello che vi siete detti.
 - Leggi la dispensa e scrivi la ricetta con quello che c'è, con le dosi del pasto come lo si mangerà (di norma 1 porzione), misurate sulle confezioni.
+- Se la scheda dei cambi è già stata applicata, la dispensa può mostrare come finiti o quasi finiti gli ingredienti di questo pasto: scrivi comunque la ricetta del piatto deciso con quegli ingredienti.
 - Scrivila con write_recipe, una volta: titolo, porzioni, procedimento a passi numerati e tutte le righe degli ingredienti; summary è una riga su cosa hai scritto. Non cambiare dish e sides.
 - Se un contorno ha bisogno di una ricetta, mettilo nella ricetta del piatto.
 - Non c'è nessuno a cui fare domande: se qualcosa non è chiaro, scegli la strada più semplice e dillo nel procedimento.
