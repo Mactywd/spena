@@ -7,6 +7,7 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { fetchSpending } from "./api";
 import { DailyColumns } from "./DailyColumns";
+import { PlanSections } from "./PlanSections";
 import { SectionBars } from "./SectionBars";
 import { callsText, formatRange, formatUsd, unpricedText } from "./format";
 import type { Spending, SpendingPeriod } from "./types";
@@ -67,12 +68,16 @@ export function SpendingScreen() {
 }
 
 function Report({ spending, empty }: { spending: Spending; empty: string }) {
+  const plan = spending.plan_sections ?? [];
   // un periodo senza chiamate è una frase, non un grafico vuoto (Mattia)
   if (spending.calls === 0) {
     return (
-      <Card>
-        <p className="text-sm text-ink-soft">{empty}</p>
-      </Card>
+      <>
+        <Card>
+          <p className="text-sm text-ink-soft">{empty}</p>
+        </Card>
+        {plan.length > 0 && <PlanSections sections={plan} />}
+      </>
     );
   }
   return (
@@ -96,6 +101,7 @@ function Report({ spending, empty }: { spending: Spending; empty: string }) {
           <DailyColumns days={spending.days} />
         </>
       )}
+      {plan.length > 0 && <PlanSections sections={plan} />}
     </>
   );
 }

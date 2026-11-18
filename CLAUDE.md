@@ -178,8 +178,38 @@ Two external dependencies, each behind its own service with a narrow interface:
 An LLM (`google/gemma-4-26b-a4b-it`, reached through OpenRouter via
 `services/llm.py`) drafts recipes and decides the import's unknown ingredient
 terms. It never produces nutrient values. There is one provider and one client
-on purpose: a second implementation behind a config switch would never run in
-production, which is the first defect listed above.
+on purpose — for the jobs Gemma does; the meals are the exception explained below.
+A second implementation behind a config switch would never run in production,
+which is the first defect listed above.
+
+The drafts and the variants (R8) are told which utensils the kitchen has: the list
+Mattia keeps in «Utensili», from the hamburger (`utensils` table, `/api/v1/utensils`),
+goes at the end of their system prompt through `utensils_prompt_block` in
+`backend/app/services/utensils.py`, read at every call. An empty list means no
+constraint, not no tools: the prompt is then exactly the one of before. Imported
+recipes are never checked against it. Spec: `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, §4.4 and §8.
+
+**A second path to a model, on purpose: Claude for the meals.** The meal chat, the
+planning and the meals' recipes run on Claude Opus (`claude-opus-5-5`) through the Claude Agent
+SDK for Python (`claude-agent-sdk`, pinned, with its bundled Claude Code binary),
+authenticated with Mattia's own subscription through `CLAUDE_CODE_OAUTH_TOKEN` from
+`claude setup-token`, kept only in the server's `.env` (decided by Mattia on
+2026-11-10; check the authentication terms in the spec's plan before changing it).
+This is not what the one-provider rule above forbids: that rule is against two
+implementations behind a switch, one of which never runs. Here there are two paths
+with two jobs, and both run in production — Gemma via OpenRouter for import, drafts
+and variants; Claude via the Agent SDK for the meals. The SDK is driven with every
+built-in tool off (`tools=[]`), no settings or `CLAUDE.md` loaded
+(`setting_sources=[]`), `permission_mode="dontAsk"`, and spena's own tools as an
+in-process MCP server (`backend/app/services/claude/`). Its calls go into `llm_calls`
+as `meal_chat`, `meal_planning` and `meal_recipe` with their tokens and `cost_usd` NULL:
+they are on the plan, not paid per use, and «Spese dell'AI» shows them apart. Claude writes a meal's recipe only
+through `write_meal_recipe` (`backend/app/services/meal_recipes.py`), which goes
+through the `write_recipe_ingredients` funnel, inside a savepoint, and stores the
+version before for «Annulla». Tests never run the SDK: `get_claude_client` is
+injected, the fake calls the very tool objects production builds, and the production
+client is tested against the SDK's real message types. Spec:
+`docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §3, §6, §7, §9.
 
 ## Conventions worth knowing
 
@@ -246,6 +276,36 @@ production, which is the first defect listed above.
   forbids (turning an ingredient non-food) must still see them, or a restored recipe
   would come back with a non-food line. Spec:
   `docs/superpowers/specs/2026-09-27-modifica-ricette-design.md`.
+
+  **A recipe written for a meal stays out of the recipe book** (`recipes.in_book`
+  false, decided by Mattia on 2026-11-12) until «Salva nel ricettario». Every book
+  listing and search — browse, the cookable count, text and semantic search, the
+  categories, the substitution engine's voices — excludes it inside the query that
+  carries the limit, through the one expression `in_the_book()` beside the column, the
+  same rule as archived recipes; the registry's usage lists include it and mark it
+  «(da un pasto)», for the reason they include archived ones, and `reindex` gives it a
+  vector for the day it is saved. A meal owns its recipe one to one
+  (`meals.recipe_id` is unique): picking from the book makes a copy, and deleting a
+  meal archives its recipe unless it is in the book. A live recipe out of the book
+  always has a meal: «Togli dal ricettario» refuses one without, and restoring one
+  without puts it back in the book. Spec:
+  `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §4.
+
+  **Claude proposes, Mattia applies.** No Claude tool writes the pantry or the shopping
+  list: the meal planning and the dish chat send a change card (`propose_changes`), one
+  row per pantry item and per ingredient to buy, with the state it becomes, and Mattia
+  ticks, corrects and applies it (`backend/app/services/change_cards.py`). Applying is
+  one transaction that locks the card first, through `set_status` and `add_item` — the
+  one rule against duplicates in the list — and keeps the state each item had before.
+  That is what makes the inverse possible without quantities: when an official meal is
+  deleted, replaced or goes «fuori casa», spena itself proposes the inverse card, never
+  restoring what another meal still uses or what was bought again; what changed since is
+  proposed unticked, with a note, for Mattia to decide.
+  A `low` sauce is a started jar: only a row that becomes `finished` brings its list row
+  along. Planned meals arrive from a proposal card («Metti nella settimana»); their
+  recipes are written afterwards by an in-process queue, one meal at a time, each in its
+  own transaction, so a plan limit halfway leaves every meal usable by hand. Spec:
+  `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §5.2, §6.2.
 
   A response that cannot be verified against the real registry is never applied — the
   term stays in the queue. Specs are

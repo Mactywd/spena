@@ -62,6 +62,18 @@ describe("la barra delle schede sopra l'indicatore home", () => {
     }
   });
 
+  it("su /pasti/abc segna «Pasti» e nessun'altra scheda", () => {
+    render(
+      <MemoryRouter initialEntries={["/pasti/abc"]}>
+        <TabBar />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("link", { name: "Pasti" })).toHaveAttribute("aria-current", "page");
+    for (const altro of ["Lista", "Dispensa", "Ricette"]) {
+      expect(screen.getByRole("link", { name: altro })).not.toHaveAttribute("aria-current");
+    }
+  });
+
   it.each(["/listaX", "/dispensaX"])(
     "su %s, un percorso che solo somiglia a una scheda, non ne segna nessuna",
     (path) => {

@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models.ingredient import Ingredient
-from app.db.models.recipe import Recipe, RecipeIngredient
+from app.db.models.recipe import Recipe, RecipeIngredient, in_the_book
 from app.db.models.substitution import IngredientSubstitution, SubstitutionOption
 from app.domain.rules import IngredientKind
 from app.domain.substitutions import (
@@ -301,7 +301,7 @@ async def _usage(
         select(RecipeIngredient.ingredient_id, Ingredient.name, Recipe.category, func.count())
         .join(Recipe, Recipe.id == RecipeIngredient.recipe_id)
         .join(Ingredient, Ingredient.id == RecipeIngredient.ingredient_id)
-        .where(Recipe.archived_at.is_(None), Ingredient.kind == IngredientKind.FOOD)
+        .where(in_the_book(), Ingredient.kind == IngredientKind.FOOD)
         .group_by(RecipeIngredient.ingredient_id, Ingredient.name, Recipe.category)
     )
     if ingredient_id is not None:

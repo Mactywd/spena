@@ -183,6 +183,10 @@ export interface RecipeDetail extends RecipeSummary {
   /** Da quale ricetta nasce, se è una variante scritta con l'AI (R8); `null` altrimenti.
    * Lo dice il server: il client non cerca l'originale da sé. */
   derived_from: RecipeOrigin | null;
+  /** Pasti (decisione 22): facoltativi, perché un backend vecchio in cache non li manda.
+   * Si legge `in_book ?? true`. */
+  in_book?: boolean;
+  meal?: MealRef | null;
 }
 
 /** Una riga come la si scrive: un ingrediente esistente, oppure nome e categoria con
@@ -423,7 +427,7 @@ export type RegistryRefusal =
       recipe_count: number;
       /** Le ricette che lo usano, eliminate comprese (R10): una ricetta eliminata si
        * ripristina con le sue righe, quindi blocca come le altre, ma va segnata. */
-      recipes: { id: string; title: string; archived: boolean }[];
+      recipes: { id: string; title: string; archived: boolean; from_meal?: boolean }[];
       /** Le pagine dell'import in attesa che, materializzate, lo userebbero. */
       pending_import_count: number;
       /** I termini che le legano qui, al più dieci per nome; il conto dice il resto. */
@@ -458,4 +462,185 @@ export interface ProductDetail {
   ingredient: { id: string; name: string; display_name: string };
   /** Solo gli attivi: quelli che chi guarda la dispensa vede. */
   pantry_items: { id: string; status: PantryStatus; expires_on: string | null }[];
+}
+
+/** Uno strumento di cucina (spec 2026-11-12 §4.4). Il server pulisce nome e nota. */
+export interface Utensil {
+  id: string;
+  name: string;
+  note: string | null;
+}
+
+export interface UtensilInput {
+  name: string;
+  note: string | null;
+}
+
+export type MealSlot = "lunch" | "dinner";
+export type MealStatus = "draft" | "official";
+export interface MealRef {
+  id: string;
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  recipe_id: string | null;
+}
+export interface Meal {
+  id: string;
+  day: string;
+  slot: MealSlot;
+  week: string;
+  dish: string;
+  sides: string | null;
+  away: boolean;
+  status: MealStatus;
+  unrecorded: boolean;
+  recipe: { id: string; title: string; in_book: boolean } | null;
+  leftover_of: MealRef | null;
+  /** Se il pasto ha la chat con Claude: lo decide il backend (`MealOut.can_chat`). */
+  can_chat?: boolean;
+  /** La ricetta in preparazione o non arrivata: lo dice il backend (piano 6c). */
+  recipe_state?: "none" | "preparing" | "failed";
+  recipe_notice?: string | null;
+  can_ask_recipe?: boolean;
+  /** La scheda dei cambi ancora da applicare che riguarda questo pasto. */
+  open_card_id?: string | null;
+}
+export interface MealWeek {
+  monday: string;
+  sunday: string;
+  today: string;
+  previous: string;
+  next: string;
+  days: string[];
+  meals: Meal[];
+  /** Qualche pasto della settimana ha la ricetta in preparazione. */
+  preparing?: boolean;
+}
+export interface MealBody {
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  sides: string | null;
+  away: boolean;
+  leftover_of_id: string | null;
+  replace?: boolean;
+}
+export type MealPatch = Partial<Pick<MealBody, "day" | "slot" | "dish" | "sides" | "away">> & {
+  status?: "official";
+  replace?: boolean;
+};
+
+/** Una modifica della ricetta fatta da Claude, come la riga sotto la sua risposta
+ * (`RecipeChangeOut`). Se si può annullare lo dice il backend. */
+export interface RecipeChange {
+  id: string;
+  summary: string;
+  created_recipe: boolean;
+  undone: boolean;
+  undoable: boolean;
+}
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status: "pending" | "sent" | "failed";
+  notice: string | null;
+  created_at: string;
+  changes: RecipeChange[];
+  /** Le proposte e le schede del giro, sotto il messaggio (piano 6c). Facoltative: le
+   * risposte vecchie in cache non le hanno. */
+  proposals?: MealProposal[];
+  cards?: ChangeCard[];
+}
+/** Le parti della ricetta cambiate dall'ultimo giro, da evidenziare nel dettaglio. */
+export interface RecipeHighlight {
+  ingredient_ids: string[];
+  title: boolean;
+  servings: boolean;
+  instructions: boolean;
+  description: boolean;
+}
+export interface DishChat {
+  meal_id: string;
+  conversation_id: string | null;
+  messages: ChatMessage[];
+  replying: boolean;
+  highlight: RecipeHighlight | null;
+  claude_ready: boolean;
+  claude_notice: string | null;
+}
+/** Gli eventi dello streaming di una chat con Claude, già letti: `TChat` è la vista che
+ * `done` ed `error` portano, quella del piatto (`POST /meals/{id}/chat/messages`) o quella
+ * della pianificazione (`POST /planning/conversations/{id}/messages`). */
+export type ChatStreamEvent<TChat = DishChat> =
+  | { name: "start"; message: ChatMessage }
+  | { name: "delta"; text: string }
+  | { name: "change"; change: RecipeChange }
+  | { name: "proposal"; proposal: MealProposal }
+  | { name: "card"; card: ChangeCard }
+  | { name: "done"; chat: TChat }
+  // `chat` è null quando il server non ha potuto rileggerla (il pasto è sparito, o la
+  // rilettura dopo un crollo è fallita): allora la chat si rilegge.
+  | { name: "error"; code: string; notice: string; chat: TChat | null };
+
+/** Una riga della scheda dei cambi (`ChangeRowOut`): «Ora», le note e chi si può
+ * correggere li decide il backend. */
+export interface ChangeRow {
+  id: string;
+  kind: "pantry" | "list" | "unlist";
+  label: string;
+  from_status: PantryStatus | null;
+  to_status: PantryStatus | null;
+  listed: boolean;
+  checked: boolean;
+  editable: boolean;
+  note: string | null;
+  applied: boolean | null;
+}
+export interface ChangeCard {
+  id: string;
+  kind: "forward" | "inverse";
+  status: "proposed" | "applied" | "discarded";
+  list_only: boolean;
+  title: string;
+  meals: MealRef[];
+  rows: ChangeRow[];
+  created_at: string;
+  applied_at: string | null;
+}
+
+/** Una riga della proposta di pasti (`ProposalRowOut`). */
+export interface ProposalRow {
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  sides: string | null;
+  effect: "new" | "officialize" | "replace";
+  occupant: MealRef | null;
+  meal_id: string | null;
+}
+export interface MealProposal {
+  id: string;
+  kind: "official" | "draft";
+  status: "open" | "placed" | "superseded";
+  rows: ProposalRow[];
+  created_at: string;
+}
+/** La chat di pianificazione (`PlanningChatOut`). */
+export interface PlanningChat {
+  conversation_id: string | null;
+  focus: { day: string; slot: MealSlot } | null;
+  messages: ChatMessage[];
+  replying: boolean;
+  concluded: boolean;
+  claude_ready: boolean;
+  claude_notice: string | null;
+}
+/** La risposta di «Metti nella settimana» (`PlaceOut`): `follow_up` è il messaggio che il
+ * telefono manda subito a Claude, scritto dal backend. */
+export interface PlaceResult {
+  chat: PlanningChat;
+  meals: Meal[];
+  follow_up: string;
 }

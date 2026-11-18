@@ -152,7 +152,7 @@ async def test_il_non_alimentare_con_ricette_e_un_409_che_le_elenca(logged_clien
     assert corpo["code"] == "non_food_in_recipes"
     assert corpo["recipe_count"] == 1
     assert corpo["recipes"] == [
-        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": False}
+        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": False, "from_meal": False}
     ]
     assert corpo["pending_import_count"] == 0
     assert (corpo["pending_terms"], corpo["pending_term_count"]) == ([], 0)
@@ -171,7 +171,7 @@ async def test_il_rifiuto_segna_le_ricette_eliminate(logged_client, db_session, 
 
     assert risposta.status_code == 409
     assert risposta.json()["recipes"] == [
-        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": True}
+        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": True, "from_meal": False}
     ]
 
 

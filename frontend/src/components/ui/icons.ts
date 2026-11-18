@@ -29,6 +29,8 @@ export {
 } from "@tabler/icons-react";
 // barra delle schede
 export { IconListCheck, IconBox, IconToolsKitchen2 } from "@tabler/icons-react";
+// pasti
+export { IconCalendarWeek } from "@tabler/icons-react";
 // lista e sistemazione
 export {
   IconBasketCheck,
@@ -56,6 +58,8 @@ export {
   IconTrash,
   IconRestore,
   IconExternalLink,
+  IconBookmarkPlus,
+  IconBookmarkOff,
 } from "@tabler/icons-react";
 // sostituti (R5): «Sostituisci» in fondo a ogni riga d'ingrediente della ricetta
 export { IconArrowsExchange } from "@tabler/icons-react";

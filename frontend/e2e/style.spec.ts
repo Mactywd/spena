@@ -963,7 +963,10 @@ const SCHERMATE = [
   "/ricette",
   "/ricette/nuova-ai",
   "/ricette/importa",
+  "/pasti",
+  "/pasti/pianifica",
   "/anagrafica",
+  "/utensili",
   "/attivita",
   "/attivita/collega",
   "/spese-ai",
@@ -4484,5 +4487,394 @@ test("le spese dell'AI a 375px: barre e colonne si distinguono dalla scheda, e i
     } catch (guasto) {
       expect.soft(false, `pulizia: non sono riuscito a togliere le spese seminate (${guasto})`).toBe(true);
     }
+  }
+});
+
+test("gli utensili a 375px: un nome lungo con la nota e la correzione aperta si leggono nei due temi, e niente scorre di lato", async ({
+  page,
+}) => {
+  // lo stato vuoto lo misura `perOgniLuogo` (`/utensili` è in SCHERMATE); qui l'elenco
+  // pieno e la correzione aperta, che solo questa prova apre. L'utensile si crea con
+  // `page.request` e si toglie alla fine
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const nome = "padella antiaderente in alluminio pressofuso per induzione";
+  const creato = await page.request.post("/api/v1/utensils", {
+    data: { name: nome, note: "da 28 cm, con il coperchio di vetro" },
+  });
+  expect(creato.ok()).toBe(true);
+  const id = ((await creato.json()) as { id: string }).id;
+  try {
+    await page.goto("/utensili");
+    // il nome e la nota stanno nello stesso elemento: si cerca la riga
+    await expect(page.getByRole("listitem").filter({ hasText: nome })).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `utensili, tema ${tema}`).toEqual([]);
+    }
+    await senzaScorrimentoLaterale(page, "gli utensili con un nome lungo");
+    await page.getByRole("button", { name: `Correggi «${nome}»` }).click();
+    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue(nome);
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `utensili, correzione aperta, tema ${tema}`).toEqual([]);
+    }
+    await senzaScorrimentoLaterale(page, "la correzione di un utensile");
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    const tolto = await page.request.delete(`/api/v1/utensils/${id}`);
+    expect.soft(tolto.ok(), `pulizia: l'utensile ${id} non si è tolto`).toBe(true);
+  }
+});
+
+test("la settimana dei pasti a 375 px: si legge nei due temi, oggi si distingue, niente scorre di lato", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const creati: string[] = [];
+  const crea = async (data: Record<string, unknown>) => {
+    const risposta = await page.request.post("/api/v1/meals", { data });
+    expect(risposta.ok()).toBe(true);
+    const id = ((await risposta.json()) as { id: string }).id;
+    creati.push(id);
+    return id;
+  };
+  try {
+    await crea({
+      day: giornoDiRoma(0),
+      slot: "lunch",
+      dish: "Pasta al pomodoro e basilico di prova",
+      sides: "insalata · pane · una banana",
+    });
+    const passata = "2026-01-05";
+    const pranzoLunedi = await crea({ day: passata, slot: "lunch", dish: "Bozza di prova", status: "draft" });
+    await crea({ day: passata, slot: "dinner", dish: "Pizzeria di prova", away: true });
+    // un avanzo del pranzo di lunedì (un fuori casa non può essere l'origine di un avanzo)
+    await crea({ day: "2026-01-06", slot: "lunch", dish: "Avanzo di prova", leftover_of_id: pranzoLunedi });
+
+    for (const indirizzo of ["/pasti", `/pasti?settimana=${passata}`]) {
+      for (const tema of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: tema });
+        await page.goto(indirizzo);
+        await expect(page.getByRole("heading", { name: "Pasti", level: 1 })).toBeVisible();
+        await fermo(page);
+        expect(await testiIlleggibili(page), `${indirizzo}, tema ${tema}`).toEqual([]);
+        const misura = await page.evaluate<{ s: number; c: number }>(
+          "({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth })"
+        );
+        expect(misura.s, `${indirizzo}, tema ${tema}: scorre di lato`).toBeLessThanOrEqual(misura.c);
+        if (indirizzo === "/pasti") {
+          const sfondi = await page.evaluate<{ oggi: string; altro: string }>(
+            `(() => {
+              const oggi = document.querySelector('[aria-current="date"]').closest('li');
+              const altro = [...oggi.parentElement.children].find((li) => li !== oggi);
+              return {
+              oggi: getComputedStyle(oggi).backgroundColor,
+              altro: getComputedStyle(altro).backgroundColor,
+              };
+            })()`
+          );
+          const sfondoOggi = sfondi.oggi;
+          const sfondoAltro = sfondi.altro;
+          expect(sfondoOggi, `oggi non si distingue, tema ${tema}`).not.toBe(sfondoAltro);
+        } else {
+          await expect(page.getByText("Non registrata", { exact: true })).toBeVisible();
+          await expect(page.getByText("Fuori casa", { exact: true })).toBeVisible();
+          await expect(page.getByText("Avanzo", { exact: true })).toBeVisible();
+        }
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    for (const id of creati.reverse()) {
+      const tolto = await page.request.delete(`/api/v1/meals/${id}`);
+      expect.soft([200, 204, 404], `pulizia: il pasto ${id} non si è tolto`).toContain(tolto.status());
+    }
+  }
+});
+
+test("il piatto con la ricetta a 375 px, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const trovate = (await (await page.request.get("/api/v1/ingredients/search?q=uova")).json()) as {
+    id: string;
+    name: string;
+  }[];
+  const uova = trovate.find((voce) => voce.name === "uova") ?? trovate[0];
+  expect(uova, "nessun ingrediente «uova» nel seme").toBeDefined();
+  const pasto = await page.request.post("/api/v1/meals", {
+    data: { day: giornoDiRoma(4), slot: "dinner", dish: "Frittata di prova stile" },
+  });
+  expect(pasto.ok()).toBe(true);
+  const pastoId = ((await pasto.json()) as { id: string }).id;
+  try {
+    const ricetta = await page.request.post("/api/v1/recipes", {
+      data: {
+        title: "Frittata di prova stile",
+        instructions: "Sbatti le uova, cuoci in padella.",
+        servings: 1,
+        source: "manual",
+        meal_id: pastoId,
+        ingredients: [{ ingredient_id: uova.id, role: "primary", quantity_text: "3" }],
+      },
+    });
+    expect(ricetta.ok()).toBe(true);
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${pastoId}`);
+      const salva = page.getByRole("button", { name: "Salva nel ricettario" });
+      await expect(salva).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il piatto, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `il piatto, tema ${tema}`);
+      const alto = (await salva.boundingBox())?.height ?? 0;
+      expect(alto, "«Salva nel ricettario» è troppo basso").toBeGreaterThanOrEqual(44);
+      await expect(page.getByRole("button", { name: /Cucina/ })).toHaveCount(0);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    const tolto = await page.request.delete(`/api/v1/meals/${pastoId}`);
+    expect.soft([200, 204, 404], `pulizia: il pasto ${pastoId} non si è tolto`).toContain(tolto.status());
+  }
+});
+
+/** Lancia l'aiutante della chat del piatto nel container del backend e torna la sua ultima riga. */
+function aiutanteChat(comando: "seed" | "clean"): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_chat.py", comando],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+test("la chat del piatto a 375 px, con la modifica evidenziata, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutanteChat("seed")) as { meal_change: string; meal_failed: string };
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${seminato.meal_change}`);
+      const annulla = page.getByRole("button", { name: "Annulla", exact: true });
+      await expect(annulla).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la chat con la modifica, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la chat con la modifica, tema ${tema}`);
+      const alto = (await annulla.boundingBox())?.height ?? 0;
+      expect(alto, "«Annulla» è troppo basso").toBeGreaterThanOrEqual(44);
+      // La tinta sta sulla prima linea della riga cambiata, non sul `<li>`: il campo della
+      // dose e il pannello «Sostituisci», che stanno nel `<li>`, restano sul fondo della
+      // scheda («non basta» in `text-low` sulla tinta è sotto 4,5:1).
+      const fondi = await page.evaluate<{ linea: string; lineaNormale: string; riga: string; rigaNormale: string }>(
+        `(() => {
+          const cambiata = document.querySelector('li[data-changed]');
+          const normale = [...cambiata.parentElement.children].find((li) => li !== cambiata);
+          return {
+            linea: getComputedStyle(cambiata.firstElementChild).backgroundColor,
+            lineaNormale: getComputedStyle(normale.firstElementChild).backgroundColor,
+            riga: getComputedStyle(cambiata).backgroundColor,
+            rigaNormale: getComputedStyle(normale).backgroundColor,
+          };
+        })()`
+      );
+      expect(fondi.linea, `la riga cambiata non si distingue, tema ${tema}`).not.toBe(fondi.lineaNormale);
+      expect(fondi.riga, `la tinta è finita sul <li> dei pannelli, tema ${tema}`).toBe(fondi.rigaNormale);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    aiutanteChat("clean");
+  }
+});
+
+test("la chat con l'avviso e il campo, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutanteChat("seed")) as { meal_change: string; meal_failed: string };
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${seminato.meal_failed}`);
+      const riprova = page.getByRole("button", { name: "Riprova", exact: true });
+      await expect(riprova).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la chat con l'avviso, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la chat con l'avviso, tema ${tema}`);
+      for (const [nome, bottone] of [
+        ["Riprova", riprova],
+        ["Invia", page.getByRole("button", { name: "Invia", exact: true })],
+      ] as const) {
+        const alto = (await bottone.boundingBox())?.height ?? 0;
+        expect(alto, `«${nome}» è troppo basso`).toBeGreaterThanOrEqual(44);
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    aiutanteChat("clean");
+  }
+});
+
+// La pianificazione con Claude e le schede dei cambi. Le proposte e le schede nascono solo
+// quando Claude chiama i suoi strumenti, e lo stack e2e non ha il token: le semina
+// `backend/tests/e2e_planning.py` nel container del backend, passando dai servizi veri, e
+// le toglie nel `finally`. Vedi `frontend/e2e/pianificazione.spec.ts`.
+function aiutantePianificazione(comando: "seed" | "clean"): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_planning.py", comando],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+type PianificazioneSeminata = {
+  conversation: string;
+  proposal_draft: string;
+  proposal_official: string;
+  card: string;
+  meal: string;
+};
+
+function pulisciPianificazione() {
+  try {
+    aiutantePianificazione("clean");
+  } catch (guasto) {
+    expect.soft(false, `pulizia: non sono riuscito a togliere la pianificazione seminata (${guasto})`).toBe(true);
+  }
+}
+
+/** Ogni bersaglio nominato è alto almeno 44 px, la regola di casa (`min-h-11`). */
+async function bersagliDaPollice(bersagli: [string, Locator][], luogo: string) {
+  for (const [nome, bersaglio] of bersagli) {
+    await expect(bersaglio, `${luogo}: «${nome}» non c'è`).toBeVisible();
+    const alto = (await bersaglio.boundingBox())?.height ?? 0;
+    expect(alto, `${luogo}: «${nome}» è troppo basso`).toBeGreaterThanOrEqual(44);
+  }
+}
+
+test("la pianificazione con le proposte, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/pianifica?conversazione=${seminato.conversation}`);
+      const metti = page.getByRole("button", { name: "Metti nella settimana" });
+      await expect(metti).toBeVisible();
+      // la proposta ufficiale sostituita dalla bozza: anche il suo stato si legge
+      await expect(page.getByText("Sostituita da una proposta più nuova.")).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la pianificazione con le proposte, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la pianificazione con le proposte, tema ${tema}`);
+      await bersagliDaPollice(
+        [
+          ["Metti nella settimana", metti],
+          ["Invia", page.getByRole("button", { name: "Invia", exact: true })],
+        ],
+        `la pianificazione, tema ${tema}`
+      );
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
+  }
+});
+
+test("la scheda dei cambi, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/cambi/${seminato.card}`);
+      const applica = page.getByRole("button", { name: "Applica", exact: true });
+      await expect(applica).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la scheda dei cambi, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la scheda dei cambi, tema ${tema}`);
+      // la casella si tocca dal suo contenitore, la `label` che porta anche la voce
+      const caselle = page.getByRole("checkbox");
+      expect(await caselle.count(), "la scheda seminata ha tre righe").toBe(3);
+      const contenitori: [string, Locator][] = [];
+      for (let i = 0; i < 3; i++) {
+        contenitori.push([`la casella ${i + 1}`, caselle.nth(i).locator("xpath=ancestor::label[1]")]);
+      }
+      await bersagliDaPollice(
+        [
+          ["Applica", applica],
+          ["Scarta", page.getByRole("button", { name: "Scarta", exact: true })],
+          ...contenitori,
+        ],
+        `la scheda dei cambi, tema ${tema}`
+      );
+      // il valore di un `select` non è un nodo di testo, e `testiIlleggibili` non lo vede:
+      // si misura qui, sul fondo che il campo dipinge
+      const selettori = page.locator("select");
+      expect(await selettori.count(), "due righe di dispensa, due selettori").toBe(2);
+      for (let i = 0; i < 2; i++) {
+        const misura = await contrastoAVideo(selettori.nth(i));
+        expect(misura.opacita, `il selettore ${i + 1} è velato, tema ${tema}`).toBe(1);
+        expect(
+          misura.rapporto,
+          `il selettore ${i + 1}: ${misura.colore} su ${misura.fondo}, tema ${tema}`
+        ).toBeGreaterThanOrEqual(4.5);
+        const alto = (await selettori.nth(i).boundingBox())?.height ?? 0;
+        expect(alto, `il selettore ${i + 1} è troppo basso, tema ${tema}`).toBeGreaterThanOrEqual(44);
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
+  }
+});
+
+test("la settimana con le schede da applicare e il piatto con l'avviso della ricetta, nei due temi", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+
+      await page.goto("/pasti");
+      await expect(page.getByText("Schede dei cambi da applicare")).toBeVisible();
+      const scheda = page
+        .getByRole("listitem")
+        .filter({ hasText: "Per «e2e-plan Pasta ricotta e parmigiano»" });
+      await expect(scheda).toHaveCount(1);
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la settimana con le schede, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la settimana con le schede, tema ${tema}`);
+      await bersagliDaPollice(
+        [["Apri", scheda.getByRole("link", { name: "Apri" })]],
+        `la settimana con le schede, tema ${tema}`
+      );
+
+      await page.goto(`/pasti/${seminato.meal}`);
+      const chiedi = page.getByRole("button", { name: "Chiedi la ricetta a Claude" });
+      await expect(chiedi).toBeVisible();
+      await expect(page.getByText(/^Claude non risponde: hai raggiunto il limite del piano/)).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il piatto con l'avviso della ricetta, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `il piatto con l'avviso della ricetta, tema ${tema}`);
+      await bersagliDaPollice(
+        [
+          ["Chiedi la ricetta a Claude", chiedi],
+          ["Scrivi la ricetta", page.getByRole("link", { name: "Scrivi la ricetta" })],
+          ["Scheda dei cambi da applicare", page.getByRole("link", { name: "Scheda dei cambi da applicare" })],
+        ],
+        `il piatto con l'avviso della ricetta, tema ${tema}`
+      );
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
   }
 });

@@ -12,7 +12,9 @@ from fastapi.responses import JSONResponse
 from app.db.models.ingredient import Ingredient
 from app.db.models.product import Product
 from app.db.models.recipe_import import ImportTerm
+from app.domain.rules import today_in_pantry
 from app.schemas.ingredient import IngredientOut, ProductBriefOut
+from app.services.meals import MealRefusal, MealRefusalCode
 from app.services.registry import RecipesInUse, RegistryRefusal
 
 
@@ -34,9 +36,35 @@ def refusal_response(exc: RegistryRefusal) -> JSONResponse:
         ]
         content["pending_term_count"] = obstacle.pending_term_count
         content["recipes"] = [
-            {"id": str(recipe.id), "title": recipe.title, "archived": recipe.archived}
+            {
+                "id": str(recipe.id),
+                "title": recipe.title,
+                "archived": recipe.archived,
+                "from_meal": recipe.from_meal,
+            }
             for recipe in obstacle.recipes
         ]
     elif isinstance(obstacle, ImportTerm):
         content["term"] = {"id": str(obstacle.id), "display_name": obstacle.display_name.strip()}
     return JSONResponse(content, status_code=status.HTTP_409_CONFLICT)
+
+
+_MEAL_STATUS = {
+    MealRefusalCode.SLOT_TAKEN: 409,
+    MealRefusalCode.HAS_RECIPE: 409,
+    MealRefusalCode.NO_RECIPE_HERE: 409,
+    MealRefusalCode.RECIPE_ARCHIVED: 409,
+    MealRefusalCode.BAD_LEFTOVER: 422,
+    MealRefusalCode.STAYS_OFFICIAL: 422,
+}
+
+
+def meal_refusal_response(exc: MealRefusal) -> JSONResponse:
+    """Il rifiuto di un pasto. Come `refusal_response`: da chiamare con l'occupante già letto,
+    cioè prima del rollback (qui si serializza subito, e `meal_out` non tocca il database)."""
+    from app.api.meals import meal_out  # import tardivo: meals.py importa questo modulo
+
+    content: dict[str, object] = {"detail": exc.message, "code": exc.code.value}
+    if exc.code == MealRefusalCode.SLOT_TAKEN and exc.occupant is not None:
+        content["occupant"] = meal_out(exc.occupant, today_in_pantry()).model_dump(mode="json")
+    return JSONResponse(content, status_code=_MEAL_STATUS[exc.code])

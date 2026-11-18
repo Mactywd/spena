@@ -8,16 +8,21 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.api import (
     activity,
     auth,
+    change_cards,
     cooking,
     imports,
     ingredients,
+    meal_chat,
+    meals,
     nutrition,
     pantry,
+    planning,
     products,
     recipes,
     shopping,
     spending,
     substitutions,
+    utensils,
 )
 from app.core.config import get_settings
 from app.core.security import (
@@ -91,6 +96,11 @@ app.include_router(nutrition.recipe_router)
 app.include_router(activity.webhook_router)
 app.include_router(activity.router)
 app.include_router(spending.router)
+app.include_router(utensils.router)
+app.include_router(meals.router)
+app.include_router(change_cards.router)
+app.include_router(meal_chat.router)
+app.include_router(planning.router)
 
 
 @app.get("/api/v1/health")

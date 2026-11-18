@@ -23,6 +23,7 @@ from enum import StrEnum
 from sqlalchemy import delete, func, inspect, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.change_card import ChangeCardRow
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
@@ -101,6 +102,9 @@ class RecipeRef:
     # eliminata (R10): conta ancora — ripristinata tornerebbe con la sua riga — e lo
     # schermo la segna, perché nel ricettario non si vede più
     archived: bool = False
+    # fuori dal ricettario: la ricetta di un pasto (spec §4.2); conta per lo stesso
+    # motivo delle eliminate
+    from_meal: bool = False
 
 
 @dataclass(frozen=True)
@@ -167,7 +171,7 @@ async def recipes_using(session: AsyncSession, ingredient_id: uuid.UUID) -> Reci
         )
     ).scalar_one()
     rows = await session.execute(
-        select(Recipe.id, Recipe.title, Recipe.archived_at)
+        select(Recipe.id, Recipe.title, Recipe.archived_at, Recipe.in_book)
         .join(RecipeIngredient, RecipeIngredient.recipe_id == Recipe.id)
         .where(RecipeIngredient.ingredient_id == ingredient_id)
         .order_by(Recipe.title, Recipe.id)
@@ -176,7 +180,12 @@ async def recipes_using(session: AsyncSession, ingredient_id: uuid.UUID) -> Reci
     return RecipesInUse(
         count=count,
         recipes=tuple(
-            RecipeRef(id=row.id, title=row.title, archived=row.archived_at is not None)
+            RecipeRef(
+                id=row.id,
+                title=row.title,
+                archived=row.archived_at is not None,
+                from_meal=not row.in_book,
+            )
             for row in rows
         ),
     )
@@ -652,6 +661,9 @@ async def merge_ingredients(
 
     pantry_items = await _repoint(session, PantryItem, loser_id, winner.id)
     shopping_items, shopping_dropped = await _repoint_shopping(session, loser_id, winner.id)
+    # le righe delle schede dei cambi (piano 6c): l'ingrediente è una chiave debole
+    # (SET NULL), ma una riga che ha perso il suo ingrediente non si aggancia più a niente
+    await _repoint(session, ChangeCardRow, loser_id, winner.id)
     products = await _repoint(session, Product, loser_id, winner.id)
 
     # Le righe rimaste sono di ricette che non vengono dall'import (scritte a mano o

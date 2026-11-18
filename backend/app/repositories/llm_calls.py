@@ -50,6 +50,8 @@ class SectionSpend:
     calls: int
     unpriced_calls: int
     cost_usd: float
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 def _rome_day():
@@ -73,6 +75,8 @@ async def spend_by_section(
             func.count(),
             func.count(LlmCall.cost_usd),
             func.coalesce(func.sum(LlmCall.cost_usd), 0.0),
+            func.coalesce(func.sum(LlmCall.prompt_tokens), 0),
+            func.coalesce(func.sum(LlmCall.completion_tokens), 0),
         )
         .where(LlmCall.created_at >= start, LlmCall.created_at < end)
         .group_by(LlmCall.call_site)
@@ -83,8 +87,10 @@ async def spend_by_section(
             calls=calls,
             unpriced_calls=calls - priced,
             cost_usd=float(cost),
+            prompt_tokens=int(prompt_tokens),
+            completion_tokens=int(completion_tokens),
         )
-        for call_site, calls, priced, cost in rows.all()
+        for call_site, calls, priced, cost, prompt_tokens, completion_tokens in rows.all()
     ]
 
 

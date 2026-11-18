@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe import RecipeSource
 from app.domain.rules import COST_MAX, COST_MIN, Availability, IngredientRole
+from app.schemas.meal import MealRefOut
 
 
 class RecipeIngredientIn(BaseModel):
@@ -66,6 +67,9 @@ class RecipeCreate(RecipeFields):
     # R8: la ricetta da cui questa nasce, per una variante scritta con l'AI. Solo alla
     # creazione: `RecipeReplace` non lo dichiara, quindi una modifica non lo cambia.
     derived_from_id: uuid.UUID | None = None
+    # Il pasto per cui si scrive: la ricetta nasce fuori dal ricettario e si lega a lui
+    # nella stessa transazione (piano Pasti e settimana, Task 5)
+    meal_id: uuid.UUID | None = None
 
 
 class RecipeReplace(RecipeFields):
@@ -91,6 +95,9 @@ class RecipeUpdate(BaseModel):
 
     cost: int | None = Field(default=None, ge=COST_MIN, le=COST_MAX, strict=True)
     archived: bool | None = Field(default=None, strict=True)
+    # «Salva nel ricettario» (`true`) e «Togli dal ricettario» (`false`): solo per la
+    # ricetta di un pasto. Assente o `null` non tocca niente.
+    in_book: bool | None = Field(default=None, strict=True)
 
 
 class RecipeIngredientOut(BaseModel):
@@ -177,6 +184,10 @@ class RecipeOut(BaseModel):
     owned_by_import: bool = False
     # R8: da quale ricetta nasce, se è una variante; il titolo è quello di oggi
     derived_from: RecipeOriginOut | None = None
+    # falso per la ricetta di un pasto non salvata nel ricettario; `meal` è il pasto che
+    # la ha, se c'è. Default: un backend o un test che non li dice parla del ricettario
+    in_book: bool = True
+    meal: MealRefOut | None = None
 
 
 class RecipeSummaryOut(BaseModel):

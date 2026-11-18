@@ -12,6 +12,8 @@ WORKDIR /app
 # Il client del modello linguistico non ha nessun extra: parla HTTP con `httpx`, che è
 # una dipendenza di base. È la lezione di `anthropic`, che fra gli extra mancava
 # dall'immagine e faceva rispondere «pacchetto non installato» a ogni chiamata.
+# Anche l'Agent SDK di Claude è una dipendenza di base, e il suo binario arriva con la
+# ruota di pip: nessun Node nell'immagine.
 ARG INSTALL_EMBEDDINGS=0
 
 COPY pyproject.toml ./

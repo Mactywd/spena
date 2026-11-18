@@ -54,6 +54,11 @@ const PAIRS: [string, string][] = [
   ["ink-soft", "page"], ["ink-soft", "card"],
   ["ink-faint", "page"], ["ink-faint", "card"],
   ["brand", "page"], ["brand", "card"], ["brand", "brand-tint"], ["on-brand", "brand"],
+  // il fumetto di Mattia nella chat del piatto, e le parti che Claude ha appena cambiato
+  // (riga, titolo, descrizione, procedimento): testo `ink` su `brand-tint`; nota e dose di una
+  // riga cambiata stanno qui con `ink-soft` e `ink-faint`. `low` su `brand-tint` non passa
+  // (4,43:1): «non basta», in una riga cambiata, è `ink`
+  ["ink", "brand-tint"], ["ink-soft", "brand-tint"], ["ink-faint", "brand-tint"],
   ["low", "page"], ["low", "card"], ["low", "low-tint"], ["on-low", "low"],
   ["finished", "page"], ["finished", "card"], ["finished", "finished-tint"], ["on-finished", "finished"],
   ["danger", "page"], ["danger", "card"],

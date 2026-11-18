@@ -144,6 +144,26 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     expect(screen.queryByRole("button", { name: "Salva le modifiche" })).toBeNull();
   });
 
+  it("da un pasto il ritorno e il salvataggio portano al pasto", async () => {
+    stubFetch((_path, init) => (init?.method === "PUT" ? [DETAIL, 200] : undefined));
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <NoticeProvider>
+          <MemoryRouter initialEntries={["/ricette/r1/modifica?pasto=m1"]}>
+            <Routes>
+              <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
+              <Route path="/pasti/:id" element={<p>il pasto</p>} />
+            </Routes>
+          </MemoryRouter>
+        </NoticeProvider>
+      </QueryClientProvider>
+    );
+    await screen.findByDisplayValue("Pasta al pomodoro");
+    expect(screen.getByRole("link", { name: /Pasto/ })).toHaveAttribute("href", "/pasti/m1");
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+    expect(await screen.findByText("il pasto")).toBeInTheDocument();
+  });
+
   it("«Salvata» sta sopra la ricetta salvata, anche mentre il dettaglio rilegge", async () => {
     // la risposta della PUT è la ricetta a 1×: il dettaglio la mostra subito, invece di
     // mostrare la versione di prima sotto «Salvata» finché la rilettura non torna

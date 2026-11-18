@@ -119,6 +119,22 @@ describe("SpendingScreen", () => {
     expect(within(screen.getByRole("group", { name: "Periodo" })).getAllByRole("button")).toHaveLength(3);
   });
 
+  it("senza chiamate a consumo ma con la chat sul piano: la frase e il blocco «Claude»", async () => {
+    const sulPiano: Spending = {
+      ...vuoto("month"),
+      plan_sections: [
+        { call_site: "meal_chat", label: "Chat dei piatti", calls: 3, tokens: 3600, note: "sul piano di Claude, non a consumo" },
+      ],
+    };
+    stubRoutedFetch(() => [sulPiano, 200]);
+    renderScreen();
+
+    expect(await screen.findByText("Nessuna chiamata all'AI questo mese.")).toBeInTheDocument();
+    expect(screen.getByText("Claude")).toBeInTheDocument();
+    expect(screen.getByText("Chat dei piatti")).toBeInTheDocument();
+    expect(screen.getByText("3 chiamate · 3.600 token")).toBeInTheDocument();
+  });
+
   it("solo chiamate senza costo: il totale a zero, la riga che lo dice, nessun grafico", async () => {
     const senzaCosto: Spending = {
       ...MESE,

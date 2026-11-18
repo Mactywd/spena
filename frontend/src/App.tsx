@@ -13,6 +13,14 @@ import { NotFoundScreen } from "./features/not-found/NotFoundScreen";
 import { IngredientScreen } from "./features/registry/IngredientScreen";
 import { ProductScreen } from "./features/registry/ProductScreen";
 import { RegistryScreen } from "./features/registry/RegistryScreen";
+import { ChangeCardScreen } from "./features/change-cards/ChangeCardScreen";
+import { PlanningScreen } from "./features/planning/PlanningScreen";
+import { MealRecipeNewScreen } from "./features/meals/MealRecipeNewScreen";
+import { MealRecipePickScreen } from "./features/meals/MealRecipePickScreen";
+import { MealScreen } from "./features/meals/MealScreen";
+import { NewMealScreen } from "./features/meals/NewMealScreen";
+import { WeekScreen } from "./features/meals/WeekScreen";
+import { UtensilsScreen } from "./features/utensils/UtensilsScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
 import { ActivityScreen } from "./features/activity/ActivityScreen";
@@ -60,9 +68,19 @@ export default function App() {
               <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
               <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
               <Route path="/ricette/:id/variante" element={<RecipeVariantScreen />} />
+              <Route path="/pasti" element={<WeekScreen />} />
+              {/* dichiarata SOPRA /pasti/:id: "nuovo" non deve mai essere letto come un id */}
+              <Route path="/pasti/nuovo" element={<NewMealScreen />} />
+              {/* anche questa SOPRA /pasti/:id: "pianifica" non è un id */}
+              <Route path="/pasti/pianifica" element={<PlanningScreen />} />
+              <Route path="/pasti/cambi/:id" element={<ChangeCardScreen />} />
+              <Route path="/pasti/:id" element={<MealScreen />} />
+              <Route path="/pasti/:id/ricetta/nuova" element={<MealRecipeNewScreen />} />
+              <Route path="/pasti/:id/ricetta/scegli" element={<MealRecipePickScreen />} />
               <Route path="/anagrafica" element={<RegistryScreen />} />
               <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
               <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
+              <Route path="/utensili" element={<UtensilsScreen />} />
               <Route path="/attivita" element={<ActivityScreen />} />
               <Route path="/attivita/collega" element={<ConnectScreen />} />
               <Route path="/spese-ai" element={<SpendingScreen />} />

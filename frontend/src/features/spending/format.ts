@@ -79,6 +79,11 @@ export function callsText(calls: number): string {
   return calls === 1 ? "1 chiamata" : `${calls} chiamate`;
 }
 
+/** «48.300»: il punto delle migliaia a mano, perché non dipenda dai dati ICU della macchina. */
+export function formatTokens(tokens: number): string {
+  return String(Math.round(tokens)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
 /** Le chiamate senza un costo dichiarato (decisa da Mattia il 2026-10-13): il
  * totale non le comprende, e lo si dice invece di lasciarlo credere completo. */
 export function unpricedText(unpriced: number): string {

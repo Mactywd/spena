@@ -119,7 +119,13 @@ export function fetchRecipe(id: string, scale?: RecipeScale) {
 /** Una ricetta nuova. `derived_from_id` solo per una variante (R8): la ricetta da cui
  * nasce, che il salvataggio non tocca. */
 export function createRecipe(
-  body: RecipeBody & { source: RecipeSource; source_ref: string | null; derived_from_id?: string }
+  body: RecipeBody & {
+    source: RecipeSource;
+    source_ref: string | null;
+    derived_from_id?: string;
+    /** La ricetta nasce fuori dal ricettario, legata a questo pasto. */
+    meal_id?: string;
+  }
 ) {
   return apiFetch<RecipeDetail>("/recipes", { method: "POST", body: JSON.stringify(body) });
 }
@@ -134,6 +140,14 @@ export function setRecipeArchived(id: string, archived: boolean) {
   return apiFetch<RecipeDetail>(`/recipes/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ archived }),
+  });
+}
+
+/** Fa entrare (`true`) o uscire (`false`) dal ricettario la ricetta di un pasto. */
+export function setRecipeInBook(id: string, inBook: boolean) {
+  return apiFetch<RecipeDetail>(`/recipes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ in_book: inBook }),
   });
 }
 
