@@ -23,24 +23,27 @@ MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 DOC_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 
+# Le intestazioni sono scritte come nel file vero del 2025, a capo compreso: «\r\n» dove
+# una riga sola metterebbe uno spazio o una barra («(kcal\r\n100 g)» per «(kcal/100 g)»).
+# Il lettore che passa questa prova è quello che legge il file di Mattia.
 HEADER = [
     "alim_grp_code",
     "alim_grp_nom_fr",
     "alim_ssgrp_nom_fr",
     "alim_code",
     "alim_nom_fr",
-    "Energie, Règlement UE N° 1169/2011 (kcal/100 g)",
-    "Eau (g/100 g)",
-    "Protéines, N x facteur de Jones (g/100 g)",
-    "Glucides (g/100 g)",
-    "Lipides (g/100 g)",
-    "Sucres (g/100 g)",
-    "AG saturés (g/100 g)",
-    "Fibres alimentaires (g/100 g)",
-    "Sel chlorure de sodium (g/100 g)",
-    "Fer (mg/100 g)",
-    "Vitamine C (mg/100 g)",
-    "Iode (µg/100 g)",
+    "Energie,\r\nRèglement\r\nUE N°\r\n1169\r\n2011 (kcal\r\n100 g)",
+    "Eau\r\n(g\r\n100\r\ng)",
+    "Protéines,\r\nN x\r\nfacteur de\r\nJones (g\r\n100 g)",
+    "Glucides\r\n(g\r\n100 g)",
+    "Lipides\r\n(g\r\n100 g)",
+    "Sucres\r\n(g\r\n100 g)",
+    "AG\r\nsaturés\r\n(g\r\n100 g)",
+    "Fibres\r\nalimentaires\r\n(g\r\n100 g)",
+    "Sel\r\nchlorure\r\nde\r\nsodium\r\n(g\r\n100 g)",
+    "Fer (mg\r\n100 g)",
+    "Vitamine\r\nC (mg\r\n100 g)",
+    "Iode\r\n(µg\r\n100 g)",
 ]
 
 _VEG = "fruits, légumes, légumineuses et oléagineux"

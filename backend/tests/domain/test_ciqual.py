@@ -1,9 +1,12 @@
 """Come si legge la tabella CIQUAL, senza aprire un file (S4, fetta 1).
 
-Il file vero del 2025 non l'ha visto nessuno di chi ha scritto questo codice (spec §3): le
+Il codice è stato scritto senza aver visto il file vero del 2025 (spec §3), e il file vero
+l'ha rifiutato: le sue intestazioni vanno a capo dove le prove le scrivevano su una riga.
+Da allora c'è anche l'intestazione vera, copiata dal file (`INTESTAZIONE_2025`). Le
 colonne si riconoscono dal nome, e queste prove guardano soprattutto le piccole differenze
 di scrittura che una nuova edizione può portare — un accento, «N°» con o senza spazio, il
-micro scritto con la lettera greca — e il rifiuto quando l'unità non è quella attesa.
+micro scritto con la lettera greca, un a capo — e il rifiuto quando l'unità non è quella
+attesa.
 """
 
 import pytest
@@ -35,6 +38,96 @@ INTESTAZIONE = [
     "Iode (µg/100 g)",
 ]
 
+# L'intestazione vera, copiata cella per cella da `Table Ciqual 2025_FR_2025_11_03.xlsx`
+# (https://doi.org/10.57745/RDMHWY, md5 0d9758ce23f3f13dd63a005bc1bb4f2c). Nel foglio ogni
+# cella va a capo con «\r\n»; il parser XML lo legge «\n», ed è così che arriva qui.
+INTESTAZIONE_2025 = [
+    "alim_grp_code",
+    "alim_ssgrp_code",
+    "alim_ssssgrp_code",
+    "alim_grp_nom_fr",
+    "alim_ssgrp_nom_fr",
+    "alim_ssssgrp_nom_fr",
+    "alim_code",
+    "alim_nom_fr",
+    "alim_nom_sci",
+    "Energie,\nRèglement\nUE N°\n1169\n2011 (kJ\n100 g)",
+    "Energie,\nRèglement\nUE N°\n1169\n2011 (kcal\n100 g)",
+    "Energie, N x\nfacteur\nJones, avec\nfibres (kJ\n100 g)",
+    "Energie, N x\nfacteur\nJones, avec\nfibres (kcal\n100 g)",
+    "Eau\n(g\n100\ng)",
+    "Protéines,\nN x\nfacteur de\nJones (g\n100 g)",
+    "Protéines,\nN x 6.25\n(g\n100 g)",
+    "Glucides\n(g\n100 g)",
+    "Lipides\n(g\n100 g)",
+    "Sucres\n(g\n100 g)",
+    "Fructose\n(g\n100 g)",
+    "Galactose\n(g\n100 g)",
+    "Glucose\n(g\n100 g)",
+    "Lactose\n(g\n100 g)",
+    "Maltose\n(g\n100 g)",
+    "Saccharose\n(g\n100 g)",
+    "Amidon\n(g\n100 g)",
+    "Fibres\nalimentaires\n(g\n100 g)",
+    "Polyols\ntotaux\n(g\n100 g)",
+    "Cendres\n(g\n100 g)",
+    "Alcool\n(éthanol)\n(g\n100 g)",
+    "Acides\norganiques\n(g\n100 g)",
+    "AG\nsaturés\n(g\n100 g)",
+    "AG\nmonoinsaturés\n(g\n100 g)",
+    "AG\npolyinsaturés\n(g\n100 g)",
+    "AG 4:0,\nbutyrique\n(g\n100 g)",
+    "AG 6:0,\ncaproïque\n(g\n100 g)",
+    "AG 8:0,\ncaprylique\n(g\n100 g)",
+    "AG 10:0,\ncaprique\n(g\n100 g)",
+    "AG\n12:0,\nlaurique\n(g\n100 g)",
+    "AG 14:0,\nmyristique\n(g\n100 g)",
+    "AG 16:0,\npalmitique\n(g\n100 g)",
+    "AG 18:0,\nstéarique\n(g\n100 g)",
+    "AG 18:1\n9c (n-9),\noléique\n(g\n100 g)",
+    "AG 18:2\n9c,12c\n(n-6),\nlinoléique\n(g\n100 g)",
+    "AG 18:3\nc9,c12,c15 (n-3),\nalpha-linolénique\n(g\n100 g)",
+    "AG 20:4\n5c,8c,11c,14c\n(n-6),\narachidonique\n(g\n100 g)",
+    "AG 20:5\n5c,8c,11c,14c,17c\n(n-3) EPA (g\n100 g)",
+    "AG 22:6\n4c,7c,10c,13c,16c,19c\n(n-3) DHA (g\n100 g)",
+    "Cholestérol\n(mg\n100 g)",
+    "Sel\nchlorure\nde\nsodium\n(g\n100 g)",
+    "Calcium\n(mg\n100 g)",
+    "Chlorure\n(mg\n100 g)",
+    "Cuivre\n(mg\n100 g)",
+    "Fer (mg\n100 g)",
+    "Iode\n(µg\n100 g)",
+    "Magnésium\n(mg\n100 g)",
+    "Manganèse\n(mg\n100 g)",
+    "Phosphore\n(mg\n100 g)",
+    "Potassium\n(mg\n100 g)",
+    "Sélénium\n(µg\n100 g)",
+    "Sodium\n(mg\n100 g)",
+    "Zinc\n(mg\n100 g)",
+    "Activité\nvitaminique\nA,\néquivalents\nrétinol (µg\n100 g)",
+    "Rétinol\n(µg\n100 g)",
+    "Beta-Carotène\n(µg\n100 g)",
+    "Vitamine\nD (µg\n100 g)",
+    "Vitamine D2\n(ergocalciférol)\n(µg\n100 g)",
+    "Vitamine D3\n(cholécalciférol)\n(µg\n100 g)",
+    "Alpha-tocophérol\n(vitamine E) (mg\n100 g)",
+    "Vitamine\nE (mg\n100 g)",
+    "Vitamine\nK1 (µg\n100 g)",
+    "Vitamine\nK2 (µg\n100 g)",
+    "Vitamine\nC (mg\n100 g)",
+    "Vitamine\nB1 ou\nThiamine\n(mg\n100 g)",
+    "Vitamine\nB2 ou\nRiboflavine\n(mg\n100 g)",
+    "Vitamine\nB3 ou PP\nou\nNiacine\n(mg\n100 g)",
+    "Vitamine B5\nou Acide\npantothénique\n(mg\n100 g)",
+    "Vitamine\nB6 (mg\n100 g)",
+    "Vitamine B9 ou\nFolates totaux,\néquivalents folates\nalimentaires, DFE (µg\n100 g)",
+    "Vitamine\nB9 ou\nFolates\ntotaux (µg\n100 g)",
+    "Folates\nintrinsèques\n(µg\n100 g)",
+    "Acide folique\n(enrichissement)\n(µg\n100 g)",
+    "Vitamine\nB12 (µg\n100 g)",
+    "Facteur\nde\nJones",
+]
+
 
 @pytest.mark.parametrize(
     ("scritto", "atteso"),
@@ -58,6 +151,23 @@ def test_normalize_name(scritto, atteso):
         # il micro scritto con la lettera greca, come può capitare in un'altra edizione
         ("Sélénium (μg/100 g)", ("selenium", "ug")),
         ("Energie, Règlement UE N° 1169/2011 (kcal/100 g)", ("energie, reglement ue n°1169/2011", "kcal")),
+        # Le intestazioni vere, copiate dal file del 2025 (`Table Ciqual 2025_FR_2025_11_03.xlsx`):
+        # vanno a capo dove la scrittura su una riga mette uno spazio o una barra. Nell'unità
+        # l'a capo prima di «100 g» è la barra; nel nome è uno spazio, anche dove su una riga
+        # c'era una barra («1169/2011»): è `map_columns` a confrontare i nomi senza badare
+        # alla differenza fra barra e spazio.
+        ("Energie,\nRèglement\nUE N°\n1169\n2011 (kcal\n100 g)", ("energie, reglement ue n°1169 2011", "kcal")),
+        ("Protéines,\nN x\nfacteur de\nJones (g\n100 g)", ("proteines, n x facteur de jones", "g")),
+        ("Glucides\n(g\n100 g)", ("glucides", "g")),
+        ("Lipides\n(g\n100 g)", ("lipides", "g")),
+        ("Eau\n(g\n100\ng)", ("eau", "g")),
+        ("Fer (mg\n100 g)", ("fer", "mg")),
+        ("Iode\n(µg\n100 g)", ("iode", "ug")),
+        ("Vitamine\nB9 ou\nFolates\ntotaux (µg\n100 g)", ("vitamine b9 ou folates totaux", "ug")),
+        ("Alpha-tocophérol\n(vitamine E) (mg\n100 g)", ("alpha-tocopherol (vitamine e)", "mg")),
+        ("AG 18:2\n9c,12c\n(n-6),\nlinoléique\n(g\n100 g)", ("ag 18:2 9c,12c (n-6), linoleique", "g")),
+        # com'è nell'archivio, prima che il parser XML lo riduca a «\n»
+        ("Lipides\r\n(g\r\n100 g)", ("lipides", "g")),
         ("Eau (g/100g)", ("eau", "g")),
         ("alim_code", None),
     ],
@@ -102,6 +212,25 @@ def test_map_columns_riconosce_le_colonne_per_nome():
     # l'acqua non è nel vocabolario: una colonna non usata, detta, non un errore
     assert colonne.unused == ("Eau (g/100 g)",)
     assert "vitamin_c" in colonne.absent and "iron" not in colonne.absent
+
+
+def test_map_columns_riconosce_le_intestazioni_vere_del_2025():
+    """Il file vero va a capo dentro le intestazioni, dove una riga sola metterebbe uno
+    spazio o una barra: le trenta colonne del vocabolario si trovano tutte lo stesso."""
+    colonne = map_columns(INTESTAZIONE_2025)
+
+    assert (colonne.code, colonne.name, colonne.group, colonne.subgroup) == (6, 7, 3, 4)
+    assert colonne.absent == ()
+    assert set(colonne.nutrients) == set(CIQUAL_NAMES)
+    # l'energia in kcal, non quella in kJ accanto né quella «avec fibres»; le proteine
+    # col fattore di Jones, non quelle N x 6.25
+    assert {chiave: colonne.nutrients[chiave] for chiave in REQUIRED_KEYS} == {
+        "kcal": 10, "protein": 14, "carbs": 16, "fat": 17,
+    }
+    assert colonne.nutrients["folate"] == 79 and colonne.nutrients["vitamin_e"] == 69
+    # le colonne non usate si dicono su una riga, come le scrive chi le legge
+    assert colonne.unused[0] == "Energie, Règlement UE N° 1169 2011 (kJ 100 g)"
+    assert all("\n" not in colonna for colonna in colonne.unused)
 
 
 def test_map_columns_rifiuta_un_unita_diversa_da_quella_del_vocabolario():

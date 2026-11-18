@@ -38,7 +38,7 @@ async def test_la_prova_a_secco_conta_e_non_apre_il_database(tmp_path, monkeypat
     assert "  Energia (kcal): 16 alimenti" in stampato
     assert "  Ferro (mg): 15 alimenti, 1 illeggibile" in stampato
     assert "Nel vocabolario ma non nel file: " in stampato
-    assert "Colonne non usate: 1, per esempio «Eau (g/100 g)»." in stampato
+    assert "Colonne non usate: 1, per esempio «Eau (g 100 g)»." in stampato
     assert stampato.rstrip().endswith("Prova a secco: niente è stato scritto.")
 
 
@@ -75,7 +75,7 @@ async def test_un_file_sbagliato_non_scrive_niente(db_session, tmp_path, monkeyp
     assert await main([str(fixture_xlsx(tmp_path, righe))]) == 1
 
     stampato = capsys.readouterr().out
-    assert "Il file non va:" in stampato and "Fer (µg/100 g)" in stampato
+    assert "Il file non va:" in stampato and "Fer (µg 100 g)" in stampato
     assert "Niente è stato scritto." in stampato
     assert await count_foods(db_session) == 0
 
