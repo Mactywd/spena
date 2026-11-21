@@ -408,7 +408,6 @@ async def test_release_recipe_fuori_dal_ricettario_archivia(db_session, frittata
     assert len(rows) == 1
 
 
-
 async def _lasagne_con_avanzi(db_session, *places):
     origin = await create_meal(db_session, day=d(9), slot=D, dish="Lasagne")
     lefts = [
