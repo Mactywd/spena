@@ -4,13 +4,17 @@
 subito dopo, `changed` le righe e i campi toccati (la forma è nel Task 3). «Annulla» li
 confronta con lo stato di adesso: rimette `before` solo se ricetta e piatto sono ancora
 esattamente `after`, così non sovrascrive mai un lavoro più nuovo (decisione 16).
+
+`created_ingredient_ids` sono gli id (come stringhe) degli ingredienti che questa modifica
+ha creato in anagrafica: «Annulla» li toglie, dopo aver rimesso la versione di prima, se
+nient'altro li usa. Le modifiche scritte prima della 0023 hanno `[]` e non tolgono niente.
 """
 
 import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,6 +41,9 @@ class RecipeChange(UUIDMixin, Base):
         nullable=True,
     )
     created_recipe: Mapped[bool] = mapped_column(Boolean)
+    created_ingredient_ids: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     summary: Mapped[str] = mapped_column(String(200))
     before: Mapped[dict[str, Any]] = mapped_column(JSONB)
     after: Mapped[dict[str, Any]] = mapped_column(JSONB)

@@ -25,6 +25,7 @@ from app.domain.recipe_changes import (
     snapshot_to_json,
 )
 from app.domain.rules import IngredientKind, IngredientRole
+from app.repositories.ingredients import delete_ingredient_if_unused
 from app.repositories.meals import get_meal
 from app.repositories.recipes import (
     IngredientLine,
@@ -249,6 +250,7 @@ async def write_meal_recipe(
         if recipe.archived_at is not None:
             raise RecipeWriteRefused(RECIPE_DELETED_MESSAGE)
     created = recipe is None
+    new_ingredients: list[uuid.UUID] = []
     title = draft.title.strip()
     description = draft.description
     # il vettore nasce da titolo e descrizione: si rifà solo se cambiano, come in `replace`
@@ -272,7 +274,9 @@ async def write_meal_recipe(
                         f"L'ingrediente {line.ingredient_id} non esiste: "
                         "cercalo di nuovo con search_ingredients."
                     )
-            lines = await resolve_lines(session, await _to_form_lines(session, draft.lines))
+            lines = await resolve_lines(
+                session, await _to_form_lines(session, draft.lines), created=new_ingredients
+            )
             if recipe is None:
                 recipe = await create_recipe(
                     session,
@@ -324,6 +328,7 @@ async def write_meal_recipe(
         conversation_id=conversation_id,
         turn_message_id=turn_message_id,
         created_recipe=created,
+        created_ingredient_ids=[str(i) for i in new_ingredients],
         summary=" ".join(draft.summary.split())[:200],
         before=snapshot_to_json(before),
         after=snapshot_to_json(after),
@@ -404,4 +409,8 @@ async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> Non
         meal.sides = before.sides
         change.undone_at = datetime.now(UTC)
         await session.flush()
+        # dopo la versione di prima: una ricetta archiviata usa ancora i suoi ingredienti,
+        # che restano; se nient'altro li usa, quelli che questa modifica aveva creato vanno
+        for ingredient_id in change.created_ingredient_ids:
+            await delete_ingredient_if_unused(session, uuid.UUID(ingredient_id))
     await get_meal(session, meal_id)

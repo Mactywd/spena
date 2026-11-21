@@ -434,3 +434,107 @@ async def test_con_l_istantanea_giusta_si_scrive(db_session, voci, meal):
         expected=seen,
     )
     assert (await lines_of(db_session, meal))[voci["spinaci"].id].quantity_text == "150 g"
+
+
+# --- C6: «Annulla» toglie gli ingredienti creati da quella modifica --------------------
+
+
+async def _with_new_ingredient(db_session, voci, meal):
+    first = await write_meal_recipe(db_session, meal, draft(line(voci["uova"], text="2")))
+    second = await write_meal_recipe(
+        db_session, meal,
+        draft(
+            line(voci["uova"], text="2"),
+            named("Spinaci novelli", IngredientCategory.VERDURA, text="100 g"),
+        ),
+    )
+    await db_session.flush()
+    novelli = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "spinaci novelli"))
+    ).scalar_one()
+    return first, second, novelli
+
+
+async def _exists(db_session, ingredient_id) -> bool:
+    return await db_session.get(Ingredient, ingredient_id) is not None
+
+
+async def test_la_modifica_ricorda_gli_ingredienti_che_crea(db_session, voci, meal):
+    change = await write_meal_recipe(
+        db_session, meal,
+        draft(
+            named("Spinaci novelli", IngredientCategory.VERDURA),
+            named("Spinaci"),  # lo aggancia a quello che c'è
+        ),
+    )
+    novelli = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "spinaci novelli"))
+    ).scalar_one()
+    assert change.created_ingredient_ids == [str(novelli.id)]
+
+
+async def test_annulla_toglie_l_ingrediente_creato(db_session, voci, meal):
+    _, second, novelli = await _with_new_ingredient(db_session, voci, meal)
+    novelli_id = novelli.id
+    await undo_recipe_change(db_session, second)
+    assert not await _exists(db_session, novelli_id)
+    rows = await lines_of(db_session, meal)
+    assert set(rows) == {voci["uova"].id}
+
+
+@pytest.mark.parametrize("uso", ["ricetta", "dispensa"])
+async def test_annulla_non_toglie_un_ingrediente_usato_altrove(db_session, voci, meal, uso):
+    from app.db.models.pantry import PantryItem
+    from app.db.models.recipe import RecipeSource
+    from app.repositories.recipes import create_recipe
+
+    _, second, novelli = await _with_new_ingredient(db_session, voci, meal)
+    if uso == "ricetta":
+        await create_recipe(
+            db_session, title="Altra", description=None, instructions="Cuoci.", servings=1,
+            source=RecipeSource.MANUAL, source_ref=None,
+            ingredients=[(novelli.id, "primary", None, None)], embedding=None,
+        )
+    else:
+        db_session.add(PantryItem(ingredient_id=novelli.id, status="available"))
+    await db_session.flush()
+    novelli_id = novelli.id
+    await undo_recipe_change(db_session, second)
+    assert second.undone_at is not None
+    assert await _exists(db_session, novelli_id)
+
+
+async def test_annulla_non_toglie_un_ingrediente_in_lista(db_session, voci, meal):
+    from app.db.models.shopping import ShoppingListItem
+
+    _, second, novelli = await _with_new_ingredient(db_session, voci, meal)
+    db_session.add(
+        ShoppingListItem(
+            raw_text="Spinaci novelli", ingredient_id=novelli.id, status="pending",
+            reason="manual",
+        )
+    )
+    await db_session.flush()
+    novelli_id = novelli.id
+    await undo_recipe_change(db_session, second)
+    assert second.undone_at is not None
+    assert await _exists(db_session, novelli_id)
+
+
+async def test_annullare_una_ricetta_scritta_lascia_gli_ingredienti_alla_ricetta_archiviata(
+    db_session, voci, meal
+):
+    change = await write_meal_recipe(
+        db_session, meal,
+        draft(line(voci["uova"]), named("Spinaci novelli", IngredientCategory.VERDURA)),
+    )
+    assert change.created_recipe is True
+    novelli = (
+        await db_session.execute(select(Ingredient).where(Ingredient.name == "spinaci novelli"))
+    ).scalar_one()
+    novelli_id = novelli.id
+    await undo_recipe_change(db_session, change)
+    recipe = await db_session.get(Recipe, change.recipe_id)
+    await db_session.refresh(recipe)
+    assert recipe.archived_at is not None
+    assert await _exists(db_session, novelli_id)

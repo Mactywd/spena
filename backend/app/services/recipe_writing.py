@@ -32,7 +32,10 @@ class RepeatedIngredient(Exception):
 
 
 async def resolve_lines(
-    session: AsyncSession, lines: list[RecipeIngredientIn]
+    session: AsyncSession,
+    lines: list[RecipeIngredientIn],
+    *,
+    created: list[uuid.UUID] | None = None,
 ) -> list[IngredientLine]:
     """Da righe del modulo a righe da scrivere: la stessa strada per creare e modificare.
 
@@ -47,6 +50,9 @@ async def resolve_lines(
     rifiutano qui, nominandolo (`RepeatedIngredient`, 409 in `_writing_recipe`): il
     vincolo d'unicità della tabella delle righe le rifiuterebbe comunque, ma non sa dire
     quale ingrediente.
+
+    Con `created` l'id di ogni ingrediente che crea qui (non di quelli che aggancia) vi
+    si appende: chi scrive per Claude lo ricorda, per toglierlo se la modifica si annulla.
     """
     resolved: list[IngredientLine] = []
     seen: set[uuid.UUID] = set()
@@ -62,12 +68,14 @@ async def resolve_lines(
             if linked is not None:
                 ingredient_id = linked.id
             else:
-                created = await create_ingredient(
+                made = await create_ingredient(
                     session, name=line.name or "",
                     display_name=(line.name or "").capitalize(),
                     category=line.category or "altro",
                 )
-                ingredient_id = created.id
+                ingredient_id = made.id
+                if created is not None:
+                    created.append(made.id)
         if ingredient_id in seen:
             ingredient = await session.get(Ingredient, ingredient_id)
             # un id che non esiste due volte non è un doppione da nominare: lo
