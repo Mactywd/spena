@@ -566,6 +566,39 @@ async def _still_used_elsewhere(
     return False
 
 
+async def _list_still_needed(
+    session: AsyncSession, source: ChangeCardRow, meal_id: str
+) -> bool:
+    """La voce di lista serve ancora a un altro pasto: o lo dice la riga stessa
+    (`_still_used_elsewhere`), o un'altra scheda in avanti, proposta o applicata, ha una
+    riga di lista per lo stesso ingrediente al servizio di un altro pasto ufficiale e non
+    fuori casa (anche se la sua riga era «Già in lista.» e non è mai stata applicata)."""
+    if await _still_used_elsewhere(session, source, meal_id):
+        return True
+    if source.ingredient_id is None:
+        return False
+    others = (
+        await session.execute(
+            select(ChangeCardRow.meal_ids)
+            .join(ChangeCard, ChangeCard.id == ChangeCardRow.card_id)
+            .where(
+                ChangeCard.kind == CardKind.FORWARD.value,
+                ChangeCard.status.in_(
+                    [CardStatus.PROPOSED.value, CardStatus.APPLIED.value]
+                ),
+                ChangeCardRow.kind == RowKind.LIST.value,
+                ChangeCardRow.ingredient_id == source.ingredient_id,
+                ChangeCardRow.id != source.id,
+            )
+        )
+    ).scalars().all()
+    for meal_ids in others:
+        probe = ChangeCardRow(meal_ids=meal_ids)
+        if await _still_used_elsewhere(session, probe, meal_id):
+            return True
+    return False
+
+
 async def _drop_meal_from_proposed(session: AsyncSession, meal_id: str) -> None:
     """Le schede in avanti ancora proposte di quel pasto perdono le righe che servivano
     solo a lui; una che resta senza righe e senza pasti si scarta da sola."""
@@ -691,7 +724,9 @@ async def propose_inverse_card(
 
     Le tre regole di sicurezza, perché rimettere a torto sbaglia quanto non rimettere:
     - **serve ancora a un altro pasto**: una riga che serve anche a un pasto ancora
-      ufficiale e non fuori casa si salta, perché lui la usa ancora;
+      ufficiale e non fuori casa si salta, perché lui la usa ancora; per una voce di lista
+      vale anche la riga di lista di un'altra scheda (proposta o applicata) per lo stesso
+      ingrediente, al servizio di un altro pasto così;
     - **cambiata dopo**: una voce di dispensa che non è più nello stato che la scheda le
       aveva dato è stata toccata da qualcuno dopo, e la riga c'è ma non è spuntata, con
       la nota; una voce già tornata allo stato di prima, o sparita, non ha riga;
@@ -746,7 +781,7 @@ async def propose_inverse_card(
         if source.kind == RowKind.PANTRY.value:
             groups.setdefault(source.pantry_item_id, []).append(source)
             continue
-        if await _still_used_elsewhere(session, source, meal_id):
+        if await _list_still_needed(session, source, meal_id):
             continue
         fields = await _inverse_list_row(session, source)
         if fields is not None:

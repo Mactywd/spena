@@ -21,6 +21,7 @@ from app.services.change_cards import (
     ListProposal,
     PantryProposal,
     apply_card,
+    discard_card,
     get_card,
     propose_card,
 )
@@ -430,3 +431,50 @@ async def test_un_gruppo_che_serve_a_un_altro_pasto_si_salta(db_session, mondo):
     await applicata(db_session, [a], [PantryProposal(ricotta.id, F)])
     await delete_meal(db_session, a)
     assert all(righe(c, "pantry") == [] for c in await inverse(db_session))
+
+
+async def _scheda_a_con_pesto_in_lista(db_session, mondo):
+    """La scheda di A mette il pesto in lista (applicata, `list_added`)."""
+    pesto = mondo["ing"]["pesto"]
+    await applicata(db_session, [mondo["A"]], [], [ListProposal(pesto.id, "Pesto")])
+    return pesto
+
+
+@pytest.mark.parametrize("applicata_b", [False, True], ids=["proposta", "applicata"])
+async def test_l_inversa_non_toglie_dalla_lista_cio_che_serve_a_un_altro_pasto(
+    db_session, mondo, applicata_b
+):
+    pesto = await _scheda_a_con_pesto_in_lista(db_session, mondo)
+    scheda_b = await propose_card(
+        db_session, meals=[mondo["B"]], pantry=[], shopping=[ListProposal(pesto.id, "Pesto")]
+    )
+    (riga_b,) = righe(scheda_b, "list")
+    assert riga_b.note == "Già in lista." and riga_b.checked is False
+    if applicata_b:
+        await apply_card(db_session, scheda_b.id, [])
+
+    await delete_meal(db_session, mondo["A"])
+    assert await inverse(db_session) == []  # era l'unica riga: l'inversa non nasce
+
+
+async def test_una_scheda_scartata_non_tiene_la_voce_in_lista(db_session, mondo):
+    pesto = await _scheda_a_con_pesto_in_lista(db_session, mondo)
+    scheda_b = await propose_card(
+        db_session, meals=[mondo["B"]], pantry=[], shopping=[ListProposal(pesto.id, "Pesto")]
+    )
+    await discard_card(db_session, scheda_b.id)
+    await delete_meal(db_session, mondo["A"])
+    assert [(r.kind, r.label) for r in (await l_inversa(db_session)).rows] == [
+        ("unlist", "Pesto")
+    ]
+
+
+async def test_un_pasto_bozza_non_tiene_la_voce_in_lista(db_session, mondo):
+    pesto = await _scheda_a_con_pesto_in_lista(db_session, mondo)
+    await propose_card(
+        db_session, meals=[mondo["bozza"]], pantry=[], shopping=[ListProposal(pesto.id, "Pesto")]
+    )
+    await delete_meal(db_session, mondo["A"])
+    assert [(r.kind, r.label) for r in (await l_inversa(db_session)).rows] == [
+        ("unlist", "Pesto")
+    ]
