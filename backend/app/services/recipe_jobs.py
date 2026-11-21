@@ -346,8 +346,8 @@ class RecipeJobs:
     «Chiedi la ricetta a Claude».
 
     **Cosa ferma la coda**: un guasto che vale per tutti (`TERMINAL_FAILURES`: il limite
-    di frequenza, il credito, la chiave, Claude non collegato) scrive lo stesso avviso su ogni pasto
-    rimasto, senza chiamare Claude, e chiude la coda. Un guasto del singolo (il tempo
+    di frequenza, il credito, la chiave, Claude non collegato) scrive lo stesso avviso su
+    ogni pasto rimasto, senza chiamare Claude, e chiude la coda. Un guasto del singolo (il tempo
     massimo, un errore) resta su quel pasto e la coda passa al pasto dopo.
 
     `live_ids` sono i pasti di tutte le code non finite, in attesa o in corso: un pasto ne

@@ -239,7 +239,7 @@ async def test_la_ricetta_scritta_da_zero(db_session, factory, senza_ricetta, vo
         assert change.turn_message_id == message.id
 
 
-async def test_il_limite_del_piano(db_session, factory, frittata, dal_database):
+async def test_il_limite_di_frequenza(db_session, factory, frittata, dal_database):
     conversation, message = await nuovo_messaggio(db_session, frittata, "E con le zucchine?")
     resets_at = datetime.now(UTC) + timedelta(minutes=30)
     fake = FakeClaude([Fail(FailureKind.RATE_LIMIT, resets_at=resets_at)])
