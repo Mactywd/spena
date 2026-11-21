@@ -221,10 +221,16 @@ async def patch_meal(
     jobs: RecipeJobs = Depends(get_recipe_jobs),
 ):
     meal = await _meal_or_404(session, meal_id)
-    changes = payload.model_dump(include=payload.model_fields_set - {"replace"})
+    changes = payload.model_dump(include=payload.model_fields_set - {"replace", "detach_leftovers"})
     was_draft = meal.status == MealStatus.DRAFT.value
     try:
-        updated = await update_meal(session, meal, changes, replace=payload.replace)
+        updated = await update_meal(
+            session,
+            meal,
+            changes,
+            replace=payload.replace,
+            detach_leftovers=payload.detach_leftovers,
+        )
         if was_draft and updated.status == MealStatus.OFFICIAL.value:
             # «Rendi ufficiale»: la scheda vuota, da compilare a mano
             await create_empty_card(session, updated)

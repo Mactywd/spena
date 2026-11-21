@@ -255,3 +255,26 @@ async def test_un_pasto_fuori_casa_ha_la_ricetta_nel_pasto(logged_client, db_ses
     assert out["recipe"]["id"] == str(r.id)
     assert out["can_chat"] is False
     assert out["can_ask_recipe"] is False
+
+
+async def test_patch_dopo_l_avanzo_e_409_con_quanti(logged_client, db_session):
+    origine = await pasto(db_session, d(9), D, "Lasagne")
+    await pasto(db_session, d(10), L, "Avanzo", leftover_of_id=origine.id)
+    r = await logged_client.patch(f"{M}/{origine.id}", json={"day": "2026-11-11"})
+    assert r.status_code == 409
+    assert r.json() == {
+        "code": "leftover_after", "detail": "Martedì pranzo è un suo avanzo.", "leftovers": 1,
+    }
+
+
+async def test_patch_con_detach_leftovers_sposta(logged_client, db_session):
+    origine = await pasto(db_session, d(9), D, "Lasagne")
+    avanzo = await pasto(db_session, d(10), L, "Avanzo", leftover_of_id=origine.id)
+    r = await logged_client.patch(
+        f"{M}/{origine.id}", json={"day": "2026-11-11", "detach_leftovers": True}
+    )
+    assert r.status_code == 200
+    assert r.json()["day"] == "2026-11-11"
+    week = (await logged_client.get(f"{M}/week", params={"of": "2026-11-10"})).json()
+    got = next(m for m in week["meals"] if m["id"] == str(avanzo.id))
+    assert got["leftover_of"] is None

@@ -407,3 +407,92 @@ async def test_release_recipe_fuori_dal_ricettario_archivia(db_session, frittata
     rows = (await db_session.execute(select(Meal))).scalars().all()
     assert len(rows) == 1
 
+
+
+async def _lasagne_con_avanzi(db_session, *places):
+    origin = await create_meal(db_session, day=d(9), slot=D, dish="Lasagne")
+    lefts = [
+        await create_meal(
+            db_session, day=day, slot=slot, dish="Lasagne di ieri", leftover_of_id=origin.id
+        )
+        for day, slot in places
+    ]
+    return origin, lefts
+
+
+async def test_spostare_il_pasto_dopo_il_suo_avanzo_chiede(db_session):
+    origin, _ = await _lasagne_con_avanzi(db_session, (d(10), L))
+    with pytest.raises(MealRefusal) as exc:
+        await update_meal(db_session, origin, {"day": d(11)})
+    assert exc.value.code == MealRefusalCode.LEFTOVER_AFTER
+    assert exc.value.message == "Martedì pranzo è un suo avanzo."
+    assert exc.value.leftovers == 1
+    assert (await get_meal(db_session, origin.id)).day == d(9)
+
+
+async def test_con_due_avanzi_la_frase_li_dice_tutti(db_session):
+    origin, _ = await _lasagne_con_avanzi(db_session, (d(10), L), (d(10), D))
+    with pytest.raises(MealRefusal) as exc:
+        await update_meal(db_session, origin, {"day": d(11)})
+    assert exc.value.message == "Martedì pranzo e martedì cena sono suoi avanzi."
+    assert exc.value.leftovers == 2
+
+
+async def test_con_tre_avanzi_la_frase_usa_la_virgola(db_session):
+    origin, _ = await _lasagne_con_avanzi(db_session, (d(10), L), (d(10), D), (d(11), L))
+    with pytest.raises(MealRefusal) as exc:
+        await update_meal(db_session, origin, {"day": d(12)})
+    assert exc.value.message == (
+        "Martedì pranzo, martedì cena e mercoledì pranzo sono suoi avanzi."
+    )
+    assert exc.value.leftovers == 3
+
+
+async def test_sposta_e_stacca_l_avanzo(db_session):
+    origin, (left,) = await _lasagne_con_avanzi(db_session, (d(10), L))
+    moved = await update_meal(db_session, origin, {"day": d(11)}, detach_leftovers=True)
+    assert moved.day == d(11)
+    again = await get_meal(db_session, left.id)
+    assert again.leftover_of_id is None
+    assert again.dish == "Lasagne di ieri"
+
+
+async def test_stacca_solo_gli_avanzi_che_verrebbero_prima(db_session):
+    origin, (early, late) = await _lasagne_con_avanzi(db_session, (d(10), L), (d(12), L))
+    await update_meal(db_session, origin, {"day": d(11)}, detach_leftovers=True)
+    assert (await get_meal(db_session, early.id)).leftover_of_id is None
+    assert (await get_meal(db_session, late.id)).leftover_of_id == origin.id
+
+
+async def test_spostare_prima_non_chiede_niente(db_session):
+    origin, (left,) = await _lasagne_con_avanzi(db_session, (d(10), L))
+    moved = await update_meal(db_session, origin, {"day": d(8), "slot": D})
+    assert moved.day == d(8)
+    assert (await get_meal(db_session, left.id)).leftover_of_id == origin.id
+
+
+async def test_spostare_e_andare_fuori_casa_insieme_non_chiede(db_session):
+    origin, (left,) = await _lasagne_con_avanzi(db_session, (d(10), L))
+    moved = await update_meal(db_session, origin, {"day": d(11), "away": True})
+    assert moved.away is True
+    assert (await get_meal(db_session, left.id)).leftover_of_id is None
+
+
+async def test_l_occupante_sostituito_che_e_un_avanzo_del_pasto_non_conta(db_session):
+    # ruling B-R2: se `replace` elimina un avanzo del pasto spostato, quell'avanzo non si
+    # considera (né nel rifiuto né nello stacco): non si scrive su una riga che sparisce
+    origin, (left, other) = await _lasagne_con_avanzi(db_session, (d(11), L), (d(12), L))
+    moved = await update_meal(db_session, origin, {"day": d(11), "slot": L}, replace=True)
+    assert moved.day == d(11)
+    assert await get_meal(db_session, left.id) is None
+    assert (await get_meal(db_session, other.id)).leftover_of_id == origin.id
+    # e con un secondo avanzo che verrebbe prima, il rifiuto conta solo quello che resta
+    origin2 = await create_meal(db_session, day=d(8), slot=D, dish="Pizza")
+    for day, slot in ((d(9), L), (d(9), D)):
+        await create_meal(
+            db_session, day=day, slot=slot, dish="Pizza fredda", leftover_of_id=origin2.id
+        )
+    with pytest.raises(MealRefusal) as exc:
+        await update_meal(db_session, origin2, {"day": d(9), "slot": D}, replace=True)
+    assert exc.value.leftovers == 1
+    assert exc.value.message == "Lunedì pranzo è un suo avanzo."

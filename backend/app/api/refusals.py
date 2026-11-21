@@ -54,6 +54,7 @@ _MEAL_STATUS = {
     MealRefusalCode.HAS_RECIPE: 409,
     MealRefusalCode.NO_RECIPE_HERE: 409,
     MealRefusalCode.RECIPE_ARCHIVED: 409,
+    MealRefusalCode.LEFTOVER_AFTER: 409,
     MealRefusalCode.BAD_LEFTOVER: 422,
     MealRefusalCode.STAYS_OFFICIAL: 422,
 }
@@ -67,4 +68,6 @@ def meal_refusal_response(exc: MealRefusal) -> JSONResponse:
     content: dict[str, object] = {"detail": exc.message, "code": exc.code.value}
     if exc.code == MealRefusalCode.SLOT_TAKEN and exc.occupant is not None:
         content["occupant"] = meal_out(exc.occupant, today_in_pantry()).model_dump(mode="json")
+    if exc.code == MealRefusalCode.LEFTOVER_AFTER:
+        content["leftovers"] = exc.leftovers
     return JSONResponse(content, status_code=_MEAL_STATUS[exc.code])

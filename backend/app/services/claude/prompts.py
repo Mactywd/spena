@@ -12,16 +12,16 @@ from zoneinfo import ZoneInfo
 
 from app.db.models.recipe import Recipe
 from app.db.models.planning import MealProposal
-from app.domain.meals import MealSlot
+from app.domain.meals import SLOT_WORDS, WEEKDAY_NAMES, MealSlot
 
 # il backend non ha i nomi italiani di giorni e mesi: stanno qui, in due tuple
-GIORNI = ("lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica")
+GIORNI = WEEKDAY_NAMES
 MESI = (
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
 )  # fmt: skip
 
-SLOT_NAMES = {MealSlot.LUNCH.value: "pranzo", MealSlot.DINNER.value: "cena"}
+SLOT_NAMES = SLOT_WORDS
 
 
 def day_name(day: date) -> str:

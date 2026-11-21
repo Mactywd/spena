@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe
-from app.domain.meals import MealSlot, MealStatus, is_before
+from app.domain.meals import MealSlot, MealStatus, is_before, place_words
 from app.repositories.meals import get_meal, meal_at
 from app.repositories.recipes import copy_recipe
 from app.services.change_cards import InverseReason, propose_inverse_card
@@ -27,16 +27,22 @@ class MealRefusalCode(StrEnum):
     BAD_LEFTOVER = "bad_leftover"
     STAYS_OFFICIAL = "stays_official"
     RECIPE_ARCHIVED = "recipe_archived"
+    LEFTOVER_AFTER = "leftover_after"
 
 
 class MealRefusal(Exception):
     def __init__(
-        self, code: MealRefusalCode, message: str, occupant: Meal | None = None
+        self,
+        code: MealRefusalCode,
+        message: str,
+        occupant: Meal | None = None,
+        leftovers: int = 0,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.occupant = occupant
+        self.leftovers = leftovers
 
 
 def _bad_leftover() -> MealRefusal:
@@ -69,6 +75,29 @@ async def _unlink_leftovers_of(session: AsyncSession, meal: Meal) -> None:
         row.leftover_of_id = None
     if rows:
         await session.flush()
+
+
+def _leftovers_sentence(places: list[str]) -> str:
+    text = places[0] if len(places) == 1 else ", ".join(places[:-1]) + " e " + places[-1]
+    text = text[0].upper() + text[1:]
+    return f"{text} è un suo avanzo." if len(places) == 1 else f"{text} sono suoi avanzi."
+
+
+async def _leftovers_left_behind(
+    session: AsyncSession, meal: Meal, day: date, slot: MealSlot, skip: uuid.UUID | None
+) -> list[Meal]:
+    """Gli avanzi di `meal` che nel posto nuovo non verrebbero più dopo di lui, in ordine di
+    posto. `skip` è l'occupante che la sostituzione elimina: se è un avanzo di `meal` non si
+    considera (ruling B-R2), non si scrive su una riga che sparisce."""
+    rows = (
+        await session.execute(select(Meal).where(Meal.leftover_of_id == meal.id))
+    ).scalars().all()
+    behind = [
+        r
+        for r in rows
+        if r.id != skip and not is_before(day, slot, r.day, MealSlot(r.slot))
+    ]
+    return sorted(behind, key=lambda r: (r.day, MealSlot(r.slot) == MealSlot.DINNER))
 
 
 async def release_recipe(session: AsyncSession, meal: Meal) -> None:
@@ -136,7 +165,12 @@ async def create_meal(
 
 
 async def update_meal(
-    session: AsyncSession, meal: Meal, changes: Mapping[str, object], *, replace: bool = False
+    session: AsyncSession,
+    meal: Meal,
+    changes: Mapping[str, object],
+    *,
+    replace: bool = False,
+    detach_leftovers: bool = False,
 ) -> Meal:
     unknown = set(changes) - _ALLOWED
     if unknown:
@@ -159,9 +193,23 @@ async def update_meal(
         occupant = await meal_at(session, day, slot)
         if occupant is not None and occupant.id != meal.id and not replace:
             raise _slot_taken(occupant)
+    # i suoi avanzi non possono stare prima di lui (decisione 5): un pasto che va fuori casa non
+    # chiede, i suoi avanzi si staccano già
+    behind: list[Meal] = []
+    if moved and not away:
+        skip = occupant.id if occupant is not None and occupant.id != meal.id else None
+        behind = await _leftovers_left_behind(session, meal, day, slot, skip)
+        if behind and not detach_leftovers:
+            raise MealRefusal(
+                MealRefusalCode.LEFTOVER_AFTER,
+                _leftovers_sentence([place_words(r.day, MealSlot(r.slot)) for r in behind]),
+                leftovers=len(behind),
+            )
 
     if occupant is not None and occupant.id != meal.id:
         await delete_meal(session, occupant, _reason=InverseReason.REPLACED)
+    for row in behind:
+        row.leftover_of_id = None
 
     if away and not meal.away:
         await propose_inverse_card(session, meal, InverseReason.AWAY)

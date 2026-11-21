@@ -2,7 +2,14 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from app.domain.meals import MealSlot, MealStatus, is_before, is_unrecorded, week_bounds
+from app.domain.meals import (
+    MealSlot,
+    MealStatus,
+    is_before,
+    is_unrecorded,
+    place_words,
+    week_bounds,
+)
 from app.domain.rules import today_in_pantry
 
 
@@ -53,3 +60,8 @@ def test_is_unrecorded(status, day, expected):
 def test_la_settimana_di_oggi_e_quella_di_roma():
     today = today_in_pantry(datetime(2026, 11, 15, 23, 30, tzinfo=UTC))
     assert week_bounds(today) == (date(2026, 11, 16), date(2026, 11, 22))
+
+
+def test_place_words():
+    assert place_words(date(2026, 11, 10), MealSlot.LUNCH) == "martedì pranzo"
+    assert place_words(date(2026, 11, 15), MealSlot.DINNER) == "domenica cena"

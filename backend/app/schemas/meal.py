@@ -85,6 +85,7 @@ class MealCreate(BaseModel):
     status: MealStatus = MealStatus.OFFICIAL
     leftover_of_id: uuid.UUID | None = None
     replace: bool = False
+    detach_leftovers: bool = False
 
     @field_validator("dish", mode="after")
     @classmethod
@@ -98,7 +99,7 @@ class MealCreate(BaseModel):
 
 
 class MealUpdate(BaseModel):
-    """Si usano solo i campi mandati (`model_fields_set`); `replace` non è un cambio."""
+    """Si usano solo i campi mandati (`model_fields_set`); `replace` e `detach_leftovers` non sono cambi."""
 
     day: date | None = None
     slot: MealSlot | None = None
@@ -107,6 +108,7 @@ class MealUpdate(BaseModel):
     away: bool | None = None
     status: MealStatus | None = None
     replace: bool = False
+    detach_leftovers: bool = False
 
     @field_validator("dish", mode="after")
     @classmethod

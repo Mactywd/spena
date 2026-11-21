@@ -16,6 +16,11 @@ class MealSlot(StrEnum):
     DINNER = "dinner"
 
 
+# i nomi italiani di giorni e posti: una copia sola, per le frasi dei rifiuti e per i prompt
+WEEKDAY_NAMES = ("lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica")
+SLOT_WORDS = {MealSlot.LUNCH.value: "pranzo", MealSlot.DINNER.value: "cena"}
+
+
 class MealStatus(StrEnum):
     DRAFT = "draft"
     OFFICIAL = "official"
@@ -35,6 +40,12 @@ def slot_rank(slot: MealSlot) -> int:
 def is_before(day: date, slot: MealSlot, other_day: date, other_slot: MealSlot) -> bool:
     """Il primo posto viene strettamente prima del secondo."""
     return (day, slot_rank(slot)) < (other_day, slot_rank(other_slot))
+
+
+def place_words(day: date, slot: MealSlot) -> str:
+    """Il posto a parole, «martedì pranzo»: il giorno della settimana basta, perché un avanzo
+    sta al massimo 3 giorni dopo il suo pasto."""
+    return f"{WEEKDAY_NAMES[day.weekday()]} {SLOT_WORDS[MealSlot(slot).value]}"
 
 
 def is_unrecorded(status: MealStatus, day: date, today: date) -> bool:
