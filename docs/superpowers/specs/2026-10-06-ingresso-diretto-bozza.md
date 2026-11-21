@@ -234,6 +234,16 @@ confezione appena letta è già fuori inquadratura quando la fotocamera riparte;
 telefono si rilegge lo stesso codice, la scheda lo dice («l'hai appena messo») invece di
 scriverlo due volte in silenzio.
 
+**Aggiornato il 2026-11-18 (Mattia).** Finché il pannello della scansione è aperto la pagina
+non scorre fino alla riga nuova: il pannello sta sopra le righe, e con una dispensa lunga a
+ogni codice bisognava risalire. L'avviso «In dispensa: …» basta come conferma. Quando il
+pannello si chiude (la ✕, o «Annulla» dello scanner, nello stadio di lettura: allo stadio di
+conferma «Annulla» vale «scansiona di nuovo» e non chiude) va in vista l'ultima riga entrata
+nella serie, con le regole dell'aggiunta singola: se è dell'altro mondo il selettore passa a
+«Tutto» (S14 §4). Il reparto di ogni voce entrata si apre e si salva aperto come fuori dalla
+serie (S15 §3); se chi guarda lo richiude a mano prima della fine, resta chiuso e la riga non
+va in vista. Piano `docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`.
+
 ## 5. Rotte e dati
 
 - Nessuna tabella nuova, nessuna migrazione.
