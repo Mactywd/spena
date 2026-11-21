@@ -121,6 +121,7 @@ async def test_le_opzioni_di_produzione(monkeypatch):
     assert o.effort == "medium"
     assert o.max_turns == 12
     assert str(o.cwd).endswith("lavoro")
+    assert o.extra_args == {"no-session-persistence": None}
     assert o.env == {
         "ANTHROPIC_API_KEY": CHIAVE_FINTA,
         "CLAUDE_CODE_OAUTH_TOKEN": "",

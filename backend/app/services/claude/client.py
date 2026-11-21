@@ -4,7 +4,8 @@ Le scelte vengono dalle pagine dell'SDK lette il 2026-11-12: agent-sdk/python (l
 e i tipi), custom-tools (gli strumenti nel processo con `create_sdk_mcp_server`),
 permissions (`dontAsk`: ogni altra chiamata è negata, non chiesta), claude-code-features
 (`setting_sources=[]`, `strict_mcp_config`), streaming-output (`include_partial_messages`
-e i `StreamEvent`), sessions (ogni giro è una `query()` nuova: la cronologia sta in spena).
+e i `StreamEvent`), sessions (ogni giro è una `query()` nuova: la cronologia sta in spena, e le
+sessioni non si scrivono nemmeno su disco: `--no-session-persistence`).
 
 `query` è importata nel modulo proprio perché i test la sostituiscano qui. Il tempo
 massimo non sta qui ma nel giro (Task 6).
@@ -115,6 +116,12 @@ def build_options(
         effort=effort,
         max_turns=max_turns,
         cwd=workdir,
+        # Senza, il CLI scrive la trascrizione di ogni giro (prompt di sistema, dispensa,
+        # pasti, chiamate degli strumenti) sotto `~/.claude/projects/` nel container.
+        # `CLAUDE_CODE_SKIP_PROMPT_HISTORY` ferma la cronologia dei prompt (sul binario
+        # 2.1.321 ferma anche la trascrizione, ma non è il suo scopo e non ci si regge).
+        # Verificato sul binario: `tests/test_claude_binary.py`.
+        extra_args={"no-session-persistence": None},
         env={
             "ANTHROPIC_API_KEY": settings.anthropic_api_key or "",
             # L'SDK passa al CLI `{**os.environ, **env}`: un token del piano rimasto
