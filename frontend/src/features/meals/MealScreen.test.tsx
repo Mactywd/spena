@@ -245,6 +245,22 @@ describe("la schermata del piatto", () => {
     expect(within(document.body).queryByText("Scegli dal ricettario")).toBeNull();
   });
 
+  it("un pasto fuori casa con la ricetta la tiene da parte", async () => {
+    stubFetch(reads(meal({ away: true, recipe: { id: "r1", title: "Pollo", in_book: false } })));
+    renderMeal();
+    expect(
+      await screen.findByText(
+        "Fuori casa: non c'è niente da cucinare. La ricetta resta da parte: togliendo «Fuori casa» torna."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Pollo")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Scrivi la ricetta" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Elimina" }));
+    expect(
+      screen.getByText("La sua ricetta non è nel ricettario: si elimina con il pasto.")
+    ).toBeInTheDocument();
+  });
+
   describe("la ricetta nel piatto", () => {
     const withR = () => meal({ recipe: { id: "r1", title: "Pollo al limone", in_book: false } });
 

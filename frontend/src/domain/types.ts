@@ -525,10 +525,13 @@ export interface MealBody {
   away: boolean;
   leftover_of_id: string | null;
   replace?: boolean;
+  /** Lo spostamento stacca gli avanzi che verrebbero prima (risposta a `leftover_after`). */
+  detach_leftovers?: boolean;
 }
 export type MealPatch = Partial<Pick<MealBody, "day" | "slot" | "dish" | "sides" | "away">> & {
   status?: "official";
   replace?: boolean;
+  detach_leftovers?: boolean;
 };
 
 /** Una modifica della ricetta fatta da Claude, come la riga sotto la sua risposta

@@ -30,6 +30,7 @@ function patchFrom(meal: Meal, body: MealBody): MealPatch {
   if (body.sides !== meal.sides) patch.sides = body.sides;
   if (body.away !== meal.away) patch.away = body.away;
   if (Object.keys(patch).length > 0 && body.replace) patch.replace = true;
+  if (Object.keys(patch).length > 0 && body.detach_leftovers) patch.detach_leftovers = true;
   return patch;
 }
 
@@ -238,7 +239,10 @@ export function MealScreen() {
 
       <div className="pt-4">
         {m.away ? (
-          <p className="text-sm text-ink-soft">Fuori casa: non c'è niente da cucinare.</p>
+          <p className="text-sm text-ink-soft">
+            Fuori casa: non c'è niente da cucinare.
+            {m.recipe && " La ricetta resta da parte: togliendo «Fuori casa» torna."}
+          </p>
         ) : m.status === "draft" ? (
           <p className="text-sm text-ink-soft">
             È una bozza: la ricetta arriva quando diventa ufficiale.
@@ -267,7 +271,7 @@ export function MealScreen() {
             {askError && <Alert>{askError}</Alert>}
           </div>
         ) : null}
-        {m.recipe && (
+        {m.recipe && !m.away && (
           <RecipeDetailView
             key={m.recipe.id}
             id={m.recipe.id}
