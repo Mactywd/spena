@@ -177,8 +177,14 @@ export function PantryScreen() {
     setWorld(next);
   }
 
+  // Scrivere nella barra, o toccare il riepilogo, a metà serie può nascondere la riga in
+  // attesa (la ricerca o il riepilogo la filtrano via): spegnerla evita che alla ✕ il mondo
+  // salti a «Tutto» o la pagina scorra a una riga vecchia, e che il + la porti in cima
+  // spingendo fuori schermo il pannello nuovo. Solo in serie: fuori, la riga in vista deve
+  // attraversare la barra (percorso del +)
   function changeQuery(text: string) {
     sections.releaseHold();
+    if (inSeries) setRevealId(null);
     setQuery(text);
   }
 
@@ -340,6 +346,7 @@ export function PantryScreen() {
             aria-pressed={expiringOnly}
             onClick={() => {
               sections.releaseHold();
+              if (inSeries) setRevealId(null);
               setExpiringOnly((prev) => !prev);
             }}
             className={`flex min-h-11 w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm font-medium ${

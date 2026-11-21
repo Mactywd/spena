@@ -1453,4 +1453,59 @@ describe("PantryScreen, la serie della scansione (S3, S14, S15, 2026-11-18)", ()
     expect(reparto("Latticini")).toHaveAttribute("aria-expanded", "false");
     expect(chiusiSalvati()).toEqual(["latticini"]);
   });
+
+  it("in serie, scrivere nella barra spegne la riga in attesa: alla ✕ il mondo resta e premere + non scorre", async () => {
+    // caso A: la ricerca nasconde la riga; chiusa la serie il mondo resta «Casa», e
+    // svuotata la barra la pagina non salta alla riga vecchia
+    const scrolledA = righePortateInVista();
+    const spyA = serieFinta(DUE_MONDI, [P9]);
+    const viewA = renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+    fireEvent.click(screen.getByRole("button", { name: "Scansiona" }));
+    await leggi("52010");
+    await dispensaLetta(spyA, 2);
+    const barra = screen.getByLabelText("Cerca o aggiungi in dispensa");
+    fireEvent.change(barra, { target: { value: "detersivo" } });
+    chiudiIlPannello();
+    await act(async () => {});
+    expect(mondo("Casa")).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "" } });
+    await act(async () => {});
+    expect(mondo("Casa")).toHaveAttribute("aria-pressed", "true");
+    expect(scrolledA).toHaveLength(0);
+    viewA.unmount();
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+
+    // caso B: a metà serie si scrive nella barra e si preme +; il pannello nuovo non
+    // viene spinto fuori schermo dalla riga scansionata
+    const scrolledB = righePortateInVista();
+    const spyB = serieFinta(ITEMS, [P9]);
+    renderScreen();
+    await scansiona();
+    await leggi("52010");
+    await dispensaLetta(spyB, 2);
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "yogurt" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    await act(async () => {});
+    expect(scrolledB).toHaveLength(0);
+  });
+
+  it("in serie, toccare il riepilogo delle scadenze spegne la riga in attesa: alla ✕ non si scorre", async () => {
+    const scrolled = righePortateInVista();
+    const spy = serieFinta(ITEMS, [P9]);
+    renderScreen();
+    await scansiona();
+    await leggi("52010");
+    await dispensaLetta(spy, 2);
+    const riepilogo = screen.getByRole("button", { name: "1 in scadenza questa settimana" });
+    fireEvent.click(riepilogo);
+    chiudiIlPannello();
+    await act(async () => {});
+    // il riepilogo nasconde la riga scansionata (senza scadenza): spento, riappare e non scorre
+    fireEvent.click(screen.getByRole("button", { name: "1 in scadenza questa settimana" }));
+    await act(async () => {});
+    expect(scrolled).toHaveLength(0);
+  });
 });
