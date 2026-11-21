@@ -190,25 +190,30 @@ constraint, not no tools: the prompt is then exactly the one of before. Imported
 recipes are never checked against it. Spec: `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, §4.4 and §8.
 
 **A second path to a model, on purpose: Claude for the meals.** The meal chat, the
-planning and the meals' recipes run on Claude Opus (`claude-opus-5-5`) through the Claude Agent
-SDK for Python (`claude-agent-sdk`, pinned, with its bundled Claude Code binary),
-authenticated with Mattia's own subscription through `CLAUDE_CODE_OAUTH_TOKEN` from
-`claude setup-token`, kept only in the server's `.env` (decided by Mattia on
-2026-11-10; check the authentication terms in the spec's plan before changing it).
-This is not what the one-provider rule above forbids: that rule is against two
-implementations behind a switch, one of which never runs. Here there are two paths
-with two jobs, and both run in production — Gemma via OpenRouter for import, drafts
-and variants; Claude via the Agent SDK for the meals. The SDK is driven with every
-built-in tool off (`tools=[]`), no settings or `CLAUDE.md` loaded
-(`setting_sources=[]`), `permission_mode="dontAsk"`, and spena's own tools as an
-in-process MCP server (`backend/app/services/claude/`). Its calls go into `llm_calls`
-as `meal_chat`, `meal_planning` and `meal_recipe` with their tokens and `cost_usd` NULL:
-they are on the plan, not paid per use, and «Spese dell'AI» shows them apart. Claude writes a meal's recipe only
-through `write_meal_recipe` (`backend/app/services/meal_recipes.py`), which goes
-through the `write_recipe_ingredients` funnel, inside a savepoint, and stores the
-version before for «Annulla». Tests never run the SDK: `get_claude_client` is
-injected, the fake calls the very tool objects production builds, and the production
-client is tested against the SDK's real message types. Spec:
+planning and the meals' recipes run on Claude Opus (`claude-opus-5-5`) through the
+Claude Agent SDK for Python (`claude-agent-sdk`, pinned, with its bundled Claude Code
+binary), authenticated with Mattia's Anthropic API key, `ANTHROPIC_API_KEY`, kept only
+in the server's `.env` (decided by Mattia on 2026-11-18; the same key will serve the
+import's LLM when it moves to Claude Haiku). The SDK gets `CLAUDE_CODE_OAUTH_TOKEN` and
+`ANTHROPIC_AUTH_TOKEN` empty, so a subscription token left in the environment can never
+take over. This is not what the one-provider rule above forbids: that rule is against
+two implementations behind a switch, one of which never runs. Here there are two paths
+with two jobs, and both run in production — Gemma via OpenRouter for import, drafts and
+variants; Claude via the Agent SDK for the meals. The SDK is driven with every built-in
+tool off (`tools=[]`), no settings or `CLAUDE.md` loaded (`setting_sources=[]`),
+`permission_mode="dontAsk"`, no session transcripts on disk
+(`--no-session-persistence`, proven on the bundled binary by
+`tests/test_claude_binary.py`), and spena's own tools as an in-process MCP server
+(`backend/app/services/claude/`). Its calls go into `llm_calls` as `meal_chat`,
+`meal_planning` and `meal_recipe` with their tokens and the cost Claude Code reports
+(`ResultMessage.total_cost_usd`, an estimate from its price list), failed turns
+included, and «Spese dell'AI» counts them like any other section. Claude writes a
+meal's recipe only through `write_meal_recipe` (`backend/app/services/meal_recipes.py`),
+which goes through the `write_recipe_ingredients` funnel, inside a savepoint, refuses
+when the meal changed since Claude saw it, and stores the version before for «Annulla».
+Tests never run the SDK against the network: `get_claude_client` is injected, the fake
+calls the very tool objects production builds, and the production client is tested
+against the SDK's real message types. Spec:
 `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §3, §6, §7, §9.
 
 ## Conventions worth knowing

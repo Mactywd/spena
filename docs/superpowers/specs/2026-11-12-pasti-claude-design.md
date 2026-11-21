@@ -3,6 +3,9 @@
 _2026-11-12, fase giorno con Mattia. Sostituisce la «Parte IV — Pasti» di
 `docs/prossimi-passi.md` (P1 creazione di un pasto, P3 pianificare più giorni)._
 
+_2026-11-18: la chat passa alla chiave API (deciso da Mattia); §3 e §9 aggiornati, vedi
+`docs/superpowers/plans/2026-11-18-pasti-chiave-api.md`._
+
 Le decisioni di Mattia sono scritte come tali. Quelle che ho preso io, perché Mattia
 le ha delegate (le scelte estetiche e non funzionali, vedi la memoria del progetto) o
 perché un costruttore attento le prenderebbe uguali, sono segnate **(scelta di
@@ -52,7 +55,7 @@ strizzatura. **Il messaggio resta nella chat e la scheda cambia** (deciso da Mat
 - Segnalare le ricette importate che chiedono uno strumento mancante (resta un'idea).
 
 **Anti-obiettivi — sarebbe un fallimento anche se funzionasse**
-- Una chat che, quando Claude non risponde (limite del piano raggiunto, token scaduto,
+- Una chat che, quando Claude non risponde (credito finito, limite di frequenza, chiave che non vale più,
   rete), lascia Mattia senza modo di scrivere il pasto o correggere la ricetta. *Mai un
   vicolo cieco*: tutto quello che fa Claude si deve poter fare a mano.
 - Claude che scrive in dispensa o in lista senza che Mattia abbia visto e confermato i
@@ -63,20 +66,20 @@ strizzatura. **Il messaggio resta nella chat e la scheda cambia** (deciso da Mat
 
 ## 3. Vincoli
 
-- **Il modello è Claude Opus (`claude-opus-5-5`) sull'abbonamento di Mattia, non su
-  crediti API** (deciso da Mattia il 2026-11-10). Mattia ha valutato che l'uso è
-  personale: spena è usato solo da lui e non è un prodotto commerciale.
-  Conseguenze da tenere presenti:
-  - la strada tecnica è il **Claude Agent SDK** per Python (`claude-agent-sdk`), cioè
-    l'harness di Claude Code come libreria, autenticato con il token del suo account
-    (`claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` nel `.env` del server, mai nel
-    repo, che è pubblico). L'API di Anthropic con chiave non va usata per questa
-    sezione, e l'SDK `anthropic` non serve;
-  - le chat consumano **gli stessi limiti del piano** delle sessioni notturne di Claude
-    Code. Quando il limite è raggiunto la chat lo dice e la strada a mano resta (§9);
-  - nessun costo in dollari da registrare: in `llm_calls` le chiamate vanno con la loro
-    sezione e i token, e `cost_usd` resta `NULL` («l'assenza è la verità», come vuole il
-    modello `LlmCall`).
+- **Il modello è Claude Opus (`claude-opus-5-5`) con la chiave API di Mattia, sui suoi
+  crediti API** (deciso da Mattia il 2026-11-18; fino ad allora la spec diceva
+  l'abbonamento, che i termini dell'Agent SDK riservano all'uso individuale di Claude
+  Code). Conseguenze:
+  - la strada tecnica resta il **Claude Agent SDK** per Python (`claude-agent-sdk`),
+    autenticato con `ANTHROPIC_API_KEY` nel `.env` del server, mai nel repo, che è
+    pubblico. È la stessa chiave che userà l'LLM dell'import quando passerà a Claude
+    Haiku. Il token dell'abbonamento non si usa: l'SDK riceve `CLAUDE_CODE_OAUTH_TOKEN`
+    e `ANTHROPIC_AUTH_TOKEN` vuoti;
+  - le chat si pagano a consumo. Quando il credito finisce o si supera il limite di
+    frequenza, la chat lo dice e la strada a mano resta (§9);
+  - in `llm_calls` ogni giro ha la sua sezione, i token e il costo che Claude Code
+    dichiara (`ResultMessage.total_cost_usd`), e «Spese dell'AI» lo conta come le
+    altre sezioni.
 - **Un secondo percorso verso un modello.** La regola «one provider» di `CLAUDE.md` era
   contro due implementazioni dietro un interruttore, di cui una non gira mai in
   produzione. Qui i percorsi sono due ma con due scopi diversi, e girano tutti e due:
@@ -240,7 +243,7 @@ il vecchio solo con una conferma.
 solo piatti e accompagnamenti: rivedere la proposta non costa ricette scritte e poi
 buttate. Le ricette si scrivono quando i pasti diventano ufficiali, una per pasto: i
 pasti entrano subito nella settimana con «ricetta in preparazione», e ognuno riceve la
-sua appena è pronta. Se una ricetta non arriva (limite del piano, errore), il pasto resta
+sua appena è pronta. Se una ricetta non arriva (credito, limite di frequenza, errore), il pasto resta
 nella settimana senza ricetta, con «Chiedi la ricetta a Claude» per riprovare e
 «Scrivi la ricetta» per farla a mano. Nessun pasto resta bloccato.
 
@@ -392,19 +395,18 @@ prompt)**. Le ricette importate non cambiano.
 
 ## 9. Quando Claude non c'è
 
-Il token manca o è scaduto, il limite del piano è raggiunto, la rete cade, la risposta
+La chiave manca o non vale più, il credito è finito, il limite di frequenza è raggiunto, la rete cade, la risposta
 non arriva entro un tempo massimo. In ogni caso:
 
 - la chat mostra un avviso in parole semplici («Claude non risponde: hai raggiunto il
-  limite del piano, riprova dopo le 18:40» quando l'ora si conosce) e il messaggio di
+  limite di frequenza della chiave API, riprova dopo le 18:40» quando l'ora si conosce) e il messaggio di
   Mattia resta, pronto da rimandare;
 - la settimana, i pasti a mano, la ricetta e il suo modulo funzionano tutti senza
   Claude;
 - una risposta interrotta a metà non lascia una ricetta scritta a metà: le scritture
   della ricetta sono atomiche (§6.3).
 
-La sezione nelle spese dell'AI (H1) mostra le chiamate e i token senza costo, con una
-nota: «sul piano di Claude, non a consumo».
+La sezione nelle spese dell'AI (H1) conta le chiamate dei Pasti con il loro costo, come le altre.
 
 ## 10. Cosa resta al costruttore
 
