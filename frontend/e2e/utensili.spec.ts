@@ -30,7 +30,7 @@ function riga(page: Page, nome: string) {
 
 async function aggiungi(page: Page, nome: string, nota?: string) {
   await page.getByLabel("Nuovo utensile", { exact: true }).fill(nome);
-  if (nota) await page.getByLabel("Nota", { exact: true }).fill(nota);
+  if (nota) await page.getByLabel("Nota del nuovo utensile", { exact: true }).fill(nota);
   await page.getByRole("button", { name: "Aggiungi", exact: true }).click();
   await expect(riga(page, nome)).toBeVisible();
 }

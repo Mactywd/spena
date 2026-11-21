@@ -52,7 +52,7 @@ export function UtensilsScreen() {
           />
         </label>
         <label className="block w-full text-sm font-medium text-ink-soft">
-          Nota
+          Nota del nuovo utensile
           <input
             value={note}
             onChange={(event) => setNote(event.target.value)}

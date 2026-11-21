@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
@@ -20,6 +20,17 @@ export function UtensilRow({ utensil }: { utensil: Utensil }) {
   const [name, setName] = useState(utensil.name);
   const [note, setNote] = useState(utensil.note ?? "");
   const invalidate = () => queryClient.invalidateQueries({ queryKey: UTENSILS_KEY });
+  const nameRef = useRef<HTMLInputElement>(null);
+  const correctRef = useRef<HTMLButtonElement>(null);
+  // il valore di `editing` al giro prima: il fuoco torna su «Correggi» solo al passaggio
+  // da vero a falso, mai al primo montaggio
+  const wasEditing = useRef(false);
+
+  useEffect(() => {
+    if (editing) nameRef.current?.focus();
+    else if (wasEditing.current) correctRef.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
 
   const save = useMutation({
     mutationFn: () => patchUtensil(utensil.id, { name, note: note === "" ? null : note }),
@@ -78,6 +89,7 @@ export function UtensilRow({ utensil }: { utensil: Utensil }) {
           <label className="block w-full text-sm font-medium text-ink-soft">
             Nome
             <input
+              ref={nameRef}
               value={name}
               onChange={(event) => setName(event.target.value)}
               maxLength={120}
@@ -125,6 +137,7 @@ export function UtensilRow({ utensil }: { utensil: Utensil }) {
         </span>
         <span className="flex shrink-0 gap-1">
           <Button
+            ref={correctRef}
             variant="ghost"
             accessibleName={`Correggi «${utensil.name}»`}
             onClick={() => {

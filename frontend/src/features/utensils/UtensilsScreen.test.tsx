@@ -81,7 +81,7 @@ describe("UtensilsScreen", () => {
     await screen.findByText(/Scrivi gli strumenti/);
 
     await userEvent.type(screen.getByLabelText("Nuovo utensile"), "frusta elettrica");
-    await userEvent.type(screen.getByLabelText("Nota"), "a due fruste");
+    await userEvent.type(screen.getByLabelText("Nota del nuovo utensile"), "a due fruste");
     await userEvent.click(screen.getByRole("button", { name: "Aggiungi" }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
@@ -89,7 +89,7 @@ describe("UtensilsScreen", () => {
     expect(post.path).toBe(LIST);
     expect(post.body).toEqual({ name: "frusta elettrica", note: "a due fruste" });
     await waitFor(() => expect(screen.getByLabelText("Nuovo utensile")).toHaveValue(""));
-    expect(screen.getByLabelText("Nota")).toHaveValue("");
+    expect(screen.getByLabelText("Nota del nuovo utensile")).toHaveValue("");
     expect(screen.getByLabelText("Nuovo utensile")).toHaveFocus();
     await waitFor(() => expect(gets(calls)).toBe(2));
     expect(calls.findIndex((c) => c.method === "POST")).toBeLessThan(calls.length - 1);
@@ -146,6 +146,52 @@ describe("UtensilsScreen", () => {
     expect(patch.path).toBe(`${LIST}/u1`);
     expect(patch.body).toEqual({ name: "padella antiaderente", note: "da 28 cm" });
     await waitFor(() => expect(screen.queryByLabelText("Nome")).not.toBeInTheDocument());
+  });
+
+  it("«Correggi» porta il fuoco su «Nome»", async () => {
+    stubRoutedFetch((m) => (m === "GET" ? [[PADELLA], 200] : undefined));
+    renderScreen();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Correggi «padella antiaderente»" })
+    );
+    expect(within(screen.getByRole("listitem")).getByLabelText("Nome")).toHaveFocus();
+  });
+
+  it("chiudere la correzione riporta il fuoco su «Correggi», con «Annulla» e con «Salva»", async () => {
+    stubRoutedFetch((m) =>
+      m === "GET" ? [[PADELLA], 200] : m === "PATCH" ? [{ ...PADELLA, note: "da 28 cm" }, 200] : undefined
+    );
+    renderScreen();
+    const correggi = "Correggi «padella antiaderente»";
+
+    await userEvent.click(await screen.findByRole("button", { name: correggi }));
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(screen.getByRole("button", { name: correggi })).toHaveFocus();
+
+    await userEvent.click(screen.getByRole("button", { name: correggi }));
+    await userEvent.click(screen.getByRole("button", { name: "Salva" }));
+    await waitFor(() => expect(screen.queryByLabelText("Nome")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: correggi })).toHaveFocus());
+  });
+
+  it("senza correzione aperta il fuoco non è su «Correggi» al primo montaggio", async () => {
+    stubRoutedFetch((m) => (m === "GET" ? [[PADELLA], 200] : undefined));
+    renderScreen();
+    expect(
+      await screen.findByRole("button", { name: "Correggi «padella antiaderente»" })
+    ).not.toHaveFocus();
+  });
+
+  it("con una riga in correzione c'è un campo «Nota» solo, e «Nota del nuovo utensile»", async () => {
+    stubRoutedFetch((m) => (m === "GET" ? [[PADELLA], 200] : undefined));
+    renderScreen();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Correggi «padella antiaderente»" })
+    );
+    expect(screen.getAllByLabelText("Nota", { exact: true })).toHaveLength(1);
+    expect(screen.getByLabelText("Nota del nuovo utensile")).toBeInTheDocument();
   });
 
   it("una correzione su un utensile sparito lo dice con un avviso e rilegge l'elenco", async () => {
