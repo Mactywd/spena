@@ -12,6 +12,7 @@ import { DirectEntry, type EntryDoor } from "./DirectEntry";
 import { PantryRow } from "./PantryRow";
 import {
   attentionCounts,
+  enteredNotice,
   expiringText,
   finishedText,
   groupForDisplay,
@@ -158,6 +159,12 @@ export function PantryScreen() {
   // la voce appena aggiunta, da portare in vista quando arriva nell'elenco
   const [revealId, setRevealId] = useState<string | null>(null);
   const clearReveal = useCallback(() => setRevealId(null), []);
+  // S3, Mattia 2026-11-18: finché la serie della scansione è aperta la riga nuova aspetta,
+  // perché portarla in vista spinge fuori dallo schermo il pannello che sta sopra le righe;
+  // l'avviso conferma già. Chiuso il pannello, la riga in attesa (l'ultima entrata) va in
+  // vista con le regole di un'aggiunta singola, mondo compreso (settleWorld)
+  const inSeries = entry !== null && entry.door.kind === "scan";
+  const pendingReveal = inSeries ? null : revealId;
 
   // Un tocco sul selettore, o su «Cerca in tutto», è una scelta esplicita di chi guarda: spegne
   // la riga da portare in vista. Se restasse in sospeso (la riga non monta, per esempio perché
@@ -173,6 +180,18 @@ export function PantryScreen() {
   function changeQuery(text: string) {
     sections.releaseHold();
     setQuery(text);
+  }
+
+  // La ✕ del pannello e l'«Annulla» dello scanner allo stadio della lettura chiudono la
+  // serie. Un reparto chiuso a mano dopo l'ingresso resta chiuso: la riga in attesa non va
+  // in vista dentro un contenuto nascosto. Il confronto in `setRevealId` lascia stare una
+  // riga più nuova, messa da un `afterEntry` arrivato nello stesso giro
+  function closeEntry() {
+    setEntry(null);
+    const pending = items.find((item) => item.id === revealId);
+    if (pending !== undefined && !sections.isOpen(pending.ingredient_category)) {
+      setRevealId((current) => (current === pending.id ? null : current));
+    }
   }
 
   function openEntry(door: EntryDoor) {
@@ -196,8 +215,14 @@ export function PantryScreen() {
   /** Una confezione è entrata, da una delle due porte. La riga nuova deve potersi
    * vedere: la barra torna vuota, il riepilogo si spegne, e `revealId` la porta in
    * vista quando arriva nell'elenco. Il mondo (S14) non si rimette qui: se la voce è
-   * dell'altro mondo ci pensa `settleWorld` nel disegno, guardando `revealId`. Il
-   * reparto della voce, se è chiuso, si apre (S15). */
+   * dell'altro mondo ci pensa `settleWorld` nel disegno, guardando la riga in attesa
+   * (`pendingReveal`): in serie non c'è, e il mondo resta com'è finché il pannello non si
+   * chiude. Il reparto della voce, se è chiuso, si apre (S15), anche in serie.
+   *
+   * Il caso accettato: se la ✕ arriva mentre «Metti in dispensa» è in volo, questa funzione
+   * gira dopo con la chiusura di prima del tocco, che dice ancora «in serie»; l'avviso può
+   * quindi dire «sotto «Cibo»» mentre il selettore passa a «Tutto». È vero, solo
+   * ridondante, e la riga va in vista. */
   function afterEntry(created: PantryItem, label: string) {
     invalidate();
     setQuery("");
@@ -209,7 +234,7 @@ export function PantryScreen() {
     // riga arriva il suo reparto deve essere già aperto
     sections.setOpen(created.ingredient_category, true);
     notice({
-      text: `In dispensa: ${label}`,
+      text: enteredNotice(label, created.ingredient_kind, world, entry?.door.kind === "scan"),
       action: { label: "Annulla", onClick: () => undoEntry(created, label) },
     });
   }
@@ -252,7 +277,7 @@ export function PantryScreen() {
   // una voce appena aggiunta dell'altro mondo porta a «Tutto», perché si veda. Nel disegno
   // e non in un effetto, come il riepilogo qui sotto: nessun giro col filtro fantasma. Solo
   // a dispensa caricata: la lista vuota del caricamento non è una dispensa con un mondo solo
-  const settledWorld = settleWorld(world, items, revealId);
+  const settledWorld = settleWorld(world, items, pendingReveal);
   if (loaded && settledWorld !== world) setWorld(settledWorld);
   const showWorlds = hasBothWorlds(items);
   // il riepilogo conta il mondo scelto (Mattia, 2026-10-07): su «Cibo» dice quanti cibi
@@ -301,7 +326,7 @@ export function PantryScreen() {
             key={entry.serial}
             door={entry.door}
             onEntered={afterEntry}
-            onClose={() => setEntry(null)}
+            onClose={closeEntry}
           />
         )}
 
@@ -409,7 +434,7 @@ export function PantryScreen() {
                     busy={busyIds.has(item.id)}
                     failed={failedIds.has(item.id)}
                     listed={listedIngredients.has(item.ingredient_id)}
-                    reveal={item.id === revealId}
+                    reveal={item.id === pendingReveal}
                     onStatus={(next) => status.mutate({ id: item.id, status: next })}
                     onRemove={() => archive.mutate(item)}
                     onRestock={() => restock.mutate(item)}

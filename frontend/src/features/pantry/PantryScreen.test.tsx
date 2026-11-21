@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
+import userEvent from "@testing-library/user-event";
 import { PantryScreen } from "./PantryScreen";
 
 const ITEMS = [
@@ -1301,5 +1302,155 @@ describe("PantryScreen, il riepilogo che si spegne da solo (S15, 2026-11-18)", (
       "aria-pressed",
       "false"
     );
+  });
+});
+
+describe("PantryScreen, la serie della scansione (S3, S14, S15, 2026-11-18)", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
+
+  const FAGE = { id: "pr1", ingredient_id: "i1", ingredient_name: "yogurt greco", name: "Total 0%",
+    brand: "Fage", barcode: "52010", source: "openfoodfacts", nutrients: null, image_url: null };
+  const PESCA = { ...FAGE, id: "pr2", name: "Pesca", brand: "Carrefour", barcode: "52011" };
+  const inCatalog = (product: typeof FAGE) =>
+    ({ found: true, origin: "catalog", product, suggestion: null, valid_checksum: true });
+  const P9 = { ...ITEMS[0], id: "p9" };
+  const P10 = { ...ITEMS[1], id: "p10" };
+
+  /** La dispensa di `start`; i codici 52010 e 52011 sono Fage e Pesca a catalogo; ogni
+   * «Metti in dispensa» crea la voce dopo in `created` e la aggiunge alla dispensa riletta.
+   * `gate`, se c'è, trattiene la risposta della scrittura finché il test non la libera: per
+   * questo non `stubRoutedFetch`, che risponde subito. */
+  function serieFinta(start: typeof DUE_MONDI, created: typeof DUE_MONDI, gate?: Promise<void>) {
+    const rows = [...start];
+    const respond = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+    const spy = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      if (path.includes("/shopping-list")) return respond([]);
+      if (path.includes("/products/barcode/52010")) return respond(inCatalog(FAGE));
+      if (path.includes("/products/barcode/52011")) return respond(inCatalog(PESCA));
+      if (path.endsWith("/pantry") && init?.method === "POST") {
+        if (gate) await gate;
+        const voce = created[rows.length - start.length];
+        rows.push(voce);
+        return respond(voce, 201);
+      }
+      return respond([...rows]);
+    });
+    vi.stubGlobal("fetch", spy);
+    return spy;
+  }
+
+  /** Aspetta che la dispensa sia stata letta `volte` volte, e che lo schermo l'abbia
+   * disegnata: la riga nuova è arrivata anche quando il mondo scelto la nasconde. */
+  async function dispensaLetta(spy: ReturnType<typeof serieFinta>, volte: number) {
+    await waitFor(() =>
+      expect(
+        spy.mock.calls.filter(
+          ([url, init]) => String(url).endsWith("/pantry") && (init?.method ?? "GET") === "GET"
+        ).length
+      ).toBeGreaterThanOrEqual(volte)
+    );
+    await act(async () => {});
+  }
+
+  async function leggi(codice: string) {
+    await userEvent.type(screen.getByLabelText("Codice a barre"), `${codice}{Enter}`);
+    await userEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+  }
+
+  /** Le righe portate in vista, nell'ordine: `this` è l'elemento. */
+  function righePortateInVista(): Element[] {
+    const scrolled: Element[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolled.push(this);
+    });
+    return scrolled;
+  }
+
+  async function scansiona() {
+    await screen.findByText("Total 0%");
+    fireEvent.click(screen.getByRole("button", { name: "Scansiona" }));
+  }
+  const chiudiIlPannello = () =>
+    fireEvent.click(screen.getByRole("button", { name: "Chiudi l'aggiunta" }));
+
+  it("in serie la riga nuova non va in vista, basta l'avviso; chiuso il pannello va in vista l'ultima entrata", async () => {
+    const scrolled = righePortateInVista();
+    const spy = serieFinta(ITEMS, [P9, P10]);
+    renderScreen();
+    await scansiona();
+    await leggi("52010");
+    await screen.findByText("In dispensa: Fage Total 0%");
+    await dispensaLetta(spy, 2);
+    expect(scrolled).toHaveLength(0);
+    expect(await screen.findByRole("heading", { name: "Codice a barre" })).toBeDefined();
+    await leggi("52011");
+    await screen.findByText("In dispensa: Carrefour Pesca");
+    await dispensaLetta(spy, 3);
+    expect(scrolled).toHaveLength(0);
+    chiudiIlPannello();
+    await waitFor(() => expect(scrolled).toHaveLength(1));
+    expect(scrolled[0].textContent).toContain("Pesca");
+  });
+
+  it("in serie la voce che entra in un reparto chiuso lo apre e lo salva aperto, senza scorrere", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["latticini"]));
+    const scrolled = righePortateInVista();
+    const spy = serieFinta(ITEMS, [P9]);
+    renderScreen();
+    await screen.findByRole("region", { name: "Latticini" });
+    fireEvent.click(screen.getByRole("button", { name: "Scansiona" }));
+    await leggi("52010");
+    await dispensaLetta(spy, 2);
+    expect(reparto("Latticini")).toHaveAttribute("aria-expanded", "true");
+    expect(chiusiSalvati()).toEqual([]);
+    expect(scrolled).toHaveLength(0);
+  });
+
+  it("in serie su «Casa» una voce di cibo lascia il selettore com'è e l'avviso dice dov'è finita; chiuso il pannello, «Tutto» e la riga in vista", async () => {
+    const scrolled = righePortateInVista();
+    const spy = serieFinta(DUE_MONDI, [P9]);
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+    fireEvent.click(screen.getByRole("button", { name: "Scansiona" }));
+    await leggi("52010");
+    expect(await screen.findByText("In dispensa: Fage Total 0%, sotto «Cibo»")).toBeDefined();
+    await dispensaLetta(spy, 2);
+    expect(mondo("Casa")).toHaveAttribute("aria-pressed", "true");
+    expect(scrolled).toHaveLength(0);
+    chiudiIlPannello();
+    await waitFor(() => expect(mondo("Tutto")).toHaveAttribute("aria-pressed", "true"));
+    await waitFor(() => expect(scrolled).toHaveLength(1));
+  });
+
+  it("chiusa la serie mentre «Metti in dispensa» è in volo, la riga va in vista quando arriva", async () => {
+    const scrolled = righePortateInVista();
+    let releaseWrite = () => {};
+    const gate = new Promise<void>((r) => { releaseWrite = r; });
+    serieFinta(ITEMS, [P9], gate);
+    renderScreen();
+    await scansiona();
+    await leggi("52010");
+    chiudiIlPannello();
+    await act(async () => releaseWrite());
+    await screen.findByText("In dispensa: Fage Total 0%");
+    await waitFor(() => expect(scrolled).toHaveLength(1));
+  });
+
+  it("un reparto chiuso a mano durante la serie resta chiuso alla ✕, e non si scorre", async () => {
+    const scrolled = righePortateInVista();
+    const spy = serieFinta(ITEMS, [P9]);
+    renderScreen();
+    await scansiona();
+    await leggi("52010");
+    await dispensaLetta(spy, 2);
+    fireEvent.click(reparto("Latticini"));
+    chiudiIlPannello();
+    await act(async () => {});
+    expect(scrolled).toHaveLength(0);
+    expect(reparto("Latticini")).toHaveAttribute("aria-expanded", "false");
+    expect(chiusiSalvati()).toEqual(["latticini"]);
   });
 });

@@ -91,8 +91,9 @@ export function visibleItems(items: PantryItem[], view: PantryView): PantryItem[
 /** Il mondo da applicare davvero, dato quello scelto. Torna «Tutto» in due casi:
  * - il selettore non c'è più (un mondo solo): una dispensa vuota per un filtro che non si
  *   vede sarebbe una bugia, come per il riepilogo delle scadenze che sparisce;
- * - la voce appena aggiunta (`revealId`) è dell'altro mondo: deve potersi vedere, come
- *   dopo un'aggiunta la barra si svuota e il riepilogo si spegne.
+ * - la voce appena aggiunta e in attesa di essere portata in vista (`revealId`; la serie
+ *   della scansione non ne passa finché il pannello è aperto) è dell'altro mondo: deve
+ *   potersi vedere, come dopo un'aggiunta la barra si svuota e il riepilogo si spegne.
  * Una voce appena aggiunta dello stesso mondo si vede già, e il mondo resta. Una che non
  * è ancora arrivata nell'elenco non cambia niente: se ne riparla quando arriva. */
 export function settleWorld(
