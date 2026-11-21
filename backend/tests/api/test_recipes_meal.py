@@ -11,6 +11,7 @@ from app.db.models.recipe import Recipe
 from app.domain.meals import MealSlot, MealStatus
 from app.repositories.ingredients import create_ingredient
 from app.services.meals import create_meal
+from app.services.recipe_jobs import NOT_WRITTEN_NOTICE
 
 R = "/api/v1/recipes"
 M = "/api/v1/meals"
@@ -220,3 +221,17 @@ async def test_la_modifica_della_ricetta_di_un_pasto_la_lascia_fuori_dal_ricetta
     assert r.json()["title"] == "Titolo nuovo"
     assert r.json()["in_book"] is False
     assert r.json()["meal"]["id"] == str(meal.id)
+
+
+async def test_l_avviso_vecchio_non_ricompare(logged_client, db_session, pasta):
+    meal = await _pasto(db_session)
+    meal.recipe_notice = NOT_WRITTEN_NOTICE
+    await db_session.commit()
+    ricetta = await _scritta_per(logged_client, pasta, meal)
+    r = await logged_client.patch(f"{R}/{ricetta['id']}", json={"archived": True})
+    assert r.status_code == 200, r.text
+
+    body = (await logged_client.get(f"{M}/{meal.id}")).json()
+
+    assert body["recipe_state"] == "none"
+    assert not body["recipe_notice"]

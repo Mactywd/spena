@@ -108,6 +108,7 @@ async def release_recipe(session: AsyncSession, meal: Meal) -> None:
         return
     recipe = await session.get(Recipe, meal.recipe_id)
     meal.recipe_id = None
+    meal.recipe_notice = None  # un avviso vecchio della coda non deve ricomparire
     if recipe is not None and not recipe.in_book and recipe.archived_at is None:
         recipe.archived_at = datetime.now(UTC)
     await session.flush()
@@ -253,6 +254,7 @@ def check_can_take_recipe(meal: Meal) -> None:
 async def link_recipe(session: AsyncSession, meal: Meal, recipe: Recipe) -> None:
     check_can_take_recipe(meal)
     meal.recipe_id = recipe.id
+    meal.recipe_notice = None
     await session.flush()
     await get_meal(session, meal.id)  # ricarica `recipe` sul pasto che chi chiama ha in mano
 

@@ -18,6 +18,7 @@ from app.repositories.meals import (
     meals_between,
 )
 from app.repositories.recipes import create_recipe, get_recipe
+from app.services.recipe_jobs import NOT_WRITTEN_NOTICE
 from app.services.meals import (
     MealRefusal,
     MealRefusalCode,
@@ -495,3 +496,20 @@ async def test_l_occupante_sostituito_che_e_un_avanzo_del_pasto_non_conta(db_ses
         await update_meal(db_session, origin2, {"day": d(9), "slot": D}, replace=True)
     assert exc.value.leftovers == 1
     assert exc.value.message == "Lunedì pranzo è un suo avanzo."
+
+
+async def test_dare_una_ricetta_azzera_l_avviso(db_session, frittata):
+    m = await create_meal(db_session, day=d(10), slot=D, dish="F")
+    m.recipe_notice = NOT_WRITTEN_NOTICE
+    await db_session.flush()
+    await link_recipe(db_session, m, frittata)
+    assert m.recipe_notice is None
+
+
+async def test_staccare_la_ricetta_azzera_l_avviso(db_session, frittata):
+    m = await create_meal(db_session, day=d(10), slot=D, dish="F")
+    await with_copy(db_session, frittata, m)
+    m.recipe_notice = NOT_WRITTEN_NOTICE
+    await db_session.flush()
+    await release_recipe(db_session, m)
+    assert m.recipe_notice is None
