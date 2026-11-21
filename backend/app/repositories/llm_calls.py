@@ -34,6 +34,8 @@ async def record_llm_call(
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
             cost_usd=usage.cost_usd,
+            cache_read_tokens=usage.cache_read_tokens,
+            cache_write_tokens=usage.cache_write_tokens,
         )
     )
 

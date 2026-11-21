@@ -59,3 +59,34 @@ async def test_una_chiamata_fallita_si_registra_col_costo_sconosciuto(db_session
     assert riga.ok is False
     assert riga.cost_usd is None
     assert riga.prompt_tokens is None
+
+
+async def test_la_riga_porta_i_token_della_cache(db_session):
+    await record_llm_call(
+        db_session,
+        call_site=LlmCallSite.TERM_DECISION,
+        usage=LlmUsage(
+            prompt_tokens=8230,
+            completion_tokens=30,
+            cost_usd=0.000115,
+            cache_read_tokens=8000,
+            cache_write_tokens=0,
+        ),
+        ok=True,
+    )
+    await db_session.commit()
+
+    riga = (await db_session.execute(select(LlmCall))).scalar_one()
+    assert riga.cache_read_tokens == 8000
+    assert riga.cache_write_tokens == 0
+
+
+async def test_senza_cache_le_colonne_restano_vuote(db_session):
+    await record_llm_call(
+        db_session, call_site=LlmCallSite.TERM_DECISION, usage=LlmUsage(), ok=True
+    )
+    await db_session.commit()
+
+    riga = (await db_session.execute(select(LlmCall))).scalar_one()
+    assert riga.cache_read_tokens is None
+    assert riga.cache_write_tokens is None
