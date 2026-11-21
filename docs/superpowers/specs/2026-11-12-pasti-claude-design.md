@@ -334,6 +334,13 @@ aggiorna). La sicurezza sta altrove:
   non alimentare. Se una riga non si riesce ad agganciare, lo strumento lo dice a Claude
   e non scrive niente di parziale;
 - ogni modifica salva la versione di prima, e «Annulla» la rimette (§5.3);
+- se il pasto è cambiato dopo che Claude lo ha visto (Mattia ha corretto a mano la
+  ricetta, il piatto o gli accompagnamenti), `write_meal_recipe` rifiuta e non scrive
+  niente: Claude rilegge e riscrive da lì, così una correzione a mano non si perde;
+- «Annulla» toglie anche gli ingredienti che quella modifica aveva creato, se nient'altro
+  li usa. L'annullamento di una «Ricetta scritta» (ricetta nata da Claude) li lascia
+  sempre, perché la ricetta archiviata li usa ancora; la rimozione scatta solo quando si
+  annulla la modifica di una ricetta che esisteva già;
 - nella stessa modifica Claude può correggere anche il **piatto e gli accompagnamenti**
   del pasto, perché la settimana non dica «Frittata di spinaci» dopo il passaggio alle
   zucchine; «Annulla» rimette anche quelli. Il posto (data e pranzo/cena) Claude non lo

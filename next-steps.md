@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-21 (fase notte: la chiave API e le correzioni della chat dei Pasti)_
+_Ultimo aggiornamento: 2026-11-21 (fase notte: la chiave API e le correzioni della chat dei Pasti; revisione finale: tre idee nuove)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -48,7 +48,10 @@ ancora committato.
 - [idea] P3 · Pasti con Claude: il controllo «Claude sta rispondendo» di «Annulla» e l'annullamento non stanno sotto lo stesso lucchetto (una finestra minima, con due dispositivi) [Parte IV]
 - [idea] P3 · Pasti con Claude: una risposta che si interrompe dopo l'inizio non mostra un avviso; la chat si rilegge da sola e mostra lo stato vero [Parte IV]
 - [idea] P3 · Pasti con Claude: «Riprova» non c'è quando la risposta si è interrotta per i troppi passaggi (il testo arrivato resta con l'avviso): decidere se un secondo tentativo con un tetto più alto serve [Parte IV]
-- [idea] P3 · Pasti con Claude: dopo «Annulla» di una «Ricetta scritta», gli ingredienti creati dalla modifica restano se qualcos'altro li usa (dispensa, lista, un'altra ricetta): ok per la regola «non cancellare ciò che è in uso», ma la chat non lo dice [Parte IV]
+- [idea] P3 · Pasti con Claude: dopo «Annulla» di una «Ricetta scritta», gli ingredienti creati dalla modifica restano sempre (la ricetta archiviata li usa ancora; la rimozione scatta solo annullando la modifica di una ricetta già esistente, quindi mai per le ricette scritte dalla coda): la chat non lo dice [Parte IV]
+- [idea] P3 · Pasti con Claude: se «Annulla» di una modifica che aveva creato l'ingrediente X arriva prima di applicare una scheda dello stesso giro che elenca X, X viene cancellato e l'ingrediente della riga della scheda diventa NULL: applicare funziona ancora per nome (testo libero), ma la riga perde il legame [Parte IV]
+- [idea] P3 · Pasti con Claude: dopo una risposta interrotta dai «troppi passaggi», la cronologia del giro dopo ha il testo parziale ma non l'avviso, quindi Claude non sa di essere stato interrotto [Parte IV]
+- [idea] P3 · Pasti con Claude: `check_claude` potrebbe avvisare se `ANTHROPIC_BASE_URL` è impostata nell'ambiente del server (l'SDK la eredita e la chiave vera andrebbe a quell'indirizzo) [Parte IV]
 - [idea] P3 · Spese dell'AI: `formatTokens` in `frontend/src/features/spending/format.ts` non ha più chiamanti, il commento di `total_usd` in `types.ts` dice ancora «dichiarati da OpenRouter» e il sottotitolo della schermata parla di OpenRouter: ripulire con il piano dell'LLM Haiku [Parte IV]
 - [idea] P3 · Pasti con Claude: ripulire i titoli e2e «senza token …» (`chat-piatto.spec.ts`, `pianificazione.spec.ts`) e «limite del piano» in un commento, e rafforzare il test della risposta vuota in `ChatThread.test.tsx` (controlla solo `p:empty`) [Parte IV]
 - [idea] P3 · Pasti con Claude: un pasto «fuori casa» che torna a casa tiene proposta la sua scheda inversa (quella del «fuori casa»): resta fra le «Schede dei cambi da applicare» finché non la si scarta a mano [Parte IV]
