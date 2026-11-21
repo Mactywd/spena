@@ -242,7 +242,10 @@ conferma «Annulla» vale «scansiona di nuovo» e non chiude) va in vista l'ult
 nella serie, con le regole dell'aggiunta singola: se è dell'altro mondo il selettore passa a
 «Tutto» (S14 §4). Il reparto di ogni voce entrata si apre e si salva aperto come fuori dalla
 serie (S15 §3); se chi guarda lo richiude a mano prima della fine, resta chiuso e la riga non
-va in vista. Piano `docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`.
+va in vista. Fa eccezione ogni gesto di chi guarda a metà serie che può nascondere la riga:
+un tocco sul selettore, scrivere nella barra o toccare il riepilogo delle scadenze spegne la
+riga in attesa, e alla chiusura non va in vista niente (il mondo scelto resta com'è).
+Piano `docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`.
 
 ## 5. Rotte e dati
 

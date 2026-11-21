@@ -74,7 +74,8 @@ salvato, come sopra. Se lo spegne lo schermo, perché il riepilogo è rimasto se
 segnata «Finito» l'ultima voce in scadenza, o le si è tolta la data, o la ✕), i reparti che
 mostrava aperti restano aperti a video, senza salvarli: altrimenti il reparto si richiuderebbe
 sotto il dito portandosi via la riga col suo «In lista». Li lascia andare il primo tocco su un
-titolo di reparto, sulla barra, sul selettore o su «Cerca in tutto», sul riepilogo tornato, una
+titolo di reparto, sul selettore o su «Cerca in tutto», sul riepilogo tornato, un cambio del
+testo della barra (scrivere o cancellare, non toccarla), una
 voce entrata dall'ingresso diretto, o lasciare la Dispensa. I gesti sulle righe (tacche, ✕,
 «In lista», scadenza) e gli avvisi no: sono quelli che questa regola protegge. Piano
 `docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`.
