@@ -1708,7 +1708,9 @@ da rivedere.», «Va bene così» e «Correggi». La fusione sposta tutto sul vi
 il pannello che si apre sotto la riga senza far saltare la pagina; il selettore del
 sostituto con la tastiera aperta.
 
-## R6. Filtra per ricette cucinabili **con sostituti** **[D]** ↳ R5
+## R6. Filtra per ricette cucinabili **con sostituti** **[TOLTA 2026-11-21]** ↳ R5
+**Tolta da Mattia il 2026-11-21**, in fase giorno, prima di scriverne il piano: la voce non è più nel backlog. Quel che segue resta come memoria della regola, se un giorno tornasse.
+
 Oggi si filtra per «cucinabile». Serve anche «cucinabile usando quel che ho al posto
 di quel che manca».
 
