@@ -190,6 +190,64 @@ async def test_senza_write_recipe(db_session, factory, uova):
     assert row.ok is True
 
 
+async def test_la_ricetta_scritta_registra_il_costo(db_session, factory, uova):
+    [meal] = (await tre_cene(db_session))[:1]
+    fake = FakeClaude(ok(uova))
+
+    await in_coda(factory, fake, [meal])
+
+    [row] = await chiamate(db_session)
+    assert row.ok is True and row.cost_usd == 0.05
+    assert row.prompt_tokens == 100 and row.completion_tokens == 20
+
+
+async def test_un_giro_fallito_della_coda_registra_l_uso(db_session, factory, uova):
+    [meal] = (await tre_cene(db_session))[:1]
+    fake = FakeClaude(
+        [Fail(FailureKind.UNAVAILABLE, input_tokens=300, output_tokens=30, cost_usd=0.02)]
+    )
+
+    await in_coda(factory, fake, [meal])
+
+    [row] = await chiamate(db_session)
+    assert row.ok is False and row.cost_usd == 0.02
+    assert row.prompt_tokens == 300 and row.completion_tokens == 30
+
+
+async def test_troppi_passaggi_senza_ricetta_dicono_che_non_l_ha_scritta(
+    db_session, factory, uova
+):
+    meals = (await tre_cene(db_session))[:2]
+    fake = FakeClaude.per_call(
+        [Say("Vediamo"), Fail(FailureKind.MAX_TURNS, input_tokens=900, output_tokens=90, cost_usd=0.3)],
+        ok(uova),
+    )
+
+    await in_coda(factory, fake, meals)
+
+    first = await dal_db(factory, meals[0].id)
+    assert first.recipe is None and first.recipe_notice == NOT_WRITTEN_NOTICE
+    # non è un guasto terminale: la coda passa al pasto dopo
+    assert len(fake.calls) == 2
+    assert (await dal_db(factory, meals[1].id)).recipe is not None
+    rows = await chiamate(db_session)
+    assert sorted((r.ok, r.cost_usd) for r in rows) == [(False, 0.3), (True, 0.05)]
+
+
+async def test_il_credito_finito_ferma_la_coda(db_session, factory, uova):
+    meals = await tre_cene(db_session)
+    fake = FakeClaude.per_call([Fail(FailureKind.CREDIT)], ok(uova), ok(uova))
+
+    await in_coda(factory, fake, meals)
+
+    assert len(fake.calls) == 1
+    notice = failure_notice(FailureKind.CREDIT, None, datetime.now(UTC))
+    for meal in meals:
+        fresh = await dal_db(factory, meal.id)
+        assert fresh.recipe is None and fresh.recipe_notice == notice
+        assert meal_out(fresh, TODAY).can_ask_recipe is True
+
+
 async def test_la_ricetta_scritta_a_mano_nel_frattempo_resta(db_session, factory, uova):
     meals = (await tre_cene(db_session))[:2]
     # prima che la coda arrivi al secondo pasto, Mattia scrive la ricetta col modulo

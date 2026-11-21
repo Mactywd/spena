@@ -77,12 +77,14 @@ from app.schemas.meal_chat import ChatMessageOut, DishChatOut, HighlightOut, Rec
 from app.services.claude.client import (
     ClaudeClient,
     ClaudeFailure,
+    ClaudeUsage,
     Effort,
     SdkMcpTool,
     TextDelta,
     TurnFailed,
     TurnFinished,
     claude_configured,
+    llm_usage,
 )
 from app.services.claude.prompts import (
     DishContext,
@@ -91,7 +93,7 @@ from app.services.claude.prompts import (
     render_turn_prompt,
 )
 from app.services.claude.tools import TurnContext, dish_tools
-from app.services.llm import LlmCallSite, LlmUsage
+from app.services.llm import LlmCallSite
 from app.services.meal_recipes import change_is_undoable
 from app.services.planning import proposal_out
 from app.services.utensils import utensils_prompt_block
@@ -381,7 +383,7 @@ async def _fail(
     emit: Emit,
 ) -> None:
     """Il messaggio di Mattia passa a `failed` con l'avviso; Claude è stato chiamato, salvo
-    `record` falso, e la chiamata va nelle spese, senza token e senza costo."""
+    `record` falso, e la chiamata va nelle spese con l'uso che l'SDK ha dichiarato."""
     now = datetime.now(UTC)
     notice = failure_notice(failure.kind, failure.resets_at, now)
     async with lock:
@@ -394,10 +396,53 @@ async def _fail(
             message.failure = failure.kind.value
             message.notice = notice
         if record:
-            await record_llm_call(session, call_site=spec.call_site, usage=LlmUsage(), ok=False)
+            await record_llm_call(
+                session, call_site=spec.call_site, usage=llm_usage(failure.usage), ok=False
+            )
         await session.commit()
         chat = await _chat_data(session, spec, conversation_id)
     await emit(ChatEvent("error", {"code": failure.kind.value, "notice": notice, "chat": chat}))
+
+
+async def _reply(
+    session: AsyncSession,
+    lock: asyncio.Lock,
+    spec: TurnSpec,
+    *,
+    message_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    text: str,
+    usage: ClaudeUsage | None,
+    ok: bool,
+    notice: str | None,
+    emit: Emit,
+) -> None:
+    """Il giro ha una risposta di Claude: il successo, o i troppi passaggi (`ok` falso e
+    `notice`). Il messaggio di Mattia passa a `sent`, la risposta si scrive, e la chiamata
+    va nelle spese con l'uso che l'SDK ha dichiarato."""
+    async with lock:
+        message = await session.get(ConversationMessage, message_id)
+        assert message is not None
+        message.status = MessageStatus.SENT.value
+        message.failure = None
+        message.notice = None
+        session.add(
+            ConversationMessage(
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT.value,
+                text=text,
+                status=MessageStatus.SENT.value,
+                notice=notice,
+                reply_to_id=message_id,
+                created_at=datetime.now(UTC),
+            )
+        )
+        await record_llm_call(
+            session, call_site=spec.call_site, usage=llm_usage(usage), ok=ok
+        )
+        await session.commit()
+        chat = await _chat_data(session, spec, conversation_id)
+    await emit(ChatEvent("done", {"chat": chat}))
 
 
 async def _turn(
@@ -498,6 +543,15 @@ async def _turn(
     if outcome is None:
         outcome = ClaudeFailure(FailureKind.INTERRUPTED, None, "il flusso è finito senza risultato")
 
+    if isinstance(outcome, ClaudeFailure) and outcome.kind == FailureKind.MAX_TURNS:
+        # troppi passaggi: quello che Claude ha detto e fatto resta, con l'avviso
+        await _reply(
+            session, lock, spec, message_id=message_id, conversation_id=conversation_id,
+            text=outcome.partial_text or "".join(deltas), usage=outcome.usage, ok=False,
+            notice=failure_notice(FailureKind.MAX_TURNS, None, datetime.now(UTC)), emit=emit,
+        )
+        return
+
     if isinstance(outcome, ClaudeFailure):
         await _fail(
             session, lock, spec, message_id=message_id, conversation_id=conversation_id,
@@ -505,38 +559,10 @@ async def _turn(
         )
         return
 
-    usage = outcome.usage
-    async with lock:
-        message = await session.get(ConversationMessage, user_message_id)
-        assert message is not None
-        message.status = MessageStatus.SENT.value
-        message.failure = None
-        message.notice = None
-        session.add(
-            ConversationMessage(
-                conversation_id=conversation_id,
-                role=MessageRole.ASSISTANT.value,
-                text=outcome.text or "".join(deltas),
-                status=MessageStatus.SENT.value,
-                reply_to_id=message_id,
-                created_at=datetime.now(UTC),
-            )
-        )
-        await record_llm_call(
-            session,
-            call_site=spec.call_site,
-            usage=LlmUsage(
-                generation_id=usage.session_id,
-                model=usage.model,
-                prompt_tokens=usage.input_tokens,
-                completion_tokens=usage.output_tokens,
-                cost_usd=None,
-            ),
-            ok=True,
-        )
-        await session.commit()
-        chat = await _chat_data(session, spec, conversation_id)
-    await emit(ChatEvent("done", {"chat": chat}))
+    await _reply(
+        session, lock, spec, message_id=message_id, conversation_id=conversation_id,
+        text=outcome.text or "".join(deltas), usage=outcome.usage, ok=True, notice=None, emit=emit,
+    )
 
 
 async def _fail_after_crash(

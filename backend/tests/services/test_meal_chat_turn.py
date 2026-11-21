@@ -155,7 +155,7 @@ async def test_un_giro_che_risponde(db_session, factory, frittata, dal_database)
     [row] = await chiamate(db_session)
     assert row.ok is True
     assert row.prompt_tokens == 1200 and row.completion_tokens == 80
-    assert row.cost_usd is None
+    assert row.cost_usd == 0.05
     assert row.model == "claude-opus-5-5" and row.generation_id == "sessione-finta"
     chat = events[-1].data["chat"]
     assert [m["role"] for m in chat["messages"]] == ["user", "assistant"]
@@ -258,6 +258,73 @@ async def test_il_limite_di_frequenza(db_session, factory, frittata, dal_databas
     assert row.ok is False
     failed = event.data["chat"]["messages"][0]
     assert failed["status"] == "failed" and failed["notice"] == event.data["notice"]
+
+
+async def test_un_giro_fallito_registra_l_uso(db_session, factory, frittata, dal_database):
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Ciao")
+    fake = FakeClaude(
+        [Fail(FailureKind.UNAVAILABLE, input_tokens=500, output_tokens=40, cost_usd=0.012)]
+    )
+
+    events = await giro(factory, fake, conversation, message)
+
+    assert events[-1].name == "error"
+    saved = await dal_database(ConversationMessage, message.id)
+    assert saved.status == "failed"
+    assert saved.notice == failure_notice(FailureKind.UNAVAILABLE, None, datetime.now(UTC))
+    [row] = await chiamate(db_session)
+    assert row.ok is False
+    assert row.prompt_tokens == 500 and row.completion_tokens == 40
+    assert row.cost_usd == 0.012
+
+
+async def test_un_tempo_massimo_non_ha_costo(db_session, factory, frittata):
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Ciao")
+    fake = FakeClaude([Hang()])
+
+    await giro(factory, fake, conversation, message, timeout=0.2)
+
+    [row] = await chiamate(db_session)
+    assert row.ok is False
+    assert row.prompt_tokens is None and row.completion_tokens is None
+    assert row.cost_usd is None
+
+
+async def test_troppi_passaggi_tengono_la_risposta_e_la_modifica(
+    db_session, factory, frittata, voci, dal_database
+):
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Spinaci congelati")
+    fake = FakeClaude(
+        [
+            Say("Ho cambiato gli spinaci. "),
+            UseTool("write_recipe", spinaci_args(voci)),
+            Say("Poi"),
+            Fail(FailureKind.MAX_TURNS, input_tokens=2000, output_tokens=600, cost_usd=0.4),
+        ]
+    )
+
+    events = await giro(factory, fake, conversation, message)
+
+    assert events[-1].name == "done"
+    saved = await dal_database(ConversationMessage, message.id)
+    assert saved.status == "sent" and saved.notice is None and saved.failure is None
+    reply = (
+        await db_session.execute(
+            select(ConversationMessage).where(ConversationMessage.reply_to_id == message.id)
+        )
+    ).scalar_one()
+    assert reply.role == "assistant" and reply.status == "sent"
+    assert reply.text == "Ho cambiato gli spinaci. \n\nPoi"
+    assert reply.notice == failure_notice(FailureKind.MAX_TURNS, None, datetime.now(UTC))
+    chat = events[-1].data["chat"]
+    user, shown = chat["messages"]
+    assert user["changes"] == []
+    assert shown["notice"] == reply.notice
+    [change] = shown["changes"]
+    assert change["undoable"] is True
+    [row] = await chiamate(db_session)
+    assert row.ok is False and row.cost_usd == 0.4
+    assert row.prompt_tokens == 2000 and row.completion_tokens == 600
 
 
 async def test_senza_token_nessuna_riga_di_spesa(db_session, factory, frittata):

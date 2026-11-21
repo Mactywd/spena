@@ -16,7 +16,7 @@ from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.llm_call import LlmCall
 from app.db.models.pantry import PantryItem
 from app.db.models.planning import MealProposal
-from app.domain.meal_chat import FailureKind
+from app.domain.meal_chat import FailureKind, failure_notice
 from app.domain.meals import MealSlot
 from app.domain.rules import PANTRY_TZ, today_in_pantry
 from app.repositories.conversations import create_planning, get_or_create_dish_conversation
@@ -135,7 +135,7 @@ async def test_un_giro_di_pianificazione_che_propone(db_session, factory, dal_da
     ).scalars().all()
     assert row.ok is True
     assert row.prompt_tokens == 3000 and row.completion_tokens == 400
-    assert row.cost_usd is None
+    assert row.cost_usd == 0.05
 
 
 async def test_il_giro_usa_sforzo_e_strumenti_della_pianificazione(db_session, factory):
@@ -159,6 +159,34 @@ async def test_il_giro_usa_sforzo_e_strumenti_della_pianificazione(db_session, f
     assert f"Mattia è partito da: {day_name(DAY1)}, cena." in call["prompt"]
     assert "Sul tavolo non c'è nessuna proposta." in call["prompt"]
     assert call["prompt"].rstrip().endswith("Cosa mi proponi?")
+
+
+async def test_troppi_passaggi_nella_pianificazione(db_session, factory, dal_database):
+    conversation = await create_planning(db_session)
+    message = await messaggio(db_session, conversation, "Pianifica la settimana")
+    fake = FakeClaude(
+        [
+            Say("Ecco tre cene. "),
+            UseTool("propose_meals", tre_cene()),
+            Say("E poi"),
+            Fail(FailureKind.MAX_TURNS, input_tokens=4000, output_tokens=900, cost_usd=0.7),
+        ]
+    )
+
+    events = await giro(factory, fake, conversation, message)
+
+    assert events[-1].name == "done"
+    saved = await dal_database(ConversationMessage, message.id)
+    assert saved.status == "sent" and saved.notice is None
+    user, reply = events[-1].data["chat"]["messages"]
+    assert reply["role"] == "assistant" and reply["text"] == "Ecco tre cene. \n\nE poi"
+    assert reply["notice"] == failure_notice(FailureKind.MAX_TURNS, None, datetime.now(UTC))
+    assert user["proposals"] == [] and len(reply["proposals"]) == 1
+    [row] = (
+        await db_session.execute(select(LlmCall).where(LlmCall.call_site == "meal_planning"))
+    ).scalars().all()
+    assert row.ok is False and row.cost_usd == 0.7
+    assert row.prompt_tokens == 4000 and row.completion_tokens == 900
 
 
 async def test_il_limite_a_meta_lascia_la_proposta(db_session, factory, dal_database):

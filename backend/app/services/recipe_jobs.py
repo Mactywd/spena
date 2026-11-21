@@ -39,10 +39,11 @@ from app.services.claude.client import (
     ClaudeFailure,
     TurnFailed,
     TurnFinished,
+    llm_usage,
 )
 from app.services.claude.prompts import DishContext, recipe_system_prompt, render_recipe_prompt
 from app.services.claude.tools import TurnContext, recipe_tools
-from app.services.llm import LlmCallSite, LlmUsage
+from app.services.llm import LlmCallSite
 from app.services.meal_chat import chat_history
 from app.services.utensils import utensils_prompt_block
 
@@ -157,29 +158,25 @@ async def _settle_meal(
             meal.recipe_requested_at = None
             if meal.recipe_id is not None or not can_chat(meal):
                 meal.recipe_notice = None
-            elif outcome.failure is not None:
+            elif outcome.failure is not None and outcome.failure.kind != FailureKind.MAX_TURNS:
                 meal.recipe_notice = failure_notice(
                     outcome.failure.kind, outcome.failure.resets_at, now
                 )
             else:
                 meal.recipe_notice = NOT_WRITTEN_NOTICE
         if outcome.finished is not None:
-            usage = outcome.finished.usage
             await record_llm_call(
                 session,
                 call_site=LlmCallSite.MEAL_RECIPE,
-                usage=LlmUsage(
-                    generation_id=usage.session_id,
-                    model=usage.model,
-                    prompt_tokens=usage.input_tokens,
-                    completion_tokens=usage.output_tokens,
-                    cost_usd=None,
-                ),
+                usage=llm_usage(outcome.finished.usage),
                 ok=True,
             )
         elif outcome.failure is not None and outcome.failure.kind != FailureKind.NOT_CONFIGURED:
             await record_llm_call(
-                session, call_site=LlmCallSite.MEAL_RECIPE, usage=LlmUsage(), ok=False
+                session,
+                call_site=LlmCallSite.MEAL_RECIPE,
+                usage=llm_usage(outcome.failure.usage),
+                ok=False,
             )
         await session.commit()
 
