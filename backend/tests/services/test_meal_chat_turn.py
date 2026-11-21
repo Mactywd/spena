@@ -392,7 +392,7 @@ async def test_un_attesa_con_il_giro_vivo_resta_in_attesa(db_session, frittata):
 
 async def test_la_vista_di_un_pasto_senza_chat(db_session, frittata, monkeypatch):
     # il token si fissa vuoto: in un container che ce l'ha, l'esito non deve cambiare
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     get_settings.cache_clear()
     try:
         view = await dish_chat_view(

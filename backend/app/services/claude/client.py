@@ -86,8 +86,8 @@ class ClaudeClient(Protocol):
 
 
 def claude_configured() -> bool:
-    """Il token c'è e non è vuoto (`.env.example` lo lascia vuoto)."""
-    return bool(get_settings().claude_code_oauth_token)
+    """La chiave API c'è e non è vuota (`.env.example` la lascia vuota)."""
+    return bool(get_settings().anthropic_api_key)
 
 
 def build_options(
@@ -116,15 +116,15 @@ def build_options(
         max_turns=max_turns,
         cwd=workdir,
         env={
-            "CLAUDE_CODE_OAUTH_TOKEN": settings.claude_code_oauth_token or "",
+            "ANTHROPIC_API_KEY": settings.anthropic_api_key or "",
+            # L'SDK passa al CLI `{**os.environ, **env}`: un token del piano rimasto
+            # nell'ambiente del server prenderebbe il posto della chiave senza che niente
+            # lo mostri. Vuoti, il CLI li legge come assenti.
+            "CLAUDE_CODE_OAUTH_TOKEN": "",
+            "ANTHROPIC_AUTH_TOKEN": "",
             "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
             "ENABLE_TOOL_SEARCH": "false",
             "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1",
-            # L'SDK passa al CLI `{**os.environ, **env}`, e il CLI preferisce una chiave API
-            # al token del piano: una chiave nell'ambiente del server farebbe pagare la chat
-            # a consumo senza che niente lo mostri. Vuote, il CLI le legge come assenti.
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
         },
     )
 

@@ -24,7 +24,7 @@ from app.services.meals import create_meal, link_recipe
 from claude_fakes import Fail, FakeClaude, Finish, Say, UseTool
 
 DAY = date(2026, 11, 13)
-TOKEN_FINTO = "finto-token-per-il-test"
+CHIAVE_FINTA = "chiave-finta-per-i-test"
 NO_CHAT = "Questo pasto non ha una chat: è una bozza, è fuori casa o è un avanzo."
 
 
@@ -40,7 +40,7 @@ async def chat(logged_client, db_session, registry, monkeypatch):
     per test."""
     from app.main import app
 
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", TOKEN_FINTO)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CHIAVE_FINTA)
     get_settings.cache_clear()
 
     class Chat:
@@ -242,7 +242,7 @@ async def test_annulla_dopo_il_modulo_e_409(chat, frittata, voci):
 async def test_senza_token_503_e_niente_salvato(logged_client, frittata, monkeypatch):
     from app.main import app
 
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     get_settings.cache_clear()
     app.dependency_overrides.pop(get_claude_client, None)
     risposta = await logged_client.post(url(frittata, "/messages"), json={"text": "Ciao"})

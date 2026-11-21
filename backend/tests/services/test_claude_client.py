@@ -29,12 +29,12 @@ from app.services.claude.client import (
     get_claude_client,
 )
 
-TOKEN_FINTO = "finto-token-per-il-test"
+CHIAVE_FINTA = "chiave-finta-per-i-test"
 
 
 @pytest.fixture(autouse=True)
 def _token(monkeypatch, tmp_path):
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", TOKEN_FINTO)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CHIAVE_FINTA)
     monkeypatch.setenv("CLAUDE_WORKDIR", str(tmp_path / "lavoro"))
     get_settings.cache_clear()
     yield
@@ -122,12 +122,12 @@ async def test_le_opzioni_di_produzione(monkeypatch):
     assert o.max_turns == 12
     assert str(o.cwd).endswith("lavoro")
     assert o.env == {
-        "CLAUDE_CODE_OAUTH_TOKEN": TOKEN_FINTO,
+        "ANTHROPIC_API_KEY": CHIAVE_FINTA,
+        "CLAUDE_CODE_OAUTH_TOKEN": "",
+        "ANTHROPIC_AUTH_TOKEN": "",
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
         "ENABLE_TOOL_SEARCH": "false",
         "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1",
-        "ANTHROPIC_API_KEY": "",
-        "ANTHROPIC_AUTH_TOKEN": "",
     }
     # la cartella di lavoro viene creata
     import os
@@ -135,16 +135,16 @@ async def test_le_opzioni_di_produzione(monkeypatch):
     assert os.path.isdir(o.cwd)
 
 
-def test_una_chiave_api_nell_ambiente_non_prende_il_posto_del_token(monkeypatch):
-    """L'SDK passa al CLI `{**os.environ, **options.env}` e il CLI preferisce la chiave
-    API al token del piano: la chiave dell'ambiente si spegne con una stringa vuota, che il
-    CLI legge come assente."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "finta-chiave-per-il-test")
+def test_un_token_nell_ambiente_non_prende_il_posto_della_chiave(monkeypatch):
+    """L'SDK passa al CLI `{**os.environ, **options.env}`: un token del piano rimasto
+    nell'ambiente prenderebbe il posto della chiave senza che niente lo mostri. Si spegne
+    con una stringa vuota, che il CLI legge come assente."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "finto-token-per-il-test")
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "finto-auth-per-il-test")
     o = build_options(system_prompt="x", tools=[_ping], effort="low", max_turns=1)
-    assert o.env["ANTHROPIC_API_KEY"] == ""
+    assert o.env["CLAUDE_CODE_OAUTH_TOKEN"] == ""
     assert o.env["ANTHROPIC_AUTH_TOKEN"] == ""
-    assert o.env["CLAUDE_CODE_OAUTH_TOKEN"] == TOKEN_FINTO
+    assert o.env["ANTHROPIC_API_KEY"] == CHIAVE_FINTA
 
 
 def test_build_options_e_quello_che_gira():
@@ -261,11 +261,11 @@ async def test_result_error_si_classifica_per_stato(monkeypatch):
 
 
 @pytest.mark.parametrize("valore", [None, ""])
-async def test_senza_token_non_parte_niente(monkeypatch, valore):
+async def test_senza_chiave_non_parte_niente(monkeypatch, valore):
     if valore is None:
-        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
+        monkeypatch.delenv("ANTHROPIC_API_KEY")
     else:
-        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", valore)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", valore)
     get_settings.cache_clear()
     calls = _fake_query(monkeypatch, [_result(usage={})])
     assert not claude_configured()
@@ -274,7 +274,7 @@ async def test_senza_token_non_parte_niente(monkeypatch, valore):
     assert len(events) == 1 and events[0].failure.kind == FailureKind.NOT_CONFIGURED
 
 
-def test_con_il_token_e_configurato():
+def test_con_la_chiave_e_configurato():
     assert claude_configured()
 
 
@@ -282,10 +282,10 @@ def test_get_claude_client_e_quello_di_produzione():
     assert isinstance(get_claude_client(), SdkClaudeClient)
 
 
-def test_prova_senza_token_dice_che_non_e_collegato(monkeypatch, capsys):
+def test_prova_senza_chiave_dice_che_non_e_collegato(monkeypatch, capsys):
     from app.cli import check_claude
 
-    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
     get_settings.cache_clear()
     check_claude.main(["--prova"])
     assert "prova: Claude non è collegato" in capsys.readouterr().out

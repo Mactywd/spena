@@ -37,16 +37,3 @@ def test_lambiente_scavalca_i_default(monkeypatch):
         assert settings.llm_max_concurrency == 3
     finally:
         get_settings.cache_clear()
-
-
-def test_anthropic_non_e_piu_unimpostazione():
-    """La chiave di Anthropic esce da Settings, non resta come campo morto.
-
-    Un campo che nessuno legge è peggio che assente: chi configura `.env` crede di
-    aver acceso qualcosa.
-    """
-    get_settings.cache_clear()
-    try:
-        assert not hasattr(get_settings(), "anthropic_api_key")
-    finally:
-        get_settings.cache_clear()

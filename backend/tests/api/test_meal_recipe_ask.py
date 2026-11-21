@@ -24,7 +24,7 @@ from app.services.recipe_jobs import RecipeJobs, get_recipe_jobs
 from claude_fakes import FakeClaude, Finish, Say, UseTool
 
 TODAY = today_in_pantry(datetime.now(UTC))
-TOKEN_FINTO = "finto-token-per-il-test"
+CHIAVE_FINTA = "chiave-finta-per-i-test"
 
 
 class Ferma(FakeClaude):
@@ -46,7 +46,7 @@ class Ferma(FakeClaude):
 async def coda(logged_client, db_session, monkeypatch):
     from app.main import app
 
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", TOKEN_FINTO)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CHIAVE_FINTA)
     get_settings.cache_clear()
     jobs = RecipeJobs()
 
@@ -130,7 +130,7 @@ async def test_chiedere_la_ricetta(coda, db_session, uova, dal_database):
 
 
 async def test_senza_token_503_e_niente_scritto(coda, db_session, monkeypatch, dal_database):
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     get_settings.cache_clear()
     meal = await cena(db_session)
 

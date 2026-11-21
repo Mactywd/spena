@@ -37,7 +37,7 @@ from claude_fakes import Fail, FakeClaude, Finish, Say, UseTool
 
 TODAY = today_in_pantry(datetime.now(UTC))
 DAY1, DAY2 = TODAY + timedelta(days=1), TODAY + timedelta(days=2)
-TOKEN_FINTO = "finto-token-per-il-test"
+CHIAVE_FINTA = "chiave-finta-per-i-test"
 NOT_CONFIGURED = "Claude non è collegato: manca il token del piano sul server."
 BASE = "/api/v1/planning"
 
@@ -49,7 +49,7 @@ async def chat(logged_client, db_session, monkeypatch):
     coda per test. Alla fine nessun giro e nessuna coda sopravvivono al test."""
     from app.main import app
 
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", TOKEN_FINTO)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CHIAVE_FINTA)
     get_settings.cache_clear()
     registry = TurnRegistry()
     jobs = RecipeJobs()
@@ -329,7 +329,7 @@ async def test_una_proposta_inesistente_e_404(chat):
 async def test_senza_token_i_pasti_entrano_con_l_avviso(logged_client, db_session, monkeypatch):
     from app.main import app
 
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     get_settings.cache_clear()
     app.dependency_overrides.pop(get_claude_client, None)
     jobs = RecipeJobs()

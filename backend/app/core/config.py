@@ -31,11 +31,11 @@ class Settings(BaseSettings):
     # EMBEDDING_BACKEND) non girerebbe mai in produzione, e sarebbe il difetto in cima
     # a CLAUDE.md. Quel che resta configurabile è il modello: OpenRouter fa da proxy
     # anche a Claude, quindi passare a un modello grosso è questa riga, non un secondo
-    # client. C'è un secondo percorso, ed è per i Pasti (la chat dei piatti): Claude sul
-    # piano di Mattia, via Agent SDK. Non è il caso che la regola vieta, perché non è una
-    # scelta fra due client per lo stesso lavoro: ogni lavoro ha un solo percorso, che
-    # in produzione gira davvero (il token è obbligatorio per la chat, e `check_claude`
-    # lo prova nello stack).
+    # client. C'è un secondo percorso, ed è per i Pasti: Claude via Agent SDK, con la chiave
+    # API di Anthropic. Non è il caso che la regola vieta, perché non è una scelta fra due
+    # client per lo stesso lavoro: ogni lavoro ha un solo percorso, che in produzione gira
+    # davvero (la chiave è obbligatoria per la chat, e `check_claude` prova il binario
+    # nello stack).
     openrouter_api_key: str | None = None
     openrouter_model: str = "google/gemma-4-26b-a4b-it"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
@@ -52,8 +52,10 @@ class Settings(BaseSettings):
     # dentro è lento, e un timeout troppo corto si presenta come «decidi a mano».
     llm_timeout_seconds: float = 60.0
     llm_max_concurrency: int = 8
-    # Claude per i Pasti. Vuoto o assente: la chat dice che Claude non è collegato.
-    claude_code_oauth_token: str | None = None
+    # La chiave API di Anthropic: oggi per i Pasti (chat, pianificazione, ricette dei
+    # pasti), domani anche per l'LLM dell'import con Claude Haiku. Vuota o assente: la
+    # chat dice che Claude non è collegato.
+    anthropic_api_key: str | None = None
     claude_model: str = "claude-opus-5-5"
     claude_reply_timeout_seconds: float = 240.0
     # Una cartella vuota come `cwd` dell'SDK: nessun CLAUDE.md di progetto è vicino.

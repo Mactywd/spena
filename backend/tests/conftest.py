@@ -1,6 +1,7 @@
 import os
 import subprocess
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -20,6 +21,23 @@ os.environ.setdefault("EMBEDDING_BACKEND", "fake")
 from app.core.config import Settings  # noqa: E402
 
 Settings.model_config["env_file"] = None
+
+
+
+@pytest.fixture(autouse=True)
+def _senza_chiavi_di_claude(monkeypatch):
+    """La suite parte senza chiave di Claude, qualunque cosa abbia l'ambiente della shell.
+
+    Un test che vuole la chat «collegata» imposta `ANTHROPIC_API_KEY` con una chiave finta.
+    """
+    from app.core.config import get_settings
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://spena:spena@localhost:5433/spena_test"
