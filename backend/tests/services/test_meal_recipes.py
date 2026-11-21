@@ -9,13 +9,14 @@ from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe import Recipe
 from app.db.models.recipe_change import RecipeChange
 from app.domain.meals import MealSlot, MealStatus
-from app.repositories.recipes import get_recipe
+from app.repositories.recipes import get_recipe, write_recipe_ingredients
 from app.services.meal_recipes import (
     UNSET,
     ChangeRefusal,
     ChangeRefusalCode,
     DraftLine,
     MealRecipeDraft,
+    STALE_WRITE_MESSAGE,
     RecipeWriteRefused,
     change_is_undoable,
     meal_snapshot,
@@ -389,3 +390,47 @@ async def test_un_errore_inatteso_nel_savepoint_lascia_il_pasto_leggibile(
     # letture sincrone: un oggetto scaduto qui alzerebbe MissingGreenlet
     assert meal.recipe_id is None
     assert meal.dish == "Frittata"
+
+
+async def _correzione_a_mano(db_session, voci, meal, dose):
+    recipe = await get_recipe(db_session, meal.recipe_id)
+    await write_recipe_ingredients(
+        db_session, recipe,
+        [(voci["uova"].id, "primary", "2", None), (voci["spinaci"].id, "primary", dose, None)],
+    )
+    await db_session.flush()
+
+
+async def _changes(db_session):
+    return list((await db_session.execute(select(RecipeChange))).scalars().all())
+
+
+async def test_una_scrittura_su_una_ricetta_cambiata_si_rifiuta(db_session, voci, meal):
+    await write_meal_recipe(
+        db_session, meal, draft(line(voci["uova"], text="2"), line(voci["spinaci"], text="200 g"))
+    )
+    seen = await meal_snapshot(db_session, meal)
+    await _correzione_a_mano(db_session, voci, meal, "300 g")
+    before = len(await _changes(db_session))
+    with pytest.raises(RecipeWriteRefused) as caught:
+        await write_meal_recipe(
+            db_session, meal,
+            draft(line(voci["uova"], text="2"), line(voci["spinaci"], text="150 g")),
+            expected=seen,
+        )
+    assert caught.value.message == STALE_WRITE_MESSAGE
+    assert (await lines_of(db_session, meal))[voci["spinaci"].id].quantity_text == "300 g"
+    assert len(await _changes(db_session)) == before
+
+
+async def test_con_l_istantanea_giusta_si_scrive(db_session, voci, meal):
+    await write_meal_recipe(
+        db_session, meal, draft(line(voci["uova"], text="2"), line(voci["spinaci"], text="200 g"))
+    )
+    seen = await meal_snapshot(db_session, meal)
+    await write_meal_recipe(
+        db_session, meal,
+        draft(line(voci["uova"], text="2"), line(voci["spinaci"], text="150 g")),
+        expected=seen,
+    )
+    assert (await lines_of(db_session, meal))[voci["spinaci"].id].quantity_text == "150 g"

@@ -20,14 +20,14 @@ from app.domain.meals import MealSlot
 from app.domain.rules import PANTRY_TZ
 from app.repositories.conversations import get_or_create_dish_conversation
 from app.repositories.meals import get_meal
-from app.repositories.recipes import create_recipe, get_recipe
+from app.repositories.recipes import create_recipe, get_recipe, write_recipe_ingredients
 from app.services.claude.prompts import dish_system_prompt
 from app.services.meal_chat import ChatEvent, dish_chat_view, run_dish_turn
-from app.services.meal_recipes import change_is_undoable
+from app.services.meal_recipes import STALE_WRITE_MESSAGE, change_is_undoable
 from app.services.meals import create_meal, link_recipe
 from app.repositories.utensils import create_utensil
 from app.services.utensils import utensils_prompt_block
-from claude_fakes import Fail, FakeClaude, Finish, Hang, Say, UseTool
+from claude_fakes import Do, Fail, FakeClaude, Finish, Hang, Say, UseTool
 
 DAY = date(2026, 11, 13)
 
@@ -589,3 +589,85 @@ async def test_il_giro_non_tiene_aperta_la_transazione_mentre_claude_pensa(
     await giro(spia(factory, sessions), Guarda([Say("Ok."), Finish()]), conversation, message)
 
     assert seen == [False]
+
+
+def _corregge_a_mano(factory, voci, recipe_id, dose="300 g"):
+    async def action():
+        async with factory() as session:
+            recipe = await get_recipe(session, recipe_id)
+            await write_recipe_ingredients(
+                session, recipe,
+                [
+                    (voci["uova"].id, "primary", "3", None),
+                    (voci["spinaci"].id, "primary", dose, None),
+                    (voci["parmigiano"].id, "secondary", "30 g", None),
+                ],
+            )
+            await session.commit()
+
+    return action
+
+
+async def modifiche(factory):
+    async with factory() as session:
+        return list((await session.execute(select(RecipeChange))).scalars().all())
+
+
+async def test_una_correzione_a_mano_durante_il_giro_non_si_perde(
+    db_session, factory, frittata, voci
+):
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Meno spinaci.")
+    await db_session.commit()
+    fake = FakeClaude(
+        [
+            Say("Guardo. "),
+            Do(_corregge_a_mano(factory, voci, frittata.recipe_id)),
+            UseTool("write_recipe", spinaci_args(voci)),
+            Finish(),
+        ]
+    )
+
+    await giro(factory, fake, conversation, message)
+
+    righe = await righe_dal_database(factory, frittata.recipe_id)
+    assert righe["spinaci"][0] == "300 g"
+    assert fake.tool_results[0]["is_error"] is True
+    assert STALE_WRITE_MESSAGE in fake.tool_results[0]["content"][0]["text"]
+    assert await modifiche(factory) == []
+
+
+async def test_una_seconda_scrittura_nello_stesso_giro_passa(
+    db_session, factory, frittata, voci
+):
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Meno spinaci.")
+    await db_session.commit()
+    seconda = spinaci_args(voci)
+    seconda["ingredients"][1]["quantity"] = "100 g"
+    fake = FakeClaude(
+        [UseTool("write_recipe", spinaci_args(voci)), UseTool("write_recipe", seconda), Finish()]
+    )
+
+    await giro(factory, fake, conversation, message)
+
+    assert all(not r.get("is_error") for r in fake.tool_results)
+    assert len(await modifiche(factory)) == 2
+    assert (await righe_dal_database(factory, frittata.recipe_id))["spinaci"][0] == "100 g"
+
+
+async def test_rileggere_il_pasto_aggiorna_l_istantanea(db_session, factory, frittata, voci):
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Meno spinaci.")
+    await db_session.commit()
+    fake = FakeClaude(
+        [
+            Do(_corregge_a_mano(factory, voci, frittata.recipe_id)),
+            UseTool("read_meals", {"start": DAY.isoformat(), "end": DAY.isoformat()}),
+            UseTool("write_recipe", spinaci_args(voci)),
+            Finish(),
+        ]
+    )
+
+    await giro(factory, fake, conversation, message)
+
+    assert not fake.tool_results[1].get("is_error")
+    assert (await righe_dal_database(factory, frittata.recipe_id))["spinaci"][0] == "150 g"
+    assert len(await modifiche(factory)) == 1

@@ -27,6 +27,7 @@ from app.db.models.planning import MealProposal, ProposalKind
 from app.db.models.recipe_change import RecipeChange
 from app.domain.meal_chat import MAX_MEALS_RANGE_DAYS
 from app.domain.meals import MealSlot
+from app.domain.recipe_changes import MealSnapshot, snapshot_from_json
 from app.domain.rules import (
     ExpiryState,
     IngredientKind,
@@ -53,6 +54,7 @@ from app.services.meal_recipes import (
     DraftLine,
     MealRecipeDraft,
     RecipeWriteRefused,
+    meal_snapshot,
     write_meal_recipe,
 )
 from app.services.ingredient_match import exact_ingredient
@@ -94,6 +96,9 @@ class TurnContext:
     on_card: Callable[[ChangeCard], Awaitable[None]] | None = None
     # il giro scrive una ricetta nuova: non ne riscrive una che c'era già (decisione 15)
     create_only: bool = False
+    # il pasto com'è nel prompt del giro del piatto: `write_recipe` scrive solo se è ancora
+    # questo (una correzione a mano nel frattempo non si perde). None = nessun controllo
+    seen: MealSnapshot | None = None
 
 
 def _ok(text: str) -> dict[str, Any]:
@@ -204,6 +209,11 @@ def read_tools(ctx: TurnContext) -> list[SdkMcpTool]:
             return _error(RANGE_ERROR)
         async with ctx.lock:
             meals = await meals_between(ctx.session, start, end)
+            # rileggere il pasto di questa chat è vederlo com'è adesso
+            if ctx.seen is not None:
+                mine = next((m for m in meals if m.id == ctx.meal_id), None)
+                if mine is not None:
+                    ctx.seen = await meal_snapshot(ctx.session, mine)
         found = {(m.day, m.slot): m for m in meals}
         blocks = []
         day = start
@@ -420,9 +430,12 @@ def write_recipe_tool(ctx: TurnContext) -> SdkMcpTool:
                     draft,
                     conversation_id=ctx.conversation_id,
                     turn_message_id=ctx.turn_message_id,
+                    expected=ctx.seen,
                 )
             except (RecipeWriteRefused, MealRefusal) as exc:
                 return _error(exc.message)
+            if ctx.seen is not None:
+                ctx.seen = snapshot_from_json(change.after)
             if meal.recipe_id is not None:
                 written.add(meal.recipe_id)
             await ctx.session.commit()

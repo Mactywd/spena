@@ -94,7 +94,7 @@ from app.services.claude.prompts import (
 )
 from app.services.claude.tools import TurnContext, dish_tools
 from app.services.llm import LlmCallSite
-from app.services.meal_recipes import change_is_undoable
+from app.services.meal_recipes import change_is_undoable, meal_snapshot
 from app.services.planning import proposal_out
 from app.services.utensils import utensils_prompt_block
 
@@ -652,6 +652,8 @@ async def _dish_prepare(
         today=ctx.today, day=meal.day, slot=MealSlot(meal.slot), dish=meal.dish,
         sides=meal.sides, recipe=recipe,
     )
+    # il pasto com'è nel prompt: `write_recipe` non lo sovrascrive se cambia durante il giro
+    ctx.seen = await meal_snapshot(session, meal)
     history = await chat_history(session, conversation.id, exclude=message.id)
     return system_prompt, render_turn_prompt(context, history, message.text), dish_tools(ctx)
 

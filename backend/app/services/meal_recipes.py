@@ -107,6 +107,11 @@ class ChangeRefusal(Exception):
 
 ALREADY_UNDONE_MESSAGE = "Questa modifica è già stata annullata."
 STALE_MESSAGE = "La ricetta è cambiata dopo questa modifica: non si può più annullare."
+STALE_WRITE_MESSAGE = (
+    "La ricetta di questo pasto è cambiata mentre rispondevi (l'ha corretta Mattia, o ha "
+    "annullato una modifica): rileggila con read_meals e riscrivila partendo da com'è "
+    "adesso. Non ho scritto niente."
+)
 INGREDIENT_GONE_MESSAGE = (
     "Un ingrediente della versione di prima non c'è più: correggi la ricetta dal modulo."
 )
@@ -213,6 +218,7 @@ async def write_meal_recipe(
     *,
     conversation_id: uuid.UUID | None = None,
     turn_message_id: uuid.UUID | None = None,
+    expected: MealSnapshot | None = None,
 ) -> RecipeChange:
     """La sola strada con cui Claude scrive la ricetta di un pasto: la chat del piatto ora,
     la generazione dopo l'ufficializzazione nel piano 4.
@@ -226,11 +232,16 @@ async def write_meal_recipe(
     niente di scritto, nemmeno gli ingredienti creati da una riga precedente, e un
     chiamante che scrive più pasti in una transazione perde solo quello rifiutato. Salva la
     versione di prima in un `RecipeChange`, per «Annulla». Fa `flush`, mai `commit`.
+
+    Con `expected` (l'istantanea che Claude ha visto) scrive solo se il pasto è ancora
+    quello: se Mattia l'ha corretto nel frattempo rifiuta, prima di ogni scrittura.
     """
     refuse_if_no_recipe_here(meal)
     _check_fields(draft)
     meal_id = meal.id
     before = await meal_snapshot(session, meal)
+    if expected is not None and before != expected:
+        raise RecipeWriteRefused(STALE_WRITE_MESSAGE)
     recipe: Recipe | None = None
     if meal.recipe_id is not None:
         recipe = await get_recipe(session, meal.recipe_id)
