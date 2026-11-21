@@ -115,6 +115,8 @@ pasto per posto. Ha:
   completarlo»;
 - **fuori casa**: un segno, per i pasti che non si cucinano. Serve a Claude per non
   riempirli e per non contarli nell'equilibrio della settimana come piatti noti.
+  Un pasto che va fuori casa tiene la sua ricetta, nascosta: togliendo il segno torna
+  (deciso da Mattia il 2026-11-18).
 
 Un pasto è **in bozza** o **ufficiale** (deciso da Mattia il 2026-11-12, vedi §5.2).
 Una bozza è un'intenzione per compilare la lista della spesa: ha il piatto e gli
@@ -153,6 +155,8 @@ altro pasto. Di conseguenza:
   con il segno «avanzo» e il legame al pasto da cui viene: si apre sulla ricetta di quel
   pasto, in sola lettura e senza chat, e non tocca la dispensa
   (era già la regola dell'«Altro» di P3).
+  Spostare un pasto dopo un suo avanzo si chiede: «Sposta e stacca l'avanzo» lo lascia
+  come pasto a mano (deciso da Mattia il 2026-11-18).
 
 Quando la ricetta di un pasto si salva nel ricettario, resta la stessa ricetta: il
 pasto continua a puntarla, e la sua chat la modifica come prima, perché è comunque la
@@ -317,6 +321,10 @@ frittata di martedì»).
     spena propone la scheda inversa («rimetti in dispensa: spinaci → c'è») anche senza
     Claude, e Mattia la applica o la scarta. Spostare un pasto su un altro posto non
     propone niente.
+    La scheda inversa ragiona per voce (l'effetto netto delle schede del pasto) e non
+    toglie dalla lista ciò che serve a un altro pasto. Una scheda nuova di Claude per gli
+    stessi pasti mette da parte quelle non ancora applicate (deciso da Mattia il
+    2026-11-18).
 - Le regole della skill sugli stati restano: una confezione da una porzione diventa
   `finished`, una confezione grande resta com'è, un vasetto di sugo appena aperto
   diventa `low`; un sugo `low` è avviato, non in esaurimento, e non va in lista per

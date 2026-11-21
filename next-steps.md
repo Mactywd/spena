@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-21 (fase notte: la chiave API e le correzioni della chat dei Pasti; revisione finale: tre idee nuove)_
+_Ultimo aggiornamento: 2026-11-21 (fase notte: le correzioni dei Pasti)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -25,7 +25,6 @@ aspettano. Il 3, il 4 con il 5 e il 6 partono da `master` e possono girare in qu
 continua il ramo `night/suggerimenti-soglia`, e il suo piano sta nel worktree di quel ramo, non
 ancora committato.
 
-2. [in corso] P2 · Pasti con Claude: le correzioni della settimana, delle schede e degli utensili — «Fuori casa» nasconde la ricetta invece di staccarla (S1), spostare un pasto prima dei suoi avanzi chiede «Sposta e stacca l'avanzo» (S2), la ricetta di un avanzo davvero in sola lettura (S3), l'inversa per voce e la lista che serve a un altro pasto (P1, P2), una scheda nuova di Claude mette da parte le vecchie (P3), l'avviso vecchio della ricetta (P4), il fuoco e le etichette degli utensili (U1, U2); migrazione `0024` [Parte IV] → `docs/superpowers/plans/2026-11-18-pasti-correzioni.md`, ramo `night/pasti-correzioni` da `night/pasti-chiave-api`, dopo il 1 → in corso su night/pasti-correzioni
 3. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — il taglio è già costruito sul ramo (piano `2026-10-08-suggerimenti-soglia.md`); resta la strada (b) decisa da Mattia il 2026-11-18: il ramo al pari di `master`, poi l'elenco non tagliato (`trim=false`) per «Abbina» in «Sistema la spesa» e per i quasi-doppioni dell'Anagrafica, il taglio per tutti gli altri [T3, esito del giro] → `.worktrees/suggerimenti-soglia/docs/superpowers/plans/2026-11-18-suggerimenti-elenco-intero.md`, ramo `night/suggerimenti-soglia` (lo continua)
 4. [pronto] P2 · S3, la serie della scansione e la riga nuova portata in vista: finché il pannello di «Scansiona» è aperto la pagina non scorre più alla riga nuova (l'avviso «In dispensa: …» conferma già), e alla ✕ va in vista l'ultima riga entrata; su «Cibo» o «Casa» una voce dell'altro mondo lascia il selettore com'è e l'avviso dice dov'è finita (Mattia, 2026-11-18) [S3, S14] → `docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`, ramo `night/dispensa-serie-reparti` da `master`, insieme alla 5
 5. [pronto] P2 · S15, il riepilogo delle scadenze che si spegne da solo richiude i reparti che aveva aperto: quando è lo schermo a spegnerlo, i reparti che aveva aperto restano aperti a video, senza salvarli, finché non si tocca qualcosa (Mattia, 2026-11-18) [S15] → stesso piano e stesso ramo della 4
@@ -35,15 +34,11 @@ ancora committato.
 9. [pronto] P3 · Pasti, il terzo giro: gli avanzi (i 3 giorni controllati anche alla scrittura, con «Sposta e stacca dal pasto d'origine»), «Elimina» dal ricettario su una ricetta di un pasto la toglie dal ricettario, le schede inverse (scartata al ritorno a casa, non spuntata per un pasto passato), la lista che segue la correzione di una scheda (migrazione `0026`), il lucchetto sulla ricetta del pasto, e le piccole della pianificazione e del pasto (Mattia, 2026-11-21) [Parte IV] → `docs/superpowers/plans/2026-11-21-pasti-terzo-giro.md`, ramo `night/pasti-terzo-giro` da `night/s4-candidati`, dopo l'8
 
 ## Da approfondire (giorno)
-- [idea] P3 · Pasti: spostare un pasto d'origine dopo il suo avanzo lascia l'avanzo legato a un pasto successivo [Parte IV]
 - [idea] P3 · Pasti: la scrittura non controlla la finestra di 3 giorni dell'avanzo (la offre solo il modulo) [Parte IV]
-- [idea] P3 · Pasti: «Fuori casa» e «Sostituisci» archiviano in silenzio una ricetta fuori dal ricettario (avvisa solo «Elimina») [Parte IV]
 - [idea] P3 · Pasti: il legame di un avanzo non si cambia da «Correggi», quindi spostarlo prima del suo pasto d'origine dà un rifiuto senza uscita da quella schermata [Parte IV]
 - [idea] P3 · Pasti: `/pasti?settimana=<non valida>` mostra «La settimana non si carica.» con un «Riprova» che non può riuscire: aggiungere «Torna a oggi» [Parte IV]
-- [idea] P3 · Pasti: la ricetta in sola lettura di un avanzo mostra ancora «Metti in lista ciò che manca», lo stepper delle porzioni e i sostituti [Parte IV]
 - [idea] P3 · Pasti: «Elimina» da `/ricette/:id` su una ricetta di un pasto salvata nel ricettario lascia il pasto su una ricetta archiviata (la schermata del pasto mostra la lapide con «Ripristina») [Parte IV]
 - [idea] P3 · Pasti: ripristinare dalla lapide nella modalità pasto non aggiorna la cache dei pasti [Parte IV]
-- [idea] P3 · Pasti: due «Annulla» affiancati nell'avviso del posto occupato (quello del modulo e quello dell'avviso) [Parte IV]
 - [idea] P3 · Pasti con Claude: un token finto con la forma di uno vero resta nella storia del commit `3df53ee` (corretto dopo); il repo è pubblico, e se la protezione dei push di GitHub lo rifiuta, riscrivere la storia del ramo è una decisione di Mattia [Parte IV]
 - [idea] P3 · Pasti con Claude: il controllo «Claude sta rispondendo» di «Annulla» e l'annullamento non stanno sotto lo stesso lucchetto (una finestra minima, con due dispositivi) [Parte IV]
 - [idea] P3 · Pasti con Claude: una risposta che si interrompe dopo l'inizio non mostra un avviso; la chat si rilegge da sola e mostra lo stato vero [Parte IV]
@@ -72,7 +67,6 @@ ancora committato.
 
 ### Idee
 - [idea] P3 · La regola del prompt finisce «se senza quello strumento il piatto non si fa, dillo», ma bozza e variante rispondono con un `json_schema` stretto: il modello può dirlo solo dentro descrizione o istruzioni; una riga apposta per la bozza e la variante, tipo «dillo nella descrizione» [H4]
-- [idea] P3 · Chiudendo il modulo di correzione di un utensile il fuoco resta sul corpo della pagina; farlo tornare su «Correggi» [H4]
 - [idea] P3 · `useArchiveRecipe.test.tsx` fallisce un test (ogni volta uno diverso) quando tutta la suite vitest gira su una macchina occupata, e da solo passa: è un'attesa a tempo da sistemare [Parte X]
 - [idea] P3 · L'elenco dei comandi e2e nei piani del 2026-11-12 non ha le due righe della fixture CIQUAL del piano S4 (senza, 6 prove S4 danno 409): README e modello dei piani devono portarle [Parte X]
 - [idea] P3 · «Chiudi tutto / apri tutto» sui reparti della dispensa, se sul telefono toccarli uno per uno non basta (deciso di no per ora, spec S15 §6.5) [S15]
@@ -180,6 +174,12 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-11-21 · Pasti con Claude: le correzioni della settimana, delle schede e degli utensili — «Fuori casa» nasconde la ricetta invece di staccarla (S1), spostare un pasto prima dei suoi avanzi chiede «Sposta e stacca l'avanzo» (S2), la ricetta di un avanzo davvero in sola lettura (S3), l'inversa per voce e la lista che serve a un altro pasto (P1, P2), una scheda nuova di Claude mette da parte le vecchie (P3), l'avviso vecchio della ricetta (P4), il fuoco e le etichette degli utensili (U1, U2); migrazione `0024` [Parte IV] → `docs/superpowers/plans/2026-11-18-pasti-correzioni.md`, ramo `night/pasti-correzioni` da `night/pasti-chiave-api`, dopo il 1 → branch night/pasti-correzioni (da revisionare)
+- [fatto] 2026-11-21 · Pasti: spostare un pasto d'origine dopo il suo avanzo lascia l'avanzo legato a un pasto successivo — risolta col piano `2026-11-18-pasti-correzioni.md` → branch night/pasti-correzioni (da revisionare)
+- [fatto] 2026-11-21 · Pasti: «Fuori casa» e «Sostituisci» archiviano in silenzio una ricetta fuori dal ricettario (avvisa solo «Elimina») — risolta col piano `2026-11-18-pasti-correzioni.md` → branch night/pasti-correzioni (da revisionare)
+- [fatto] 2026-11-21 · Pasti: la ricetta in sola lettura di un avanzo mostra ancora «Metti in lista ciò che manca», lo stepper delle porzioni e i sostituti (lo stepper delle porzioni resta di proposito, decisione 7: cambia solo la vista e non scrive niente) — risolta col piano `2026-11-18-pasti-correzioni.md` → branch night/pasti-correzioni (da revisionare)
+- [fatto] 2026-11-21 · Pasti: due «Annulla» affiancati nell'avviso del posto occupato (quello del modulo e quello dell'avviso) — risolta col piano `2026-11-18-pasti-correzioni.md` → branch night/pasti-correzioni (da revisionare)
+- [fatto] 2026-11-21 · Chiudendo il modulo di correzione di un utensile il fuoco resta sul corpo della pagina; farlo tornare su «Correggi» — risolta col piano `2026-11-18-pasti-correzioni.md` → branch night/pasti-correzioni (da revisionare)
 - [fatto] 2026-11-21 · Pasti con Claude: la chat passa dal token del piano alla chiave API di Anthropic (`ANTHROPIC_API_KEY`), con il costo vero nelle «Spese dell'AI» come ogni altra sezione; e i rilievi C1–C7 della revisione del 2026-11-18 (una correzione a mano durante il giro non si perde, niente trascrizioni su disco, le letture che chiudono la transazione, i troppi passaggi, l'uso dei giri falliti, «Annulla» che toglie gli ingredienti creati, una lettura del pasto per vista); migrazione `0023` [Parte IV] → `docs/superpowers/plans/2026-11-18-pasti-chiave-api.md` → branch night/pasti-chiave-api (da revisionare)
 - [fatto] 2026-11-18 · Pasti con Claude: le ricette che la coda scrive dopo «Metti nella settimana» non contraddicono più il piano quando la scheda dei cambi è già applicata: `RECIPE_PROMPT` dice che la dispensa può mostrare finiti gli ingredienti del pasto, e che la ricetta resta quella del piatto deciso (I-2 della revisione del piano 4, sì di Mattia) [Parte IV] → `master` 4089a86, non ancora in produzione
 - [fatto] 2026-11-13 · Pasti con Claude, risolta nella revisione finale del piano 4: «Pianifica con Claude» guardava solo l'ultima conversazione, e se era conclusa si apriva vuota anche con un giro della bozza più vecchio ancora aperto. Ora riapre l'ultima non conclusa: la più recente se è aperta, altrimenti la più recente con bozze messe da lei ancora bozza da oggi in avanti (`planning_to_reopen`); una vecchia lasciata a metà per altri motivi non si riapre da sola [Parte IV] → branch night/pasti-pianificazione (da revisionare)
