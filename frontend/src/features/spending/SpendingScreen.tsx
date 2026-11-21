@@ -35,7 +35,7 @@ export function SpendingScreen() {
   const empty = PERIODS.find((entry) => entry.value === period)?.empty ?? PERIODS[0].empty;
 
   return (
-    <Screen title="Spese dell'AI" subtitle="Quanto ha speso l'AI su OpenRouter, e per cosa.">
+    <Screen title="Spese dell'AI" subtitle="Quanto ha speso l'AI, e per cosa.">
       <div role="group" aria-label="Periodo" className="flex gap-2">
         {PERIODS.map((entry) => (
           <Button

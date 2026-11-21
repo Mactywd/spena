@@ -80,7 +80,7 @@ describe("SpendingScreen", () => {
     expect(screen.getByText("6 chiamate")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "1 senza un costo dichiarato da OpenRouter (di solito, una chiamata fallita): non è nel totale."
+        "1 senza un costo dichiarato (di solito, una chiamata fallita): non è nel totale."
       )
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Per sezione" })).toBeInTheDocument();
@@ -153,7 +153,7 @@ describe("SpendingScreen", () => {
     expect(screen.getByText("2 chiamate")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "2 senza un costo dichiarato da OpenRouter (di solito, chiamate fallite): non sono nel totale."
+        "2 senza un costo dichiarato (di solito, chiamate fallite): non sono nel totale."
       )
     ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Per sezione" })).toBeNull();

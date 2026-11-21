@@ -6,7 +6,7 @@ scadenza, e non un giorno UTC — chi apre l'app a mezzanotte e mezza ha speso o
 
 Le cifre sono quelle che dichiarano i fornitori, in dollari: OpenRouter (`usage.cost`) e
 Claude Code per i Pasti (`ResultMessage.total_cost_usd`, calcolato dai token col suo
-listino). Una chiamata senza costo dichiarato — tutte le fallite, e qualche riuscita — non vale zero:
+listino). Una chiamata senza costo dichiarato — di solito una fallita, e qualche riuscita — non vale zero:
 zero direbbe «gratis», e l'assenza è la verità. La somma le salta, chi chiama le conta.
 """
 

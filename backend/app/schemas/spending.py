@@ -30,7 +30,7 @@ class SpendingOut(BaseModel):
     # la somma dei costi dichiarati dai fornitori (OpenRouter, Claude Code), in dollari
     total_usd: float
     calls: int
-    # le chiamate senza un costo dichiarato (tutte le fallite, qualche riuscita): contate
+    # le chiamate senza un costo dichiarato (di solito le fallite, qualche riuscita): contate
     # qui, fuori dal totale
     unpriced_calls: int
     # dalla più cara

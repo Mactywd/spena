@@ -88,8 +88,8 @@ export function formatTokens(tokens: number): string {
  * totale non le comprende, e lo si dice invece di lasciarlo credere completo. */
 export function unpricedText(unpriced: number): string {
   return unpriced === 1
-    ? "1 senza un costo dichiarato da OpenRouter (di solito, una chiamata fallita): non è nel totale."
-    : `${unpriced} senza un costo dichiarato da OpenRouter (di solito, chiamate fallite): non sono nel totale.`;
+    ? "1 senza un costo dichiarato (di solito, una chiamata fallita): non è nel totale."
+    : `${unpriced} senza un costo dichiarato (di solito, chiamate fallite): non sono nel totale.`;
 }
 
 /** Il giorno più caro, che dà l'altezza alle colonne; il primo a parità. `null` se nessun
