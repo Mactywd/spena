@@ -6,7 +6,7 @@ import { giornoDiRoma } from "./giornoDiRoma.ts";
 /**
  * La chat del piatto nel browser vero, a 375×812.
  *
- * Lo stack e2e non ha il token di Claude: la chat vera risponde 503, ed è proprio il caso
+ * Lo stack e2e non ha la chiave API di Claude: la chat vera risponde 503, ed è proprio il caso
  * della prima prova. Gli stati che solo Claude produce — la ricetta cambiata con la sua
  * riga evidenziata e «Annulla», il messaggio rimasto senza risposta per il limite del
  * piano — li semina `backend/tests/e2e_chat.py` nel container del backend, passando dai
@@ -74,7 +74,7 @@ test("senza token la chat lo dice, e il messaggio resta", async ({ page }) => {
 
     await page.goto(`/pasti/${pastoId}`);
     await expect(page.getByRole("heading", { name: "Chat con Claude" })).toBeVisible();
-    const avviso = page.getByText("Claude non è collegato: manca il token del piano sul server.");
+    const avviso = page.getByText("Claude non è collegato: manca la chiave API sul server.");
     await expect(avviso).toBeVisible();
 
     const campo = page.getByLabel("Messaggio per Claude");
@@ -121,7 +121,7 @@ test("un messaggio senza risposta offre Riprova", async ({ page }) => {
   const seminato = JSON.parse(aiutanteChat("seed")) as Seminato;
   try {
     await page.goto(`/pasti/${seminato.meal_failed}`);
-    await expect(page.getByText(/^Claude non risponde: hai raggiunto il limite del piano, riprova/)).toBeVisible();
+    await expect(page.getByText(/^Claude non risponde: hai raggiunto il limite di frequenza della chiave API, riprova/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Riprova", exact: true })).toBeVisible();
   } finally {
     aiutanteChat("clean");

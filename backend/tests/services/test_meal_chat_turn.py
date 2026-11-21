@@ -333,7 +333,7 @@ async def test_troppi_passaggi_tengono_la_risposta_e_la_modifica(
     assert row.prompt_tokens == 2000 and row.completion_tokens == 600
 
 
-async def test_senza_token_nessuna_riga_di_spesa(db_session, factory, frittata):
+async def test_senza_chiave_nessuna_riga_di_spesa(db_session, factory, frittata):
     conversation, message = await nuovo_messaggio(db_session, frittata, "Ciao")
     fake = FakeClaude([Fail(FailureKind.NOT_CONFIGURED)])
 
@@ -464,7 +464,7 @@ async def test_un_attesa_con_il_giro_vivo_resta_in_attesa(db_session, frittata):
 
 
 async def test_la_vista_di_un_pasto_senza_chat(db_session, frittata, monkeypatch):
-    # il token si fissa vuoto: in un container che ce l'ha, l'esito non deve cambiare
+    # la chiave si fissa vuota: in un container che ce l'ha, l'esito non deve cambiare
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     get_settings.cache_clear()
     try:

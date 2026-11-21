@@ -129,7 +129,7 @@ async def test_chiedere_la_ricetta(coda, db_session, uova, dal_database):
     assert fresh.recipe_requested_at is None and fresh.recipe_notice is None
 
 
-async def test_senza_token_503_e_niente_scritto(coda, db_session, monkeypatch, dal_database):
+async def test_senza_chiave_503_e_niente_scritto(coda, db_session, monkeypatch, dal_database):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     get_settings.cache_clear()
     meal = await cena(db_session)

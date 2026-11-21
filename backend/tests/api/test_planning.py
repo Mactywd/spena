@@ -44,7 +44,7 @@ BASE = "/api/v1/planning"
 
 @pytest_asyncio.fixture
 async def chat(logged_client, db_session, monkeypatch):
-    """Il client con il token finto nelle impostazioni, il finto di Claude (da riempire con
+    """Il client con la chiave finta nelle impostazioni, il finto di Claude (da riempire con
     `chat.fake = FakeClaude(...)`), la factory sulla connessione del test, un registro e una
     coda per test. Alla fine nessun giro e nessuna coda sopravvivono al test."""
     from app.main import app
@@ -326,7 +326,7 @@ async def test_una_proposta_inesistente_e_404(chat):
     assert (await metti(chat, uuid.uuid4())).status_code == 404
 
 
-async def test_senza_token_i_pasti_entrano_con_l_avviso(logged_client, db_session, monkeypatch):
+async def test_senza_chiave_i_pasti_entrano_con_l_avviso(logged_client, db_session, monkeypatch):
     from app.main import app
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")

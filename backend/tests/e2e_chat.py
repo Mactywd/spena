@@ -1,7 +1,7 @@
 """Semina e pulizia per le prove della chat del piatto in `frontend/e2e/`. Non è un test
 di pytest.
 
-Lo stack e2e non ha il token di Claude: la chat vera risponde 503 (spec §9). Lo stato con
+Lo stack e2e non ha la chiave API di Claude: la chat vera risponde 503 (spec §9). Lo stato con
 una modifica di Claude e il suo «Annulla», e quello di un messaggio rimasto senza risposta
 per il limite di frequenza, non si raggiungono senza Claude: li scrive questo file, passando
 dai servizi veri (`create_meal`, `write_meal_recipe`, il repository delle conversazioni),

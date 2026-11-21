@@ -102,11 +102,19 @@ export function ChatThread({
           const mine = message.role === "user";
           return (
             <li key={message.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-              <p className={`${BUBBLE} ${mine ? "bg-brand-tint" : "bg-card"}`}>{message.text}</p>
+              {message.text !== "" && (
+                <p className={`${BUBBLE} ${mine ? "bg-brand-tint" : "bg-card"}`}>{message.text}</p>
+              )}
               {message.changes.map((change) => (
                 <ChangeLine key={change.id} change={change} onUndo={onUndo} busy={busy} />
               ))}
               {renderExtras && <Extras>{renderExtras(message)}</Extras>}
+              {message.status === "sent" && message.notice && (
+                // una risposta fermata a metà (troppi passaggi): il testo c'è, l'avviso lo spiega, niente «Riprova»
+                <Alert tone="degraded" className={`max-w-full pt-1 ${mine ? "text-right" : ""}`}>
+                  {message.notice}
+                </Alert>
+              )}
               {message.status === "failed" && (
                 <div className="flex max-w-full flex-col items-end">
                   {message.notice && (

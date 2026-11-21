@@ -35,7 +35,7 @@ def registry():
 
 @pytest_asyncio.fixture
 async def chat(logged_client, db_session, registry, monkeypatch):
-    """Il client con il token finto nelle impostazioni, il finto di Claude (da riempire
+    """Il client con la chiave finta nelle impostazioni, il finto di Claude (da riempire
     con `chat.fake = FakeClaude(...)`), la factory sulla connessione del test e un registro
     per test."""
     from app.main import app
@@ -239,7 +239,7 @@ async def test_annulla_dopo_il_modulo_e_409(chat, frittata, voci):
     }
 
 
-async def test_senza_token_503_e_niente_salvato(logged_client, frittata, monkeypatch):
+async def test_senza_chiave_503_e_niente_salvato(logged_client, frittata, monkeypatch):
     from app.main import app
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")

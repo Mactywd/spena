@@ -9,8 +9,8 @@ import { DishChat } from "./DishChat";
 import { card } from "../change-cards/testkit";
 import type { ChatMessage, DishChat as DishChatData, Meal } from "../../domain/types";
 
-const NOT_CONFIGURED = "Claude non è collegato: manca il token del piano sul server.";
-const PLAN_LIMIT = "Claude non risponde: hai raggiunto il limite del piano, riprova dopo le 18:40";
+const NOT_CONFIGURED = "Claude non è collegato: manca la chiave API sul server.";
+const RATE_LIMIT = "Claude non risponde: hai raggiunto il limite di frequenza della chiave API, riprova dopo le 18:40";
 
 function chat(extra: Partial<DishChatData> = {}): DishChatData {
   return {
@@ -231,12 +231,12 @@ describe("la chat del piatto", () => {
     const user = message({ status: "pending" });
     first.send("start", { message: user });
     first.send("error", {
-      code: "plan_limit",
-      notice: PLAN_LIMIT,
-      chat: chat({ messages: [{ ...user, status: "failed", notice: PLAN_LIMIT }] }),
+      code: "rate_limit",
+      notice: RATE_LIMIT,
+      chat: chat({ messages: [{ ...user, status: "failed", notice: RATE_LIMIT }] }),
     });
     first.close();
-    expect(await screen.findByText(PLAN_LIMIT)).toBeInTheDocument();
+    expect(await screen.findByText(RATE_LIMIT)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
     expect(requests(spy, "POST", "/api/v1/meals/m1/chat/messages")).toEqual([
@@ -249,7 +249,7 @@ describe("la chat del piatto", () => {
   it("un `error` con `chat: null` non svuota la chat: la rilegge, e il messaggio fallito resta con «Riprova»", async () => {
     const stream = liveStream();
     const user = message({ status: "pending" });
-    const failed = chat({ messages: [{ ...user, status: "failed", notice: PLAN_LIMIT }] });
+    const failed = chat({ messages: [{ ...user, status: "failed", notice: RATE_LIMIT }] });
     let gets = 0;
     const spy = stubFetch((_url, init) => {
       if (init?.method === "POST") return stream.response;
@@ -260,10 +260,10 @@ describe("la chat del piatto", () => {
     await userEvent.type(await screen.findByRole("textbox", { name: "Messaggio per Claude" }), "Fallo con gli spinaci");
     await userEvent.click(screen.getByRole("button", { name: "Invia" }));
     stream.send("start", { message: user });
-    stream.send("error", { code: "unavailable", notice: PLAN_LIMIT, chat: null });
+    stream.send("error", { code: "unavailable", notice: RATE_LIMIT, chat: null });
     stream.close();
     await waitFor(() => expect(requests(spy, "GET", "/api/v1/meals/m1/chat")).toHaveLength(2));
-    expect(await screen.findByText(PLAN_LIMIT)).toBeInTheDocument();
+    expect(await screen.findByText(RATE_LIMIT)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Riprova" })).toBeInTheDocument();
   });
 

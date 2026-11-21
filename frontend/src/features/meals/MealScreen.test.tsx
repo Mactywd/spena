@@ -182,11 +182,11 @@ describe("la schermata del piatto", () => {
         ? [meal({ recipe_state: "preparing" }), 202]
         : (reads(meal({
             recipe_state: "failed", can_ask_recipe: true,
-            recipe_notice: "Claude non risponde: hai raggiunto il limite del piano.",
+            recipe_notice: "Claude non risponde: hai raggiunto il limite di frequenza della chiave API.",
           }))(url, init))
     );
     renderMeal();
-    expect(await screen.findByText("Claude non risponde: hai raggiunto il limite del piano.")).toBeInTheDocument();
+    expect(await screen.findByText("Claude non risponde: hai raggiunto il limite di frequenza della chiave API.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Scrivi la ricetta" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Scegli dal ricettario" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Chiedi la ricetta a Claude" }));

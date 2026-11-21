@@ -64,15 +64,34 @@ describe("ChatThread", () => {
   it("un messaggio non risposto ha il suo avviso e «Riprova»", async () => {
     const failed = message({
       status: "failed",
-      notice: "Claude non risponde: hai raggiunto il limite del piano, riprova dopo le 18:40",
+      notice: "Claude non risponde: hai raggiunto il limite di frequenza della chiave API, riprova dopo le 18:40",
     });
     const { onRetry } = renderThread([failed]);
     expect(
-      screen.getByText("Claude non risponde: hai raggiunto il limite del piano, riprova dopo le 18:40")
+      screen.getByText("Claude non risponde: hai raggiunto il limite di frequenza della chiave API, riprova dopo le 18:40")
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
     expect(onRetry).toHaveBeenCalledWith(failed);
   });
+  const MAX_TURNS =
+    "Claude si è fermato prima di finire: questo messaggio gli chiedeva troppi passaggi. Scrivigli come andare avanti.";
+
+  it("una risposta interrotta dai troppi passaggi mostra il testo e l'avviso, senza Riprova", () => {
+    renderThread([
+      message({ id: "a1", role: "assistant", text: "Ho cambiato gli spinaci.", status: "sent", notice: MAX_TURNS }),
+    ]);
+    expect(screen.getByText("Ho cambiato gli spinaci.")).toBeInTheDocument();
+    expect(screen.getByText(MAX_TURNS)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Riprova" })).not.toBeInTheDocument();
+  });
+
+  it("una risposta vuota con l'avviso mostra solo l'avviso", () => {
+    renderThread([message({ id: "a1", role: "assistant", text: "", status: "sent", notice: MAX_TURNS })]);
+    expect(screen.getByText(MAX_TURNS)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Riprova" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")[0].querySelectorAll("p:empty")).toHaveLength(0);
+  });
+
   it("`renderExtras` mette il suo contenuto sotto il messaggio giusto; senza, niente cambia", () => {
     const messages = [
       message(),

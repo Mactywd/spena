@@ -4718,7 +4718,7 @@ test("la chat con l'avviso e il campo, nei due temi", async ({ page }) => {
 });
 
 // La pianificazione con Claude e le schede dei cambi. Le proposte e le schede nascono solo
-// quando Claude chiama i suoi strumenti, e lo stack e2e non ha il token: le semina
+// quando Claude chiama i suoi strumenti, e lo stack e2e non ha la chiave API: le semina
 // `backend/tests/e2e_planning.py` nel container del backend, passando dai servizi veri, e
 // le toglie nel `finally`. Vedi `frontend/e2e/pianificazione.spec.ts`.
 function aiutantePianificazione(comando: "seed" | "clean"): string {
@@ -4860,7 +4860,7 @@ test("la settimana con le schede da applicare e il piatto con l'avviso della ric
       await page.goto(`/pasti/${seminato.meal}`);
       const chiedi = page.getByRole("button", { name: "Chiedi la ricetta a Claude" });
       await expect(chiedi).toBeVisible();
-      await expect(page.getByText(/^Claude non risponde: hai raggiunto il limite del piano/)).toBeVisible();
+      await expect(page.getByText(/^Claude non risponde: hai raggiunto il limite di frequenza della chiave API/)).toBeVisible();
       await fermo(page);
       expect(await testiIlleggibili(page), `il piatto con l'avviso della ricetta, tema ${tema}`).toEqual([]);
       await senzaScorrimentoLaterale(page, `il piatto con l'avviso della ricetta, tema ${tema}`);

@@ -35,7 +35,7 @@ CHIAVE_FINTA = "chiave-finta-per-i-test"
 
 
 @pytest.fixture(autouse=True)
-def _token(monkeypatch, tmp_path):
+def _chiave(monkeypatch, tmp_path):
     monkeypatch.setenv("ANTHROPIC_API_KEY", CHIAVE_FINTA)
     monkeypatch.setenv("CLAUDE_WORKDIR", str(tmp_path / "lavoro"))
     get_settings.cache_clear()

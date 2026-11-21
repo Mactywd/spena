@@ -17,7 +17,7 @@ import {
 
 const CURRENT = "/api/v1/planning/current";
 const CONVERSATIONS = "/api/v1/planning/conversations";
-const NOT_CONFIGURED = "Claude non è collegato: manca il token del piano sul server.";
+const NOT_CONFIGURED = "Claude non è collegato: manca la chiave API sul server.";
 const EMPTY = "Dimmi come vuoi pianificare: con quello che c'è in casa, o una bozza prima della spesa.";
 
 afterEach(() => vi.unstubAllGlobals());

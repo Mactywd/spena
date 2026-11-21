@@ -6,7 +6,7 @@ import { giornoDiRoma } from "./giornoDiRoma.ts";
 /**
  * La pianificazione con Claude e le schede dei cambi nel browser vero, a 375×812.
  *
- * Lo stack e2e non ha il token di Claude: la chat vera risponde 503, ed è proprio il caso
+ * Lo stack e2e non ha la chiave API di Claude: la chat vera risponde 503, ed è proprio il caso
  * della prima prova. Le proposte e le schede nascono solo quando Claude chiama i suoi
  * strumenti: le semina `backend/tests/e2e_planning.py` nel container del backend, passando
  * dai servizi veri, e le toglie nel `finally` (o nell'`afterAll` della coppia che condivide
@@ -25,7 +25,7 @@ const COMPOSE_E2E = [
   "-f",
   "docker-compose.e2e.yml",
 ];
-const SENZA_TOKEN = "Claude non è collegato: manca il token del piano sul server.";
+const SENZA_CHIAVE = "Claude non è collegato: manca la chiave API sul server.";
 const RICOTTA = "e2e-plan ricotta";
 const PARMIGIANO = "e2e-plan parmigiano";
 const PIATTO_SCHEDA = "e2e-plan Pasta ricotta e parmigiano";
@@ -93,13 +93,13 @@ test("senza token la pianificazione lo dice, e il testo resta", async ({ page })
   await page.getByRole("link", { name: "Pianifica con Claude" }).click();
   await expect(page).toHaveURL(/\/pasti\/pianifica/);
   // l'avviso c'è prima di scrivere; dopo «Invia» c'è anche il rifiuto, con le stesse parole
-  await expect(page.getByText(SENZA_TOKEN).first()).toBeVisible();
+  await expect(page.getByText(SENZA_CHIAVE).first()).toBeVisible();
 
   const campo = page.getByLabel("Messaggio per Claude");
   await campo.fill("una settimana leggera");
   await page.getByRole("button", { name: "Invia", exact: true }).click();
 
-  await expect(page.getByText(SENZA_TOKEN).first()).toBeVisible();
+  await expect(page.getByText(SENZA_CHIAVE).first()).toBeVisible();
   await expect(campo).toHaveValue("una settimana leggera");
   await expect(page.getByRole("button", { name: "Nuova", exact: true })).toBeVisible();
 });
@@ -123,7 +123,7 @@ test("la bozza entra nella settimana", async ({ page }) => {
     const campo = page.getByLabel("Messaggio per Claude");
     await expect(campo).toHaveValue(/^Ho messo nella settimana come bozza: .*Mandami le cose da mettere in lista\.$/);
     await expect(campo).toHaveValue(new RegExp(BOZZA_PRANZO));
-    await expect(page.getByText(SENZA_TOKEN).first()).toBeVisible();
+    await expect(page.getByText(SENZA_CHIAVE).first()).toBeVisible();
 
     await page.goto(`/pasti?settimana=${giornoDiRoma(30)}`);
     for (const piatto of [BOZZA_PRANZO, BOZZA_CENA]) {

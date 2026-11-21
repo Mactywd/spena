@@ -1,7 +1,7 @@
 """Semina e pulizia per le prove della pianificazione in `frontend/e2e/`. Non è un test di
 pytest.
 
-Lo stack e2e non ha il token di Claude: la chat vera risponde 503 (spec §9). Le proposte e
+Lo stack e2e non ha la chiave API di Claude: la chat vera risponde 503 (spec §9). Le proposte e
 le schede dei cambi nascono solo quando Claude chiama i suoi strumenti, e senza Claude non
 si raggiungono: le scrive questo file, passando dai servizi veri (`create_planning`,
 `propose_meals`, `create_meal`, `propose_card`, `stock_one`, `give_up_meals`), così lo stato
