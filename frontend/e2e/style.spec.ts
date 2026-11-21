@@ -4878,3 +4878,201 @@ test("la settimana con le schede da applicare e il piatto con l'avviso della ric
     pulisciPianificazione();
   }
 });
+
+// --- La serie della scansione con la dispensa lunga, e il riepilogo che si spegne (2026-11-21) ---
+
+test("S3 in serie a 375px: con la dispensa lunga lo scanner resta in vista dopo «Metti in dispensa», chiuso il pannello va in vista l'ultima riga; su «Casa» un cibo lascia il selettore e l'avviso dice dov'è finito", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // il salto secco di `revealAtTop`: sul codice di prima la pagina è già scesa quando
+  // la prova guarda, senza aspettare una scorrevole
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  const riempitivi = [
+    "birra",
+    "camomilla",
+    "cous cous",
+    "polenta",
+    "grissini",
+    "senape",
+    "ketchup",
+    "capperi",
+    "cacao amaro",
+    "marmellata",
+    "savoiardi",
+    "salsiccia",
+    "fazzoletti di carta",
+  ];
+  const voci: string[] = [];
+  const prodotti: string[] = [];
+  const base = Date.now();
+  const nomi = {
+    broccolo: `Broccoli e2e ${base}`,
+    zucca: `Zucca e2e ${base}`,
+    bietola: `Bietola e2e ${base}`,
+  };
+  try {
+    for (const nome of riempitivi) voci.push(await inDispensa(page, (await dalSeme(page, nome)).id));
+    // tre confezioni sotto ingredienti del reparto «verdura», l'ultimo: le righe nuove
+    // finiscono in fondo alla pagina
+    const sotto: [keyof typeof nomi, string, number][] = [
+      ["broccolo", "broccolo", 0],
+      ["zucca", "zucca", 1],
+      ["bietola", "bietola", 2],
+    ];
+    for (const [chiave, ingrediente, scarto] of sotto) {
+      const creato = await page.request.post("/api/v1/products", {
+        data: {
+          ingredient_id: (await dalSeme(page, ingrediente)).id,
+          name: nomi[chiave],
+          brand: "Marca e2e",
+          barcode: String(base + scarto),
+        },
+      });
+      expect(creato.ok()).toBe(true);
+      prodotti.push(((await creato.json()) as { id: string }).id);
+    }
+
+    await page.goto("/dispensa");
+    await expect(page.locator("li", { hasText: "birra" })).toBeVisible();
+    const sporgenza = await page.evaluate<number>(
+      "document.documentElement.scrollHeight - document.documentElement.clientHeight"
+    );
+    expect(sporgenza, "la dispensa non è abbastanza lunga perché la prova dica qualcosa").toBeGreaterThanOrEqual(600);
+
+    await page.getByRole("button", { name: "Scansiona", exact: true }).click();
+    const campo = page.getByLabel("Codice a barre", { exact: true });
+    const metti = page.getByRole("button", { name: "Metti in dispensa", exact: true });
+    for (const [indice, chiave] of (["broccolo", "zucca"] as const).entries()) {
+      await campo.fill(String(base + indice));
+      await campo.press("Enter");
+      await metti.click();
+      await expect(
+        page.getByRole("status").filter({ hasText: `In dispensa: Marca e2e ${nomi[chiave]}` })
+      ).toBeVisible();
+      await expect(page.locator("li", { hasText: nomi[chiave] })).toHaveCount(1);
+      await page.waitForLoadState("networkidle");
+      await fermo(page);
+      expect(await page.evaluate<number>("window.scrollY"), `dopo ${chiave} la pagina è scesa`).toBe(0);
+      await expect(campo).toBeInViewport();
+    }
+
+    await page.getByRole("button", { name: "Chiudi l'aggiunta", exact: true }).click();
+    await expect(page.locator("li", { hasText: nomi.zucca })).toBeInViewport();
+
+    // su «Casa» un cibo non c'è: l'avviso dice dov'è finito
+    await page.evaluate("window.scrollTo(0, 0)");
+    const mondi = page.getByRole("group", { name: "Cosa mostrare" });
+    const casa = mondi.getByRole("button", { name: "Casa", exact: true });
+    await casa.click();
+    await expect(casa).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Scansiona", exact: true }).click();
+    await campo.fill(String(base + 2));
+    await campo.press("Enter");
+    await metti.click();
+    await expect(
+      page.getByRole("status").filter({ hasText: `In dispensa: Marca e2e ${nomi.bietola}, sotto «Cibo»` })
+    ).toBeVisible();
+    await senzaScorrimentoLaterale(page, "l'avviso col mondo della voce");
+    await expect(casa).toHaveAttribute("aria-pressed", "true");
+    expect(await page.evaluate<number>("window.scrollY"), "su «Casa» la pagina è scesa").toBe(0);
+
+    await page.getByRole("button", { name: "Chiudi l'aggiunta", exact: true }).click();
+    await expect(mondi.getByRole("button", { name: "Tutto", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await expect(page.locator("li", { hasText: nomi.bietola })).toBeInViewport();
+  } finally {
+    // prima le voci dei prodotti, poi i prodotti, poi i riempitivi
+    try {
+      const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
+        id: string;
+        product_id: string | null;
+      }[];
+      for (const voce of dispensa.filter((riga) => riga.product_id && prodotti.includes(riga.product_id))) {
+        try {
+          await togliDallaDispensa(page, voce.id);
+        } catch (guasto) {
+          expect.soft(false, `pulizia: la voce ${voce.id} non si è archiviata (${guasto})`).toBe(true);
+        }
+      }
+    } catch (guasto) {
+      expect.soft(false, `pulizia: non sono riuscito a rileggere la dispensa (${guasto})`).toBe(true);
+    }
+    for (const id of prodotti) {
+      try {
+        const risposta = await page.request.delete(`/api/v1/products/${id}`);
+        expect.soft(risposta.ok(), `pulizia: il prodotto ${id} non si è eliminato`).toBe(true);
+      } catch (guasto) {
+        expect.soft(false, `pulizia: il prodotto ${id} non si è eliminato (${guasto})`).toBe(true);
+      }
+    }
+    for (const id of voci) {
+      try {
+        await togliDallaDispensa(page, id);
+      } catch (guasto) {
+        expect.soft(false, `pulizia: la voce ${id} non si è archiviata (${guasto})`).toBe(true);
+      }
+    }
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+  }
+});
+
+test("S15 a 375px: il riepilogo che si spegne da solo lascia aperto il reparto che aveva aperto, con il suo «In lista», e riaperta la Dispensa torna il salvato", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const chiusiSalvati = async () =>
+    JSON.parse(
+      await page.evaluate<string>("localStorage.getItem('spena.dispensa.reparti-chiusi') ?? '[]'")
+    ) as string[];
+
+  const prosciutto = await dalSeme(page, "prosciutto cotto");
+  const voceId = await inDispensa(page, prosciutto.id);
+  try {
+    const scritta = await page.request.patch(`/api/v1/pantry/${voceId}`, {
+      data: { expires_on: giornoDiRoma(2) },
+    });
+    expect(scritta.ok()).toBe(true);
+    // senza questa guardia un'altra voce in scadenza terrebbe acceso il riepilogo
+    const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
+      id: string;
+      status: string;
+      expiry: string | null;
+    }[];
+    const altre = dispensa.filter((v) => v.id !== voceId && v.status !== "finished" && v.expiry !== null);
+    expect(altre, "altre voci in scadenza nello stack: il riepilogo non può sparire").toEqual([]);
+
+    await page.getByRole("link", { name: "Dispensa" }).click();
+    const carne = page.getByRole("region", { name: "Carne" });
+    const titolo = carne.getByRole("button", { name: /^Carne\b/ });
+    await titolo.click();
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+    expect(await chiusiSalvati()).toEqual(["carne"]);
+
+    await page.getByRole("button", { name: /in scadenza questa settimana/ }).click();
+    await expect(titolo).toHaveAttribute("aria-expanded", "true");
+    const riga = carne.locator("li", { hasText: "prosciutto cotto" });
+    await riga
+      .getByRole("radiogroup", { name: "Quanto resta di prosciutto cotto" })
+      .getByRole("radio", { name: "Finito", exact: true })
+      .click();
+    await expect(page.getByRole("button", { name: /in scadenza questa settimana/ })).toHaveCount(0);
+    await expect(titolo).toHaveAttribute("aria-expanded", "true");
+    await expect(riga.getByRole("button", { name: "In lista" })).toBeVisible();
+    expect(await chiusiSalvati()).toEqual(["carne"]);
+
+    await leggibileNeiDueTemi(page, "il reparto tenuto aperto dopo il riepilogo spento");
+
+    await page.getByRole("link", { name: "Lista" }).click();
+    await page.getByRole("link", { name: "Dispensa" }).click();
+    await expect(carne.getByRole("button", { name: /^Carne\b/ })).toHaveAttribute("aria-expanded", "false");
+  } finally {
+    await togliDallaDispensa(page, voceId);
+  }
+});
