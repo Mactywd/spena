@@ -107,6 +107,21 @@ export function settleWorld(
   return world;
 }
 
+/** L'avviso dopo un'aggiunta. In serie la voce può finire in un mondo che il selettore
+ * nasconde: il seguito dice dove è andata, perché non resti un vicolo cieco. Solo in
+ * serie: dal «+» il selettore va a «Tutto» e la voce si vede comunque (decisione 5). */
+export function enteredNotice(
+  label: string,
+  kind: PantryItem["ingredient_kind"],
+  world: PantryWorld,
+  series: boolean
+): string {
+  const base = `In dispensa: ${label}`;
+  return series && world !== "all" && kind !== world
+    ? `${base}, sotto «${WORLD_LABELS[kind]}»`
+    : base;
+}
+
 export function expiryCounts(items: PantryItem[]): { soon: number; expired: number } {
   let soon = 0;
   let expired = 0;
@@ -126,6 +141,12 @@ export function expirySummary(counts: { soon: number; expired: number }): string
   if (counts.soon > 0) parts.push(`${counts.soon} in scadenza questa settimana`);
   if (counts.expired > 0) parts.push(`${counts.expired} oltre la scadenza`);
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** Il riepilogo delle scadenze di un solo mondo: quel che la dispensa dice in cima è
+ * quel che si vede con il selettore dov'è, non il totale di tutto. */
+export function worldSummary(items: PantryItem[], world: PantryWorld): string | null {
+  return expirySummary(expiryCounts(items.filter((item) => inWorld(item, world))));
 }
 
 /** Le sezioni a video: reparti in ordine alfabetico; dentro, l'ordine del server
@@ -154,6 +175,11 @@ export interface SectionView {
   collapsed: ReadonlySet<string>;
   filtering: boolean;
   closedWhileFiltering: ReadonlySet<string>;
+  /** I reparti che il riepilogo aveva aperti quando lo schermo l'ha spento: restano
+   * aperti anche se salvati come chiusi, finché l'utente non li chiude lui (decisioni 3
+   * e 12 del piano dispensa-serie-reparti). Facoltativo, così i casi di prima non
+   * cambiano; con un filtro acceso non conta, vale il filtro. */
+  held?: ReadonlySet<string>;
 }
 
 /** Se un reparto è aperto a video. Un filtro mostra quel che ha trovato e non cambia
@@ -165,7 +191,7 @@ export interface SectionView {
 export function sectionOpen(category: string, view: SectionView): boolean {
   return view.filtering
     ? !view.closedWhileFiltering.has(category)
-    : !view.collapsed.has(category);
+    : !view.collapsed.has(category) || (view.held?.has(category) ?? false);
 }
 
 /** Quel che un reparto chiuso non deve nascondere (spec S15 §2): le voci finite, che

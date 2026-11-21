@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PantryItem } from "../../domain/types";
 import {
   attentionCounts,
+  enteredNotice,
   expiringText,
   expiryCounts,
   expirySummary,
@@ -16,6 +17,7 @@ import {
   sectionOpen,
   settleWorld,
   visibleItems,
+  worldSummary,
   type PantryWorld,
   type SectionView,
 } from "./pantryView";
@@ -242,6 +244,7 @@ describe("settleWorld", () => {
 describe("sectionOpen", () => {
   const NIENTE: ReadonlySet<string> = new Set();
   const FRUTTA: ReadonlySet<string> = new Set(["frutta"]);
+  const LATTICINI: ReadonlySet<string> = new Set(["latticini"]);
   // Le righe della tabella di §3 della spec S15 che passano da qui. La voce aggiunta e
   // il mondo di S14 stanno fuori: la prima apre il suo reparto nei salvati (`setOpen`,
   // nel momento in cui la si porta in vista), il secondo decide quali reparti ci sono,
@@ -276,6 +279,21 @@ describe("sectionOpen", () => {
       "filtro spento: vale il salvato, non quel che si era chiuso durante il filtro",
       { collapsed: NIENTE, filtering: false, closedWhileFiltering: FRUTTA },
       true,
+    ],
+    [
+      "riepilogo spento dallo schermo: tenuto aperto, anche chiuso e salvato",
+      { collapsed: FRUTTA, filtering: false, closedWhileFiltering: NIENTE, held: FRUTTA },
+      true,
+    ],
+    [
+      "tenuto aperto un altro reparto: questo, chiuso e salvato, resta chiuso",
+      { collapsed: FRUTTA, filtering: false, closedWhileFiltering: NIENTE, held: LATTICINI },
+      false,
+    ],
+    [
+      "tenuto aperto, ma con un filtro acceso vale il filtro: chiuso a mano durante, chiuso",
+      { collapsed: FRUTTA, filtering: true, closedWhileFiltering: FRUTTA, held: FRUTTA },
+      false,
     ],
   ];
   it.each(casi)("%s", (_caso, view, atteso) => {
@@ -316,5 +334,31 @@ describe("finishedText e expiringText", () => {
   it.each(casi)("%i", (n, finito, scadenza) => {
     expect(finishedText(n)).toBe(finito);
     expect(expiringText(n)).toBe(scadenza);
+  });
+});
+
+describe("worldSummary", () => {
+  it("conta solo il mondo scelto", () => {
+    const yogurt = item({ id: "y", expires_on: "2026-10-10", expiry: "soon" });
+    const spugne = item({ ...CASA, id: "s", expires_on: "2026-10-01", expiry: "expired" });
+    expect(worldSummary([yogurt, spugne], "food")).toBe("1 in scadenza questa settimana");
+    expect(worldSummary([yogurt, spugne], "all")).toBe("1 in scadenza questa settimana · 1 oltre la scadenza");
+  });
+  it("in un mondo senza scadenze non c'è", () => {
+    const yogurt = item({ id: "y", expires_on: "2026-10-10", expiry: "soon" });
+    expect(worldSummary([yogurt, CASA], "non_food")).toBeNull();
+  });
+});
+
+describe("enteredNotice", () => {
+  const casi: [string, PantryItem["ingredient_kind"], PantryWorld, boolean, string][] = [
+    ["in serie su «Tutto»: l'avviso di sempre", "food", "all", true, "In dispensa: Fage Total 0%"],
+    ["in serie, lo stesso mondo: l'avviso di sempre", "food", "food", true, "In dispensa: Fage Total 0%"],
+    ["in serie su «Casa», un cibo: dove è finito", "food", "non_food", true, "In dispensa: Fage Total 0%, sotto «Cibo»"],
+    ["in serie su «Cibo», una cosa di casa: dove è finita", "non_food", "food", true, "In dispensa: Fage Total 0%, sotto «Casa»"],
+    ["dal +, l'altro mondo: l'avviso di sempre (il selettore va a «Tutto»)", "food", "non_food", false, "In dispensa: Fage Total 0%"],
+  ];
+  it.each(casi)("%s", (_caso, kind, world, series, atteso) => {
+    expect(enteredNotice("Fage Total 0%", kind, world, series)).toBe(atteso);
   });
 });
