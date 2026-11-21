@@ -1,8 +1,9 @@
 """Le schede dei cambi: dispensa e lista della spesa, proposte da Claude (spec §6.2).
 
 Claude propone, Mattia applica: la scheda è una proposta di cambiare dispensa e lista, e
-niente si muove finché lui non la applica (`status`: proposed → applied | discarded). Una
-scheda `inverse` rimette le cose com'erano: lo stato di prima (`before_status`) resta sulla
+niente si muove finché lui non la applica (`status`: proposed → applied | discarded |
+superseded: messa da parte da una scheda nuova di Claude per gli stessi pasti). Una scheda
+`inverse` rimette le cose com'erano: lo stato di prima (`before_status`) resta sulla
 riga della scheda diretta e la scheda inversa lo riusa. `list_only` è una scheda che tocca
 solo la lista.
 
@@ -47,6 +48,7 @@ class CardStatus(StrEnum):
     PROPOSED = "proposed"
     APPLIED = "applied"
     DISCARDED = "discarded"
+    SUPERSEDED = "superseded"
 
 
 class RowKind(StrEnum):
@@ -66,7 +68,8 @@ class ChangeCard(UUIDMixin, Base):
     __table_args__ = (
         CheckConstraint("kind IN ('forward', 'inverse')", name="ck_card_kind"),
         CheckConstraint(
-            "status IN ('proposed', 'applied', 'discarded')", name="ck_card_status"
+            "status IN ('proposed', 'applied', 'discarded', 'superseded')",
+            name="ck_card_status",
         ),
         Index("ix_change_cards_status", "status"),
     )
@@ -74,7 +77,7 @@ class ChangeCard(UUIDMixin, Base):
     kind: Mapped[str] = mapped_column(String(10))  # forward | inverse
     status: Mapped[str] = mapped_column(
         String(10), server_default="proposed", default="proposed"
-    )  # proposed | applied | discarded
+    )  # proposed | applied | discarded | superseded
     list_only: Mapped[bool] = mapped_column(Boolean, server_default=false(), default=False)
     title: Mapped[str] = mapped_column(String(300))
     meal_ids: Mapped[list[str]] = mapped_column(
@@ -127,4 +130,8 @@ class ChangeCardRow(UUIDMixin, Base):
     applied: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     list_added: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     source_row_id: Mapped[uuid.UUID | None] = _fk("change_card_rows.id")
+    # Tutte le righe della scheda diretta da cui viene un'inversa (id come stringhe).
+    source_row_ids: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default=list
+    )
     reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

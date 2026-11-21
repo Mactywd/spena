@@ -40,7 +40,6 @@ class Meal(UUIDMixin, TimestampMixin, Base):
         CheckConstraint(
             "leftover_of_id IS NULL OR recipe_id IS NULL", name="ck_meal_leftover_no_recipe"
         ),
-        CheckConstraint("NOT away OR recipe_id IS NULL", name="ck_meal_away_no_recipe"),
         CheckConstraint("NOT away OR leftover_of_id IS NULL", name="ck_meal_away_not_leftover"),
         CheckConstraint(
             "status = 'official' OR recipe_id IS NULL", name="ck_meal_draft_no_recipe"
