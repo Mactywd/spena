@@ -123,6 +123,14 @@ _STATUS_WORDS = {
 # --- lettura -----------------------------------------------------------------------------
 
 
+async def _end_read(ctx: TurnContext) -> None:
+    """Chiude la transazione che la lettura ha aperto, perché la sessione non resti «idle in
+    transaction» mentre Claude pensa. Un `commit` e non un `rollback`: il rollback scade gli
+    oggetti caricati, il commit no (`expire_on_commit=False`); e non c'è mai niente in
+    sospeso, perché le scritture si committano da sé."""
+    await ctx.session.commit()
+
+
 def read_tools(ctx: TurnContext) -> list[SdkMcpTool]:
     read_only = ToolAnnotations(readOnlyHint=True)
 
@@ -138,6 +146,7 @@ def read_tools(ctx: TurnContext) -> list[SdkMcpTool]:
     async def read_pantry(args: dict[str, Any]) -> dict[str, Any]:
         async with ctx.lock:
             items = await list_pantry(ctx.session)
+            await _end_read(ctx)
         groups: dict[str, list[str]] = defaultdict(list)
         for item in items:
             ingredient = item.ingredient
@@ -175,6 +184,7 @@ def read_tools(ctx: TurnContext) -> list[SdkMcpTool]:
     async def read_shopping_list(args: dict[str, Any]) -> dict[str, Any]:
         async with ctx.lock:
             items = await list_items(ctx.session, [s.value for s in ACTIVE_SHOPPING])
+            await _end_read(ctx)
         if not items:
             return _ok("La lista della spesa è vuota.")
         rows = [
@@ -214,6 +224,7 @@ def read_tools(ctx: TurnContext) -> list[SdkMcpTool]:
                 mine = next((m for m in meals if m.id == ctx.meal_id), None)
                 if mine is not None:
                     ctx.seen = await meal_snapshot(ctx.session, mine)
+            await _end_read(ctx)
         found = {(m.day, m.slot): m for m in meals}
         blocks = []
         day = start
@@ -248,6 +259,7 @@ def read_tools(ctx: TurnContext) -> list[SdkMcpTool]:
             found = await search_ingredients(
                 ctx.session, name, limit=SEARCH_LIMIT, kind=IngredientKind.FOOD
             )
+            await _end_read(ctx)
         if not found:
             return _ok("Nessun ingrediente con questo nome: usa name e department nella riga.")
         return _ok(

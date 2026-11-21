@@ -591,6 +591,33 @@ async def test_il_giro_non_tiene_aperta_la_transazione_mentre_claude_pensa(
     assert seen == [False]
 
 
+@pytest.mark.parametrize(
+    "strumento, argomenti",
+    [
+        ("read_pantry", {}),
+        ("read_shopping_list", {}),
+        ("read_meals", {"start": DAY.isoformat(), "end": DAY.isoformat()}),
+        ("search_ingredients", {"name": "uova"}),
+    ],
+)
+async def test_le_letture_non_lasciano_la_transazione_aperta(
+    db_session, factory, frittata, strumento, argomenti
+):
+    """Ogni strumento di lettura chiude la transazione: mentre Claude pensa dopo averlo
+    usato la connessione non resta «idle in transaction»."""
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Ciao")
+    sessions: list = []
+    seen: list[bool] = []
+
+    async def guarda():
+        seen.append(sessions[0].in_transaction())
+
+    fake = FakeClaude([UseTool(strumento, argomenti), Do(guarda), Finish()])
+    await giro(spia(factory, sessions), fake, conversation, message)
+
+    assert seen == [False]
+
+
 def _corregge_a_mano(factory, voci, recipe_id, dose="300 g"):
     async def action():
         async with factory() as session:
