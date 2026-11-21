@@ -428,12 +428,14 @@ def write_recipe_tool(ctx: TurnContext) -> SdkMcpTool:
         async with ctx.lock:
             meal = await get_meal(ctx.session, ctx.meal_id)
             if meal is None:
+                await ctx.session.commit()
                 return _error("Il pasto non esiste più.")
             if (
                 ctx.create_only
                 and meal.recipe_id is not None
                 and meal.recipe_id not in written
             ):
+                await ctx.session.commit()
                 return _error("Il pasto ha già una ricetta: non riscriverla.")
             try:
                 change = await write_meal_recipe(
@@ -445,6 +447,9 @@ def write_recipe_tool(ctx: TurnContext) -> SdkMcpTool:
                     expected=ctx.seen,
                 )
             except (RecipeWriteRefused, MealRefusal) as exc:
+                # La lettura ha aperto una transazione: chiuderla (come `_end_read`), o la connessione resta
+                # «idle in transaction» finché Claude pensa.
+                await ctx.session.commit()
                 return _error(exc.message)
             if ctx.seen is not None:
                 ctx.seen = snapshot_from_json(change.after)
@@ -670,6 +675,7 @@ def propose_meals_tool(ctx: TurnContext) -> SdkMcpTool:
                     today=ctx.today,
                 )
             except PlanningRefusal as exc:
+                await ctx.session.commit()
                 return _error(exc.message)
             await ctx.session.commit()
             if ctx.on_proposal is not None:
@@ -791,8 +797,10 @@ def propose_changes_tool(ctx: TurnContext) -> SdkMcpTool:
                     turn_message_id=ctx.turn_message_id,
                 )
             except _Refused as exc:
+                await ctx.session.commit()
                 return _error(exc.message)
             except CardRefusal as exc:
+                await ctx.session.commit()
                 if exc.code == CardRefusalCode.LIST_ONLY:
                     return _error(
                         "Per una bozza la scheda ha solo le cose da comprare: la dispensa si "

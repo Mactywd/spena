@@ -621,6 +621,35 @@ async def test_le_letture_non_lasciano_la_transazione_aperta(
     fake = FakeClaude([UseTool(strumento, argomenti), Do(guarda), Finish()])
     await giro(spia(factory, sessions), fake, conversation, message)
 
+    assert not fake.tool_results[0].get("is_error")
+    assert seen == [False]
+
+
+async def test_una_scrittura_rifiutata_non_lascia_la_transazione_aperta(
+    db_session, factory, frittata, voci
+):
+    """Anche il rifiuto di `write_recipe` (qui: il pasto è cambiato a mano) chiude la
+    transazione aperta dalla lettura, o la connessione resta «idle in transaction»."""
+    conversation, message = await nuovo_messaggio(db_session, frittata, "Meno spinaci.")
+    await db_session.commit()
+    sessions: list = []
+    seen: list[bool] = []
+
+    async def guarda():
+        seen.append(sessions[0].in_transaction())
+
+    fake = FakeClaude(
+        [
+            Do(_corregge_a_mano(factory, voci, frittata.recipe_id)),
+            UseTool("write_recipe", spinaci_args(voci)),
+            Do(guarda),
+            Finish(),
+        ]
+    )
+    await giro(spia(factory, sessions), fake, conversation, message)
+
+    assert fake.tool_results[0]["is_error"] is True
+    assert STALE_WRITE_MESSAGE in fake.tool_results[0]["content"][0]["text"]
     assert seen == [False]
 
 
