@@ -10,6 +10,7 @@ from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe import Recipe
 from app.domain.meals import MealSlot, MealStatus
 from app.repositories.ingredients import create_ingredient
+from app.services.meal_recipes import DraftLine, MealRecipeDraft, write_meal_recipe
 from app.services.meals import create_meal
 from app.services.recipe_jobs import NOT_WRITTEN_NOTICE
 
@@ -224,14 +225,25 @@ async def test_la_modifica_della_ricetta_di_un_pasto_la_lascia_fuori_dal_ricetta
 
 
 async def test_l_avviso_vecchio_non_ricompare(logged_client, db_session, pasta):
+    """«Annulla» di una «Ricetta scritta» riporta il pasto senza ricetta (`release_recipe`):
+    un avviso rimasto dalla coda non deve tornare a dire «La ricetta non è arrivata»."""
     meal = await _pasto(db_session)
-    meal.recipe_notice = NOT_WRITTEN_NOTICE
+    change = await write_meal_recipe(
+        db_session, meal,
+        MealRecipeDraft(
+            title="Pasta al burro", description=None, instructions="Cuoci.", servings=2,
+            lines=(DraftLine(pasta.id, None, None, "primary", "320 g", None),),
+            summary="x",
+        ),
+    )
+    meal.recipe_notice = NOT_WRITTEN_NOTICE  # l'avviso di una richiesta di prima
     await db_session.commit()
-    ricetta = await _scritta_per(logged_client, pasta, meal)
-    r = await logged_client.patch(f"{R}/{ricetta['id']}", json={"archived": True})
+
+    r = await logged_client.post(f"{M}/{meal.id}/chat/changes/{change.id}/undo")
     assert r.status_code == 200, r.text
 
     body = (await logged_client.get(f"{M}/{meal.id}")).json()
-
+    assert body["recipe"] is None
     assert body["recipe_state"] == "none"
-    assert not body["recipe_notice"]
+    assert body["can_ask_recipe"] is True
+    assert body["recipe_notice"] is None

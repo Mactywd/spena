@@ -18,7 +18,6 @@ from app.repositories.meals import (
     meals_between,
 )
 from app.repositories.recipes import create_recipe, get_recipe
-from app.services.recipe_jobs import NOT_WRITTEN_NOTICE
 from app.services.meals import (
     MealRefusal,
     MealRefusalCode,
@@ -30,6 +29,7 @@ from app.services.meals import (
     release_recipe,
     update_meal,
 )
+from app.services.recipe_jobs import NOT_WRITTEN_NOTICE
 
 L, D = MealSlot.LUNCH, MealSlot.DINNER
 
