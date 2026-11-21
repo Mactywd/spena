@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 import pytest_asyncio
@@ -21,6 +21,7 @@ from app.services.meal_recipes import (
     change_is_undoable,
     meal_snapshot,
     undo_recipe_change,
+    undoable_change_ids,
     write_meal_recipe,
 )
 from app.services.meals import MealRefusal, MealRefusalCode, create_meal
@@ -538,3 +539,37 @@ async def test_annullare_una_ricetta_scritta_lascia_gli_ingredienti_alla_ricetta
     await db_session.refresh(recipe)
     assert recipe.archived_at is not None
     assert await _exists(db_session, novelli_id)
+
+
+async def _three_writes(db_session, voci, meal):
+    changes = []
+    for grams in ("100 g", "150 g", "200 g"):
+        changes.append(
+            await write_meal_recipe(
+                db_session, meal,
+                draft(line(voci["uova"], text="2"), line(voci["spinaci"], text=grams)),
+            )
+        )
+    await db_session.flush()
+    return changes
+
+
+async def test_undoable_change_ids(db_session, voci, meal):
+    first, second, third = await _three_writes(db_session, voci, meal)
+    everything = [first, second, third]
+    assert await undoable_change_ids(db_session, everything) == {third.id}
+    assert await undoable_change_ids(db_session, []) == set()
+
+    await undo_recipe_change(db_session, third)
+    # la ricetta è tornata com'è la ha lasciata la penultima
+    assert await undoable_change_ids(db_session, everything) == {second.id}
+    assert await change_is_undoable(db_session, second) is True
+    assert await change_is_undoable(db_session, first) is False
+
+
+async def test_undoable_change_ids_con_la_ricetta_archiviata(db_session, voci, meal):
+    changes = await _three_writes(db_session, voci, meal)
+    recipe = await db_session.get(Recipe, changes[0].recipe_id)
+    recipe.archived_at = datetime.now(UTC)
+    await db_session.flush()
+    assert await undoable_change_ids(db_session, changes) == set()

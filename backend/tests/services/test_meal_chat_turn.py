@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.config import get_settings
@@ -23,7 +23,13 @@ from app.repositories.meals import get_meal
 from app.repositories.recipes import create_recipe, get_recipe, write_recipe_ingredients
 from app.services.claude.prompts import dish_system_prompt
 from app.services.meal_chat import ChatEvent, dish_chat_view, run_dish_turn
-from app.services.meal_recipes import STALE_WRITE_MESSAGE, change_is_undoable
+from app.services.meal_recipes import (
+    STALE_WRITE_MESSAGE,
+    MealRecipeDraft,
+    DraftLine,
+    change_is_undoable,
+    write_meal_recipe,
+)
 from app.services.meals import create_meal, link_recipe
 from app.repositories.utensils import create_utensil
 from app.services.utensils import utensils_prompt_block
@@ -698,3 +704,54 @@ async def test_rileggere_il_pasto_aggiorna_l_istantanea(db_session, factory, fri
     assert not fake.tool_results[1].get("is_error")
     assert (await righe_dal_database(factory, frittata.recipe_id))["spinaci"][0] == "150 g"
     assert len(await modifiche(factory)) == 1
+
+
+async def _statements_of_the_view(db_session, meal):
+    """Quante istruzioni SQL costa `dish_chat_view`, contate sul motore sincrono."""
+    count = 0
+
+    def tick(*_args):
+        nonlocal count
+        count += 1
+
+    engine = db_session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", tick)
+    try:
+        await dish_chat_view(db_session, meal, replying=False, now=datetime.now(UTC))
+    finally:
+        event.remove(engine, "before_cursor_execute", tick)
+    return count
+
+
+async def _turni_con_modifiche(db_session, meal, voci, how_many):
+    for i in range(how_many):
+        _, message = await nuovo_messaggio(db_session, meal, f"Giro {i}")
+        await write_meal_recipe(
+            db_session, meal,
+            MealRecipeDraft(
+                title="Frittata", description=None, instructions="Cuoci.", servings=1,
+                lines=(
+                    DraftLine(
+                        ingredient_id=voci["uova"].id, name=None, category=None,
+                        role="primary", quantity_text=f"{i + 1}", note=None,
+                    ),
+                ),
+                summary=f"giro {i}",
+            ),
+            conversation_id=message.conversation_id, turn_message_id=message.id,
+        )
+    await db_session.flush()
+
+
+async def test_la_vista_della_chat_non_rilegge_il_pasto_per_ogni_modifica(
+    db_session, voci
+):
+    uno = await create_meal(db_session, day=DAY, slot=MealSlot.LUNCH, dish="Uno")
+    otto = await create_meal(db_session, day=DAY, slot=MealSlot.DINNER, dish="Otto")
+    await _turni_con_modifiche(db_session, uno, voci, 1)
+    await _turni_con_modifiche(db_session, otto, voci, 8)
+
+    con_una = await _statements_of_the_view(db_session, uno)
+    con_otto = await _statements_of_the_view(db_session, otto)
+
+    assert con_una == con_otto

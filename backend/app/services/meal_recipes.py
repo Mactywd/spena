@@ -341,17 +341,35 @@ async def write_meal_recipe(
     return change
 
 
+async def undoable_change_ids(
+    session: AsyncSession, changes: list[RecipeChange]
+) -> set[uuid.UUID]:
+    """Quali modifiche si possono annullare: non annullate, e ricetta e piatto sono ancora
+    esattamente come le ha lasciate. Il pasto si legge una volta sola per pasto, non una per
+    modifica: la vista della chat costa lo stesso con una modifica o con otto."""
+    open_changes = [c for c in changes if c.undone_at is None]
+    by_meal: dict[uuid.UUID, list[RecipeChange]] = {}
+    for change in open_changes:
+        by_meal.setdefault(change.meal_id, []).append(change)
+
+    undoable: set[uuid.UUID] = set()
+    for meal_id, group in by_meal.items():
+        meal = await get_meal(session, meal_id)
+        if meal is None or meal.recipe_id is None:
+            continue
+        recipe = await session.get(Recipe, meal.recipe_id)
+        if recipe is None or recipe.archived_at is not None:
+            continue
+        current = await meal_snapshot(session, meal)
+        for change in group:
+            if meal.recipe_id == change.recipe_id and current == snapshot_from_json(change.after):
+                undoable.add(change.id)
+    return undoable
+
+
 async def change_is_undoable(session: AsyncSession, change: RecipeChange) -> bool:
     """Non annullata, e ricetta e piatto sono ancora esattamente come li ha lasciati."""
-    if change.undone_at is not None:
-        return False
-    meal = await get_meal(session, change.meal_id)
-    if meal is None or meal.recipe_id != change.recipe_id:
-        return False
-    recipe = await session.get(Recipe, change.recipe_id)
-    if recipe is None or recipe.archived_at is not None:
-        return False
-    return await meal_snapshot(session, meal) == snapshot_from_json(change.after)
+    return change.id in await undoable_change_ids(session, [change])
 
 
 async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> None:

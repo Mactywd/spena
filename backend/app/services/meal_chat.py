@@ -94,7 +94,7 @@ from app.services.claude.prompts import (
 )
 from app.services.claude.tools import TurnContext, dish_tools
 from app.services.llm import LlmCallSite
-from app.services.meal_recipes import change_is_undoable, meal_snapshot
+from app.services.meal_recipes import change_is_undoable, meal_snapshot, undoable_change_ids
 from app.services.planning import proposal_out
 from app.services.utensils import utensils_prompt_block
 
@@ -241,7 +241,11 @@ async def repair_orphans(
 
 
 async def chat_messages_out(
-    session: AsyncSession, conversation: Conversation, *, now: datetime
+    session: AsyncSession,
+    conversation: Conversation,
+    *,
+    now: datetime,
+    undoable: set[uuid.UUID] | None = None,
 ) -> list[ChatMessageOut]:
     """I messaggi della conversazione, ognuno con le modifiche, le proposte e le schede del
     suo giro. Una lettura sola: le attese orfane le sistema prima la vista
@@ -250,6 +254,8 @@ async def chat_messages_out(
     del now  # la stessa firma delle viste; qui non serve
     messages = await messages_of(session, conversation.id)
     changes = await changes_of(session, conversation.id)
+    if undoable is None:
+        undoable = await undoable_change_ids(session, changes)
     proposals = await proposals_of(session, conversation.id)
     cards = await cards_of(session, conversation.id)
     change_groups = _by_message(messages, changes)
@@ -266,7 +272,7 @@ async def chat_messages_out(
                 status=m.status,  # type: ignore[arg-type]
                 notice=m.notice,
                 created_at=m.created_at,
-                changes=[await change_out(session, c) for c in change_groups.get(m.id, [])],
+                changes=[_change_out(c, c.id in undoable) for c in change_groups.get(m.id, [])],
                 proposals=[
                     await proposal_out(session, p) for p in proposal_groups.get(m.id, [])
                 ],
@@ -290,16 +296,17 @@ async def dish_chat_view(
             highlight=None, claude_ready=ready, claude_notice=notice,
         )
     await repair_orphans(session, conversation.id, replying=replying, now=now)
-    out = await chat_messages_out(session, conversation, now=now)
+    changes = await changes_of(session, conversation.id)
+    undoable = await undoable_change_ids(session, changes)
+    out = await chat_messages_out(session, conversation, now=now, undoable=undoable)
 
     highlight = None
     turn = await latest_turn(session, conversation.id)
     if turn is not None:
-        changes = await changes_of(session, conversation.id)
         mine = [c for c in changes if c.turn_message_id == turn.id]
         live = None
         for change in reversed(mine):
-            if await change_is_undoable(session, change):
+            if change.id in undoable:
                 live = change
                 break
         if live is not None:
