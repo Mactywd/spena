@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { RecipeDetailScreen } from "./RecipeDetailScreen";
+import { RecipeDetailScreen, RecipeDetailView } from "./RecipeDetailScreen";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { PantryItem, RecipeDetail } from "../../domain/types";
 
@@ -1081,5 +1081,37 @@ describe("RecipeDetailScreen — la ricetta di un pasto", () => {
     stubFetch({ in_book: true, meal });
     renderScreen();
     expect(await screen.findByRole("button", { name: "Cucina" })).toBeInTheDocument();
+  });
+});
+
+describe("RecipeDetailView — la ricetta di un avanzo è in sola lettura (S3)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function renderView(readOnly: boolean) {
+    stubFetch({});
+    return render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <NoticeProvider>
+          <MemoryRouter>
+            <RecipeDetailView id="r1" meal={{ mealId: "m1", readOnly }} />
+          </MemoryRouter>
+        </NoticeProvider>
+      </QueryClientProvider>
+    );
+  }
+
+  it("la ricetta di un avanzo non ha Sostituisci né Metti in lista", async () => {
+    renderView(true);
+    expect(await screen.findByText("Pomodoro", { selector: "span" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Sostituisci / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Metti in lista/ })).toBeNull();
+    // lo stepper delle porzioni resta: cambia solo la vista
+    expect(screen.getAllByRole("button", { name: /porzion/i }).length).toBeGreaterThan(0);
+  });
+
+  it("con readOnly false i pulsanti ci sono come prima", async () => {
+    renderView(false);
+    expect(await screen.findByRole("button", { name: "Sostituisci pasta" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Metti in lista/ })).toBeInTheDocument();
   });
 });

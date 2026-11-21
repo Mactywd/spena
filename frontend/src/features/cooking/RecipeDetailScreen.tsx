@@ -126,6 +126,7 @@ function IngredientRow({
   onOpen,
   onClose,
   onAnchor,
+  readOnly,
 }: {
   line: RecipeIngredientLine;
   recipeId: string;
@@ -140,6 +141,9 @@ function IngredientRow({
   /** Riscala da questa riga: se è fatto, se il server ha rifiutato (col perché), o se
    * nel frattempo il campo è stato chiuso o superato e la risposta non conta più. */
   onAnchor: (amount: string) => Promise<AnchorOutcome>;
+  /** La ricetta di un avanzo (spec §4.2, «in sola lettura e senza chat»): niente
+   * «Sostituisci» e niente pannello, perché sostituire scrive sulla ricetta. */
+  readOnly: boolean;
 }) {
   // la dose toccabile riprende il fuoco quando il campo si chiude, da «Annulla» o da una
   // riscala riuscita: il campo che lo aveva si smonta, e il fuoco cadrebbe sul `body`
@@ -211,14 +215,16 @@ function IngredientRow({
             per chi ascolta. `-my-2.5` restituisce il `py-2.5` della riga: il bersaglio è
             44 px senza alzarla; `-mr-2` lo avvicina al bordo. Il fuoco resta qui quando si
             chiude, perché il pulsante non si smonta. */}
-        <Button
-          variant="ghost"
-          icon={IconArrowsExchange}
-          label={`Sostituisci ${line.ingredient_name}`}
-          aria-expanded={substituting}
-          onClick={() => setSubstituting((shown) => !shown)}
-          className="-my-2.5 -mr-2 shrink-0"
-        />
+        {!readOnly && (
+          <Button
+            variant="ghost"
+            icon={IconArrowsExchange}
+            label={`Sostituisci ${line.ingredient_name}`}
+            aria-expanded={substituting}
+            onClick={() => setSubstituting((shown) => !shown)}
+            className="-my-2.5 -mr-2 shrink-0"
+          />
+        )}
       </div>
       {open && (
         <AnchorField
@@ -238,7 +244,7 @@ function IngredientRow({
           }}
         />
       )}
-      {substituting && (
+      {!readOnly && substituting && (
         <SubstitutePanel
           recipeId={recipeId}
           ingredientId={line.ingredient_id}
@@ -730,6 +736,7 @@ export function RecipeDetailView({
                       onOpen={() => changeAnchorField(line.ingredient_id)}
                       onClose={() => changeAnchorField(null)}
                       onAnchor={(amount) => anchorOn(line.ingredient_id, amount)}
+                      readOnly={meal?.readOnly ?? false}
                     />
                   ))}
                 </ul>
@@ -834,7 +841,9 @@ export function RecipeDetailView({
                 Cucina
               </Button>
             )}
-            <AddMissingButton lines={missing} />
+            {/* «Metti in lista» scrive sulla lista della spesa: non in una ricetta in sola
+                lettura (spec §4.2) */}
+            {!meal?.readOnly && <AddMissingButton lines={missing} />}
           </div>
 
           <section>
