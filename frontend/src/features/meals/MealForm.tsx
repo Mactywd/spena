@@ -39,8 +39,9 @@ export function MealForm({
   const [error, setError] = useState<string | null>(null);
   // l'occupante di un posto preso: il `detail` del server dice già «C'è già «X» …».
   // Con il corpo rifiutato: «Sostituisci» rimanda quello, non il modulo com'è ora (che
-  // può già dire un altro posto, e cancellerebbe un pasto mai confermato). Se cambiano
-  // giorno o pasto la domanda non vale più e sparisce.
+  // può già dire un altro posto, e cancellerebbe un pasto mai confermato). Se cambia
+  // un campo qualunque (giorno, pasto, piatto, contorni, «Fuori casa», avanzo) la domanda
+  // non vale più e sparisce, e tornano «Salva» e «Annulla» del modulo.
   // Due domande, dal backend: il posto occupato (`slot_taken`, con l'occupante) e l'avanzo
   // che verrebbe prima (`leftover_after`, con quanti sono). Il frontend non decide quale.
   const [taken, setTaken] = useState<Question | null>(null);
@@ -110,7 +111,10 @@ export function MealForm({
           id="meal-dish"
           value={dish}
           maxLength={200}
-          onChange={(e) => setDish(e.target.value)}
+          onChange={(e) => {
+            setDish(e.target.value);
+            setTaken(null);
+          }}
         />
       </div>
       <div className="flex flex-col gap-1">
@@ -122,7 +126,10 @@ export function MealForm({
           value={sides}
           maxLength={200}
           placeholder="piadina · banana"
-          onChange={(e) => setSides(e.target.value)}
+          onChange={(e) => {
+            setSides(e.target.value);
+            setTaken(null);
+          }}
         />
       </div>
       {slotEditable && (
@@ -161,7 +168,11 @@ export function MealForm({
         </div>
       )}
       <label className="flex min-h-11 items-center gap-1 text-sm">
-        <Checkbox checked={away} onChange={() => setAway(!away)} />
+        <Checkbox checked={away} onChange={() => {
+            setAway(!away);
+            setTaken(null);
+          }}
+        />
         Fuori casa
       </label>
       {leftoverChoices.length > 0 && !away && (
@@ -172,7 +183,10 @@ export function MealForm({
           <select
             id="meal-leftover"
             value={leftover}
-            onChange={(e) => setLeftover(e.target.value)}
+            onChange={(e) => {
+              setLeftover(e.target.value);
+              setTaken(null);
+            }}
           >
             <option value="">Nessuno</option>
             {leftoverChoices.map((m) => (

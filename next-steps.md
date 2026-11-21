@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-21 (fase notte: le correzioni dei Pasti)_
+_Ultimo aggiornamento: 2026-11-21 (fase notte: le correzioni dei Pasti; revisione finale: una idea nuova)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -39,6 +39,7 @@ ancora committato.
 - [idea] P3 · Pasti: `/pasti?settimana=<non valida>` mostra «La settimana non si carica.» con un «Riprova» che non può riuscire: aggiungere «Torna a oggi» [Parte IV]
 - [idea] P3 · Pasti: «Elimina» da `/ricette/:id` su una ricetta di un pasto salvata nel ricettario lascia il pasto su una ricetta archiviata (la schermata del pasto mostra la lapide con «Ripristina») [Parte IV]
 - [idea] P3 · Pasti: ripristinare dalla lapide nella modalità pasto non aggiorna la cache dei pasti [Parte IV]
+- [idea] P3 · Pasti: la ricetta in sola lettura di un avanzo mostra ancora «Cucina», e cucinare un avanzo segnerebbe di nuovo la dispensa (la spec §4.2 dice che l'avanzo non tocca la dispensa) [Parte IV]
 - [idea] P3 · Pasti con Claude: un token finto con la forma di uno vero resta nella storia del commit `3df53ee` (corretto dopo); il repo è pubblico, e se la protezione dei push di GitHub lo rifiuta, riscrivere la storia del ramo è una decisione di Mattia [Parte IV]
 - [idea] P3 · Pasti con Claude: il controllo «Claude sta rispondendo» di «Annulla» e l'annullamento non stanno sotto lo stesso lucchetto (una finestra minima, con due dispositivi) [Parte IV]
 - [idea] P3 · Pasti con Claude: una risposta che si interrompe dopo l'inizio non mostra un avviso; la chat si rilegge da sola e mostra lo stato vero [Parte IV]

@@ -36,6 +36,13 @@ def downgrade() -> None:
     op.create_check_constraint(
         "ck_card_status", "change_cards", "status IN ('proposed', 'applied', 'discarded')"
     )
+    # Le ricette fuori dal ricettario che il pasto fuori casa teneva da parte restano senza
+    # pasto: si archiviano, perché una ricetta viva fuori dal ricettario ha sempre un pasto.
+    op.execute(
+        "UPDATE recipes SET archived_at = now() "
+        "WHERE archived_at IS NULL AND NOT in_book "
+        "AND id IN (SELECT recipe_id FROM meals WHERE away AND recipe_id IS NOT NULL)"
+    )
     op.execute("UPDATE meals SET recipe_id = NULL WHERE away")
     op.create_check_constraint(
         "ck_meal_away_no_recipe", "meals", "NOT away OR recipe_id IS NULL"

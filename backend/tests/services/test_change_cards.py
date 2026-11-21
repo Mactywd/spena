@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, date, datetime
 
 import pytest
@@ -400,6 +401,70 @@ async def test_non_tocca_le_applicate_ne_le_inverse(db_session, mondo):
     assert (await get_card(db_session, applicata.id)).status == "applied"
     assert (await get_card(db_session, inversa.id)).status == "proposed"
     assert (await get_card(db_session, nuova.id)).status == "proposed"
+
+
+async def test_la_scheda_gia_applicata_non_diventa_sostituita(db_session, mondo):
+    # Il caso sequenziale: la vecchia è applicata, poi ne nasce una nuova per lo stesso pasto.
+    vecchia = await _vuota(db_session, mondo["A"])
+    await apply_card(db_session, vecchia.id, [])
+    nuova = await _vuota(db_session, mondo["A"])
+    assert (await get_card(db_session, vecchia.id)).status == "applied"
+    assert (await get_card(db_session, nuova.id)).status == "proposed"
+
+
+async def test_la_corsa_fra_applicare_e_mettere_da_parte_lascia_applicata(engine):
+    # Due sessioni vere (database committato, ripulito alla fine): `apply_card` tiene la
+    # vecchia scheda FOR UPDATE e la passa ad `applied`; `_supersede_older` parte nel frattempo
+    # e deve aspettare il lock, rivedere lo stato e saltarla, non riscriverla «superseded».
+    import asyncio
+
+    from sqlalchemy import delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.services.change_cards import _supersede_older
+
+    fabbrica = async_sessionmaker(engine, expire_on_commit=False)
+    meal_id = str(uuid.uuid4())
+    vecchia = ChangeCard(
+        created_at=datetime.now(UTC), status=CardStatus.PROPOSED.value,
+        kind=CardKind.FORWARD.value, list_only=False, title="Corsa", meal_ids=[meal_id],
+    )
+    nuova = ChangeCard(
+        id=uuid.uuid4(), created_at=datetime.now(UTC), status=CardStatus.PROPOSED.value,
+        kind=CardKind.FORWARD.value, list_only=False, title="Nuova", meal_ids=[meal_id],
+    )
+    async with fabbrica() as setup:
+        setup.add(vecchia)
+        await setup.commit()
+        vecchia_id = vecchia.id
+    try:
+        async with fabbrica() as applica, fabbrica() as sostituisce:
+            tenuta = (
+                await applica.execute(
+                    select(ChangeCard).where(ChangeCard.id == vecchia_id).with_for_update()
+                )
+            ).scalar_one()
+            tenuta.status = CardStatus.APPLIED.value
+            await applica.flush()
+
+            async def parte():
+                await _supersede_older(sostituisce, nuova)
+                await sostituisce.commit()
+
+            lavoro = asyncio.create_task(parte())
+            await asyncio.sleep(0.5)
+            await applica.commit()
+            await asyncio.wait_for(lavoro, timeout=10)
+        async with fabbrica() as lettura:
+            finale = (
+                await lettura.execute(select(ChangeCard).where(ChangeCard.id == vecchia_id))
+            ).scalar_one()
+            assert finale.status == "applied"
+            assert finale.discarded_at is None
+    finally:
+        async with fabbrica() as pulizia:
+            await pulizia.execute(delete(ChangeCard).where(ChangeCard.id == vecchia_id))
+            await pulizia.commit()
 
 
 async def test_mette_da_parte_anche_una_scheda_compilata_a_mano(db_session, mondo):

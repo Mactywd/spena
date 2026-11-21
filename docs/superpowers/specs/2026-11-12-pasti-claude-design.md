@@ -322,9 +322,10 @@ frittata di martedì»).
     Claude, e Mattia la applica o la scarta. Spostare un pasto su un altro posto non
     propone niente.
     La scheda inversa ragiona per voce (l'effetto netto delle schede del pasto) e non
-    toglie dalla lista ciò che serve a un altro pasto. Una scheda nuova di Claude per gli
-    stessi pasti mette da parte quelle non ancora applicate (deciso da Mattia il
-    2026-11-18).
+    toglie dalla lista ciò che serve a un altro pasto (piano
+    2026-11-18-pasti-correzioni, decisioni 8 e 9). Una scheda nuova di Claude per gli
+    stessi pasti mette da parte quelle non ancora applicate (confermato da Mattia il
+    2026-11-21).
 - Le regole della skill sugli stati restano: una confezione da una porzione diventa
   `finished`, una confezione grande resta com'è, un vasetto di sugo appena aperto
   diventa `low`; un sugo `low` è avviato, non in esaurimento, e non va in lista per

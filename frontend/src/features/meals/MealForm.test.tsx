@@ -172,6 +172,32 @@ describe("il modulo del pasto", () => {
       expect(save).toHaveBeenLastCalledWith({ ...SAVED_BODY, replace: true, detach_leftovers: true });
     });
 
+    it("una modifica di qualunque campo chiude la domanda e rida «Salva»", async () => {
+      const save = vi.fn().mockRejectedValue(leftoverAfter(1));
+      renderForm({
+        save,
+        leftoverChoices: [candidate("a", "Lasagne", "2026-11-09", "dinner")],
+      });
+      const campi: Array<() => Promise<void>> = [
+        async () => userEvent.type(screen.getByLabelText("Piatto"), "x"),
+        async () => userEvent.type(screen.getByLabelText("Accompagnamenti"), "pane"),
+        async () => userEvent.click(screen.getByRole("checkbox", { name: "Fuori casa" })),
+        async () => userEvent.selectOptions(screen.getByLabelText("Avanzo di"), "a"),
+      ];
+      for (const modifica of campi) {
+        await fill();
+        await screen.findByText("Martedì pranzo è un suo avanzo.");
+        expect(screen.queryByRole("button", { name: "Salva" })).toBeNull();
+        await modifica();
+        expect(screen.queryByText("Martedì pranzo è un suo avanzo.")).toBeNull();
+        expect(screen.getByRole("button", { name: "Salva" })).toBeInTheDocument();
+        // «Fuori casa» nasconde «Avanzo di»: lo si rimette com'era per il giro dopo
+        if ((screen.getByRole("checkbox", { name: "Fuori casa" }) as HTMLInputElement).checked) {
+          await userEvent.click(screen.getByRole("checkbox", { name: "Fuori casa" }));
+        }
+      }
+    });
+
     it("con una domanda aperta i pulsanti del modulo non ci sono", async () => {
       const save = vi.fn().mockRejectedValue(leftoverAfter(1));
       renderForm({ save, onCancel: () => {} });

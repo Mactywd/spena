@@ -270,8 +270,12 @@ async def _supersede_older(session: AsyncSession, new_card: ChangeCard) -> None:
                 ChangeCard.status == CardStatus.PROPOSED.value,
                 ChangeCard.id != new_card.id,
             )
+            # Il lock chiude la corsa con `apply_card`: se la vecchia scheda è appena stata
+            # applicata, Postgres rilegge lo stato dopo l'attesa e la salta.
+            .order_by(ChangeCard.id)
+            .with_for_update()
         )
-    ).scalars()
+    ).scalars().all()
     now = datetime.now(UTC)
     for old in older:
         if _supersedes(old.meal_ids, new_card.meal_ids):

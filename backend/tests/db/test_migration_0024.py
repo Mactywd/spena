@@ -128,12 +128,30 @@ async def test_la_0024_scende_staccando_le_ricette_fuori_casa(scratch_url):
     alembic(scratch_url, "upgrade", "head")
     ricetta, pasto, scheda = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     await _esegui(scratch_url, RICETTA, id=ricetta)
+    await _esegui(scratch_url, "UPDATE recipes SET in_book = false WHERE id = :id", id=ricetta)
     await _esegui(
         scratch_url, PASTO_FUORI_CASA, id=pasto, day=date(2026, 11, 16), recipe_id=ricetta
+    )
+    # una ricetta nel ricettario, su un altro pasto fuori casa: si stacca ma non si archivia
+    nel_libro, pasto_libro = uuid.uuid4(), uuid.uuid4()
+    await _esegui(scratch_url, RICETTA, id=nel_libro)
+    await _esegui(
+        scratch_url, PASTO_FUORI_CASA, id=pasto_libro, day=date(2026, 11, 17),
+        recipe_id=nel_libro,
     )
     await _esegui(scratch_url, SCHEDA, id=scheda, status="superseded")
 
     alembic(scratch_url, "downgrade", "0023")
+    # la ricetta nascosta non resta viva e orfana: si archivia
+    assert await _scalar(
+        scratch_url, "SELECT archived_at IS NOT NULL FROM recipes WHERE id = :id", id=ricetta
+    ) is True
+    assert await _scalar(
+        scratch_url, "SELECT archived_at IS NULL FROM recipes WHERE id = :id", id=nel_libro
+    ) is True
+    assert await _scalar(
+        scratch_url, "SELECT recipe_id IS NULL FROM meals WHERE id = :id", id=pasto_libro
+    ) is True
     assert await _scalar(
         scratch_url, "SELECT recipe_id IS NULL FROM meals WHERE id = :id", id=pasto
     ) is True
