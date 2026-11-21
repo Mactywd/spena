@@ -42,11 +42,11 @@ class LlmCallSite(StrEnum):
     CIQUAL_TERMS = "ciqual_terms"
     CIQUAL_MATCH = "ciqual_match"
     UNIT_GRAMS = "unit_grams"
-    # la chat dei piatti (Pasti): su Claude via Agent SDK, sul piano di Mattia e non a
-    # consumo, quindi senza costo (decisione 2); il giro la registra lui, non questo client
+    # la chat dei piatti (Pasti): su Claude via Agent SDK con la chiave API, a consumo; il
+    # costo lo registra il giro, non questo client
     MEAL_CHAT = "meal_chat"
-    # la pianificazione con Claude e le ricette scritte dopo l'ufficializzazione: sullo
-    # stesso piano, registrate dal giro e dalla coda delle ricette
+    # la pianificazione con Claude e le ricette scritte dopo l'ufficializzazione: stessa
+    # chiave, a consumo, costo registrato dal giro e dalla coda delle ricette
     MEAL_PLANNING = "meal_planning"
     MEAL_RECIPE = "meal_recipe"
 

@@ -119,20 +119,22 @@ describe("SpendingScreen", () => {
     expect(within(screen.getByRole("group", { name: "Periodo" })).getAllByRole("button")).toHaveLength(3);
   });
 
-  it("senza chiamate a consumo ma con la chat sul piano: la frase e il blocco «Claude»", async () => {
-    const sulPiano: Spending = {
-      ...vuoto("month"),
-      plan_sections: [
-        { call_site: "meal_chat", label: "Chat dei piatti", calls: 3, tokens: 3600, note: "sul piano di Claude, non a consumo" },
+  it("la chat dei piatti è una sezione come le altre", async () => {
+    const conPasti: Spending = {
+      ...MESE,
+      total_usd: 0.325,
+      calls: 9,
+      sections: [
+        { call_site: "meal_chat", label: "Chat dei piatti", cost_usd: 0.3, share: 0.9231, calls: 3 },
+        ...MESE.sections,
       ],
     };
-    stubRoutedFetch(() => [sulPiano, 200]);
+    stubRoutedFetch(() => [conPasti, 200]);
     renderScreen();
 
-    expect(await screen.findByText("Nessuna chiamata all'AI questo mese.")).toBeInTheDocument();
-    expect(screen.getByText("Claude")).toBeInTheDocument();
-    expect(screen.getByText("Chat dei piatti")).toBeInTheDocument();
-    expect(screen.getByText("3 chiamate · 3.600 token")).toBeInTheDocument();
+    expect(await screen.findByText("Chat dei piatti")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Per sezione" })).toBeInTheDocument();
+    expect(screen.queryByText("Claude")).toBeNull();
   });
 
   it("solo chiamate senza costo: il totale a zero, la riga che lo dice, nessun grafico", async () => {

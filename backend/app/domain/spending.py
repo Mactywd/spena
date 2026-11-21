@@ -4,8 +4,9 @@ Puro come `rules.py`: niente database e niente orologio. «Oggi» entra come arg
 `today_in_pantry()` di chi chiama: un giorno qui è un giorno di calendario a Roma, come la
 scadenza, e non un giorno UTC — chi apre l'app a mezzanotte e mezza ha speso oggi.
 
-Le cifre sono quelle che OpenRouter dichiara, in dollari (`llm_calls.cost_usd`). Una
-chiamata senza costo dichiarato — tutte le fallite, e qualche riuscita — non vale zero:
+Le cifre sono quelle che dichiarano i fornitori, in dollari: OpenRouter (`usage.cost`) e
+Claude Code per i Pasti (`ResultMessage.total_cost_usd`, calcolato dai token col suo
+listino). Una chiamata senza costo dichiarato — tutte le fallite, e qualche riuscita — non vale zero:
 zero direbbe «gratis», e l'assenza è la verità. La somma le salta, chi chiama le conta.
 """
 
@@ -49,11 +50,6 @@ CALL_SITE_LABELS: dict[str, str] = {
     "meal_planning": "Pianificazione dei pasti",
     "meal_recipe": "Ricette dei pasti",
 }
-
-# Le sezioni che girano sul piano di Claude e non a consumo (decisione 20): le loro righe
-# hanno token ma `cost_usd` NULL, e stanno fuori dal conto a consumo.
-PLAN_CALL_SITES: frozenset[str] = frozenset({"meal_chat", "meal_planning", "meal_recipe"})
-PLAN_NOTE = "sul piano di Claude, non a consumo"
 
 
 def call_site_label(call_site: str) -> str:
