@@ -2,7 +2,7 @@ import json
 
 import pytest
 import pytest_asyncio
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, system_of, user_of
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe import RecipeSource
@@ -27,7 +27,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -84,27 +84,27 @@ async def test_la_bozza_dice_all_ai_gli_utensili(db_session):
     await _due_utensili(db_session)
     finto = FakeLlm(BOZZA)
     await draft_recipe(db_session, "una frittata", client=finto)
-    sistema = finto.bodies[0]["messages"][0]["content"]
+    sistema = system_of(finto.bodies[0])
     assert sistema == SYSTEM_PROMPT + "\n" + ATTESO + "\n"
     # la richiesta resta com'è: gli utensili non la cambiano
-    assert finto.bodies[0]["messages"][1]["content"] == "una frittata"
+    assert user_of(finto.bodies[0]) == "una frittata"
 
 
 async def test_la_bozza_senza_utensili_ha_il_prompt_di_sempre(db_session):
     finto = FakeLlm(BOZZA)
     await draft_recipe(db_session, "una frittata", client=finto)
-    assert finto.bodies[0]["messages"][0]["content"] == SYSTEM_PROMPT
+    assert system_of(finto.bodies[0]) == SYSTEM_PROMPT
 
 
 async def test_la_variante_dice_all_ai_gli_utensili(db_session, ricetta):
     await _due_utensili(db_session)
     finto = FakeLlm(BOZZA)
     await draft_variant(db_session, ricetta, "senza forno", client=finto)
-    assert finto.bodies[0]["messages"][0]["content"] == VARIANT_SYSTEM_PROMPT + "\n" + ATTESO + "\n"
-    assert json.loads(finto.bodies[0]["messages"][1]["content"])["richiesta"] == "senza forno"
+    assert system_of(finto.bodies[0]) == VARIANT_SYSTEM_PROMPT + "\n" + ATTESO + "\n"
+    assert json.loads(user_of(finto.bodies[0]))["richiesta"] == "senza forno"
 
 
 async def test_la_variante_senza_utensili_ha_il_prompt_di_sempre(db_session, ricetta):
     finto = FakeLlm(BOZZA)
     await draft_variant(db_session, ricetta, "senza forno", client=finto)
-    assert finto.bodies[0]["messages"][0]["content"] == VARIANT_SYSTEM_PROMPT
+    assert system_of(finto.bodies[0]) == VARIANT_SYSTEM_PROMPT

@@ -6,7 +6,7 @@ verifica: una risposta che non si può controllare non si applica, e l'ingredien
 da decidere. In più qui l'AI sceglie solo fra candidati veri, trovati nel database con le
 sue parole francesi: un codice che non è fra quelli non passa.
 
-Il finto sostituisce `httpx.AsyncClient`, non il client di OpenRouter: sotto prova c'è
+Il finto è il client vero con il trasporto sostituito (`llm_fakes.py`): sotto prova c'è
 `complete_json` per intero. Le risposte arrivano nell'ordine in cui il servizio chiede:
 le parole di un lotto, poi le scelte di quel lotto.
 """
@@ -25,7 +25,7 @@ from app.repositories.ciqual import upsert_foods
 from app.services.ai_spend import Spend
 from app.services.ciqual_match import CiqualRun, NameToMatch, decide_ciqual, match_names
 from app.services.ingredient_nutrition import apply_ai_choice, choose_food
-from llm_fakes import COSTO_FINTO, FakeLlm
+from llm_fakes import COSTO_FINTO, FakeLlm, schema_of, user_of
 
 ALIMENTI = [
     CiqualRow("90001", "Tomate, crue", "légumes", {"kcal": 18.0}),
@@ -40,7 +40,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -76,7 +76,7 @@ def _scelte(*righe: tuple[int, str, str | None]) -> dict:
 
 
 def _domanda(corpo: dict) -> dict:
-    return json.loads(corpo["messages"][1]["content"])
+    return json.loads(user_of(corpo))
 
 
 async def test_abbina_in_due_passi(db_session):
@@ -106,7 +106,7 @@ async def test_la_scelta_vede_i_candidati_delle_parole_francesi(db_session):
     assert (voce["n"], voce["nome"]) == (1, "pomodoro")
     assert voce["candidati"][0] == {"codice": "90001", "nome": "Tomate, crue", "gruppo": "légumes"}
     assert "90008" not in {candidato["codice"] for candidato in voce["candidati"]}
-    schema = finto.bodies[1]["response_format"]["json_schema"]["schema"]
+    schema = schema_of(finto.bodies[1])
     assert schema["properties"]["scelte"]["items"]["properties"]["codice"] == {
         "type": ["string", "null"]
     }
@@ -192,9 +192,9 @@ class _LlmMentreUnaManoCorregge(FakeLlm):
         super().__init__(*payloads)
         self._mano = mano
 
-    async def post(self, url, json, headers):  # noqa: A002
+    async def answer(self, body: dict) -> object:
         await self._mano()
-        return await super().post(url, json, headers)
+        return await super().answer(body)
 
 
 async def test_una_scelta_a_mano_fatta_mentre_l_ai_risponde_non_si_riscrive(db_session):

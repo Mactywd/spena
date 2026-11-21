@@ -28,7 +28,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
-import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,8 +56,8 @@ from app.services.llm import (
     LlmCallSite,
     LlmUnavailable,
     LlmUsage,
-    build_headers,
     complete_json,
+    ensure_llm_configured,
     open_client,
 )
 
@@ -195,7 +195,7 @@ async def _ask(
     ingredient_id: uuid.UUID,
     context: SubstitutionContext,
     food: Mapping[str, uuid.UUID],
-    client: object,
+    client: AsyncAnthropic,
 ) -> tuple[Answer | Rejected, LlmUsage]:
     """Una voce, una chiamata. `LlmUnavailable` risale: chi chiama la registra."""
     esito = await complete_json(
@@ -203,7 +203,6 @@ async def _ask(
         system=SUBSTITUTE_SYSTEM_PROMPT,
         user=question(name, context, food),
         schema=SUBSTITUTE_SCHEMA,
-        schema_name="sostituti_ingrediente",
         max_tokens=SUBSTITUTE_MAX_TOKENS,
         client=client,
     )
@@ -236,7 +235,7 @@ async def decide_pair(
     session: AsyncSession,
     ingredient_id: uuid.UUID,
     context: SubstitutionContext,
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
 ) -> PairOutcome:
     """La voce generale di un ingrediente in un contesto, chiesta sul momento se manca.
 
@@ -250,7 +249,7 @@ async def decide_pair(
     if ingredient is None:
         raise LookupError(f"nessun ingrediente {ingredient_id}")
     try:
-        build_headers()
+        ensure_llm_configured()
     except LlmUnavailable:
         return PairOutcome(failed=True)
     food = await load_food(session)
@@ -265,7 +264,7 @@ async def decide_pair(
         return PairOutcome(failed=True)
     finally:
         if owned:
-            await api.aclose()
+            await api.close()
     await record_llm_call(
         session, call_site=LlmCallSite.INGREDIENT_SUBSTITUTES, usage=usage, ok=True
     )
@@ -298,7 +297,7 @@ class SubstitutionRun:
 
 async def decide_substitutions(
     session: AsyncSession,
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     limit: int | None = None,
     batch_size: int = SUBSTITUTE_BATCH,
     after_batch: Callable[[], Awaitable[None]] | None = None,
@@ -313,7 +312,7 @@ async def decide_substitutions(
     che è ancora giù. `report` riceve una riga per voce («pollo (salato): tacchino»).
     """
     try:
-        build_headers()
+        ensure_llm_configured()
     except LlmUnavailable as exc:
         # senza chiave non si apre niente e non si registra niente: è la configurazione
         return SubstitutionRun(pending=len(await pending_voices(session)), unavailable=str(exc))
@@ -331,7 +330,7 @@ async def decide_substitutions(
     cost: float | None = None
     unavailable: str | None = None
 
-    async def ask(voice: Voice, api: object):
+    async def ask(voice: Voice, api: AsyncAnthropic):
         async with semaphore:
             try:
                 verified, usage = await _ask(
@@ -378,7 +377,7 @@ async def decide_substitutions(
                 break
     finally:
         if owned:
-            await api.aclose()
+            await api.close()
 
     return SubstitutionRun(
         substitutes=stored[SubstitutionVerdict.SUBSTITUTES],

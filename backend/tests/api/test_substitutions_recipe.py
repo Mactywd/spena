@@ -28,7 +28,7 @@ def con_chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -165,7 +165,7 @@ async def test_ask_senza_ai_lascia_la_strada_a_mano(db_session, logged_client, c
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     voci, ricette = cucina
 
     risposta = await logged_client.post(_url(ricette["pasta"], voci["pasta"], "/ask"))

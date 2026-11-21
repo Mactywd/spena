@@ -3,15 +3,13 @@
 `complete_recorded` è `complete_json` più la riga in `llm_calls` — anche per la chiamata
 fallita, come fanno `unit_forms.py` e `decide_emoji` — e più la somma della spesa in uno
 `Spend`, se chi chiama ne passa uno: il pilota la stampa (spec §4.19). Un posto solo, perché
-i comandi di S4 e il pilota non ne tengano tre copie. Una chiamata fallita si conta senza
-costo: di una chiamata fallita non sappiamo se ci è stata addebitata, e zero sarebbe
-un'affermazione (la regola dei nutrienti, e di `LlmCall`).
+i comandi di S4 e il pilota non ne tengano tre copie.
 """
 
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.llm_calls import record_llm_call
@@ -40,9 +38,8 @@ async def complete_recorded(
     system: str,
     user: str,
     schema: dict[str, Any],
-    schema_name: str,
     max_tokens: int,
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     spend: Spend | None = None,
 ) -> dict[str, Any]:
     """La risposta, o `LlmUnavailable` — in tutti e due i casi dopo averla registrata.
@@ -53,7 +50,6 @@ async def complete_recorded(
             system=system,
             user=user,
             schema=schema,
-            schema_name=schema_name,
             max_tokens=max_tokens,
             client=client,
         )

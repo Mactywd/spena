@@ -52,7 +52,7 @@ async def test_senza_chiave_dice_quanti_ne_restano_e_non_scrive(db_session, monk
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         await upsert_foods(db_session, [CiqualRow("90001", "Tomate, crue", "légumes", {"kcal": 18.0})])
         db_session.add(Ingredient(name="pomodoro", display_name="Pomodoro", category="verdura"))
@@ -62,7 +62,7 @@ async def test_senza_chiave_dice_quanti_ne_restano_e_non_scrive(db_session, monk
         assert await main(["--limit", "5"]) == 0
 
         stampato = capsys.readouterr().out
-        assert "abbinamenti non disponibili (OPENROUTER_API_KEY non configurata)" in stampato
+        assert "abbinamenti non disponibili (ANTHROPIC_API_KEY non configurata)" in stampato
         assert "0 ingredienti abbinati, 0 senza un alimento adatto, 0 risposte rifiutate" in stampato
         assert "1 ingrediente alimentare resta da decidere: rilancia questo comando." in stampato
         assert (await db_session.execute(select(IngredientNutrition))).first() is None

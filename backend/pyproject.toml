@@ -4,6 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.14",
+  # Il client dell'LLM dell'import (Claude Haiku via l'API Messages). Dipendenza di base
+  # e fissata: da extra mancò dall'immagine (tests/test_image_dependencies.py).
+  "anthropic==2.12.0",
   "argon2-cffi>=23.1",
   "asyncpg>=0.30",
   "beautifulsoup4>=4.12",
@@ -23,7 +26,7 @@ dependencies = [
 # pyyaml serve a tests/test_compose.py, che legge i file Compose per difendere la
 # forma lunga di `env_file`: arriva comunque con uvicorn[standard], ma una
 # dipendenza di test non dichiarata si rompe il giorno in cui si snelliscono le altre
-dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "respx>=0.22", "httpx>=0.28", "pyyaml>=6"]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "respx>=0.22", "httpx>=0.28", "httpx2>=2.0", "pyyaml>=6"]
 embeddings = ["sentence-transformers>=3.3"]
 
 [tool.pytest.ini_options]

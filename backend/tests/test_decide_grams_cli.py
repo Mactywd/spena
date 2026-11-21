@@ -39,7 +39,7 @@ async def test_senza_chiave_dice_quante_ne_restano_e_non_scrive(db_session, monk
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         aglio = Ingredient(name="aglio", display_name="Aglio", category="verdura")
         db_session.add(aglio)
@@ -54,7 +54,7 @@ async def test_senza_chiave_dice_quante_ne_restano_e_non_scrive(db_session, monk
         assert await main([]) == 0
 
         stampato = capsys.readouterr().out
-        assert "pesi non disponibili (OPENROUTER_API_KEY non configurata)" in stampato
+        assert "pesi non disponibili (ANTHROPIC_API_KEY non configurata)" in stampato
         assert "0 pesi scritti, 0 senza un peso sensato, 0 risposte rifiutate" in stampato
         assert "1 coppia resta da pesare: rilancia questo comando." in stampato
         assert (await db_session.execute(select(IngredientUnitGrams))).first() is None

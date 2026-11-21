@@ -53,7 +53,7 @@ def senza_chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     yield
     get_settings.cache_clear()
 
@@ -63,7 +63,7 @@ def con_chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -117,7 +117,7 @@ async def test_senza_chiave_lo_dice_e_non_scrive(db_session, due_voci, senza_chi
     assert await main([]) == 0
 
     righe = capsys.readouterr().out.strip().splitlines()
-    assert righe[0].startswith("sostituti non disponibili (OPENROUTER_API_KEY")
+    assert righe[0].startswith("sostituti non disponibili (ANTHROPIC_API_KEY")
     assert righe[-1] == "2 voci restano da decidere: rilancia questo comando."
     assert (await db_session.execute(select(IngredientSubstitution.id))).all() == []
 

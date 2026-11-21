@@ -19,7 +19,7 @@ from app.services.ingredient_match import match_name
 from app.services.recipe_import.decide import decide_terms
 from app.db.models.llm_call import LlmCall
 from app.services.llm import LlmCallSite
-from llm_fakes import COSTO_FINTO, LLM_IGNORE, ScriptedLlm, llm_create, llm_map
+from llm_fakes import COSTO_FINTO, LLM_IGNORE, FakeLlm, ScriptedLlm, llm_create, llm_map
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +27,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -52,13 +52,13 @@ async def aggiungi(db_session, *termini: ImportTerm) -> list[ImportTerm]:
     return list(termini)
 
 
-class CountingLlm:
+class CountingLlm(FakeLlm):
     """`ScriptedLlm` che misura quante chiamate sono in volo nello stesso istante.
 
-    Serve perché `ScriptedLlm.post` non ha nessun punto di attesa: torna senza mai
+    Serve perché `ScriptedLlm.answer` non ha nessun punto di attesa: torna senza mai
     cedere il controllo, quindi con lui il fan-out si comporta come un ciclo
     sequenziale e togliere il semaforo — o il `gather` — non farebbe fallire niente.
-    Qui `post` dorme, così le chiamate si sovrappongono davvero: `max_in_flight` dice
+    Qui `answer` dorme, così le chiamate si sovrappongono davvero: `max_in_flight` dice
     se il parallelo c'è, e se il semaforo lo tiene entro il limite.
     """
 
@@ -67,22 +67,16 @@ class CountingLlm:
         self._pausa = pausa
         self.in_flight = 0
         self.max_in_flight = 0
+        super().__init__()
 
-    async def post(self, url, json: dict, headers):  # noqa: A002
+    async def answer(self, body: dict) -> object:
         self.in_flight += 1
         self.max_in_flight = max(self.max_in_flight, self.in_flight)
         try:
             await asyncio.sleep(self._pausa)
-            return await self._inner.post(url, json=json, headers=headers)
+            return await self._inner.answer(body)
         finally:
             self.in_flight -= 1
-
-    async def aclose(self):
-        return None
-
-    @property
-    def calls(self) -> int:
-        return self._inner.calls
 
 
 async def test_le_tre_azioni_si_applicano(db_session, base):
@@ -438,11 +432,11 @@ async def test_un_merge_del_collasso_su_una_voce_non_alimentare_resta_in_coda(db
     assert alias == [], "nessun alias nuovo deve nascere sulla voce non alimentare"
 
 
-class LlmCheDurantePostScriveSulDatabase:
+class LlmCheDurantePostScriveSulDatabase(FakeLlm):
     """Un finto che, alla prima domanda, fa quel che nella race vera fa un'altra
     richiesta: scrive in anagrafica *dopo* che `load_registry` ha già fatto
     l'istantanea in testa a `decide_terms`, e *prima* che il fan-in richiami
-    `match_name`. `ScriptedLlm.post` non tocca il database; questo lo fa apposta,
+    `match_name`. `ScriptedLlm.answer` non tocca il database; questo lo fa apposta,
     nel solo punto del fan-out dove il test può inserirsi fra le due letture senza
     inventare un secondo seam.
     """
@@ -452,15 +446,13 @@ class LlmCheDurantePostScriveSulDatabase:
         self._inner = inner
         self._scrivi = scrivi
         self._fatto = False
+        super().__init__()
 
-    async def post(self, url, json: dict, headers):  # noqa: A002
+    async def answer(self, body: dict) -> object:
         if not self._fatto:
             self._fatto = True
             await self._scrivi()
-        return await self._inner.post(url, json=json, headers=headers)
-
-    async def aclose(self):
-        return None
+        return await self._inner.answer(body)
 
 
 async def test_un_id_sconosciuto_al_registro_resta_in_coda_invece_di_farsi_credere_alimentare(
@@ -605,7 +597,7 @@ async def test_senza_chiave_solleva_invece_di_decidere_a_caso(db_session, base, 
 
     (rigatoni,) = await aggiungi(db_session, termine("Rigatoni", "k-rigatoni"))
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         with pytest.raises(LlmUnavailable):
             await decide_terms(db_session, [rigatoni])

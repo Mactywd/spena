@@ -4,7 +4,7 @@ Come per i termini dell'import, la parte che conta è la verifica: una risposta 
 non si può controllare non si applica, e la parola resta non decisa — cioè si
 continua a mostrarla grezza, che è brutto e non è rotto.
 
-Il finto sostituisce `httpx.AsyncClient`, non il client di OpenRouter: sotto prova
+Il finto è il client vero con il trasporto sostituito (`llm_fakes.py`): sotto prova
 c'è `complete_json` per intero, header e corpo compresi.
 """
 
@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from app.db.models.unit import Unit
 from app.services.unit_forms import MAX_UNITS_PER_RUN, decide_unit_forms
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, user_of
 
 
 @pytest.fixture(autouse=True)
@@ -23,7 +23,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -134,7 +134,7 @@ async def test_il_lotto_ha_un_tetto_e_il_resto_aspetta_il_giro_dopo(db_session):
 
     esito = await decide_unit_forms(db_session, client=finto)
 
-    chieste = json.loads(finto.bodies[0]["messages"][1]["content"])["units"]
+    chieste = json.loads(user_of(finto.bodies[0]))["units"]
     assert len(chieste) == MAX_UNITS_PER_RUN
     # e quel che è rimasto fuori non è sparito: il comando lo dice e il giro dopo lo prende
     assert esito.pending == len(chiavi)

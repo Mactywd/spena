@@ -488,7 +488,7 @@ async def test_una_creazione_dellai_annullata_cancella_lingrediente(db_session, 
     from llm_fakes import ScriptedLlm, llm_create, llm_map
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     try:
         pasta = await create_ingredient(
             db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI

@@ -4,7 +4,7 @@ Come per le unità e i termini dell'import, la parte che conta è la verifica: u
 risposta che non si può controllare non si applica, e l'ingrediente resta senza figura
 — cioè col ripiego del reparto, che è meno bello e non è sbagliato.
 
-Il finto sostituisce `httpx.AsyncClient`, non il client di OpenRouter: sotto prova c'è
+Il finto è il client vero con il trasporto sostituito (`llm_fakes.py`): sotto prova c'è
 `complete_json` per intero, header e corpo compresi.
 """
 
@@ -18,7 +18,7 @@ from app.db.models.ingredient import Ingredient
 from app.db.models.llm_call import LlmCall
 from app.domain.emoji import INGREDIENT_EMOJI, NO_EMOJI
 from app.services.ingredient_emoji import EmojiRun, decide_ingredient_emoji
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, schema_of, system_of, user_of
 
 
 @pytest.fixture(autouse=True)
@@ -26,7 +26,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -54,7 +54,7 @@ def _risposta(*righe: tuple[int, str, str]) -> dict:
 
 
 def _domanda(corpo: dict) -> list[dict]:
-    return json.loads(corpo["messages"][1]["content"])["ingredienti"]
+    return json.loads(user_of(corpo))["ingredienti"]
 
 
 async def test_applica_le_figure_dell_elenco(db_session):
@@ -173,9 +173,9 @@ class _LlmMentreUnaManoCorregge(FakeLlm):
         super().__init__(*payloads)
         self._mano = mano
 
-    async def post(self, url, json, headers):  # noqa: A002
+    async def answer(self, body: dict) -> object:
         await self._mano()
-        return await super().post(url, json, headers)
+        return await super().answer(body)
 
 
 async def test_una_scelta_a_mano_fatta_mentre_l_ai_risponde_non_si_riscrive(db_session):
@@ -272,9 +272,9 @@ async def test_la_domanda_porta_numero_nome_e_reparto_e_l_elenco_chiuso(db_sessi
 
     corpo = finto.bodies[0]
     assert _domanda(corpo) == [{"n": 1, "nome": "carota", "reparto": "verdura"}]
-    assert "🥕" in corpo["messages"][0]["content"]
-    assert "nessuna" in corpo["messages"][0]["content"]
-    schema = corpo["response_format"]["json_schema"]["schema"]
+    assert "🥕" in system_of(corpo)
+    assert "nessuna" in system_of(corpo)
+    schema = schema_of(corpo)
     assert schema["properties"]["emoji"]["items"]["properties"]["emoji"]["enum"] == [
         *INGREDIENT_EMOJI, "nessuna",
     ]

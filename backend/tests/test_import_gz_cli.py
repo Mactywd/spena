@@ -278,7 +278,7 @@ async def test_lo_scarico_decide_i_termini_e_materializza(db_session, monkeypatc
     from app.db.models.recipe import Recipe
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     try:
         # "pasta" deve esistere già in anagrafica perché il "map" dell'AI su
         # "Rigatoni" sia verificabile: senza un ingrediente da quel nome
@@ -319,7 +319,7 @@ async def test_senza_chiave_lo_scarico_non_fallisce_e_lascia_i_termini_in_coda(
     from app.db.models.recipe_import import ImportTerm, TermDecision
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         client = fonte_finta_con_una_ricetta()
         esito = await run_import(db_session, limit=1, client=client, sleep=nessuna_pausa)
@@ -349,7 +349,7 @@ async def test_lo_scarico_dice_le_unita_nuove_che_ha_depositato(db_session, monk
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     try:
         db_session.add(
             Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
@@ -381,7 +381,7 @@ async def test_una_unita_gia_vista_non_si_riconta(db_session, monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     try:
         db_session.add(Unit(key="g", singular="g", plural="g", decided_by="human"))
         db_session.add(
@@ -433,7 +433,7 @@ async def test_tutto_non_richiede_un_termine_gia_chiesto(db_session, monkeypatch
     from app.db.models.recipe_import import ImportTerm, TermDecision
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     monkeypatch.setattr(import_gz, "MAX_TERMS_PER_RUN", 1)
     try:
         client = fonte_finta_intera_con_una_ricetta()
@@ -466,7 +466,7 @@ async def test_tutto_senza_chiave_finisce_e_lascia_i_termini_in_coda(db_session,
     from app.db.models.recipe_import import ImportTerm, TermDecision
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         client = fonte_finta_intera_con_una_ricetta()
         esito = await import_gz.run_all(

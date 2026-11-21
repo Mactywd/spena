@@ -18,6 +18,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.recipe import Recipe
@@ -128,7 +129,7 @@ def system_with_utensils(base: str, block: str | None) -> str:
 
 
 async def draft_recipe(
-    session: AsyncSession, prompt: str, client: object | None = None
+    session: AsyncSession, prompt: str, client: AsyncAnthropic | None = None
 ) -> RecipeDraft:
     block = await utensils_prompt_block(session)
     payload = await _ask(
@@ -172,7 +173,7 @@ def variant_question(recipe: Recipe, prompt: str) -> str:
 
 
 async def draft_variant(
-    session: AsyncSession, recipe: Recipe, prompt: str, client: object | None = None
+    session: AsyncSession, recipe: Recipe, prompt: str, client: AsyncAnthropic | None = None
 ) -> RecipeDraft:
     """Una variante di `recipe` secondo `prompt` (R8): la ricetta modificata, intera, da
     correggere nel modulo. Propone e non salva, e l'originale non si tocca: si salva con
@@ -198,7 +199,7 @@ async def _ask(
     system: str,
     user: str,
     max_tokens: int,
-    client: object | None,
+    client: AsyncAnthropic | None,
 ) -> dict[str, Any]:
     """Una chiamata con lo schema della bozza, con la spesa registrata comunque vada."""
     try:
@@ -207,7 +208,6 @@ async def _ask(
             system=system,
             user=user,
             schema=DRAFT_SCHEMA,
-            schema_name="bozza_ricetta",
             max_tokens=max_tokens,
             client=client,
         )

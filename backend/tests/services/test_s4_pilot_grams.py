@@ -18,7 +18,7 @@ from app.services.s4_pilot import (
     pilot_passed,
     run_grams_pilot,
 )
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, user_of
 
 
 @pytest.fixture(autouse=True)
@@ -26,7 +26,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -68,7 +68,7 @@ async def test_il_verdetto_dei_pesi(db_session):
         ("sale", Verdict.WRONG, None),
         ("burro", Verdict.UNANSWERED, None),
     ]
-    coppie = json.loads(finto.bodies[0]["messages"][1]["content"])["coppie"]
+    coppie = json.loads(user_of(finto.bodies[0]))["coppie"]
     assert coppie[1] == {"n": 2, "ingrediente": "uova", "unita": "pezzo", "esempio": None}
 
 

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -182,7 +183,7 @@ async def _take_pages(
 
 async def _settle(
     session: AsyncSession,
-    llm_client: object | None,
+    llm_client: AsyncAnthropic | None,
     *,
     exclude: frozenset[uuid.UUID] = frozenset(),
     ask_ai: bool = True,
@@ -234,7 +235,7 @@ async def run_import(
     limit: int,
     client: httpx.AsyncClient,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-    llm_client: object | None = None,
+    llm_client: AsyncAnthropic | None = None,
 ) -> ImportRun:
     """Prende fino a `limit` pagine nuove, le analizza e le salva.
 
@@ -260,7 +261,7 @@ async def run_all(
     *,
     client: httpx.AsyncClient,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-    llm_client: object | None = None,
+    llm_client: AsyncAnthropic | None = None,
     chunk: int = DEFAULT_LIMIT,
     log: Callable[[str], None] = _log,
 ) -> ImportRun:

@@ -20,7 +20,7 @@ from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 
-import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -103,7 +103,7 @@ def load_cases(path: Path = PILOT_FILE) -> PilotCases:
 async def run_match_pilot(
     session: AsyncSession,
     cases: Sequence[MatchCase],
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     spend: Spend | None = None,
 ) -> tuple[list[MatchOutcome], str | None]:
     names = {
@@ -179,7 +179,7 @@ def match_report(outcomes: Sequence[MatchOutcome]) -> list[str]:
 async def run_grams_pilot(
     session: AsyncSession,
     cases: Sequence[GramsCase],
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     spend: Spend | None = None,
 ) -> tuple[list[GramsOutcome], str | None]:
     answers: dict[int, Decimal | None] = {}

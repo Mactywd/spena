@@ -15,7 +15,7 @@ from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecisio
 from app.repositories.ingredients import create_ingredient
 from app.services.llm import LlmUnavailable
 from app.services.recipe_import.decide import decide_one, load_registry
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, user_of
 
 
 @pytest.fixture(autouse=True)
@@ -23,7 +23,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -163,7 +163,7 @@ async def test_la_domanda_porta_il_termine_lanagrafica_e_le_categorie(db_session
     await decide_one(db_session, term, anagrafica, client=finto)
 
     corpo = finto.bodies[0]
-    domanda = json.loads(corpo["messages"][1]["content"])
+    domanda = json.loads(user_of(corpo))
     assert domanda["termine"] == "Rigatoni"
     assert {"nome": "pasta", "categoria": "cereali"} in domanda["anagrafica"]
     assert "carne" in domanda["categorie"]

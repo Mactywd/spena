@@ -11,7 +11,7 @@ il giro dopo, e il comando lo dice.
 import json
 from dataclasses import dataclass
 
-import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.unit import UNIT_MAX_LENGTH, Unit
@@ -30,8 +30,8 @@ FORMS_MAX_TOKENS = 600
 # senza questo il limite vero sarebbe «quante parole nuove ha portato l'ultimo
 # catalogo»: il seme ne produce 22, e una risposta plausibile per quelle 22 misura
 # ~1400 caratteri, cioè già 450-500 token dei 600. Un import solo la supera, e oltre
-# il tetto `complete_json` riceve un JSON tagliato, solleva `LlmUnavailable` e non
-# applica niente — identicamente a ogni rilancio.
+# il tetto `complete_json` riceve un JSON tagliato, solleva `LlmUnavailable`
+# (`truncated`) e non applica niente — identicamente a ogni rilancio.
 #
 # Dodici perché il conto torna anche nel caso pessimo: un elemento della risposta è
 # `{"key": …, "singular": …, "plural": …}` con tre parole lunghe al massimo quanto la
@@ -83,7 +83,7 @@ class Decided:
 
 
 async def decide_unit_forms(
-    session: AsyncSession, client: httpx.AsyncClient | None = None
+    session: AsyncSession, client: AsyncAnthropic | None = None
 ) -> Decided:
     undecided = await undecided_units(session)
     if not undecided:
@@ -96,7 +96,6 @@ async def decide_unit_forms(
             system=FORMS_SYSTEM_PROMPT,
             user=json.dumps({"units": sorted(asked)}, ensure_ascii=False),
             schema=FORMS_SCHEMA,
-            schema_name="forme_unita",
             max_tokens=FORMS_MAX_TOKENS,
             client=client,
         )

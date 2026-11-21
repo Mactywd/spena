@@ -1,7 +1,7 @@
 import httpx
 import pytest
 import pytest_asyncio
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, schema_of, system_of, user_of
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.services.ai_recipes import (
@@ -23,7 +23,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -101,7 +101,7 @@ async def test_una_voce_non_alimentare_non_si_aggancia_alla_bozza(db_session, mo
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     try:
         db_session.add(
             Ingredient(name="carta forno", display_name="Carta forno",
@@ -174,7 +174,7 @@ async def test_missing_api_key_raises_llm_unavailable(db_session, anagrafica, mo
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(LlmUnavailable):
         await draft_recipe(db_session, "x")
     get_settings.cache_clear()
@@ -190,7 +190,7 @@ async def test_un_ingrediente_ignoto_porta_la_categoria_proposta(db_session, mon
     from app.services.ai_recipes import draft_recipe
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     try:
         finto = FakeLlm({
             "title": "Pasta allo speck",
@@ -216,7 +216,7 @@ async def test_una_categoria_inventata_non_si_propone(db_session, monkeypatch):
     from app.services.ai_recipes import draft_recipe
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     try:
         finto = FakeLlm({
             "title": "X", "description": None, "instructions": "1. cuoci", "servings": 2,
@@ -391,13 +391,13 @@ async def test_la_variante_manda_all_ai_la_ricetta_e_la_richiesta(db_session, or
     await draft_variant(db_session, originale, "senza basilico", client=finto)
 
     corpo = finto.bodies[0]
-    assert corpo["messages"][0]["content"] == VARIANT_SYSTEM_PROMPT
+    assert system_of(corpo) == VARIANT_SYSTEM_PROMPT
     # le regole della bozza valgono anche qui: la variante le estende, non le riscrive
     assert VARIANT_SYSTEM_PROMPT.startswith(SYSTEM_PROMPT)
     assert corpo["max_tokens"] == VARIANT_MAX_TOKENS == 4000
     # lo schema è quello della bozza: il modulo legge la stessa forma
-    assert corpo["response_format"]["json_schema"]["schema"] == DRAFT_SCHEMA
-    domanda = json.loads(corpo["messages"][1]["content"])
+    assert schema_of(corpo) == DRAFT_SCHEMA
+    domanda = json.loads(user_of(corpo))
     assert domanda["richiesta"] == "senza basilico"
     ricetta = domanda["ricetta"]
     assert ricetta["title"] == "Pasta al pomodoro"

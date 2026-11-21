@@ -4,7 +4,7 @@ Come per i termini dell'import, la parte che conta è la verifica: una risposta 
 si può controllare non si applica (decisione 2 di Mattia), e la voce resta da chiedere.
 L'AI scrive solo dove non c'è una risposta (decisione 4).
 
-Il finto sostituisce `httpx.AsyncClient`, non il client di OpenRouter: sotto prova c'è
+Il finto è il client vero con il trasporto sostituito (`llm_fakes.py`): sotto prova c'è
 `complete_json` per intero. Risponde guardando la domanda e non l'ordine d'arrivo,
 perché le chiamate di un lotto partono insieme (lo stesso motivo di `ScriptedLlm`).
 """
@@ -33,7 +33,7 @@ from app.services.substitutions import (
     decide_substitutions,
     verify_answer,
 )
-from llm_fakes import COSTO_FINTO, USAGE_FINTO
+from llm_fakes import COSTO_FINTO, FakeLlm, schema_of, system_of, user_of
 
 SALATO = SubstitutionContext.SAVORY
 DOLCE = SubstitutionContext.SWEET
@@ -44,12 +44,12 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
 
-class SostitutiFinti:
+class SostitutiFinti(FakeLlm):
     """Una risposta per (ingrediente, ricetta), scelta guardando la domanda.
 
     `prima`, se c'è, gira prima di rispondere: è il modo di far scrivere qualcuno mentre
@@ -59,31 +59,18 @@ class SostitutiFinti:
     def __init__(self, risposte: dict[tuple[str, str], object], prima=None) -> None:
         self._risposte = risposte
         self._prima = prima
-        self.bodies: list[dict] = []
+        super().__init__()
 
-    async def post(self, url, json, headers):  # noqa: A002
-        self.bodies.append(json)
+    async def answer(self, body: dict) -> object:
         if self._prima is not None:
             await self._prima()
-        domanda = _json.loads(json["messages"][1]["content"])
-        payload = self._risposte[(domanda["ingrediente"], domanda["ricetta"])]
-        if isinstance(payload, Exception):
-            raise payload
-        corpo = {
-            "id": "gen-finta",
-            "model": "google/gemma-4-26b-a4b-it",
-            "choices": [{"message": {"content": _json.dumps(payload)}}],
-            "usage": dict(USAGE_FINTO),
-        }
-        return httpx.Response(200, json=corpo, request=httpx.Request("POST", url))
-
-    async def aclose(self):
-        return None
+        domanda = _json.loads(user_of(body))
+        return self._risposte[(domanda["ingrediente"], domanda["ricetta"])]
 
     def domande(self) -> list[tuple[str, str]]:
         return sorted(
             (domanda["ingrediente"], domanda["ricetta"])
-            for domanda in (_json.loads(corpo["messages"][1]["content"]) for corpo in self.bodies)
+            for domanda in (_json.loads(user_of(corpo)) for corpo in self.bodies)
         )
 
 
@@ -288,13 +275,13 @@ async def test_senza_chiave_non_chiama_e_non_registra(db_session, cucina, monkey
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     finto = SostitutiFinti(TUTTE)
 
     esito = await decide_substitutions(db_session, client=finto)
 
     assert finto.bodies == []
-    assert esito.unavailable is not None and "OPENROUTER_API_KEY" in esito.unavailable
+    assert esito.unavailable is not None and "ANTHROPIC_API_KEY" in esito.unavailable
     assert esito.pending == 4
     assert await _spese(db_session) == []
 
@@ -305,14 +292,14 @@ async def test_la_domanda_porta_l_ingrediente_il_contesto_e_il_cibo_dell_anagraf
     await decide_substitutions(db_session, client=finto, limit=1)
 
     corpo = finto.bodies[0]
-    assert _json.loads(corpo["messages"][1]["content"]) == {
+    assert _json.loads(user_of(corpo)) == {
         "ingrediente": "pollo",
         "ricetta": "salata",
         # solo il cibo, per nome, senza l'ingrediente stesso
         "anagrafica": ["burro", "coniglio", "margarina", "tacchino", "zucchero"],
     }
-    assert "insostituibile" in corpo["messages"][0]["content"]
-    assert corpo["response_format"]["json_schema"]["schema"] == SUBSTITUTE_SCHEMA
+    assert "insostituibile" in system_of(corpo)
+    assert schema_of(corpo) == SUBSTITUTE_SCHEMA
 
 
 # --- la voce sul momento ---------------------------------------------------------------
@@ -357,7 +344,7 @@ async def test_senza_chiave_sul_momento_non_chiama(db_session, cucina, monkeypat
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     finto = SostitutiFinti({})
 
     assert await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto) == PairOutcome(failed=True)

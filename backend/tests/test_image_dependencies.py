@@ -6,15 +6,16 @@ quindi la stesura AI rispondeva «pacchetto non installato» con qualunque chiav
 test poteva accorgersene, perché tutti iniettavano un client finto e l'unico che
 arrivava alla costruzione vera usciva sulla chiave assente, prima dell'import.
 
-Da OpenRouter quel difetto è strutturalmente impossibile: il client parla HTTP con
-`httpx`, che è una **dipendenza di base**. Quel che resta da difendere è che rimanga
-tale, e che `anthropic` non rientri.
+Poi l'LLM passò da OpenRouter, via `httpx`, e `anthropic` uscì del tutto. Ora è tornato,
+perché l'import parla con Claude Haiku attraverso l'API Messages: ma il contrario della
+prima volta, come **dipendenza di base fissata con `==`**, mai un extra. È quello che
+questo file difende, insieme a `httpx`, che resta di base per Open Food Facts e per lo
+scarico delle ricette.
 
-L'erede del test che eseguiva `import anthropic` — quello che attraversa la richiesta
-vera, header e corpo insieme, senza finti e senza rete — è
-`tests/services/test_llm.py::test_la_richiesta_porta_attribuzione_schema_e_instradamento`.
-Questo file resta sulla superficie di dipendenza dell'immagine; quella garanzia vive
-dov'è già provata, non in doppio.
+I finti della suite sono il client vero dell'SDK con il trasporto HTTP sostituito
+(`tests/llm_fakes.py`): ogni test dell'AI importa `anthropic` e costruisce il client con
+le opzioni di produzione, quindi un SDK mancante farebbe cadere la suite, non solo
+l'immagine. Questo file resta sulla superficie di dipendenza dell'immagine.
 """
 
 import re
@@ -35,22 +36,30 @@ def righe_unite(testo: str) -> str:
 
 
 def test_httpx_e_una_dipendenza_di_base_e_non_un_extra():
-    """Il client del modello ci gira sopra: messo fra gli extra ripeterebbe la storia
-    di `anthropic`, e ogni chiamata all'LLM morirebbe su ImportError in produzione."""
+    """Open Food Facts e lo scarico di GialloZafferano ci girano sopra: messo fra gli
+    extra ripeterebbe la storia di `anthropic`, e morirebbero su ImportError in
+    produzione."""
     progetto = tomllib.loads(PYPROJECT.read_text())["project"]
     assert any("httpx" in dep for dep in progetto["dependencies"]), (
         f"{PYPROJECT}: httpx non è fra le dipendenze di base ({progetto['dependencies']!r}): "
-        "il client di OpenRouter non parte."
+        "Open Food Facts e lo scarico delle ricette non partono."
     )
 
 
-def test_anthropic_non_e_piu_una_dipendenza_di_nessun_tipo():
-    contenuto = PYPROJECT.read_text()
-    assert "anthropic" not in contenuto, (
-        f"{PYPROJECT}: `anthropic` è tornata. Il fornitore è OpenRouter, e un secondo "
-        "client che nessuno esercita è il difetto in cima a CLAUDE.md."
+def test_anthropic_e_una_dipendenza_di_base_fissata():
+    """Il client dell'LLM dell'import: di base, perché da extra mancò dall'immagine, e
+    fissato, perché una ricostruzione non cambi l'SDK senza che nessuno lo decida."""
+    progetto = tomllib.loads(PYPROJECT.read_text())["project"]
+    assert any(dep.startswith("anthropic==") for dep in progetto["dependencies"]), (
+        f"{PYPROJECT}: manca `anthropic==…` fra le dipendenze di base "
+        f"({progetto['dependencies']!r}): l'LLM dell'import non parte."
     )
-    extra = tomllib.loads(contenuto)["project"].get("optional-dependencies", {})
+    extra = progetto.get("optional-dependencies", {})
+    for nome, voci in extra.items():
+        assert not any("anthropic" in voce for voce in voci), (
+            f"{PYPROJECT}: l'extra `{nome}` nomina `anthropic` ({voci!r}): sta fra le "
+            "dipendenze di base, e solo lì."
+        )
     assert "ai" not in extra, f"{PYPROJECT}: l'extra `ai` è tornato ({extra.keys()!r})"
 
 

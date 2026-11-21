@@ -108,7 +108,7 @@ async def test_senza_chiave_configurata_dice_quante_ne_restano(
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         db_session.add(Unit(key="costa"))
         await db_session.flush()

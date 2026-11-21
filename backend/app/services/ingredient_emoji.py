@@ -24,7 +24,7 @@ import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,7 +110,7 @@ async def _pending(session: AsyncSession) -> int:
 
 async def decide_ingredient_emoji(
     session: AsyncSession,
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     batch_size: int = EMOJI_BATCH,
     after_batch: Callable[[], Awaitable[None]] | None = None,
 ) -> EmojiRun:
@@ -144,7 +144,6 @@ async def decide_ingredient_emoji(
                 system=EMOJI_SYSTEM_PROMPT,
                 user=json.dumps(question, ensure_ascii=False),
                 schema=EMOJI_SCHEMA,
-                schema_name="figure_ingredienti",
                 max_tokens=EMOJI_MAX_TOKENS,
                 client=client,
             )

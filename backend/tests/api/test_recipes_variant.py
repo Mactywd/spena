@@ -276,7 +276,7 @@ async def test_l_ai_che_non_risponde_e_un_503(logged_client, monkeypatch, origin
     import app.api.recipes as rotte
 
     async def giu(*_args):
-        raise LlmUnavailable("OPENROUTER_API_KEY non configurata")
+        raise LlmUnavailable("ANTHROPIC_API_KEY non configurata")
 
     monkeypatch.setattr(rotte, "draft_variant", giu)
     risposta = await logged_client.post(

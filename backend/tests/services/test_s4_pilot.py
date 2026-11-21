@@ -25,7 +25,7 @@ from app.services.s4_pilot import (
     score,
     spend_line,
 )
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, user_of
 
 ALIMENTI = [
     CiqualRow("90001", "Tomate, crue", "légumes", {"kcal": 18.0}),
@@ -39,7 +39,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -95,7 +95,7 @@ async def test_il_verdetto_di_ogni_caso(db_session):
         ("nduja", Verdict.REVIEW),
     ]
     assert (esiti[0].code, esiti[0].name) == ("90001", "Tomate, crue")
-    chiesti = json.loads(finto.bodies[0]["messages"][1]["content"])["ingredienti"]
+    chiesti = json.loads(user_of(finto.bodies[0]))["ingredienti"]
     assert [voce["nome"] for voce in chiesti] == ["pomodoro", "burro", "riso"]
     assert score(esiti) == (1, 3)
 

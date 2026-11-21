@@ -28,7 +28,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,7 +160,7 @@ def _same_name(answer: dict, name: str) -> bool:
 async def _ask_terms(
     session: AsyncSession,
     chunk: Sequence[NameToMatch],
-    client: httpx.AsyncClient | None,
+    client: AsyncAnthropic | None,
     spend: Spend | None,
 ) -> tuple[dict[str, list[str]], int]:
     asked = dict(enumerate(chunk, start=1))
@@ -175,7 +175,6 @@ async def _ask_terms(
         system=TERMS_SYSTEM_PROMPT,
         user=json.dumps(question, ensure_ascii=False),
         schema=TERMS_SCHEMA,
-        schema_name="termini_ciqual",
         max_tokens=TERMS_MAX_TOKENS,
         client=client,
         spend=spend,
@@ -204,7 +203,7 @@ async def _ask_terms(
 async def _ask_choices(
     session: AsyncSession,
     group: Sequence[tuple[NameToMatch, list[Candidate]]],
-    client: httpx.AsyncClient | None,
+    client: AsyncAnthropic | None,
     spend: Spend | None,
 ) -> tuple[dict[str, Matched], int]:
     asked = dict(enumerate(group, start=1))
@@ -226,7 +225,6 @@ async def _ask_choices(
         system=CHOICE_SYSTEM_PROMPT,
         user=json.dumps(question, ensure_ascii=False),
         schema=CHOICE_SCHEMA,
-        schema_name="scelte_ciqual",
         max_tokens=CHOICE_MAX_TOKENS,
         client=client,
         spend=spend,
@@ -254,7 +252,7 @@ async def _ask_choices(
 async def match_names(
     session: AsyncSession,
     names: Sequence[NameToMatch],
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     spend: Spend | None = None,
 ) -> MatchBatch:
     """Abbina i nomi, a lotti, senza scrivere niente. Al primo guasto dell'AI si ferma e
@@ -320,7 +318,7 @@ async def count_pending(session: AsyncSession) -> int:
 
 async def decide_ciqual(
     session: AsyncSession,
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     limit: int | None = None,
     after_batch: Callable[[], Awaitable[None]] | None = None,
     batch_size: int = TERMS_BATCH,

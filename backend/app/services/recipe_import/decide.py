@@ -24,7 +24,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,8 +37,8 @@ from app.services.llm import (
     LlmCallSite,
     LlmUnavailable,
     LlmUsage,
-    build_headers,
     complete_json,
+    ensure_llm_configured,
     open_client,
 )
 
@@ -171,7 +171,7 @@ async def decide_one(
     session: AsyncSession,
     term: ImportTerm,
     registry: Registry,
-    client: object | None = None,
+    client: AsyncAnthropic | None = None,
 ) -> TermAnswer:
     """Una decisione verificata per questo termine, o `None` se non è verificabile.
 
@@ -190,7 +190,6 @@ async def decide_one(
         system=TERM_SYSTEM_PROMPT,
         user=_question(term, registry),
         schema=TERM_SCHEMA,
-        schema_name="decisione_termine",
         max_tokens=TERM_MAX_TOKENS,
         client=client,
     )
@@ -306,7 +305,7 @@ async def collapse_creates(
     session: AsyncSession,
     proposals: list[TermDecisionProposal],
     registry: Registry,
-    client: object | None = None,
+    client: AsyncAnthropic | None = None,
 ) -> tuple[list[TermDecisionProposal], Spesa | None]:
     """Unisce i `create` che sono lo stesso ingrediente. Non scrive niente.
 
@@ -363,7 +362,6 @@ async def collapse_creates(
             system=COLLAPSE_SYSTEM_PROMPT,
             user=question,
             schema=COLLAPSE_SCHEMA,
-            schema_name="collasso_ingredienti",
             max_tokens=COLLAPSE_MAX_TOKENS,
             client=client,
         )
@@ -453,7 +451,7 @@ class Decided:
 
 
 async def decide_terms(
-    session: AsyncSession, terms: list[ImportTerm], client: object | None = None
+    session: AsyncSession, terms: list[ImportTerm], client: AsyncAnthropic | None = None
 ) -> Decided:
     """Decide i termini in attesa e applica: fan-out, collasso, fan-in.
 
@@ -476,7 +474,7 @@ async def decide_terms(
 
     # senza chiave si esce prima di aprire qualunque cosa: è la configurazione, non
     # un intoppo, e N fallimenti identici non sono più informativi di uno
-    build_headers()
+    ensure_llm_configured()
 
     registry = await load_registry(session)
     # `max(1, ...)`: `LLM_MAX_CONCURRENCY` si scrive in `.env`, e a 0 (o negativo) il
@@ -491,7 +489,7 @@ async def decide_terms(
     # modulo, cioè che il fan-out non scrive.
     spese: list[Spesa] = []
 
-    async def ask(term: ImportTerm, api: object) -> TermDecisionProposal | None:
+    async def ask(term: ImportTerm, api: AsyncAnthropic) -> TermDecisionProposal | None:
         async with semaphore:
             try:
                 answer = await decide_one(session, term, registry, client=api)
@@ -541,7 +539,7 @@ async def decide_terms(
             spese.append(spesa_collasso)
     finally:
         if owned:
-            await api.aclose()
+            await api.close()
 
     # Prima riga della passata sequenziale: lo storico della spesa si scrive comunque,
     # anche se nessuna decisione risulterà applicabile. Le chiamate sono avvenute e

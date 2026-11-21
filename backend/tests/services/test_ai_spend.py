@@ -22,7 +22,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -30,7 +30,7 @@ def chiave(monkeypatch):
 async def _chiama(db_session, finto, spesa):
     return await complete_recorded(
         db_session, call_site=LlmCallSite.CIQUAL_TERMS, system="s", user="u",
-        schema=SCHEMA, schema_name="prova", max_tokens=10, client=finto, spend=spesa,
+        schema=SCHEMA, max_tokens=10, client=finto, spend=spesa,
     )
 
 

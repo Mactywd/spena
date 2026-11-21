@@ -49,7 +49,7 @@ async def test_senza_chiave_il_pilota_non_si_fa_e_lo_dice(db_session, tmp_path, 
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         await upsert_foods(db_session, [CiqualRow("90001", "Tomate, crue", "légumes", {"kcal": 18.0})])
         monkeypatch.setattr(comando, "SessionLocal", lambda: _SessioneFinta(db_session))
@@ -59,7 +59,7 @@ async def test_senza_chiave_il_pilota_non_si_fa_e_lo_dice(db_session, tmp_path, 
         stampato = capsys.readouterr().out
         assert (
             "il pilota non si è potuto fare: l'AI non ha risposto "
-            "(OPENROUTER_API_KEY non configurata)." in stampato
+            "(ANTHROPIC_API_KEY non configurata)." in stampato
         )
         assert "Spesa del pilota: 0,0000 $ in 1 chiamata, 1 senza costo dichiarato." in stampato
     finally:

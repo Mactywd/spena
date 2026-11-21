@@ -5,7 +5,7 @@ dall'AI da rivedere, e lo stack e2e non ne ha: il seme porta anagrafica e ricett
 termini dell'import. Questo file le fa nascere **dal codice vero** — `decide_terms`, la
 stessa funzione che risponde al bottone «Riprova con l'AI» — e l'unica cosa finta è il
 modello: `ScriptedLlm` di `llm_fakes.py`, lo stesso finto della suite, che sostituisce
-`httpx.AsyncClient` e lascia girare per intero `complete_json`, la verifica contro
+il trasporto HTTP del client vero e lascia girare per intero `complete_json`, la verifica contro
 l'anagrafica, l'alias e il `decided_by = "ai"`. Nessuna chiamata di rete: la chiave qui
 sotto è finta di proposito (sullo stack e2e quella vera è comunque vuota, vedi
 `.env.e2e`), così nemmeno un errore di questo file potrebbe spendere qualcosa.
@@ -37,7 +37,7 @@ if os.environ.get("SPENA_E2E") != "1":
     )
 
 # prima di qualunque import di `app`: `get_settings` è in cache al primo uso
-os.environ["OPENROUTER_API_KEY"] = "chiave-finta-e2e"
+os.environ["ANTHROPIC_API_KEY"] = "chiave-finta-e2e"
 
 import asyncio  # noqa: E402
 import json  # noqa: E402

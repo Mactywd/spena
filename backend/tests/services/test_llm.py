@@ -1,24 +1,40 @@
-"""Il client di OpenRouter: la richiesta che costruisce e i modi in cui degrada.
+"""Il client di Anthropic: la richiesta che costruisce, la risposta che legge, i guasti.
 
-`respx` intercetta httpx senza rete: è già fra le dipendenze `dev`. I test sulla
-**forma della richiesta** sono quelli che contano di più — sono l'unico posto in cui
-si dimostra che gli header di attribuzione, lo schema stretto e l'instradamento per
-prezzo arrivano davvero a OpenRouter. Nessun test che inietta un client finto potrebbe
-vederlo.
+Il trasporto HTTP è un `httpx2.MockTransport`, e nient'altro è finto: il client è un
+`AsyncAnthropic` con le opzioni di produzione (`client_options`), quindi l'SDK vero
+costruisce la richiesta, legge la risposta e solleva le sue eccezioni. I test sulla
+**forma della richiesta** sono quelli che contano di più: sono l'unico posto in cui si
+dimostra che modello, schema, profilo e chiave arrivano davvero all'API.
+
+I tentativi sono dell'SDK: dove un test parla di tentativi usa le opzioni vere, senza
+toccare `max_retries`; altrove un finto (`max_retries=0`), così la suite non aspetta.
 """
 
 import json
 
-import httpx
+import httpx2
 import pytest
-import respx
+from anthropic import AsyncAnthropic, DefaultAsyncHttpxClient
 
 from app.core.config import get_settings
 from app.services.ai_recipes import DRAFT_SCHEMA
-from app.services.llm import LlmCallSite, LlmUnavailable, complete_json
+from app.services.llm import (
+    CLASSIFY,
+    LLM_FAILURE_NOTICES,
+    TERMINAL_LLM_FAILURES,
+    CallProfile,
+    LlmCallSite,
+    LlmFailureKind,
+    LlmUnavailable,
+    LlmUsage,
+    client_options,
+    complete_json,
+    open_client,
+)
 from app.services.recipe_import.decide import COLLAPSE_SCHEMA, TERM_SCHEMA
+from llm_fakes import FakeLlm, errore_api, messaggio
 
-URL = "https://openrouter.ai/api/v1/chat/completions"
+CHIAVE = "chiave-finta-per-i-test"
 
 SCHEMA = {
     "type": "object",
@@ -28,216 +44,307 @@ SCHEMA = {
 }
 
 
-def risposta(contenuto: dict) -> httpx.Response:
-    return httpx.Response(
-        200, json={"choices": [{"message": {"content": json.dumps(contenuto)}}]}
-    )
-
-
 @pytest.fixture
 def con_chiave(monkeypatch):
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
-    monkeypatch.setenv("OPENROUTER_APP_URL", "https://esempio.invalid")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CHIAVE)
     yield
     get_settings.cache_clear()
 
 
-async def test_la_risposta_porta_il_consumo_dichiarato_da_openrouter(con_chiave):
-    """`usage` arriva su ogni risposta ed è il solo costo esatto che esista.
+class Registro:
+    """Un trasporto che registra le richieste e risponde con quel che gli si dà."""
 
-    Stimarlo da token e listino sbaglia: i provider hanno prezzi diversi, la cache ha
-    una voce sua, e `sort: "price"` può cambiare provider fra una chiamata e l'altra.
-    Questo numero è quello che ci viene addebitato davvero.
-    """
-    corpo = {
-        "id": "gen-abc123",
-        "model": "google/gemma-4-26b-a4b-it",
-        "choices": [{"message": {"content": json.dumps({"esito": "va bene"})}}],
-        "usage": {"prompt_tokens": 3100, "completion_tokens": 35, "cost": 0.000123},
-    }
-    async with respx.mock:
-        respx.post(URL).mock(return_value=httpx.Response(200, json=corpo))
-        esito = await complete_json(
-            call_site=LlmCallSite.TERM_DECISION,
-            system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
+    def __init__(self, *risposte: object) -> None:
+        self._risposte = list(risposte)
+        self.richieste: list[httpx2.Request] = []
+
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
+        self.richieste.append(request)
+        risposta = self._risposte.pop(0) if self._risposte else messaggio('{"esito": "ok"}')
+        if isinstance(risposta, Exception):
+            raise risposta
+        if isinstance(risposta, httpx2.Response):
+            return risposta
+        return httpx2.Response(200, json=risposta)
+
+
+def client_vero(registro: Registro) -> AsyncAnthropic:
+    """Il client con le opzioni di produzione, tentativi compresi: cambia il trasporto."""
+    return AsyncAnthropic(
+        **client_options(
+            http_client=DefaultAsyncHttpxClient(transport=httpx2.MockTransport(registro))
         )
-
-    assert esito.data == {"esito": "va bene"}
-    assert esito.usage.cost_usd == 0.000123
-    assert esito.usage.prompt_tokens == 3100
-    assert esito.usage.completion_tokens == 35
-    assert esito.usage.generation_id == "gen-abc123"
-    assert esito.usage.model == "google/gemma-4-26b-a4b-it"
+    )
 
 
-async def test_una_risposta_valida_torna_il_dizionario(con_chiave):
-    async with respx.mock:
-        respx.post(URL).mock(return_value=risposta({"esito": "va bene"}))
-        esito = await complete_json(
-            call_site=LlmCallSite.TERM_DECISION,
-            system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-        )
-    assert esito.data == {"esito": "va bene"}
+async def chiedi(client, **altro):
+    return await complete_json(
+        call_site=LlmCallSite.TERM_DECISION,
+        system="s",
+        user="u",
+        schema=SCHEMA,
+        max_tokens=100,
+        client=client,
+        **altro,
+    )
 
 
-async def test_un_corpo_senza_usage_lascia_il_costo_sconosciuto(con_chiave):
-    """Zero sarebbe un'affermazione: «gratis». Sconosciuto è quel che sappiamo.
+async def test_la_richiesta_e_quella_dell_api_messages(con_chiave):
+    registro = Registro()
+    await chiedi(client_vero(registro))
 
-    `risposta()` costruisce il corpo minimo, senza `usage` — cioè proprio il caso di
-    una risposta malformata o di un percorso che non lo dichiara. La chiamata è
-    avvenuta e va registrata; a mancare sono solo i numeri.
-    """
-    async with respx.mock:
-        respx.post(URL).mock(return_value=risposta({"esito": "va bene"}))
-        esito = await complete_json(
-            call_site=LlmCallSite.TERM_DECISION,
-            system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-        )
-    assert esito.data == {"esito": "va bene"}
-    assert esito.usage.cost_usd is None
-    assert esito.usage.prompt_tokens is None
-
-
-async def test_la_richiesta_porta_attribuzione_schema_e_instradamento(con_chiave):
-    async with respx.mock:
-        route = respx.post(URL).mock(return_value=risposta({"esito": "ok"}))
-        await complete_json(
-            call_site=LlmCallSite.TERM_DECISION,
-            system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-        )
-
-    richiesta = route.calls.last.request
-    assert richiesta.headers["authorization"] == "Bearer chiave-finta"
-    assert richiesta.headers["x-title"] == "Spena Import Ricette"
-    assert richiesta.headers["http-referer"] == "https://esempio.invalid"
-
+    (richiesta,) = registro.richieste
+    assert str(richiesta.url) == "https://api.anthropic.com/v1/messages"
     corpo = json.loads(richiesta.content)
-    assert corpo["model"] == "google/gemma-4-26b-a4b-it"
-    formato = corpo["response_format"]
-    assert formato["type"] == "json_schema"
-    assert formato["json_schema"]["strict"] is True
-    assert formato["json_schema"]["name"] == "prova"
-    assert formato["json_schema"]["schema"] == SCHEMA
-    # require_parameters è la riga che porta il peso: quattro degli undici endpoint di
-    # questo modello non supportano structured_outputs, e uno di quelli è il secondo
-    # più economico. Senza il flag, l'ordinamento per prezzo ci manda addosso.
-    assert corpo["provider"] == {"sort": "price", "require_parameters": True}
-    # allow_fallbacks non si manda: il suo default `true` è la ragione per cui non
-    # pinniamo un provider, e scriverlo esplicitamente inviterebbe a cambiarlo
-    assert "allow_fallbacks" not in corpo["provider"]
+    assert corpo["model"] == "claude-haiku-5-5"
+    assert corpo["max_tokens"] == 100
+    assert corpo["system"] == [{"type": "text", "text": "s"}]
+    assert corpo["messages"] == [{"role": "user", "content": "u"}]
+    assert corpo["thinking"] == {"type": "disabled"}
+    assert corpo["output_config"] == {
+        "effort": "low",
+        "format": {"type": "json_schema", "schema": SCHEMA},
+    }
+    for assente in ("temperature", "top_p", "top_k", "response_format", "provider"):
+        assert assente not in corpo
+    # le due forme documentate della chiave: l'SDK 1.x usa `x-api-key`, il 2.x
+    # `Authorization: Bearer`; nessun'altra
+    assert (
+        richiesta.headers.get("x-api-key") == CHIAVE
+        or richiesta.headers.get("authorization") == f"Bearer {CHIAVE}"
+    )
 
 
-async def test_app_url_vuota_omette_lheader_invece_di_mandarlo_vuoto(monkeypatch):
-    get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
-    monkeypatch.setenv("OPENROUTER_APP_URL", "")
-    try:
-        async with respx.mock:
-            route = respx.post(URL).mock(return_value=risposta({"esito": "ok"}))
-            await complete_json(
-                call_site=LlmCallSite.TERM_DECISION,
-                system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-            )
-        assert "http-referer" not in route.calls.last.request.headers
-    finally:
-        get_settings.cache_clear()
+async def test_con_la_cache_il_sistema_porta_il_segno(con_chiave):
+    registro = Registro()
+    await chiedi(client_vero(registro), cache_system=True)
+    corpo = json.loads(registro.richieste[0].content)
+    assert corpo["system"][0]["cache_control"] == {"type": "ephemeral"}
 
 
-async def test_provider_only_valorizzata_pinna_e_non_ordina(monkeypatch):
-    get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
-    monkeypatch.setenv("OPENROUTER_PROVIDER_ONLY", "darkbloom, deepinfra")
-    try:
-        async with respx.mock:
-            route = respx.post(URL).mock(return_value=risposta({"esito": "ok"}))
-            await complete_json(
-                call_site=LlmCallSite.TERM_DECISION,
-                system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-            )
-        corpo = json.loads(route.calls.last.request.content)
-        assert corpo["provider"] == {
-            "only": ["darkbloom", "deepinfra"], "require_parameters": True
-        }
-    finally:
-        get_settings.cache_clear()
+async def test_un_profilo_che_pensa(con_chiave):
+    registro = Registro()
+    await chiedi(client_vero(registro), profile=CallProfile(thinking=True, effort="low"))
+    corpo = json.loads(registro.richieste[0].content)
+    assert corpo["thinking"] == {"type": "adaptive"}
 
 
-async def test_senza_chiave_non_parte_nessuna_richiesta(monkeypatch):
+async def test_il_profilo_porta_il_suo_tempo(con_chiave):
+    profilo = CallProfile(thinking=True, effort="low", timeout_seconds=50.0, max_retries=0)
+
+    registro = Registro()
+    await chiedi(client_vero(registro), profile=profilo)
+    assert registro.richieste[0].extensions["timeout"]["read"] == 50.0
+
+    # max_retries=0 del profilo: un 529 non si ritenta
+    registro = Registro(errore_api(529, "overloaded_error"))
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(client_vero(registro), profile=profilo)
+    assert preso.value.kind == LlmFailureKind.TRANSIENT
+    assert len(registro.richieste) == 1
+
+    registro = Registro()
+    await chiedi(client_vero(registro), profile=CLASSIFY)
+    assert registro.richieste[0].extensions["timeout"]["read"] == 45.0
+
+
+async def test_la_risposta_porta_uso_e_costo(con_chiave):
+    uso = {
+        "input_tokens": 200,
+        "cache_read_input_tokens": 8000,
+        "cache_creation_input_tokens": 0,
+        "output_tokens": 30,
+    }
+    esito = await chiedi(FakeLlm(messaggio('{"esito": "ok"}', usage=uso)))
+
+    assert esito.data == {"esito": "ok"}
+    assert esito.call_site == LlmCallSite.TERM_DECISION
+    assert esito.usage == LlmUsage(
+        generation_id="gen-finta",
+        model="claude-haiku-5-5",
+        prompt_tokens=8200,
+        completion_tokens=30,
+        cost_usd=pytest.approx(0.000115),
+        cache_read_tokens=8000,
+        cache_write_tokens=0,
+    )
+
+
+async def test_si_legge_il_blocco_di_testo_non_il_primo(con_chiave):
+    contenuto = [
+        {"type": "thinking", "thinking": "", "signature": "firma-finta"},
+        {"type": "text", "text": '{"esito": "ok"}'},
+    ]
+    esito = await chiedi(FakeLlm(messaggio("", content=contenuto)))
+    assert esito.data == {"esito": "ok"}
+
+
+async def test_l_ambiente_non_sceglie_indirizzo_ne_credenziale(con_chiave, monkeypatch):
+    """Le shell degli agenti hanno ANTHROPIC_BASE_URL: l'indirizzo e la chiave sono
+    espliciti, e l'ambiente non li sceglie."""
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token-dell-ambiente")
+    registro = Registro()
+    await chiedi(client_vero(registro))
+
+    (richiesta,) = registro.richieste
+    assert richiesta.url.host == "api.anthropic.com"
+    assert not [v for v in richiesta.headers.values() if "token-dell-ambiente" in v]
+
+
+async def test_senza_chiave_nessuna_richiesta(monkeypatch):
     """La degradazione dichiarata, e prima della rete: non si spreca un giro."""
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    registro = Registro()
+    trasporto = DefaultAsyncHttpxClient(transport=httpx2.MockTransport(registro))
+    # un client costruito a mano, con una chiave qualunque: l'assenza è nelle impostazioni
+    client = AsyncAnthropic(api_key="x", http_client=trasporto, max_retries=0)
     try:
-        async with respx.mock:
-            route = respx.post(URL).mock(return_value=risposta({"esito": "ok"}))
-            with pytest.raises(LlmUnavailable, match="OPENROUTER_API_KEY"):
-                await complete_json(
-                    call_site=LlmCallSite.TERM_DECISION,
-                    system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-                )
-            assert route.call_count == 0
+        with pytest.raises(LlmUnavailable) as preso:
+            await chiedi(client)
     finally:
         get_settings.cache_clear()
+    assert preso.value.kind == LlmFailureKind.NOT_CONFIGURED
+    assert str(preso.value) == "ANTHROPIC_API_KEY non configurata"
+    assert registro.richieste == []
 
 
-@pytest.mark.parametrize("codice", [400, 402, 429, 500, 503])
-async def test_ogni_codice_derrore_diventa_llm_unavailable(con_chiave, codice):
-    async with respx.mock:
-        respx.post(URL).mock(return_value=httpx.Response(codice, text="no"))
-        with pytest.raises(LlmUnavailable, match=str(codice)):
-            await complete_json(
-                call_site=LlmCallSite.TERM_DECISION,
-                system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-            )
+@pytest.mark.parametrize(
+    ("status", "tipo", "messaggio_api", "atteso"),
+    [
+        (401, "authentication_error", "errore finto", LlmFailureKind.AUTH),
+        (403, "permission_error", "errore finto", LlmFailureKind.AUTH),
+        (402, "billing_error", "errore finto", LlmFailureKind.CREDIT),
+        (
+            400,
+            "invalid_request_error",
+            "Your credit balance is too low to access the Anthropic API.",
+            LlmFailureKind.CREDIT,
+        ),
+        (429, "rate_limit_error", "errore finto", LlmFailureKind.RATE_LIMIT),
+        (
+            400,
+            "invalid_request_error",
+            "output_config.format.schema: invalid",
+            LlmFailureKind.REJECTED,
+        ),
+        (404, "not_found_error", "errore finto", LlmFailureKind.REJECTED),
+        (500, "api_error", "errore finto", LlmFailureKind.TRANSIENT),
+        (529, "overloaded_error", "errore finto", LlmFailureKind.TRANSIENT),
+    ],
+)
+async def test_i_guasti_http(con_chiave, status, tipo, messaggio_api, atteso):
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(FakeLlm(errore_api(status, tipo, messaggio_api)))
+
+    exc = preso.value
+    assert exc.kind == atteso
+    assert exc.usage == LlmUsage()
+    assert exc.terminal is (atteso in {
+        LlmFailureKind.AUTH,
+        LlmFailureKind.CREDIT,
+        LlmFailureKind.RATE_LIMIT,
+        LlmFailureKind.REJECTED,
+    })
+    assert exc.notice == LLM_FAILURE_NOTICES[atteso]
+    assert str(exc).startswith(LLM_FAILURE_NOTICES[atteso])
+    assert f"HTTP {status}" in str(exc)
 
 
-async def test_un_corpo_senza_choices_diventa_llm_unavailable(con_chiave):
-    async with respx.mock:
-        respx.post(URL).mock(return_value=httpx.Response(200, json={"error": "boh"}))
-        with pytest.raises(LlmUnavailable):
-            await complete_json(
-                call_site=LlmCallSite.TERM_DECISION,
-                system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-            )
+@pytest.mark.parametrize(
+    "guasto",
+    [httpx2.ConnectError("rete giù"), httpx2.ReadTimeout("troppo lento")],
+    ids=["ConnectError", "ReadTimeout"],
+)
+async def test_rete_e_tempo_sono_passeggeri(con_chiave, guasto):
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(FakeLlm(guasto))
+    assert preso.value.kind == LlmFailureKind.TRANSIENT
+    assert not preso.value.terminal
 
 
-async def test_un_contenuto_non_json_diventa_llm_unavailable(con_chiave):
-    """Con lo schema stretto non dovrebbe capitare, e se capita non deve esplodere."""
-    async with respx.mock:
-        respx.post(URL).mock(
-            return_value=httpx.Response(
-                200, json={"choices": [{"message": {"content": "mi dispiace, ma"}}]}
-            )
-        )
-        with pytest.raises(LlmUnavailable):
-            await complete_json(
-                call_site=LlmCallSite.TERM_DECISION,
-                system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-            )
+async def test_una_risposta_tagliata_porta_l_uso(con_chiave):
+    uso = {"input_tokens": 300, "output_tokens": 300,
+           "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(FakeLlm(messaggio('{"esito": "o', stop_reason="max_tokens", usage=uso)))
+    exc = preso.value
+    assert exc.kind == LlmFailureKind.TRUNCATED
+    assert exc.usage.completion_tokens == 300
+    assert exc.usage.cost_usd is not None
+    assert "stop_reason max_tokens" in str(exc)
 
 
-async def test_un_json_che_non_e_un_oggetto_diventa_llm_unavailable(con_chiave):
-    async with respx.mock:
-        respx.post(URL).mock(
-            return_value=httpx.Response(
-                200, json={"choices": [{"message": {"content": "[1, 2, 3]"}}]}
-            )
-        )
-        with pytest.raises(LlmUnavailable, match="oggetto JSON"):
-            await complete_json(
-                call_site=LlmCallSite.TERM_DECISION,
-                system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-            )
+async def test_un_rifiuto_porta_l_uso(con_chiave):
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(FakeLlm(messaggio("", stop_reason="refusal")))
+    exc = preso.value
+    assert exc.kind == LlmFailureKind.REFUSAL
+    assert exc.usage.completion_tokens == 20
+    assert exc.usage.cost_usd is not None
 
 
-async def test_un_timeout_diventa_llm_unavailable(con_chiave):
-    async with respx.mock:
-        respx.post(URL).mock(side_effect=httpx.ReadTimeout("troppo lento"))
-        with pytest.raises(LlmUnavailable):
-            await complete_json(
-                call_site=LlmCallSite.TERM_DECISION,
-                system="s", user="u", schema=SCHEMA, schema_name="prova", max_tokens=100
-            )
+@pytest.mark.parametrize(
+    "risposta",
+    [
+        messaggio("mi dispiace, ma"),
+        messaggio("[1]"),
+        messaggio("", content=[]),
+    ],
+    ids=["non-json", "non-un-oggetto", "nessun-blocco-di-testo"],
+)
+async def test_le_risposte_inutilizzabili(con_chiave, risposta):
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(FakeLlm(risposta))
+    exc = preso.value
+    assert exc.kind == LlmFailureKind.INVALID
+    assert exc.usage.completion_tokens == 20
+    assert exc.usage.cost_usd is not None
+
+
+async def test_i_tentativi_sono_dell_sdk(con_chiave):
+    """Le opzioni vere: due 529 e poi la risposta. Aspetta le pause dell'SDK."""
+    registro = Registro(
+        errore_api(529, "overloaded_error"),
+        errore_api(529, "overloaded_error"),
+        messaggio('{"esito": "ok"}'),
+    )
+    esito = await chiedi(client_vero(registro))
+    assert esito.data == {"esito": "ok"}
+    assert len(registro.richieste) == 3
+
+
+async def test_open_client_senza_chiave(monkeypatch):
+    get_settings.cache_clear()
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    try:
+        with pytest.raises(LlmUnavailable) as preso:
+            open_client()
+    finally:
+        get_settings.cache_clear()
+    assert preso.value.kind == LlmFailureKind.NOT_CONFIGURED
+
+
+async def test_open_client_con_la_chiave(con_chiave):
+    client = open_client()
+    try:
+        assert isinstance(client, AsyncAnthropic)
+        assert str(client.base_url).startswith("https://api.anthropic.com")
+    finally:
+        await client.close()
+
+
+def test_i_tipi_terminali():
+    assert TERMINAL_LLM_FAILURES == {
+        LlmFailureKind.NOT_CONFIGURED,
+        LlmFailureKind.AUTH,
+        LlmFailureKind.CREDIT,
+        LlmFailureKind.RATE_LIMIT,
+        LlmFailureKind.REJECTED,
+    }
+    assert set(LLM_FAILURE_NOTICES) == set(LlmFailureKind)
 
 
 def _sotto_oggetti(schema: dict):

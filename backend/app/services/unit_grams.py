@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Literal
 
-import httpx
+from anthropic import AsyncAnthropic
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -353,7 +353,7 @@ def _same_text(answer: dict, field: str, expected: str) -> bool:
 async def ask_grams(
     session: AsyncSession,
     questions: Sequence[PairQuestion],
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     spend: Spend | None = None,
 ) -> tuple[dict[int, Decimal | None], int]:
     """I pesi delle coppie chieste, per indice (da 0), e quante risposte si sono rifiutate.
@@ -371,7 +371,6 @@ async def ask_grams(
         system=GRAMS_SYSTEM_PROMPT,
         user=json.dumps(question, ensure_ascii=False),
         schema=GRAMS_SCHEMA,
-        schema_name="grammi_unita",
         max_tokens=GRAMS_MAX_TOKENS,
         client=client,
         spend=spend,
@@ -417,7 +416,7 @@ class GramsRun:
 
 async def decide_grams(
     session: AsyncSession,
-    client: httpx.AsyncClient | None = None,
+    client: AsyncAnthropic | None = None,
     limit: int | None = None,
     after_batch: Callable[[], Awaitable[None]] | None = None,
     batch_size: int = GRAMS_BATCH,

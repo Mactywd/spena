@@ -48,7 +48,7 @@ async def test_senza_chiave_dice_quanti_ne_restano_e_non_scrive(db_session, monk
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         carota = Ingredient(name="carota", display_name="Carota", category="verdura")
         db_session.add(carota)

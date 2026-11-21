@@ -87,7 +87,7 @@ async def test_la_stesura_ai_usa_questa_funzione(db_session, anagrafica, monkeyp
     monkeypatch.setattr(ai_recipes, "match_name", spia)
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     try:
         finto = FakeLlm({
             "title": "Pasta al pomodoro",

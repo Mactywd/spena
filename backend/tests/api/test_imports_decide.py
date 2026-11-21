@@ -24,7 +24,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -75,7 +75,7 @@ async def test_senza_chiave_risponde_503_e_dice_che_la_coda_funziona(
     await db_session.flush()
 
     get_settings.cache_clear()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     try:
         response = await logged_client.post("/api/v1/imports/terms/decide", json={})
         assert response.status_code == 503

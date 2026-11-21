@@ -1,7 +1,6 @@
 import uuid
-from types import SimpleNamespace
 
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, system_of
 
 import app.services.llm as llm
 from app.db.models.ingredient import Ingredient, IngredientCategory
@@ -117,15 +116,15 @@ BOZZA = {
 
 
 def _trasporto_finto(monkeypatch, *risposte) -> FakeLlm:
-    """Sostituisce il trasporto HTTP solo dentro `app.services.llm`: la rotta, la
-    sessione e `complete_json` sono quelli veri. Non si tocca `httpx.AsyncClient` nel
-    modulo `httpx`, che è lo stesso nome del client di prova di `conftest.py`."""
+    """Il client che `app.services.llm` apre da sé è il finto, cioè il client vero con il
+    trasporto HTTP sostituito: la rotta, la sessione e `complete_json` sono quelli veri.
+    La chiave prima del finto, che costruisce le sue opzioni da `client_options`."""
     from app.core.config import get_settings
 
-    finto = FakeLlm(*risposte)
-    monkeypatch.setattr(llm, "httpx", SimpleNamespace(AsyncClient=lambda **_: finto))
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     get_settings.cache_clear()
+    finto = FakeLlm(*risposte)
+    monkeypatch.setattr(llm, "open_client", lambda: finto)
     return finto
 
 
@@ -134,7 +133,7 @@ async def test_la_rotta_della_bozza_manda_gli_utensili_scritti_dalla_rotta(logge
     finto = _trasporto_finto(monkeypatch, BOZZA)
     risposta = await logged_client.post("/api/v1/recipes/ai-draft", json={"prompt": "una frittata"})
     assert risposta.status_code == 200
-    sistema = finto.bodies[0]["messages"][0]["content"]
+    sistema = system_of(finto.bodies[0])
     assert "\n- frusta elettrica\n" in sistema
     assert sistema.startswith(SYSTEM_PROMPT)
 
@@ -154,6 +153,6 @@ async def test_la_rotta_della_variante_manda_gli_utensili(logged_client, db_sess
         f"/api/v1/recipes/{ricetta.id}/ai-variant", json={"prompt": "senza forno"}
     )
     assert risposta.status_code == 200
-    sistema = finto.bodies[0]["messages"][0]["content"]
+    sistema = system_of(finto.bodies[0])
     assert "\n- padella antiaderente (da 24 cm)\n" in sistema
     assert sistema.startswith(VARIANT_SYSTEM_PROMPT)

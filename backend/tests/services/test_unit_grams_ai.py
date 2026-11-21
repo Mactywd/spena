@@ -19,7 +19,7 @@ from app.db.models.nutrition import IngredientUnitGrams
 from app.db.models.recipe import RecipeSource
 from app.repositories.recipes import create_recipe
 from app.services.unit_grams import GramsRun, decide_grams, set_grams
-from llm_fakes import FakeLlm
+from llm_fakes import FakeLlm, schema_of, system_of, user_of
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +27,7 @@ def chiave(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENROUTER_API_KEY", "chiave-finta")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
     yield
     get_settings.cache_clear()
 
@@ -86,11 +86,11 @@ async def test_la_domanda_porta_numero_ingrediente_unita_ed_esempio(db_session):
     await decide_grams(db_session, client=finto, limit=1)
 
     corpo = finto.bodies[0]
-    assert json.loads(corpo["messages"][1]["content"]) == {
+    assert json.loads(user_of(corpo)) == {
         "coppie": [{"n": 1, "ingrediente": "aglio", "unita": "spicchio", "esempio": "1 spicchio"}]
     }
-    assert "parte che si mangia" in corpo["messages"][0]["content"]
-    schema = corpo["response_format"]["json_schema"]["schema"]
+    assert "parte che si mangia" in system_of(corpo)
+    schema = schema_of(corpo)
     assert schema["properties"]["pesi"]["items"]["properties"]["grammi"] == {"type": ["number", "null"]}
 
 
@@ -151,9 +151,9 @@ class _LlmMentreUnaManoCorregge(FakeLlm):
         super().__init__(*payloads)
         self._mano = mano
 
-    async def post(self, url, json, headers):  # noqa: A002
+    async def answer(self, body: dict) -> object:
         await self._mano()
-        return await super().post(url, json, headers)
+        return await super().answer(body)
 
 
 async def test_un_peso_a_mano_scritto_mentre_l_ai_risponde_non_si_riscrive(db_session):

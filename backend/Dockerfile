@@ -9,9 +9,10 @@ WORKDIR /app
 # vuole, da un posto solo: `INSTALL_EMBEDDINGS=1` in `.env`, che i file Compose passano
 # qui come argomento di build. Vedi la riga `EMBEDDING_BACKEND` del README.
 #
-# Il client del modello linguistico non ha nessun extra: parla HTTP con `httpx`, che è
-# una dipendenza di base. È la lezione di `anthropic`, che fra gli extra mancava
-# dall'immagine e faceva rispondere «pacchetto non installato» a ogni chiamata.
+# Il client del modello linguistico è l'SDK `anthropic`, dipendenza di base fissata nel
+# `pyproject.toml`: niente extra. È la lezione della prima volta, quando `anthropic`
+# stava fra gli extra e mancava dall'immagine, e la stesura AI rispondeva «pacchetto non
+# installato» a ogni chiamata.
 # Anche l'Agent SDK di Claude è una dipendenza di base, e il suo binario arriva con la
 # ruota di pip: nessun Node nell'immagine.
 ARG INSTALL_EMBEDDINGS=0

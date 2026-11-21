@@ -26,35 +26,21 @@ class Settings(BaseSettings):
     # successiva risponderebbe 401, senza dire perché. In produzione vale true
     # (docker-compose.prod.yml lo impone al servizio).
     cookie_secure: bool = False
-    # OpenRouter è l'unico fornitore di LLM dell'import e dell'AI sulle ricette. Un
-    # secondo fornitore dietro un'interfaccia scelta da una variabile (come
-    # EMBEDDING_BACKEND) non girerebbe mai in produzione, e sarebbe il difetto in cima
-    # a CLAUDE.md. Quel che resta configurabile è il modello: OpenRouter fa da proxy
-    # anche a Claude, quindi passare a un modello grosso è questa riga, non un secondo
-    # client. C'è un secondo percorso, ed è per i Pasti: Claude via Agent SDK, con la chiave
-    # API di Anthropic. Non è il caso che la regola vieta, perché non è una scelta fra due
-    # client per lo stesso lavoro: ogni lavoro ha un solo percorso, che in produzione gira
-    # davvero (la chiave è obbligatoria per la chat, e `check_claude` prova il binario
-    # nello stack).
-    openrouter_api_key: str | None = None
-    openrouter_model: str = "google/gemma-4-26b-a4b-it"
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Identificano l'app nelle classifiche e nei consumi di OpenRouter. Il titolo ha
-    # un default perché è una costante del progetto; l'indirizzo no, perché è il
-    # dominio di chi installa e nel codice non ci sta.
-    openrouter_app_title: str = "Spena Import Ricette"
-    openrouter_app_url: str = ""
-    # Vuota: instradamento per prezzo fra i provider che sanno onorare lo schema.
-    # Valorizzata (lista separata da virgole): scavalco manuale, e si perde il
-    # failover automatico. Vedi `python -m app.cli.llm_prices`.
-    openrouter_provider_only: str = ""
-    # 60 e non i 3 di Open Food Facts: un MoE su una domanda con l'anagrafica intera
-    # dentro è lento, e un timeout troppo corto si presenta come «decidi a mano».
-    llm_timeout_seconds: float = 60.0
+    # L'LLM dell'import e dell'AI sulle ricette: Claude Haiku via l'API Messages di
+    # Anthropic, con la stessa ANTHROPIC_API_KEY dei Pasti (deciso da Mattia il
+    # 2026-11-21). Un client solo, in app/services/llm.py: un secondo fornitore dietro
+    # un interruttore non girerebbe mai in produzione, ed è il difetto in cima a CLAUDE.md.
+    # L'indirizzo dell'API non è un'impostazione: un campo `anthropic_base_url` leggerebbe
+    # ANTHROPIC_BASE_URL dall'ambiente, che le shell degli agenti hanno.
+    llm_model: str = "claude-haiku-5-5"
+    # Per tentativo, e l'SDK ne fa fino a 1 + LLM_MAX_RETRIES (su 429, 5xx, 529 e rete). La
+    # bozza e la variante hanno il loro: passano da Nginx, che aspetta 60 s.
+    llm_timeout_seconds: float = 45.0
+    llm_max_retries: int = 2
     llm_max_concurrency: int = 8
-    # La chiave API di Anthropic: oggi per i Pasti (chat, pianificazione, ricette dei
-    # pasti), domani anche per l'LLM dell'import con Claude Haiku. Vuota o assente: la
-    # chat dice che Claude non è collegato.
+    # La chiave API di Anthropic: per i Pasti (chat, pianificazione, ricette dei pasti) e
+    # per l'LLM dell'import con Claude Haiku. Vuota o assente: la chat dice che Claude non
+    # è collegato, e l'import e l'AI sulle ricette continuano a mano.
     anthropic_api_key: str | None = None
     claude_model: str = "claude-opus-5-5"
     claude_reply_timeout_seconds: float = 240.0

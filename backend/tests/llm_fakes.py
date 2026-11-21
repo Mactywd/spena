@@ -1,60 +1,137 @@
 """I client finti per le chiamate all'LLM. La suite non tocca la rete.
 
-Stanno qui e non in un file di test perché cinque file li usano, e perché
+Stanno qui e non in un file di test perché molti file li usano, e perché
 `backend/tests/` non è un package: importarli da un altro file di test non
 risolverebbe. Questo modulo sì — pytest inserisce `tests/` in `sys.path`, dato che le
 sottocartelle sono package e questa no.
 
-Entrambi i finti sostituiscono `httpx.AsyncClient`, non il client di OpenRouter: il
-codice sotto prova è `complete_json` per intero, header e corpo compresi. Un finto più
-in alto lascerebbe fuori proprio le righe che nessun altro test attraversa.
+I finti **sono il client vero**: un `AsyncAnthropic` costruito con le opzioni di
+produzione (`client_options`, lo stesso posto da cui le prende `open_client`), a cui si
+sostituisce solo il trasporto HTTP. Sotto prova l'SDK costruisce davvero la richiesta,
+la manda, legge la risposta e solleva le sue eccezioni: un finto più in alto lascerebbe
+fuori proprio le righe che nessun altro test attraversa (la prima lezione di CLAUDE.md).
+
+L'unica opzione cambiata è `max_retries=0`: i tentativi sono dell'SDK, e si provano una
+volta sola, con le opzioni vere, in `tests/services/test_llm.py`. Qui farebbero solo
+aspettare le sue pause.
+
+`with_options` e `copy` tornano il finto stesso: l'SDK li implementa ricostruendo il
+client con il costruttore della classe, che qui non prende argomenti, e i corpi e le
+chiamate registrati finirebbero sulla copia. Le opzioni del profilo (tempo e tentativi)
+si provano col client vero in `test_llm.py`.
+
+`client_options` legge la chiave: chi costruisce un finto ha già `ANTHROPIC_API_KEY`
+nell'ambiente.
 """
 
 import json as _json
 
-import httpx
+import httpx2
+from anthropic import AsyncAnthropic, DefaultAsyncHttpxClient
 
-# Il consumo che OpenRouter allega a ogni risposta vera. Sta anche nei finti perché
-# senza, la suite proverebbe la registrazione delle spese contro un corpo che non
-# somiglia a quello che arriva in produzione — e un finto più povero del vero è il
-# modo in cui un test smette di provare quel che crede.
-COSTO_FINTO = 0.00004
-USAGE_FINTO = {"prompt_tokens": 300, "completion_tokens": 20, "cost": COSTO_FINTO}
+from app.services.llm import client_options
+
+# Il consumo che Anthropic dichiara su ogni risposta vera, e il costo che ne fa il
+# listino. Sta anche nei finti perché senza, la suite proverebbe la registrazione delle
+# spese contro un corpo che non somiglia a quello che arriva in produzione — e un finto
+# più povero del vero è il modo in cui un test smette di provare quel che crede.
+COSTO_FINTO = 0.00004  # 300 token in ingresso e 20 in uscita, al listino di Haiku 5.5
+USAGE_FINTO = {
+    "input_tokens": 300,
+    "output_tokens": 20,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+}
 
 
-def _corpo(testo: str) -> dict:
+def messaggio(testo, *, stop_reason="end_turn", usage=None, content=None) -> dict:
+    """Il corpo di una risposta dell'API Messages."""
     return {
         "id": "gen-finta",
-        "model": "google/gemma-4-26b-a4b-it",
-        "choices": [{"message": {"content": testo}}],
-        "usage": dict(USAGE_FINTO),
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": content if content is not None else [{"type": "text", "text": testo}],
+        "stop_reason": stop_reason,
+        "stop_sequence": None,
+        "usage": dict(usage if usage is not None else USAGE_FINTO),
     }
 
 
-class FakeLlm:
+def errore_api(status: int, error_type: str, message: str = "errore finto") -> httpx2.Response:
+    """Una risposta d'errore nella forma dell'API."""
+    return httpx2.Response(
+        status, json={"type": "error", "error": {"type": error_type, "message": message}}
+    )
+
+
+def system_of(body: dict) -> str:
+    return body["system"][0]["text"]
+
+
+def user_of(body: dict) -> str:
+    return body["messages"][0]["content"]
+
+
+def schema_of(body: dict) -> dict:
+    return body["output_config"]["format"]["schema"]
+
+
+class _Finto(AsyncAnthropic):
+    """Il client vero, con le opzioni di produzione; cambia solo il trasporto."""
+
+    def __init__(self) -> None:
+        self.bodies: list[dict] = []
+        self.calls = 0
+        trasporto = httpx2.MockTransport(self._handle)
+        super().__init__(
+            **{
+                **client_options(http_client=DefaultAsyncHttpxClient(transport=trasporto)),
+                "max_retries": 0,
+            }
+        )
+
+    def copy(self, **_options) -> "_Finto":  # type: ignore[override]
+        return self
+
+    with_options = copy  # type: ignore[assignment]
+
+    async def _handle(self, request: httpx2.Request) -> httpx2.Response:
+        body = _json.loads(request.content)
+        self.calls += 1
+        self.bodies.append(body)
+        payload = await self.answer(body)
+        if isinstance(payload, Exception):
+            raise payload
+        if isinstance(payload, httpx2.Response):
+            return payload
+        if isinstance(payload, dict) and payload.get("type") == "message":
+            return httpx2.Response(200, json=payload)
+        testo = payload if isinstance(payload, str) else _json.dumps(payload)
+        return httpx2.Response(200, json=messaggio(testo))
+
+    async def answer(self, body: dict) -> object:
+        raise NotImplementedError
+
+
+class FakeLlm(_Finto):
     """Risponde una cosa per volta, nell'ordine dato. Registra i corpi mandati.
 
-    Una `Exception` fra i payload viene sollevata invece di risposta: è così che si
-    prova la degradazione senza rete.
+    Un payload è un dizionario o una stringa (il testo della risposta), un corpo di
+    `messaggio(...)`, una `httpx2.Response` (per esempio `errore_api(...)`), o una
+    `Exception`, sollevata dal trasporto: è così che si prova la degradazione senza
+    rete. Finiti i payload, risponde `{}`.
     """
 
     def __init__(self, *payloads: object) -> None:
         self._payloads = list(payloads)
-        self.bodies: list[dict] = []
+        super().__init__()
 
-    async def post(self, url, json: dict, headers):  # noqa: A002
-        self.bodies.append(json)
-        payload = self._payloads.pop(0) if self._payloads else {}
-        if isinstance(payload, Exception):
-            raise payload
-        text = payload if isinstance(payload, str) else _json.dumps(payload)
-        return httpx.Response(200, json=_corpo(text), request=httpx.Request("POST", url))
-
-    async def aclose(self):
-        return None
+    async def answer(self, body: dict) -> object:
+        return self._payloads.pop(0) if self._payloads else {}
 
 
-class ScriptedLlm:
+class ScriptedLlm(_Finto):
     """Una risposta per ogni domanda, scelta guardando **cosa** la domanda chiede.
 
     Non una coda ordinata: il fan-out è parallelo e l'ordine di arrivo non è garantito.
@@ -68,25 +145,13 @@ class ScriptedLlm:
     def __init__(self, per_term: dict[str, object], collapse: object | None = None) -> None:
         self._per_term = per_term
         self._collapse = collapse
-        self.calls = 0
-        self.bodies: list[dict] = []
+        super().__init__()
 
-    async def post(self, url, json: dict, headers):  # noqa: A002
-        self.calls += 1
-        self.bodies.append(json)
-        question = _json.loads(json["messages"][1]["content"])
+    async def answer(self, body: dict) -> object:
+        question = _json.loads(user_of(body))
         if "nuovi" in question:
-            payload = self._collapse if self._collapse is not None else {"groups": []}
-        else:
-            payload = self._per_term[question["termine"]]
-        if isinstance(payload, Exception):
-            raise payload
-        return httpx.Response(
-            200, json=_corpo(_json.dumps(payload)), request=httpx.Request("POST", url)
-        )
-
-    async def aclose(self):
-        return None
+            return self._collapse if self._collapse is not None else {"groups": []}
+        return self._per_term[question["termine"]]
 
 
 def llm_map(name: str) -> dict:
