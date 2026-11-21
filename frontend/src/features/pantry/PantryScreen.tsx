@@ -12,16 +12,14 @@ import { DirectEntry, type EntryDoor } from "./DirectEntry";
 import { PantryRow } from "./PantryRow";
 import {
   attentionCounts,
-  expiryCounts,
-  expirySummary,
   expiringText,
   finishedText,
   groupForDisplay,
   hasBothWorlds,
-  inWorld,
   itemLabel,
   settleWorld,
   visibleItems,
+  worldSummary,
   WORLD_LABELS,
   type PantryWorld,
 } from "./pantryView";
@@ -165,8 +163,16 @@ export function PantryScreen() {
   // la riga da portare in vista. Se restasse in sospeso (la riga non monta, per esempio perché
   // la ricerca la filtra via), `settleWorld` riporterebbe a «Tutto» ogni tocco successivo
   function chooseWorld(next: PantryWorld) {
+    sections.releaseHold();
     setRevealId(null);
+    // è chi guarda a spegnere il riepilogo, non lo schermo: niente reparti tenuti
+    if (expiringOnly && worldSummary(items, next) === null) setExpiringOnly(false);
     setWorld(next);
+  }
+
+  function changeQuery(text: string) {
+    sections.releaseHold();
+    setQuery(text);
   }
 
   function openEntry(door: EntryDoor) {
@@ -251,16 +257,23 @@ export function PantryScreen() {
   const showWorlds = hasBothWorlds(items);
   // il riepilogo conta il mondo scelto (Mattia, 2026-10-07): su «Cibo» dice quanti cibi
   // scadono, o col riepilogo premuto direbbe «2 in scadenza» sopra zero righe
-  const summary = expirySummary(expiryCounts(items.filter((item) => inWorld(item, world))));
+  const summary = worldSummary(items, world);
   // un riepilogo che sparisce (l'ultima voce in scadenza tolta o finita) si porta via
   // il filtro: una dispensa vuota per un filtro invisibile sarebbe una bugia, e quando
   // il riepilogo torna deve tornare non premuto. Si spegne qui, durante il disegno, e
   // non in un effetto: React ridisegna subito con lo stato nuovo, senza un giro in cui
   // il filtro fantasma resta applicato
-  if (summary === null && expiringOnly) setExpiringOnly(false);
+  if (summary === null && expiringOnly) {
+    setExpiringOnly(false);
+    // è lo schermo a spegnerlo, non chi guarda: i reparti che il riepilogo aveva aperti
+    // restano aperti a video finché non si tocca qualcosa (Mattia, 2026-11-18)
+    sections.holdFiltered();
+  }
   // il filtro guarda la data, non il conteggio: una voce finita non conta nel
   // riepilogo ma resta in vista, col suo «In lista» (hasExpiry)
   const visible = visibleItems(items, { world, query, expiringOnly });
+  const groups = groupForDisplay(visible);
+  if (expiringOnly && summary !== null) sections.noteFiltered(groups.map(([category]) => category));
 
   return (
     <Screen title="Dispensa">
@@ -273,7 +286,7 @@ export function PantryScreen() {
           addLabel="Aggiungi in dispensa"
           leadingIcon={IconSearch}
           value={query}
-          onChange={setQuery}
+          onChange={changeQuery}
           onAdd={(text) => openEntry({ kind: "plus", text })}
           // la seconda porta (S3): la confezione in mano, il codice da leggere
           secondaryAction={{
@@ -300,7 +313,10 @@ export function PantryScreen() {
           <button
             type="button"
             aria-pressed={expiringOnly}
-            onClick={() => setExpiringOnly((prev) => !prev)}
+            onClick={() => {
+              sections.releaseHold();
+              setExpiringOnly((prev) => !prev);
+            }}
             className={`flex min-h-11 w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm font-medium ${
               expiringOnly ? "bg-expiry text-on-expiry" : "bg-expiry-tint text-expiry"
             }`}
@@ -340,7 +356,10 @@ export function PantryScreen() {
         {loaded && visible.length === 0 && query.trim() !== "" && expiringOnly && (
           <EmptyState
             title={`Niente in scadenza per «${query.trim()}»`}
-            action={<Button onClick={() => setExpiringOnly(false)}>Mostra tutto</Button>}
+            action={<Button onClick={() => {
+                  sections.releaseHold();
+                  setExpiringOnly(false);
+                }}>Mostra tutto</Button>}
           />
         )}
 
@@ -373,7 +392,7 @@ export function PantryScreen() {
         )}
 
         {loaded &&
-          groupForDisplay(visible).map(([category, rows]) => (
+          groups.map(([category, rows]) => (
             <Section
               key={category}
               category={category}

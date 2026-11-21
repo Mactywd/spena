@@ -1193,3 +1193,113 @@ describe("PantryScreen, i reparti che si chiudono (S15)", () => {
     expect(chiusiSalvati()).toEqual(["frutta"]);
   });
 });
+
+describe("PantryScreen, il riepilogo che si spegne da solo (S15, 2026-11-18)", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
+
+  /** La dispensa di `start`, che cambia con le PATCH come farebbe il server: lo stato, o la
+   * data (senza data il verdetto `expiry` se ne va con lei). */
+  function dispensaViva(start: typeof DUE_MONDI) {
+    let rows = start.map((row) => ({ ...row }));
+    return stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/restock")) return [{ added: true }, 200];
+      if (init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        rows = rows.map((row) =>
+          path.includes(`/pantry/${row.id}`)
+            ? { ...row, ...body, ...(body.expires_on === null ? { expiry: null } : {}) }
+            : row
+        );
+        return [rows.find((row) => path.includes(`/pantry/${row.id}`)), 200];
+      }
+      return [rows, 200];
+    });
+  }
+
+  /** Frutta chiusa e salvata, il riepilogo premuto (la mela è l'unica in scadenza), la mela
+   * segnata «Finito»: il riepilogo sparisce. */
+  async function riepilogoSpentoDalloSchermo(start: typeof DUE_MONDI = ITEMS) {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    dispensaViva(start);
+    const view = renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "1 in scadenza questa settimana" }));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    const gauge = screen.getByRole("radiogroup", { name: "Quanto resta di mela" });
+    fireEvent.click(within(gauge).getByRole("radio", { name: "Finito" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /in scadenza/ })).toBeNull());
+    return view;
+  }
+
+  it("«Finito» sull'ultima voce in scadenza: il riepilogo sparisce, il reparto resta aperto con il suo «In lista», e il salvato non cambia", async () => {
+    await riepilogoSpentoDalloSchermo();
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    const row = screen.getByRole("link", { name: "Mela" }).closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "In lista" }));
+    expect(chiusiSalvati()).toEqual(["frutta"]);
+    await screen.findByText("Rimesso in lista: mela");
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("togliere la data all'ultima voce in scadenza lascia aperto il suo reparto", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    dispensaViva(ITEMS);
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "1 in scadenza questa settimana" }));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    const row = screen.getByRole("link", { name: "Mela" }).closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: /scadenza/i }));
+    const field = within(row).getByLabelText(/scadenza/i);
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.blur(field);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /in scadenza/ })).toBeNull());
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(chiusiSalvati()).toEqual(["frutta"]);
+  });
+
+  it("un tocco su un altro titolo lascia andare il reparto tenuto aperto", async () => {
+    await riepilogoSpentoDalloSchermo();
+    fireEvent.click(reparto("Latticini"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("scrivere nella barra, e cancellare, lascia andare il reparto tenuto aperto", async () => {
+    await riepilogoSpentoDalloSchermo();
+    const bar = screen.getByLabelText("Cerca o aggiungi in dispensa");
+    fireEvent.change(bar, { target: { value: "y" } });
+    fireEvent.change(bar, { target: { value: "" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(chiusiSalvati()).toEqual(["frutta"]);
+  });
+
+  it("un tocco sul selettore lascia andare il reparto tenuto aperto", async () => {
+    await riepilogoSpentoDalloSchermo(DUE_MONDI);
+    fireEvent.click(mondo("Cibo"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("lasciata e riaperta la Dispensa, torna il salvato", async () => {
+    const { unmount } = await riepilogoSpentoDalloSchermo();
+    unmount();
+    renderScreen();
+    await screen.findByRole("region", { name: "Frutta" });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("spegnere il riepilogo scegliendo un mondo senza scadenze torna al salvato", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    dispensaViva(DUE_MONDI);
+    renderScreen();
+    const summary = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    fireEvent.click(summary);
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(mondo("Casa"));
+    fireEvent.click(mondo("Tutto"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "1 in scadenza questa settimana" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+  });
+});

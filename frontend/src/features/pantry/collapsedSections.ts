@@ -61,15 +61,32 @@ function withMember(set: ReadonlySet<string>, category: string, member: boolean)
   return next;
 }
 
+/** Due insiemi con gli stessi elementi. */
+function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const member of a) if (!b.has(member)) return false;
+  return true;
+}
+
 /** Lo stato dei reparti della Dispensa. `filtering` è una ricerca scritta o il riepilogo
  * delle scadenze premuto: aprono i reparti senza salvare (`sectionOpen`). `setOpen` è un
  * gesto dell'utente — il tocco sul titolo, o la voce appena aggiunta (spec S15 §3) — e
  * si salva sempre, anche durante un filtro; chiudere durante un filtro si ricorda anche
  * in `closedWhileFiltering`, finché il filtro resta acceso, o il reparto resterebbe
- * aperto sotto il dito. */
+ * aperto sotto il dito.
+ *
+ * Il riepilogo che lo schermo spegne da solo (l'ultima voce in scadenza tolta o finita)
+ * lascia aperto a video quel che mostrava, senza salvarlo (decisione 3): `held`, che non
+ * va mai in `saveCollapsed` e si lascia andare al primo gesto di chi guarda. Si ricorda
+ * a ogni disegno col filtro (`noteFiltered`) e non al momento in cui si spegne, perché
+ * quando si spegne le righe in scadenza non ci sono più (decisione 12). `noteFiltered`
+ * cambia stato nel disegno, come le altre due righe di questo file, e per questo
+ * confronta prima di scrivere: lo stesso insieme non ridisegna. */
 export function useCollapsedSections(filtering: boolean) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => loadCollapsed());
   const [closedWhileFiltering, setClosedWhileFiltering] = useState<ReadonlySet<string>>(NONE);
+  const [held, setHeld] = useState<ReadonlySet<string>>(NONE);
+  const [shownByFilter, setShownByFilter] = useState<ReadonlySet<string>>(NONE);
   // spento il filtro, quel che si era chiuso durante non conta più: la prossima ricerca
   // riapre ogni reparto che ha un risultato. Si azzera qui, durante il disegno, come fa la
   // Dispensa col riepilogo che sparisce: niente giro con uno stato vecchio
@@ -79,11 +96,21 @@ export function useCollapsedSections(filtering: boolean) {
     saveCollapsed(collapsed);
   }, [collapsed]);
 
+  const release = () => setHeld((prev) => (prev.size === 0 ? prev : NONE));
+
   return {
-    isOpen: (category: string) => sectionOpen(category, { collapsed, filtering, closedWhileFiltering }),
+    isOpen: (category: string) =>
+      sectionOpen(category, { collapsed, filtering, closedWhileFiltering, held }),
     setOpen: (category: string, open: boolean) => {
       setCollapsed((prev) => withMember(prev, category, !open));
       setClosedWhileFiltering((prev) => withMember(prev, category, !open && filtering));
+      release();
     },
+    noteFiltered: (categories: readonly string[]) => {
+      const shown = new Set(categories.filter((category) => !closedWhileFiltering.has(category)));
+      if (!sameMembers(shown, shownByFilter)) setShownByFilter(shown);
+    },
+    holdFiltered: () => setHeld(shownByFilter),
+    releaseHold: release,
   };
 }
