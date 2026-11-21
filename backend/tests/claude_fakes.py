@@ -7,7 +7,7 @@ finto prova gli strumenti veri e non una copia. Il client di produzione si prova
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -42,19 +42,30 @@ class UseTool:
 class Finish:
     input_tokens: int | None = 100
     output_tokens: int | None = 20
+    cost_usd: float | None = 0.05
 
 
 @dataclass
 class Fail:
     kind: FailureKind
     resets_at: datetime | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+
+
+@dataclass
+class Do:
+    """Un passo che esegue `action` (un'azione del test nel mezzo del giro)."""
+
+    action: Callable[[], Awaitable[None]]
 
 
 class Hang:
     """Aspetta per sempre: serve al tempo massimo."""
 
 
-Step = Say | UseTool | Finish | Fail | Hang
+Step = Say | UseTool | Finish | Fail | Do | Hang
 
 
 class FakeClaude(ClaudeClient):
@@ -109,11 +120,31 @@ class FakeClaude(ClaudeClient):
                         session_id="sessione-finta",
                         input_tokens=step.input_tokens,
                         output_tokens=step.output_tokens,
+                        cost_usd=step.cost_usd,
                     ),
                 )
                 return
             elif isinstance(step, Fail):
-                yield TurnFailed(ClaudeFailure(step.kind, step.resets_at, "finto"))
+                usage = None
+                if any(v is not None for v in (step.input_tokens, step.output_tokens, step.cost_usd)):
+                    usage = ClaudeUsage(
+                        model="claude-opus-5-5",
+                        session_id="sessione-finta",
+                        input_tokens=step.input_tokens,
+                        output_tokens=step.output_tokens,
+                        cost_usd=step.cost_usd,
+                    )
+                yield TurnFailed(
+                    ClaudeFailure(
+                        step.kind,
+                        step.resets_at,
+                        "finto",
+                        usage=usage,
+                        partial_text="\n\n".join(said),
+                    )
+                )
                 return
+            elif isinstance(step, Do):
+                await step.action()
             elif isinstance(step, Hang):
                 await asyncio.Event().wait()

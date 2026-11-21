@@ -56,7 +56,9 @@ NOT_WRITTEN_NOTICE = (
 )
 # I guasti che valgono per tutti i pasti: chiamare Claude per il pasto dopo darebbe lo stesso
 # guasto, quindi la coda si ferma (decisione 15).
-TERMINAL_FAILURES = frozenset({FailureKind.PLAN_LIMIT, FailureKind.AUTH, FailureKind.NOT_CONFIGURED})
+TERMINAL_FAILURES = frozenset(
+    {FailureKind.RATE_LIMIT, FailureKind.CREDIT, FailureKind.AUTH, FailureKind.NOT_CONFIGURED}
+)
 
 
 def wants_recipe(meal: Meal) -> bool:
@@ -333,18 +335,18 @@ class RecipeJobs:
     """La coda delle ricette (decisione 15): **una coda alla volta, un pasto alla volta**.
 
     Ufficializzare sette pasti non lancia sette processi di Claude Code insieme: ogni giro
-    è un processo dell'SDK con il suo consumo del piano, e sette in parallelo
+    è un processo dell'SDK con il suo consumo, e sette in parallelo
     arriverebbero al limite tutti insieme. Un `asyncio.Lock` fa girare una coda (un
     `enqueue`) alla volta; dentro, i pasti uno dopo l'altro.
 
     **Ogni pasto si committa da sé**: `write_recipe` committa la ricetta, e la fine del
     giro (niente più «in preparazione», o l'avviso) ha la sua transazione. Così
-    un'interruzione a metà coda — il limite del piano, il container che riparte — lascia
+    un'interruzione a metà coda — il limite di frequenza, il container che riparte — lascia
     i pasti già fatti con la loro ricetta, e ognuno degli altri usabile, con l'avviso e
     «Chiedi la ricetta a Claude».
 
     **Cosa ferma la coda**: un guasto che vale per tutti (`TERMINAL_FAILURES`: il limite
-    del piano, il token, Claude non collegato) scrive lo stesso avviso su ogni pasto
+    di frequenza, il credito, la chiave, Claude non collegato) scrive lo stesso avviso su ogni pasto
     rimasto, senza chiamare Claude, e chiude la coda. Un guasto del singolo (il tempo
     massimo, un errore) resta su quel pasto e la coda passa al pasto dopo.
 

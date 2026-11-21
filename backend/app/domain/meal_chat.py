@@ -32,8 +32,10 @@ _MESI = [
 
 class FailureKind(StrEnum):
     NOT_CONFIGURED = "not_configured"
-    PLAN_LIMIT = "plan_limit"
+    RATE_LIMIT = "rate_limit"
+    CREDIT = "credit"
     AUTH = "auth"
+    MAX_TURNS = "max_turns"
     TIMEOUT = "timeout"
     UNAVAILABLE = "unavailable"
     INTERRUPTED = "interrupted"
@@ -59,9 +61,9 @@ def pending_is_stale(created_at: datetime, now: datetime, timeout_seconds: float
 
 
 def _limit_notice(resets_at: datetime | None, now: datetime) -> str:
-    base = "Claude non risponde: hai raggiunto il limite del piano, "
+    base = "Claude non risponde: hai raggiunto il limite di frequenza della chiave API, "
     if resets_at is None:
-        return base + "riprova più tardi"
+        return base + "riprova tra qualche minuto."
     local = resets_at.astimezone(PANTRY_TZ)
     ora = f"{local.hour}:{local.minute:02d}"
     giorni = (local.date() - now.astimezone(PANTRY_TZ).date()).days
@@ -76,13 +78,23 @@ def failure_notice(kind: FailureKind, resets_at: datetime | None, now: datetime)
     """La frase che Mattia legge quando Claude non risponde."""
     match kind:
         case FailureKind.NOT_CONFIGURED:
-            return "Claude non è collegato: manca il token del piano sul server."
-        case FailureKind.PLAN_LIMIT:
+            return "Claude non è collegato: manca la chiave API sul server."
+        case FailureKind.RATE_LIMIT:
             return _limit_notice(resets_at, now)
+        case FailureKind.CREDIT:
+            return (
+                "Claude non risponde: il credito della chiave API è finito. "
+                "Va ricaricato nella console di Anthropic."
+            )
         case FailureKind.AUTH:
             return (
-                "Claude non risponde: il token del piano è scaduto o non vale più. "
-                "Va rifatto con claude setup-token e scritto nel .env del server."
+                "Claude non risponde: la chiave API non vale più (sbagliata o revocata). "
+                "Va sostituita nel .env del server."
+            )
+        case FailureKind.MAX_TURNS:
+            return (
+                "Claude si è fermato prima di finire: questo messaggio gli chiedeva "
+                "troppi passaggi. Scrivigli come andare avanti."
             )
         case FailureKind.TIMEOUT:
             return "Claude non risponde: ci sta mettendo troppo. Riprova tra poco."

@@ -166,14 +166,14 @@ async def test_il_limite_a_meta_lascia_la_proposta(db_session, factory, dal_data
     message = await messaggio(db_session, conversation, "Pianifica la settimana")
     resets_at = datetime.now(UTC) + timedelta(minutes=30)
     fake = FakeClaude(
-        [UseTool("propose_meals", tre_cene()), Fail(FailureKind.PLAN_LIMIT, resets_at=resets_at)]
+        [UseTool("propose_meals", tre_cene()), Fail(FailureKind.RATE_LIMIT, resets_at=resets_at)]
     )
 
     events = await giro(factory, fake, conversation, message)
 
     assert [e.name for e in events] == ["proposal", "error"]
     error = events[-1].data
-    assert error["code"] == "plan_limit"
+    assert error["code"] == "rate_limit"
     local = resets_at.astimezone(PANTRY_TZ)
     assert f"{local.hour}:{local.minute:02d}" in error["notice"]
     saved = await dal_database(ConversationMessage, message.id)

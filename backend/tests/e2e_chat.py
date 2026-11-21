@@ -3,7 +3,7 @@ di pytest.
 
 Lo stack e2e non ha il token di Claude: la chat vera risponde 503 (spec §9). Lo stato con
 una modifica di Claude e il suo «Annulla», e quello di un messaggio rimasto senza risposta
-per il limite del piano, non si raggiungono senza Claude: li scrive questo file, passando
+per il limite di frequenza, non si raggiungono senza Claude: li scrive questo file, passando
 dai servizi veri (`create_meal`, `write_meal_recipe`, il repository delle conversazioni),
 così lo stato seminato è uno stato che il codice sa produrre. Nessuna rete.
 
@@ -156,8 +156,8 @@ async def seed() -> dict:
                 role=MessageRole.USER.value,
                 text="Come lo rendo più cremoso?",
                 status=MessageStatus.FAILED.value,
-                failure=FailureKind.PLAN_LIMIT.value,
-                notice=failure_notice(FailureKind.PLAN_LIMIT, resets_at, now),
+                failure=FailureKind.RATE_LIMIT.value,
+                notice=failure_notice(FailureKind.RATE_LIMIT, resets_at, now),
                 created_at=now - timedelta(minutes=2),
             )
         )

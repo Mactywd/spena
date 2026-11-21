@@ -14,7 +14,7 @@ massimo non sta qui ma nel giro (Task 6).
 import contextlib
 import os
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
@@ -34,6 +34,7 @@ from claude_agent_sdk import (
 
 from app.core.config import get_settings
 from app.domain.meal_chat import FailureKind
+from app.services.llm import LlmUsage
 
 SPENA_SERVER = "spena"
 
@@ -46,6 +47,7 @@ class ClaudeUsage:
     session_id: str | None
     input_tokens: int | None
     output_tokens: int | None
+    cost_usd: float | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,8 @@ class ClaudeFailure:
     kind: FailureKind
     resets_at: datetime | None = None
     detail: str = ""
+    usage: ClaudeUsage | None = None
+    partial_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,19 @@ class ClaudeClient(Protocol):
         effort: Effort,
         max_turns: int,
     ) -> AsyncIterator[ClaudeEvent]: ...
+
+
+def llm_usage(usage: ClaudeUsage | None) -> LlmUsage:
+    """L'uso dichiarato dall'SDK nella forma che `llm_calls` registra."""
+    if usage is None:
+        return LlmUsage()
+    return LlmUsage(
+        generation_id=usage.session_id,
+        model=usage.model,
+        prompt_tokens=usage.input_tokens,
+        completion_tokens=usage.output_tokens,
+        cost_usd=usage.cost_usd,
+    )
 
 
 def claude_configured() -> bool:
@@ -149,13 +166,15 @@ class TurnState:
 def _classify_status(status: int | None) -> FailureKind:
     if status in (401, 403):
         return FailureKind.AUTH
+    if status == 402:
+        return FailureKind.CREDIT
     if status == 429:
-        return FailureKind.PLAN_LIMIT
+        return FailureKind.RATE_LIMIT
     return FailureKind.UNAVAILABLE
 
 
 def _mark(state: TurnState, kind: FailureKind, detail: str = "") -> None:
-    # il primo guasto visto vale, salvo che un limite del piano ne precisi l'ora dopo
+    # il primo guasto visto vale, salvo che un limite di frequenza ne precisi l'ora dopo
     if state.failure is None:
         state.failure = ClaudeFailure(kind, state.resets_at, detail)
 
@@ -191,8 +210,10 @@ def translate(message: object, state: TurnState) -> list[ClaudeEvent]:
             state.texts.append(text)
         if message.error is not None:
             if message.error == "rate_limit":
-                kind = FailureKind.PLAN_LIMIT
-            elif message.error in ("authentication_failed", "billing_error"):
+                kind = FailureKind.RATE_LIMIT
+            elif message.error == "billing_error":
+                kind = FailureKind.CREDIT
+            elif message.error == "authentication_failed":
                 kind = FailureKind.AUTH
             else:
                 kind = FailureKind.UNAVAILABLE
@@ -204,30 +225,32 @@ def translate(message: object, state: TurnState) -> list[ClaudeEvent]:
         if info.status == "rejected":
             if info.resets_at is not None:
                 state.resets_at = datetime.fromtimestamp(info.resets_at, UTC)
-            state.failure = ClaudeFailure(FailureKind.PLAN_LIMIT, state.resets_at, "rejected")
+            state.failure = ClaudeFailure(FailureKind.RATE_LIMIT, state.resets_at, "rejected")
         return []
 
     if isinstance(message, ResultMessage):
-        if not message.is_error and message.subtype == "success":
-            usage = message.usage or {}
-            output = usage.get("output_tokens")
-            return [
-                TurnFinished(
-                    "\n\n".join(state.texts),
-                    ClaudeUsage(
-                        model=state.model,
-                        session_id=message.session_id,
-                        input_tokens=_sum_input(usage),
-                        output_tokens=output if isinstance(output, int) else None,
-                    ),
-                )
-            ]
-        _mark(
-            state,
-            _classify_status(message.api_error_status),
-            message.result or message.subtype,
+        raw = message.usage or {}
+        output = raw.get("output_tokens")
+        cost = message.total_cost_usd
+        usage = ClaudeUsage(
+            model=state.model,
+            session_id=message.session_id,
+            input_tokens=_sum_input(raw),
+            output_tokens=output if isinstance(output, int) else None,
+            cost_usd=float(cost) if isinstance(cost, int | float) else None,
         )
+        text = "\n\n".join(state.texts)
+        if not message.is_error and message.subtype == "success":
+            return [TurnFinished(text, usage)]
+        if message.subtype == "error_max_turns":
+            kind = FailureKind.MAX_TURNS
+        else:
+            kind = _classify_status(message.api_error_status)
+        _mark(state, kind, message.result or message.subtype)
         assert state.failure is not None
+        # un guasto già visto nel giro tiene il suo tipo, ma l'uso e il testo detto fin
+        # qui arrivano dal risultato: ogni giro registra quello che l'SDK dichiara
+        state.failure = replace(state.failure, usage=usage, partial_text=text)
         return [TurnFailed(state.failure)]
 
     return []

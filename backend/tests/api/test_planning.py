@@ -38,7 +38,7 @@ from claude_fakes import Fail, FakeClaude, Finish, Say, UseTool
 TODAY = today_in_pantry(datetime.now(UTC))
 DAY1, DAY2 = TODAY + timedelta(days=1), TODAY + timedelta(days=2)
 CHIAVE_FINTA = "chiave-finta-per-i-test"
-NOT_CONFIGURED = "Claude non è collegato: manca il token del piano sul server."
+NOT_CONFIGURED = "Claude non è collegato: manca la chiave API sul server."
 BASE = "/api/v1/planning"
 
 

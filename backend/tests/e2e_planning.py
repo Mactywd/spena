@@ -208,9 +208,9 @@ async def seed() -> dict:
         meal_id = meal.id
         await session.commit()
 
-    # l'avviso del limite del piano sul pasto senza ricetta, scritto come lo scrive la coda
+    # l'avviso del limite di frequenza sul pasto senza ricetta, scritto come lo scrive la coda
     # delle ricette quando il limite la ferma
-    await give_up_meals(SessionLocal, [meal_id], failure=FailureKind.PLAN_LIMIT, like=None)
+    await give_up_meals(SessionLocal, [meal_id], failure=FailureKind.RATE_LIMIT, like=None)
     return result
 
 

@@ -242,17 +242,17 @@ async def test_la_ricetta_scritta_da_zero(db_session, factory, senza_ricetta, vo
 async def test_il_limite_del_piano(db_session, factory, frittata, dal_database):
     conversation, message = await nuovo_messaggio(db_session, frittata, "E con le zucchine?")
     resets_at = datetime.now(UTC) + timedelta(minutes=30)
-    fake = FakeClaude([Fail(FailureKind.PLAN_LIMIT, resets_at=resets_at)])
+    fake = FakeClaude([Fail(FailureKind.RATE_LIMIT, resets_at=resets_at)])
 
     events = await giro(factory, fake, conversation, message)
 
     [event] = events
     assert event.name == "error"
-    assert event.data["code"] == "plan_limit"
+    assert event.data["code"] == "rate_limit"
     local = resets_at.astimezone(PANTRY_TZ)
     assert f"{local.hour}:{local.minute:02d}" in event.data["notice"]
     saved = await dal_database(ConversationMessage, message.id)
-    assert saved.status == "failed" and saved.failure == "plan_limit"
+    assert saved.status == "failed" and saved.failure == "rate_limit"
     assert saved.notice == event.data["notice"]
     [row] = await chiamate(db_session)
     assert row.ok is False

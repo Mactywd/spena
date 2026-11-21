@@ -135,12 +135,12 @@ async def test_tre_pasti_tre_ricette(db_session, factory, uova):
 async def test_il_limite_a_meta_lascia_ogni_pasto_usabile(db_session, factory, uova):
     meals = await tre_cene(db_session)
     resets_at = datetime.now(UTC) + timedelta(hours=2)
-    fake = FakeClaude.per_call(ok(uova), [Fail(FailureKind.PLAN_LIMIT, resets_at=resets_at)])
+    fake = FakeClaude.per_call(ok(uova), [Fail(FailureKind.RATE_LIMIT, resets_at=resets_at)])
 
     await in_coda(factory, fake, meals)
 
     assert len(fake.calls) == 2  # dopo il limite, nessun'altra chiamata
-    notice = failure_notice(FailureKind.PLAN_LIMIT, resets_at, datetime.now(UTC))
+    notice = failure_notice(FailureKind.RATE_LIMIT, resets_at, datetime.now(UTC))
     assert "riprova" in notice and f":{resets_at.astimezone().minute:02d}" in notice
     first = await dal_db(factory, meals[0].id)
     assert first.recipe is not None and first.recipe_notice is None
