@@ -147,6 +147,9 @@ export function ChangeCard({ card }: { card: ChangeCardData }) {
 
       {shown.status === "applied" && <p className="text-sm font-medium">Applicata.</p>}
       {shown.status === "discarded" && <p className="text-sm font-medium">Scartata.</p>}
+      {shown.status === "superseded" && (
+        <p className="text-sm font-medium">Sostituita da una scheda più nuova.</p>
+      )}
 
       {shown.rows.length > 0 && (
         <div role="table" aria-label="Cambi" className="flex flex-col">

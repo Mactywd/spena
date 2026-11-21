@@ -18,6 +18,7 @@ from app.schemas.change_card import (
     card_out,
 )
 from app.services.change_cards import (
+    SUPERSEDED_SENTENCE,
     CardRefusal,
     CardRefusalCode,
     RowOverride,
@@ -37,6 +38,7 @@ router = APIRouter(
 SENTENCES = {
     CardRefusalCode.ALREADY_APPLIED: "La scheda era già applicata.",
     CardRefusalCode.DISCARDED: "La scheda è stata scartata.",
+    CardRefusalCode.SUPERSEDED: SUPERSEDED_SENTENCE,
     CardRefusalCode.LIST_ONLY: "Per una bozza la scheda ha solo le righe della lista.",
     CardRefusalCode.ROW_EXISTS: "Questa voce è già nella scheda.",
     CardRefusalCode.NOT_IN_PANTRY: "La voce non è più in dispensa.",

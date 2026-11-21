@@ -4,7 +4,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from app.db.models.change_card import CardStatus, ChangeCardRow
+from app.db.models.change_card import CardKind, CardStatus, ChangeCard, ChangeCardRow
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
@@ -25,6 +25,7 @@ from app.services.change_cards import (
     discard_card,
     get_card,
     open_card_for_meal,
+    _supersedes,
     propose_card,
 )
 from app.services.meals import create_meal
@@ -346,3 +347,82 @@ async def test_niente_non_alimentari_nemmeno_fra_le_cose_da_comprare(db_session,
     # un testo libero che non è niente dell'anagrafica resta permesso
     card = await add_row(db_session, card, raw_text="zenzero candito")
     assert riga(card, "list", "zenzero candito").ingredient_id is None
+
+
+async def _vuota(db_session, *pasti):
+    return await propose_card(db_session, meals=list(pasti), pantry=[], shopping=[])
+
+
+async def test_una_scheda_nuova_mette_da_parte_quella_vecchia_dello_stesso_pasto(
+    db_session, mondo
+):
+    prima = await _vuota(db_session, mondo["A"])
+    seconda = await _vuota(db_session, mondo["A"])
+    prima = await get_card(db_session, prima.id)
+    assert prima.status == "superseded" and prima.discarded_at is not None
+    assert (await get_card(db_session, seconda.id)).status == "proposed"
+
+
+async def test_la_scheda_della_settimana_mette_da_parte_quelle_dei_piatti(db_session, mondo):
+    c = await create_meal(
+        db_session, day=date(2026, 11, 23), slot=MealSlot.LUNCH, dish="Frittata"
+    )
+    solo_a = await _vuota(db_session, mondo["A"])
+    a_b = await _vuota(db_session, mondo["A"], mondo["B"])
+    nuova = await _vuota(db_session, mondo["A"], mondo["B"], c)
+    assert (await get_card(db_session, solo_a.id)).status == "superseded"
+    assert (await get_card(db_session, a_b.id)).status == "superseded"
+    assert (await get_card(db_session, nuova.id)).status == "proposed"
+
+
+async def test_la_scheda_di_un_piatto_non_mette_da_parte_quella_della_settimana(
+    db_session, mondo
+):
+    c = await create_meal(
+        db_session, day=date(2026, 11, 23), slot=MealSlot.LUNCH, dish="Frittata"
+    )
+    settimana = await _vuota(db_session, mondo["A"], mondo["B"], c)
+    await _vuota(db_session, mondo["A"])
+    assert (await get_card(db_session, settimana.id)).status == "proposed"
+
+
+async def test_non_tocca_le_applicate_ne_le_inverse(db_session, mondo):
+    applicata = await _vuota(db_session, mondo["A"])
+    await apply_card(db_session, applicata.id, [])
+    inversa = ChangeCard(
+        created_at=datetime.now(UTC), status=CardStatus.PROPOSED.value,
+        kind=CardKind.INVERSE.value, list_only=False, title="Inversa",
+        meal_ids=[str(mondo["A"].id)],
+    )
+    db_session.add(inversa)
+    await db_session.flush()
+    nuova = await _vuota(db_session, mondo["A"])
+    assert (await get_card(db_session, applicata.id)).status == "applied"
+    assert (await get_card(db_session, inversa.id)).status == "proposed"
+    assert (await get_card(db_session, nuova.id)).status == "proposed"
+
+
+async def test_mette_da_parte_anche_una_scheda_compilata_a_mano(db_session, mondo):
+    a_mano = await create_empty_card(db_session, mondo["A"])
+    await add_row(db_session, a_mano, raw_text="Besciamella")
+    await _vuota(db_session, mondo["A"])
+    assert (await get_card(db_session, a_mano.id)).status == "superseded"
+
+
+async def test_una_scheda_messa_da_parte_non_si_applica(db_session, mondo):
+    prima = await _vuota(db_session, mondo["A"])
+    await add_row(db_session, prima, raw_text="Besciamella")
+    await _vuota(db_session, mondo["A"])
+    with pytest.raises(CardRefusal) as exc:
+        await apply_card(db_session, prima.id, [])
+    assert exc.value.code == CardRefusalCode.SUPERSEDED
+    assert exc.value.message == "Sostituita da una scheda più nuova."
+    letta = await get_card(db_session, prima.id)
+    assert [r.label for r in letta.rows] == ["Besciamella"]
+
+
+def test_supersedes():
+    assert _supersedes(["a"], ["a"]) is True
+    assert _supersedes(["a", "b"], ["a", "b", "c"]) is True
+    assert _supersedes(["a", "b", "c"], ["a"]) is False
+    assert _supersedes([], ["a"]) is False

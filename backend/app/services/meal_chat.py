@@ -155,6 +155,7 @@ _CARD_STATES = {
     CardStatus.PROPOSED.value: "da applicare",
     CardStatus.APPLIED.value: "applicata",
     CardStatus.DISCARDED.value: "scartata",
+    CardStatus.SUPERSEDED.value: "sostituita",
 }
 
 

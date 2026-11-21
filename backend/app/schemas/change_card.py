@@ -34,7 +34,7 @@ class ChangeRowOut(BaseModel):
 class ChangeCardOut(BaseModel):
     id: uuid.UUID
     kind: Literal["forward", "inverse"]
-    status: Literal["proposed", "applied", "discarded"]
+    status: Literal["proposed", "applied", "discarded", "superseded"]
     list_only: bool
     title: str
     meals: list[MealRefOut]  # i pasti che ci sono ancora

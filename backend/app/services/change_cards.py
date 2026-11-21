@@ -67,9 +67,13 @@ class RowOverride:
     to_status: PantryStatus | None = None
 
 
+SUPERSEDED_SENTENCE = "Sostituita da una scheda più nuova."
+
+
 class CardRefusalCode(StrEnum):
     ALREADY_APPLIED = "card_applied"
     DISCARDED = "card_discarded"
+    SUPERSEDED = "card_superseded"
     LIST_ONLY = "list_only"
     ROW_EXISTS = "row_exists"
     NOT_IN_PANTRY = "not_in_pantry"
@@ -246,7 +250,33 @@ async def propose_card(
         ))
         position += 1
     await session.flush()
+    await _supersede_older(session, card)
     return await _reload(session, card.id)
+
+
+def _supersedes(old_meal_ids: Sequence[str], new_meal_ids: Sequence[str]) -> bool:
+    # "Lo stesso pasto" per una scheda di più pasti: tutti i suoi pasti sono nella nuova
+    # (Mattia, 2026-11-21; piano 2026-11-18-pasti-correzioni, decisione 10).
+    return bool(old_meal_ids) and set(old_meal_ids) <= set(new_meal_ids)
+
+
+async def _supersede_older(session: AsyncSession, new_card: ChangeCard) -> None:
+    """Le schede in avanti ancora proposte, tutte nei pasti della nuova, si mettono da parte.
+    Le inverse non si toccano mai."""
+    older = (
+        await session.execute(
+            select(ChangeCard).where(
+                ChangeCard.kind == CardKind.FORWARD.value,
+                ChangeCard.status == CardStatus.PROPOSED.value,
+                ChangeCard.id != new_card.id,
+            )
+        )
+    ).scalars()
+    now = datetime.now(UTC)
+    for old in older:
+        if _supersedes(old.meal_ids, new_card.meal_ids):
+            old.status = CardStatus.SUPERSEDED.value
+            old.discarded_at = now
 
 
 async def create_empty_card(session: AsyncSession, meal: Meal) -> ChangeCard:
@@ -265,6 +295,8 @@ def _must_be_proposed(card: ChangeCard) -> None:
         raise CardRefusal(CardRefusalCode.ALREADY_APPLIED, "La scheda era già applicata.")
     if card.status == CardStatus.DISCARDED.value:
         raise CardRefusal(CardRefusalCode.DISCARDED, "La scheda è stata scartata.")
+    if card.status == CardStatus.SUPERSEDED.value:
+        raise CardRefusal(CardRefusalCode.SUPERSEDED, SUPERSEDED_SENTENCE)
 
 
 async def add_row(

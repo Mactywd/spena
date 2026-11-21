@@ -123,6 +123,13 @@ describe("ChangeCard", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("La scheda è stata scartata.");
   });
 
+  it("una scheda sostituita lo dice, e non si applica", () => {
+    quiet();
+    renderWith(<ChangeCard card={card({ status: "superseded" })} />);
+    expect(screen.getByText("Sostituita da una scheda più nuova.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Applica" })).not.toBeInTheDocument();
+  });
+
   it("«Scarta» manda discard e dice «Scheda scartata.»", async () => {
     const spy = stubFetch((url) => (url.includes("/discard") ? [card({ status: "discarded" }), 200] : [[], 200]));
     renderWith(<ChangeCard card={card()} />);

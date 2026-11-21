@@ -604,7 +604,7 @@ export interface ChangeRow {
 export interface ChangeCard {
   id: string;
   kind: "forward" | "inverse";
-  status: "proposed" | "applied" | "discarded";
+  status: "proposed" | "applied" | "discarded" | "superseded";
   list_only: boolean;
   title: string;
   meals: MealRef[];

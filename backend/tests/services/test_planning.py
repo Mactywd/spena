@@ -33,6 +33,7 @@ from app.services.change_cards import (
     ListProposal,
     PantryProposal,
     apply_card,
+    get_card,
     propose_card,
 )
 from app.services.meals import create_meal, update_meal
@@ -348,3 +349,21 @@ async def test_le_conversazioni_di_pianificazione(db_session):
     assert (prima.focus_day, prima.focus_slot) == (SAB, "lunch")
     await set_focus(db_session, prima, None)
     assert (prima.focus_day, prima.focus_slot) == (None, None)
+
+
+async def test_la_pianificazione_si_conclude_dopo_una_scheda_sostituita(db_session, chat):
+    conversation, _ = chat
+    proposta = await proponi(db_session, chat, OFFICIAL, ProposedMeal(VEN, D, "Orata", None))
+    (orata,) = (await place_proposal(db_session, proposta.id, replace=False, now=now())).meals
+    prima = await propose_card(
+        db_session, meals=[orata], pantry=[], shopping=[ListProposal(None, "Limoni")],
+        conversation_id=conversation.id,
+    )
+    seconda = await propose_card(
+        db_session, meals=[orata], pantry=[], shopping=[ListProposal(None, "Prezzemolo")],
+        conversation_id=conversation.id,
+    )
+    assert (await get_card(db_session, prima.id)).status == "superseded"
+    assert await planning_concluded(db_session, conversation, TODAY) is False
+    await apply_card(db_session, seconda.id, [])
+    assert await planning_concluded(db_session, conversation, TODAY) is True

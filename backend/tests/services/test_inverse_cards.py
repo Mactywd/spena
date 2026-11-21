@@ -273,9 +273,6 @@ async def test_una_bozza_non_propone_niente(db_session, mondo):
 
 async def test_le_schede_proposte_del_pasto_tolto_si_puliscono(db_session, mondo):
     a, b, v = mondo["A"], mondo["B"], mondo["voci"]
-    sola = await propose_card(
-        db_session, meals=[a], pantry=[PantryProposal(v["pesto"].id, L)], shopping=[]
-    )
     insieme = await propose_card(
         db_session, meals=[a, b],
         pantry=[
@@ -283,6 +280,10 @@ async def test_le_schede_proposte_del_pasto_tolto_si_puliscono(db_session, mondo
             PantryProposal(v["ricotta"].id, F, (a.id,)),
         ],
         shopping=[],
+    )
+    # dopo «insieme»: una scheda del solo pasto A non mette da parte quella di A e B
+    sola = await propose_card(
+        db_session, meals=[a], pantry=[PantryProposal(v["pesto"].id, L)], shopping=[]
     )
     await delete_meal(db_session, a)
 
