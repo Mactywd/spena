@@ -240,3 +240,18 @@ async def test_un_pasto_inesistente_e_404(logged_client, metodo):
 
 async def test_senza_accesso_401(client):
     assert (await client.get(f"{M}/week")).status_code == 401
+
+
+async def test_un_pasto_fuori_casa_ha_la_ricetta_nel_pasto(logged_client, db_session):
+    from app.services.meals import link_recipe, update_meal
+
+    m = await pasto(db_session, d(10), D, "Frittata")
+    r = await ricetta(db_session)
+    await link_recipe(db_session, m, r)
+    await update_meal(db_session, m, {"away": True})
+    await db_session.commit()
+    out = (await logged_client.get(f"{M}/{m.id}")).json()
+    assert out["away"] is True
+    assert out["recipe"]["id"] == str(r.id)
+    assert out["can_chat"] is False
+    assert out["can_ask_recipe"] is False

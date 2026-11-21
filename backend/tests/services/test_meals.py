@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe
+from app.domain.meal_chat import can_chat
 from app.domain.meals import MealSlot, MealStatus
 from app.repositories.meals import (
     get_meal,
@@ -149,16 +150,43 @@ async def test_spostare_su_un_posto_occupato_chiede_la_sostituzione_e_poi_sostit
     assert (await meal_at(db_session, d(13), L)).id == m.id
 
 
-async def test_fuori_casa_toglie_la_ricetta_e_l_avanzo(db_session, frittata):
+async def test_fuori_casa_tiene_la_ricetta_e_toglie_l_avanzo(db_session, frittata):
     origin = await create_meal(db_session, day=d(10), slot=D, dish="Frittata")
     copy = await with_copy(db_session, frittata, origin)
+    recipe_id = copy.id
     left = await create_meal(
         db_session, day=d(11), slot=L, dish="Frittata fredda", leftover_of_id=origin.id
     )
     await update_meal(db_session, origin, {"away": True})
-    assert (await get_meal(db_session, origin.id)).recipe_id is None
-    assert (await fresh(db_session, copy.id)).archived_at is not None
+    assert (await get_meal(db_session, origin.id)).recipe_id == recipe_id
+    assert (await fresh(db_session, recipe_id)).archived_at is None
     assert (await get_meal(db_session, left.id)).leftover_of_id is None
+
+
+async def test_tornare_a_casa_rimette_la_ricetta(db_session, frittata):
+    m = await create_meal(db_session, day=d(10), slot=D, dish="Frittata")
+    copy = await with_copy(db_session, frittata, m)
+    await update_meal(db_session, m, {"away": True})
+    back = await update_meal(db_session, m, {"away": False})
+    assert back.away is False
+    assert back.recipe_id == copy.id
+    assert can_chat(back) is True
+
+
+async def test_eliminare_un_pasto_fuori_casa_archivia_la_ricetta_nascosta(db_session, frittata):
+    m = await create_meal(db_session, day=d(10), slot=D, dish="Frittata")
+    copy = await with_copy(db_session, frittata, m)
+    await update_meal(db_session, m, {"away": True})
+    await delete_meal(db_session, m)
+    assert (await fresh(db_session, copy.id)).archived_at is not None
+
+
+async def test_un_pasto_fuori_casa_non_riceve_una_ricetta_nuova(db_session):
+    # guarda il vincolo tolto dalla 0024: senza la CHECK, il rifiuto sta solo qui
+    m = await create_meal(db_session, day=d(10), slot=D, dish="Fuori", away=True)
+    with pytest.raises(MealRefusal) as exc:
+        check_can_take_recipe(m)
+    assert exc.value.code == MealRefusalCode.NO_RECIPE_HERE
 
 
 async def test_un_avanzo_che_va_fuori_casa_perde_il_legame_e_l_origine_resta(db_session):

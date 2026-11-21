@@ -165,9 +165,9 @@ async def update_meal(
 
     if away and not meal.away:
         await propose_inverse_card(session, meal, InverseReason.AWAY)
-        # un pasto fuori casa non ha ricetta né legame d'avanzo (decisione 14), e gli avanzi
-        # che venivano da lui restano soli, come se fosse eliminato (decisione 15)
-        await release_recipe(session, meal)
+        # un pasto fuori casa non ha legame d'avanzo (decisione 14), e gli avanzi che venivano
+        # da lui restano soli, come se fosse eliminato (decisione 15). La ricetta invece resta,
+        # nascosta (decisione di Mattia del 2026-11-18): tolta la spunta, torna
         meal.leftover_of_id = None
         await _unlink_leftovers_of(session, meal)
     for key in ("dish", "sides"):

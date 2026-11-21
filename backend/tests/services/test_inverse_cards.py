@@ -341,3 +341,14 @@ async def test_una_riga_gia_rimessa_non_si_rimette_due_volte(db_session, mondo):
     voce = await voce_in_lista(db_session, mondo["ing"]["ricotta"])
     await db_session.refresh(voce)
     assert voce.status == ShoppingStatus.ARCHIVED
+
+
+async def test_fuori_casa_propone_ancora_l_inversa(db_session, mondo):
+    # il pasto tiene la ricetta (nascosta), ma l'inversa nasce come prima
+    a = mondo["A"]
+    await applicata(db_session, [a], [PantryProposal(mondo["voci"]["ricotta"].id, F)])
+    await update_meal(db_session, a, {"away": True})
+    card = await l_inversa(db_session)
+    assert card.title == "«Pasta alla ricotta» è fuori casa: rimetti quello che usava?"
+    (p,) = righe(card, "pantry")
+    assert (p.label, p.to_status) == ("ricotta", "available")

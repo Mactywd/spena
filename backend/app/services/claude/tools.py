@@ -282,7 +282,7 @@ def _describe_meal(meal: Any) -> str:
         marks.append(f"avanzo di {meal.leftover_of.dish}")
     if marks:
         text += f" ({', '.join(marks)})"
-    recipe = meal.recipe
+    recipe = None if meal.away else meal.recipe  # fuori casa la ricetta è nascosta
     if recipe is not None:
         head = f"ricetta: {recipe.title}"
         if recipe.servings is not None:

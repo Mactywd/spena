@@ -17,7 +17,7 @@ from app.services.meal_recipes import (
     MealRecipeDraft,
     write_meal_recipe,
 )
-from app.services.meals import create_meal
+from app.services.meals import create_meal, update_meal
 
 TODAY = date(2026, 11, 12)
 
@@ -165,6 +165,25 @@ async def test_read_meals_con_le_ricette_e_i_posti_vuoti(ctx, db_session, voci):
     assert not result.get("is_error")
     text = text_of(result)
     assert "Frittata" in text and "2 uova" in text and "(vuoto)" in text
+
+
+async def test_read_meals_non_mostra_la_ricetta_di_un_pasto_fuori_casa(ctx, db_session, voci):
+    dinner = await create_meal(
+        db_session, day=date(2026, 11, 10), slot=MealSlot.DINNER, dish="Frittata"
+    )
+    await write_meal_recipe(
+        db_session, dinner,
+        MealRecipeDraft(
+            title="Frittata", description=None, instructions="Cuoci.", servings=1,
+            lines=(DraftLine(voci["uova"].id, None, None, "primary", "2 uova", None),),
+            summary="x",
+        ),
+    )
+    await update_meal(db_session, dinner, {"away": True})
+    result = await by_name(ctx)["read_meals"].handler({"start": "2026-11-10", "end": "2026-11-10"})
+    text = text_of(result)
+    assert "(fuori casa)" in text
+    assert "ricetta:" not in text and "2 uova" not in text
 
 
 async def test_read_meals_rifiuta_un_intervallo_troppo_lungo(ctx):
