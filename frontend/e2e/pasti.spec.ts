@@ -168,3 +168,119 @@ test("la ricetta di un pasto aperta da /ricette porta al pasto", async ({ page }
     await togliPasto(page, pastoId);
   }
 });
+
+/** Il nome del giorno com'è nelle frasi dei rifiuti: «Martedì», con la maiuscola. */
+function nomeDelGiorno(giorno: string): string {
+  const nome = new Intl.DateTimeFormat("it-IT", { timeZone: "UTC", weekday: "long" }).format(
+    new Date(`${giorno}T00:00:00Z`)
+  );
+  return nome[0].toUpperCase() + nome.slice(1);
+}
+
+/** Una ricetta scritta per il pasto, fuori dal ricettario (`meal_id`). */
+async function creaRicettaDelPasto(page: Page, pastoId: string, titolo: string) {
+  const risposta = await page.request.post("/api/v1/recipes", {
+    data: {
+      title: titolo,
+      instructions: "Prova e2e.",
+      servings: 2,
+      ingredients: [],
+      source: "manual",
+      meal_id: pastoId,
+    },
+  });
+  expect(risposta.ok()).toBe(true);
+}
+
+test("spostare un pasto dopo il suo avanzo chiede, e lo stacca", async ({ page }) => {
+  await entra(page);
+  const cena = giornoDiRoma(30);
+  const giornoAvanzo = giornoDiRoma(31);
+  const nuovoGiorno = giornoDiRoma(32);
+  const ids: string[] = [];
+  try {
+    const lasagne = await creaPasto(page, cena, "dinner", "e2e-corr Lasagne");
+    ids.push(lasagne);
+    const risposta = await page.request.post("/api/v1/meals", {
+      data: { day: giornoAvanzo, slot: "lunch", dish: "e2e-corr Il giorno dopo", leftover_of_id: lasagne },
+    });
+    expect(risposta.ok()).toBe(true);
+    const avanzo = ((await risposta.json()) as Pasto).id;
+    ids.push(avanzo);
+
+    await page.goto(`/pasti/${lasagne}`);
+    await page.getByRole("button", { name: "Correggi" }).click();
+    await page.getByLabel("Giorno", { exact: true }).fill(nuovoGiorno);
+    await page.getByRole("button", { name: "Salva le modifiche" }).click();
+    await expect(page.getByText(`${nomeDelGiorno(giornoAvanzo)} pranzo è un suo avanzo.`)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Annulla", exact: true })).toHaveCount(1);
+    await page.getByRole("button", { name: "Sposta e stacca l'avanzo" }).click();
+
+    await expect
+      .poll(async () => {
+        const p = (await (await page.request.get(`/api/v1/meals/${lasagne}`)).json()) as Pasto;
+        return p.day;
+      })
+      .toBe(nuovoGiorno);
+    await page.goto(`/pasti?settimana=${nuovoGiorno}`);
+    await expect(page.getByText("e2e-corr Lasagne")).toBeVisible();
+    await page.goto(`/pasti/${avanzo}`);
+    await expect(page.getByText("e2e-corr Il giorno dopo").first()).toBeVisible();
+    await expect(page.getByText(/Avanzo di/)).toHaveCount(0);
+  } finally {
+    for (const id of ids) await togliPasto(page, id);
+  }
+});
+
+test("fuori casa tiene la ricetta da parte", async ({ page }) => {
+  await entra(page);
+  const pastoId = await creaPasto(page, giornoDiRoma(45), "dinner", "e2e-corr Frittata");
+  try {
+    await creaRicettaDelPasto(page, pastoId, "e2e-corr Frittata");
+    await page.goto(`/pasti/${pastoId}`);
+    await expect(page.getByRole("heading", { name: "e2e-corr Frittata", level: 2 })).toBeVisible();
+
+    await page.getByRole("button", { name: "Correggi" }).click();
+    await page.getByLabel("Fuori casa").check();
+    await page.getByRole("button", { name: "Salva le modifiche" }).click();
+    await expect(
+      page.getByText("Fuori casa: non c'è niente da cucinare. La ricetta resta da parte: togliendo «Fuori casa» torna.")
+    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "e2e-corr Frittata", level: 2 })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Correggi" }).click();
+    await page.getByLabel("Fuori casa").uncheck();
+    await page.getByRole("button", { name: "Salva le modifiche" }).click();
+    await expect(page.getByRole("heading", { name: "e2e-corr Frittata", level: 2 })).toBeVisible();
+    await expect(page.getByText("Chat con Claude")).toBeVisible();
+    await expect(page.getByText("Claude non è collegato: manca la chiave API sul server.")).toBeVisible();
+  } finally {
+    await togliPasto(page, pastoId);
+  }
+});
+
+test("«Sostituisci» dice della ricetta dell'occupante", async ({ page }) => {
+  await entra(page);
+  const occupato = giornoDiRoma(50);
+  const ids: string[] = [];
+  try {
+    const occupante = await creaPasto(page, occupato, "lunch", "e2e-corr Occupante");
+    ids.push(occupante);
+    await creaRicettaDelPasto(page, occupante, "e2e-corr Occupante");
+    const nuovo = await creaPasto(page, giornoDiRoma(51), "lunch", "e2e-corr Nuovo");
+    ids.push(nuovo);
+
+    await page.goto(`/pasti/${nuovo}`);
+    await page.getByRole("button", { name: "Correggi" }).click();
+    await page.getByLabel("Giorno", { exact: true }).fill(occupato);
+    await page.getByRole("button", { name: "Salva le modifiche" }).click();
+    const avviso = page.getByText("La sua ricetta non è nel ricettario: si elimina con il pasto.");
+    const sostituisci = page.getByRole("button", { name: "Sostituisci", exact: true });
+    await expect(avviso).toBeVisible();
+    await expect(sostituisci).toBeVisible();
+    const sopra = (await avviso.boundingBox())!.y;
+    expect(sopra).toBeLessThan((await sostituisci.boundingBox())!.y);
+  } finally {
+    for (const id of ids) await togliPasto(page, id);
+  }
+});
