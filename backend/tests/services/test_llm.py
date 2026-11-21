@@ -193,22 +193,20 @@ async def test_l_ambiente_non_sceglie_indirizzo_ne_credenziale(con_chiave, monke
     assert not [v for v in richiesta.headers.values() if "token-dell-ambiente" in v]
 
 
-async def test_senza_chiave_nessuna_richiesta(monkeypatch):
-    """La degradazione dichiarata, e prima della rete: non si spreca un giro."""
-    get_settings.cache_clear()
+async def test_senza_chiave_nessuna_richiesta(con_chiave, monkeypatch):
+    """La degradazione dichiarata, e prima della rete: non si spreca un giro.
+
+    Il finto si costruisce con la chiave, che poi si toglie: l'assenza è nelle
+    impostazioni, ed è lì che `complete_json` guarda prima di aprire qualunque cosa.
+    """
+    finto = FakeLlm({"esito": "ok"})
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    registro = Registro()
-    trasporto = DefaultAsyncHttpxClient(transport=httpx2.MockTransport(registro))
-    # un client costruito a mano, con una chiave qualunque: l'assenza è nelle impostazioni
-    client = AsyncAnthropic(api_key="x", http_client=trasporto, max_retries=0)
-    try:
-        with pytest.raises(LlmUnavailable) as preso:
-            await chiedi(client)
-    finally:
-        get_settings.cache_clear()
+    get_settings.cache_clear()
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(finto)
     assert preso.value.kind == LlmFailureKind.NOT_CONFIGURED
     assert str(preso.value) == "ANTHROPIC_API_KEY non configurata"
-    assert registro.richieste == []
+    assert finto.calls == 0
 
 
 @pytest.mark.parametrize(
@@ -265,6 +263,14 @@ async def test_rete_e_tempo_sono_passeggeri(con_chiave, guasto):
     assert not preso.value.terminal
 
 
+async def test_il_messaggio_di_rete_si_tronca(con_chiave):
+    """Il dettaglio va nei log e nei comandi: un messaggio di rete lungo non li invade."""
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(FakeLlm(httpx2.ConnectError("x" * 500)))
+    assert "ConnectError: " + "x" * 200 + ")" in str(preso.value)
+    assert "x" * 201 not in str(preso.value)
+
+
 async def test_una_risposta_tagliata_porta_l_uso(con_chiave):
     uso = {"input_tokens": 300, "output_tokens": 300,
            "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
@@ -302,6 +308,26 @@ async def test_le_risposte_inutilizzabili(con_chiave, risposta):
     assert exc.kind == LlmFailureKind.INVALID
     assert exc.usage.completion_tokens == 20
     assert exc.usage.cost_usd is not None
+
+
+@pytest.mark.parametrize(
+    "risposta",
+    [
+        httpx2.Response(200, text="<html>", headers={"content-type": "text/html"}),
+        httpx2.Response(200, json={"foo": 1}),
+    ],
+    ids=["html", "json-estraneo"],
+)
+async def test_una_risposta_di_forma_inattesa_e_inutilizzabile(con_chiave, risposta):
+    """Un 200 che non è un messaggio (una pagina di un proxy, un corpo estraneo) non
+    scappa come `AttributeError`: i chiamanti prendono solo `LlmUnavailable`, e senza
+    quello la spesa non si registra e la rotta risponde 500 invece della frase."""
+    with pytest.raises(LlmUnavailable) as preso:
+        await chiedi(FakeLlm(risposta))
+    exc = preso.value
+    assert exc.kind == LlmFailureKind.INVALID
+    assert exc.usage == LlmUsage()
+    assert "risposta non riconosciuta" in str(exc)
 
 
 async def test_i_tentativi_sono_dell_sdk(con_chiave):

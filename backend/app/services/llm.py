@@ -18,6 +18,7 @@ from typing import Any
 
 from anthropic import (
     APIConnectionError,
+    APIError,
     APIStatusError,
     AsyncAnthropic,
     AuthenticationError,
@@ -333,8 +334,23 @@ def _network_detail(exc: APIConnectionError) -> str:
     """Il nome della classe del guasto di rete (`ReadTimeout`, `ConnectError`), e il suo
     messaggio se ne ha uno: nei log dice dove si è rotto, ed è di httpx, mai la chiave."""
     cause = exc.__cause__ or exc
-    text = str(cause)
+    text = str(cause)[:200]
     return f"{type(cause).__name__}: {text}" if text else type(cause).__name__
+
+
+def _is_message(message: object) -> bool:
+    """Un `Message` che si può leggere. Un 200 che non lo è — una pagina HTML di un
+    proxy, un corpo estraneo — l'SDK lo torna com'è (una `str`, o un `Message` coi campi
+    vuoti), e leggerlo solleverebbe un `AttributeError` che nessun chiamante prende."""
+    if not isinstance(message, Message):
+        return False
+    usage = getattr(message, "usage", None)
+    return (
+        isinstance(getattr(message, "content", None), list)
+        and usage is not None
+        and isinstance(getattr(usage, "input_tokens", None), int)
+        and isinstance(getattr(usage, "output_tokens", None), int)
+    )
 
 
 def _parse(message: Message, usage: LlmUsage) -> dict[str, Any]:
@@ -406,6 +422,10 @@ async def complete_json(
             raise _status_failure(exc) from exc
         except APIConnectionError as exc:  # APITimeoutError compreso
             raise _failure(LlmFailureKind.TRANSIENT, _network_detail(exc)) from exc
+        except APIError as exc:  # gli altri errori dell'SDK, come la validazione
+            raise _failure(LlmFailureKind.INVALID, type(exc).__name__) from exc
+        if not _is_message(message):
+            raise _failure(LlmFailureKind.INVALID, "risposta non riconosciuta")
         usage = read_usage(message, model=params["model"])
         return LlmResult(data=_parse(message, usage), usage=usage, call_site=call_site)
     finally:
