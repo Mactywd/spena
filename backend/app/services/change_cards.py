@@ -398,6 +398,14 @@ async def _locked(session: AsyncSession, card_id: uuid.UUID) -> ChangeCard:
     return card
 
 
+def _origins(row: ChangeCardRow) -> list[uuid.UUID]:
+    """Le righe d'origine di una riga inversa; una scritta prima della 0024 ha solo
+    `source_row_id`."""
+    if row.source_row_ids:
+        return [uuid.UUID(value) for value in row.source_row_ids]
+    return [row.source_row_id] if row.source_row_id is not None else []
+
+
 async def apply_card(
     session: AsyncSession, card_id: uuid.UUID, overrides: Sequence[RowOverride]
 ) -> ChangeCard:
@@ -422,7 +430,8 @@ async def apply_card(
     una riga la cui origine è già annullata si salta con la sua nota, senza toccare
     niente: due inverse non rimettono mai due volte, nemmeno applicate insieme, perché le
     righe d'origine si bloccano (`FOR UPDATE`, in ordine di id) prima di leggere
-    `reversed_at`.
+    `reversed_at`. Una riga inversa di dispensa ha più origini (`source_row_ids`): le
+    segna tutte, e si salta se una qualunque è già annullata.
     """
     card = await _locked(session, card_id)
     _must_be_proposed(card)
@@ -448,7 +457,7 @@ async def apply_card(
     # Le righe d'origine di un'inversa si bloccano anche loro, in ordine di id (niente
     # stalli), prima di leggere `reversed_at`: due inverse **diverse** con la stessa
     # origine applicate insieme si mettono in fila, e la seconda la trova già annullata.
-    source_ids = sorted({row.source_row_id for row in rows if row.source_row_id is not None})
+    source_ids = sorted({origin for row in rows for origin in _origins(row)})
     sources: dict[uuid.UUID, ChangeCardRow] = {}
     if source_ids:
         locked = await session.execute(
@@ -464,8 +473,8 @@ async def apply_card(
         if not row.checked:
             row.applied = False
             continue
-        source = sources.get(row.source_row_id) if row.source_row_id is not None else None
-        if source is not None and source.reversed_at is not None:
+        origins = [sources[o] for o in _origins(row) if o in sources]
+        if any(origin.reversed_at is not None for origin in origins):
             # un'altra inversa l'ha già rimessa: rimetterla di nuovo cancellerebbe
             # quello che è successo dopo (decisione 22)
             row.applied = False
@@ -506,9 +515,10 @@ async def apply_card(
                 continue
             await patch_item(session, listed.id, status=ShoppingStatus.ARCHIVED)
             row.applied = True
-        if row.applied and source is not None:
-            # la riga della scheda in avanti è annullata: un'altra inversa non la rimette
-            source.reversed_at = datetime.now(UTC)
+        if row.applied:
+            # le righe della scheda in avanti sono annullate: un'altra inversa non le rimette
+            for origin in origins:
+                origin.reversed_at = datetime.now(UTC)
 
     card.status = CardStatus.APPLIED.value
     card.applied_at = datetime.now(UTC)
@@ -613,23 +623,30 @@ async def _discard_proposed_inverses(session: AsyncSession, meal_id: str) -> Non
         await session.flush()
 
 
-async def _inverse_pantry_row(
-    session: AsyncSession, source: ChangeCardRow
+async def _inverse_pantry_group(
+    session: AsyncSession, sources: Sequence[ChangeCardRow]
 ) -> dict[str, object] | None:
-    if source.pantry_item_id is None or source.before_status is None:
+    """L'effetto netto del pasto su una voce di dispensa. `sources` sono le righe
+    d'origine della voce, dalla più recente alla più vecchia: si rimette lo stato di
+    prima della più vecchia, e la riga è spuntata se la voce è ancora nello stato che le
+    ha dato la più recente."""
+    newest, oldest = sources[0], sources[-1]
+    if newest.pantry_item_id is None or oldest.before_status is None:
         return None
-    item = await session.get(PantryItem, source.pantry_item_id)
+    item = await session.get(PantryItem, newest.pantry_item_id)
     if item is None or item.archived_at is not None:
         return None  # la voce non c'è più
-    if item.status == source.before_status:
-        return None  # è già com'era prima della scheda
+    if item.status == oldest.before_status:
+        return None  # è già com'era prima delle schede
     await session.refresh(item, ["ingredient", "product"])
-    unchanged = item.status == source.to_status
+    unchanged = item.status == newest.to_status
     return {
         "kind": RowKind.PANTRY.value, "label": _label(item), "pantry_item_id": item.id,
-        "ingredient_id": item.ingredient_id, "to_status": source.before_status,
+        "ingredient_id": item.ingredient_id, "to_status": oldest.before_status,
         "checked": unchanged, "editable": True,
         "note": None if unchanged else CHANGED_NOTE,
+        "source_row_id": oldest.id,
+        "source_row_ids": [str(source.id) for source in sources],
     }
 
 
@@ -683,6 +700,11 @@ async def propose_inverse_card(
       voce sistemata in dispensa o tolta non si tocca, e la voce di dispensa nuova della
       spesa non è mai una riga di nessuna scheda, quindi resta com'è.
 
+    **Per voce**: le righe di dispensa d'origine si raggruppano per voce e la scheda
+    propone l'effetto netto del pasto: lo stato di prima della riga più vecchia, spuntato
+    se la voce è ancora nello stato che le ha dato la più recente. Se una riga del gruppo
+    serve ancora a un altro pasto, si salta il gruppo. La riga ricorda tutte le origini.
+
     Le righe già annullate (`reversed_at`, scritto da `apply_card` quando applica
     un'inversa) non si ripropongono. Le righe si leggono dall'ultima scheda applicata
     alla prima, così applicandole in ordine si torna indietro nell'ordine giusto.
@@ -719,17 +741,29 @@ async def propose_inverse_card(
 
     pantry_rows: list[dict[str, object]] = []
     unlist_rows: list[dict[str, object]] = []
+    groups: dict[uuid.UUID | None, list[ChangeCardRow]] = {}
     for source in sources:
+        if source.kind == RowKind.PANTRY.value:
+            groups.setdefault(source.pantry_item_id, []).append(source)
+            continue
         if await _still_used_elsewhere(session, source, meal_id):
             continue
-        if source.kind == RowKind.PANTRY.value:
-            fields = await _inverse_pantry_row(session, source)
-            target = pantry_rows
-        else:
-            fields = await _inverse_list_row(session, source)
-            target = unlist_rows
+        fields = await _inverse_list_row(session, source)
         if fields is not None:
-            target.append({**fields, "source_row_id": source.id})
+            unlist_rows.append(
+                {**fields, "source_row_id": source.id, "source_row_ids": [str(source.id)]}
+            )
+    for group in groups.values():
+        served = False
+        for source in group:
+            if await _still_used_elsewhere(session, source, meal_id):
+                served = True
+                break
+        if served:
+            continue
+        fields = await _inverse_pantry_group(session, group)
+        if fields is not None:
+            pantry_rows.append(fields)
     if not pantry_rows and not unlist_rows:
         return None
 

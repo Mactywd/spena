@@ -352,3 +352,81 @@ async def test_fuori_casa_propone_ancora_l_inversa(db_session, mondo):
     assert card.title == "«Pasta alla ricotta» è fuori casa: rimetti quello che usava?"
     (p,) = righe(card, "pantry")
     assert (p.label, p.to_status) == ("ricotta", "available")
+
+
+async def test_due_schede_dello_stesso_pasto_che_si_annullano_sulla_voce(db_session, mondo):
+    # il caso del rilievo: la scheda 2 rimette gli spinaci, la 1 li aveva finiti
+    a, v = mondo["A"], mondo["voci"]
+    await applicata(db_session, [a], [PantryProposal(v["ricotta"].id, F)])
+    await applicata(
+        db_session, [a],
+        [PantryProposal(v["ricotta"].id, A), PantryProposal(v["parmigiano"].id, F)],
+    )
+    await delete_meal(db_session, a)
+    card = await l_inversa(db_session)
+    assert [r.label for r in righe(card, "pantry")] == ["parmigiano"]
+    p = riga(card, "pantry", "parmigiano")
+    assert (p.to_status, p.checked) == ("available", True)
+
+
+async def test_due_schede_sulla_stessa_voce_rimettono_lo_stato_di_partenza(db_session, mondo):
+    a, ricotta = mondo["A"], mondo["voci"]["ricotta"]
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, L)])
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, F)])
+    await delete_meal(db_session, a)
+    (p,) = righe(await l_inversa(db_session), "pantry")
+    assert (p.label, p.to_status, p.checked) == ("ricotta", "available", True)
+    assert len(p.source_row_ids) == 2
+
+
+async def test_una_voce_toccata_dopo_l_ultima_scheda_non_si_spunta(db_session, mondo):
+    a, ricotta = mondo["A"], mondo["voci"]["ricotta"]
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, L)])
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, F)])
+    await set_status(db_session, ricotta.id, L)  # a mano, dopo l'ultima scheda
+    await delete_meal(db_session, a)
+    (p,) = righe(await l_inversa(db_session), "pantry")
+    assert (p.to_status, p.checked, p.note) == ("available", False, CHANGED)
+
+
+async def test_applicare_l_inversa_segna_tutte_le_origini(db_session, mondo):
+    a, ricotta = mondo["A"], mondo["voci"]["ricotta"]
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, L)])
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, F)])
+    await delete_meal(db_session, a)
+    card = await l_inversa(db_session)
+    await apply_card(db_session, card.id, [])
+    origini = (
+        await db_session.execute(
+            select(ChangeCardRow)
+            .join(ChangeCard, ChangeCard.id == ChangeCardRow.card_id)
+            .where(ChangeCard.kind == "forward", ChangeCardRow.kind == "pantry")
+            .execution_options(populate_existing=True)
+        )
+    ).scalars().all()
+    assert len(origini) == 2 and all(o.reversed_at is not None for o in origini)
+    await db_session.refresh(ricotta)
+    assert ricotta.status == "available"
+
+
+async def test_l_inversa_del_fuori_casa_applicata_non_si_ripropone_all_eliminazione(
+    db_session, mondo
+):
+    a, ricotta = mondo["A"], mondo["voci"]["ricotta"]
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, L)])
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, F)])
+    await update_meal(db_session, a, {"away": True})
+    (fuori,) = await inverse(db_session)
+    await apply_card(db_session, fuori.id, [])
+    await update_meal(db_session, a, {"away": False})
+    await delete_meal(db_session, a)
+    nuove = [c for c in await inverse(db_session) if c.id != fuori.id]
+    assert all(righe(c, "pantry") == [] for c in nuove)
+
+
+async def test_un_gruppo_che_serve_a_un_altro_pasto_si_salta(db_session, mondo):
+    a, b, ricotta = mondo["A"], mondo["B"], mondo["voci"]["ricotta"]
+    await applicata(db_session, [a, b], [PantryProposal(ricotta.id, L)])
+    await applicata(db_session, [a], [PantryProposal(ricotta.id, F)])
+    await delete_meal(db_session, a)
+    assert all(righe(c, "pantry") == [] for c in await inverse(db_session))
