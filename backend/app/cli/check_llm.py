@@ -9,8 +9,8 @@ c'è, mai il suo valore. Esce con 1 se la chiave manca. Con `--prova` fa una sol
 minima, per Mattia dopo il deploy: costa una frazione di centesimo.
 
 La prova è un controllo, non una sezione: non si registra in `llm_calls`, e quindi non
-compare in «Spese dell'AI». Sostituisce `llm_prices`, che guardava i provider di
-OpenRouter.
+compare in «Spese dell'AI». Prende il posto del comando che, prima del 2026-11-21,
+mostrava i provider e i prezzi dell'instradamento di allora.
 """
 
 import argparse

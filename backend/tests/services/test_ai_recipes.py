@@ -19,7 +19,7 @@ from app.services.llm import LlmFailureKind, LlmUnavailable
 def chiave(monkeypatch):
     """La suite non legge `.env` (vedi conftest.py): senza questo, ogni chiamata a
     `draft_recipe` con un client finto fallirebbe comunque su chiave assente, prima
-    ancora di raggiungere il finto — `build_headers` gira sempre, client o no."""
+    ancora di raggiungere il finto — `ensure_llm_configured` gira sempre, client o no."""
     from app.core.config import get_settings
 
     get_settings.cache_clear()

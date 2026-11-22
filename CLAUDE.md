@@ -175,12 +175,22 @@ port a wrapper rather than a rewrite.
 
 Two external dependencies, each behind its own service with a narrow interface:
 `OpenFoodFactsClient` for barcodes and `EmbeddingProvider` for semantic search.
-An LLM (`google/gemma-4-26b-a4b-it`, reached through OpenRouter via
-`services/llm.py`) drafts recipes and decides the import's unknown ingredient
-terms. It never produces nutrient values. There is one provider and one client
-on purpose — for the jobs Gemma does; the meals are the exception explained below.
-A second implementation behind a config switch would never run in production,
-which is the first defect listed above.
+An LLM, Claude Haiku (`claude-haiku-5-5`, `LLM_MODEL`), reached through the Anthropic
+Messages API with the official `anthropic` SDK in `services/llm.py`, decides the
+import's unknown ingredient terms and the questions of units, figures, substitutes,
+CIQUAL matches and grams, and drafts recipes and their variants. It never produces
+nutrient values. There is one client on purpose, and its options are built in one
+place (`client_options`), with the key from the settings and the API address written
+in the code, never read from the environment: tests replace only its HTTP transport
+(`httpx2.MockTransport`), so the SDK that builds the request and parses the response
+under test is the one production runs. Anthropic reports tokens, not prices: spena
+computes the cost from the tokens and the price list in
+`backend/app/domain/llm_pricing.py`, cache reads and writes included, and keeps the
+cache tokens in `llm_calls` so every cost can be redone from its row. A failure carries
+a kind (`LlmFailureKind`): no key, a revoked key, credit run out, the rate limit or a
+rejected request stop a fan-out at the first one; the others leave only that item in
+the queue. A second implementation behind a config switch would never run in
+production, which is the first defect listed above.
 
 The drafts and the variants (R8) are told which utensils the kitchen has: the list
 Mattia keeps in «Utensili», from the hamburger (`utensils` table, `/api/v1/utensils`),
@@ -189,19 +199,20 @@ goes at the end of their system prompt through `utensils_prompt_block` in
 constraint, not no tools: the prompt is then exactly the one of before. Imported
 recipes are never checked against it. Spec: `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`, §4.4 and §8.
 
-**A second path to a model, on purpose: Claude for the meals.** The meal chat, the
-planning and the meals' recipes run on Claude Opus (`claude-opus-5-5`) through the
-Claude Agent SDK for Python (`claude-agent-sdk`, pinned, with its bundled Claude Code
-binary), authenticated with Mattia's Anthropic API key, `ANTHROPIC_API_KEY`, kept only
-in the server's `.env` (decided by Mattia on 2026-11-18; the same key will serve the
-import's LLM when it moves to Claude Haiku). The SDK gets `CLAUDE_CODE_OAUTH_TOKEN` and
-`ANTHROPIC_AUTH_TOKEN` empty, so a subscription token left in the environment can never
-take over. This is not what the one-provider rule above forbids: that rule is against
-two implementations behind a switch, one of which never runs. Here there are two paths
-with two jobs, and both run in production — Gemma via OpenRouter for import, drafts and
-variants; Claude via the Agent SDK for the meals. The SDK is driven with every built-in
-tool off (`tools=[]`), no settings or `CLAUDE.md` loaded (`setting_sources=[]`),
-`permission_mode="dontAsk"`, no session transcripts on disk
+**Two paths to Claude, on purpose, on one key.** The meal chat, the planning and the
+meals' recipes run on Claude Opus (`claude-opus-5-5`) through the Claude Agent SDK for
+Python (`claude-agent-sdk`, pinned, with its bundled Claude Code binary), authenticated
+with Mattia's Anthropic API key, `ANTHROPIC_API_KEY`, kept only in the server's `.env`
+(decided by Mattia on 2026-11-18; since 2026-11-21 the same key serves the import's
+LLM, with a spend limit in the Anthropic console: a large import draws on the meals'
+credit too). The SDK gets `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_AUTH_TOKEN` empty, so
+a subscription token left in the environment can never take over. This is not what the
+one-provider rule above forbids: that rule is against two implementations behind a
+switch, one of which never runs. Here there are two paths with two jobs, both
+Anthropic's and both running in production — the Messages API with Haiku for the
+import, drafts and variants; the Agent SDK with Opus for the meals. The SDK is driven
+with every built-in tool off (`tools=[]`), no settings or `CLAUDE.md` loaded
+(`setting_sources=[]`), `permission_mode="dontAsk"`, no session transcripts on disk
 (`--no-session-persistence`, proven on the bundled binary by
 `tests/test_claude_binary.py`), and spena's own tools as an in-process MCP server
 (`backend/app/services/claude/`). Its calls go into `llm_calls` as `meal_chat`,
@@ -223,8 +234,9 @@ against the SDK's real message types. Spec:
   ingredient that resolves to nothing: all of these must leave the user able to
   continue, never facing an error page.
 - **Tests run on real Postgres**, started through Compose. Not SQLite: the schema
-  needs `vector` and `pg_trgm`. No network calls in the suite; Open Food Facts and
-  the LLM run against recorded fixtures.
+  needs `vector` and `pg_trgm`. No network calls in the suite; Open Food Facts runs
+  against recorded fixtures, and the LLM against Messages-shaped responses through a
+  mock transport.
 - **e5 embeddings need their prefixes.** `query: ` for searches, `passage: ` for
   documents. Omitting them raises no error and silently degrades result quality.
 - **Missing nutrients stay missing.** Never default an unknown nutrient to zero:

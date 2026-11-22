@@ -1,5 +1,7 @@
 # Spena — Riconoscimento degli ingredienti con un LLM su OpenRouter (fase 2b)
 
+_Superata il 2026-11-21: l'LLM è Claude Haiku sull'API di Anthropic, vedi `docs/superpowers/specs/2026-11-21-llm-haiku-design.md`._
+
 **Data:** 2026-09-13
 **Stato:** da approvare
 **Spec madre:** `docs/superpowers/specs/2026-09-12-import-ricette-design.md`, §8.2 «Le proposte di Claude»

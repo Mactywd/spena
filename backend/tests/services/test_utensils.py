@@ -24,7 +24,7 @@ from app.services.utensils import (
 
 @pytest.fixture(autouse=True)
 def chiave(monkeypatch):
-    """Senza chiave `build_headers` fallisce prima di arrivare al finto."""
+    """Senza chiave `ensure_llm_configured` fallisce prima di arrivare al finto."""
     from app.core.config import get_settings
 
     get_settings.cache_clear()

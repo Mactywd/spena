@@ -43,9 +43,9 @@ testpaths = ["tests"]
 # Il filtro `:app` guarda però il modulo che Starlette indica con il suo `stacklevel`, e
 # ne prende solo alcuni usi (quelli a livello di modulo): la guardia vera è
 # tests/test_no_deprecated_status.py, che legge anche le righe che nessun test attraversa.
-# Il filtro si ferma ad `app`: starlette.testclient avvisa da sé, all'import, che usa
-# `httpx` invece di `httpx2` (non installato); quell'avviso è della libreria e non va
-# trasformato in errore, altrimenti la raccolta di tests/test_startup.py cade.
+# Il filtro si ferma ad `app`: senza `httpx2`, starlette.testclient avvisava da sé,
+# all'import, che usava `httpx`; quell'avviso è della libreria e non va trasformato in
+# errore. Dal 2026-11-21 `httpx2` è fra le `dev` e l'avviso non c'è più.
 filterwarnings = [
     "error::starlette.exceptions.StarletteDeprecationWarning:app",
 ]

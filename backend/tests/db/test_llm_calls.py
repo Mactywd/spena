@@ -4,7 +4,8 @@ Esiste perché l'attribuzione di OpenRouter non sa fare questa domanda. Per loro
 un'app è un indirizzo — «your app's URL becomes its unique identifier» — e `X-Title`
 ne cambia solo il nome visualizzato. Cinque titoli diversi non farebbero cinque voci
 di spesa: farebbero un'app sola con il nome che sfarfalla. La divisione per sezione la
-teniamo noi, sul costo che OpenRouter ci dichiara a ogni risposta.
+teniamo noi: prima sul costo che OpenRouter dichiarava a ogni risposta, dal 2026-11-21
+sul costo che spena calcola dai token col listino di `app/domain/llm_pricing.py`.
 """
 
 import pytest

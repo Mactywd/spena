@@ -43,7 +43,7 @@ recuperabili), 7,6 GB di RAM, 4 CPU. Gli embedding sono spenti
 | ingredienti in anagrafica | 223 |
 | storage per ricetta importata, pagina d'import compresa | ~17 KB → ~150 MB per tutto il catalogo |
 | pausa fra due pagine (`DELAY_SECONDS`) | 1,2 s → ~2 h 50 di sole pause, 3-4 ore in tutto |
-| costo AI stimato | 0,0002–0,0003 $ a termine, 1–3 $ in tutto (**non misurato**) |
+| costo AI stimato | 0,0002–0,0003 $ a termine, 1–3 $ in tutto (**non misurato**; su Gemma via OpenRouter, prima del 2026-11-21) |
 | ricerca su 8.500 ricette sintetiche | 73–143 ms in ogni caso (prima: errore o 1 s) |
 
 **Come si interroga il database di produzione** (lo stesso schema per tutti i
@@ -91,18 +91,19 @@ in fondo c'è «Mostra altre»; toccandolo arrivano le altre 36 e il bottone spa
 
 ---
 
-## 2. Il limite di credito su OpenRouter
+## 2. Il limite di spesa su Anthropic
 
-Deciso in brainstorming: il tetto di 1 $/giorno **non** è nel codice, è un limite
-sulla chiave. **È un'impostazione dell'account di Mattia e la fa lui**, dal pannello
-delle chiavi di OpenRouter: un limite di credito sulla chiave usata dal server, con
-reset giornaliero se il pannello lo offre, altrimenti un limite totale di qualche
-dollaro da rialzare a mano.
+Il tetto di spesa **non** è nel codice, è un limite sulla chiave. **È un'impostazione
+dell'account di Mattia e la fa lui**: il limite di spesa si mette nella console di
+Anthropic sulla chiave del server, che è la stessa dei Pasti (`ANTHROPIC_API_KEY`).
 
-Cosa succede quando il limite scatta: OpenRouter risponde 402, `services/llm.py` lo
-trasforma in `LlmUnavailable`, il termine resta in coda. Dopo due giri di fila senza
-una decisione `--tutto` smette di chiedere all'AI (`MAX_FRUITLESS_ROUNDS`), finisce le
-pagine e esce. Si rilancia il giorno dopo: riprende dai termini.
+Cosa succede quando il limite scatta: l'API risponde con un errore di credito,
+`services/llm.py` lo riconosce (`credit`), il riconoscimento si ferma alla prima
+domanda che lo incontra (le altre non partono) e i termini restano in coda; il log dice
+`riconoscimento fermato:` con la frase del credito. Dopo due giri di fila senza una
+decisione `--tutto` smette di chiedere all'AI (`MAX_FRUITLESS_ROUNDS`), finisce le pagine
+e esce. La chat dei Pasti, sulla stessa chiave, dice «credito finito» finché non si
+ricarica. Si rilancia dopo la ricarica: riprende dai termini.
 
 Prima di partire, la spesa registrata finora, per poter fare la differenza dopo:
 
@@ -191,8 +192,9 @@ i cui termini sono tutti decisi.
 | nel log | cosa vuol dire | cosa fare |
 |---|---|---|
 | `fonte dice di fermarsi` o `2 rifiuti di fila: mi fermo` | GialloZafferano ha risposto 429 o 5xx due volte di fila | aspettare qualche ora, poi rilanciare §4 |
-| `l'AI non ha deciso niente per 2 giri di fila` | credito finito, modello giù o risposte non verificabili | controllare il credito su OpenRouter; rilanciare §4 più tardi (riprende dai termini) |
-| `riconoscimento non disponibile (OPENROUTER_API_KEY non configurata)` | la chiave manca nel `.env` del server | chiedere a Mattia; non si tocca il `.env` da soli |
+| `l'AI non ha deciso niente per 2 giri di fila` | credito finito, modello giù o risposte non verificabili | controllare il credito nella console di Anthropic (`check_llm --prova` dice se è il credito); rilanciare §4 più tardi (riprende dai termini) |
+| `riconoscimento non disponibile (ANTHROPIC_API_KEY non configurata)` | la chiave manca nel `.env` del server | chiedere a Mattia; non si tocca il `.env` da soli |
+| `riconoscimento fermato: L'AI non risponde: il credito della chiave API è finito…` | credito finito | ricaricare nella console; rilanciare §4 più tardi (riprende dai termini) |
 | il processo sparisce senza riga finale | container riavviato, o un'eccezione | leggere la coda del log; rilanciare §4 |
 
 Rilanciare è sempre sicuro: pagine prese una volta sola, termini decisi una volta sola.

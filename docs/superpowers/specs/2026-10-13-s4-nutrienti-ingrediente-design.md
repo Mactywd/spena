@@ -305,6 +305,8 @@ piano».
 
 ## 9. Se il pilota non basta: cosa servirebbe (fuori da questi piani)
 
+_Superato il 2026-11-21 (deciso da Mattia): con il passaggio a Claude Haiku il modello di tutte le chiamate è già quello forte rispetto a Gemma, e questo non si costruisce. Il pilota si rilancia una volta su Haiku dopo il deploy (spec `2026-11-21-llm-haiku-design.md` §9)._
+
 `complete_json` oggi usa un modello solo (`OPENROUTER_MODEL`). Servirebbe: un argomento
 `model` facoltativo di `complete_json` (il default resta quello di oggi); un'impostazione
 `OPENROUTER_MODEL_STRONG`; e nei due comandi un'opzione `--modello-forte` che rilancia **solo**

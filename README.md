@@ -133,7 +133,7 @@ nel caso normale il ricettario si riempie senza altri passaggi — restano i due
 qui sotto, che il comando stesso ti nomina quando servono: `decide_units` se ha
 depositato unità di misura nuove, `reindex` se tieni accesa la ricerca semantica.
 
-Ci vuole `OPENROUTER_API_KEY` in `.env`. Senza, tutto continua a funzionare a mano: i
+Ci vuole `ANTHROPIC_API_KEY` in `.env` (la stessa dei Pasti). Senza, tutto continua a funzionare a mano: i
 termini restano in coda e si decidono dalla riga in cima al ricettario, un tocco
 ciascuno, come prima che questa funzione esistesse.
 
@@ -167,10 +167,10 @@ la stessa decisione a mano della schermata, quindi le ricette toccate si rifanno
 pagina scaricata; il costo scelto a mano sopravvive. Il piano applicato resta nel
 repository come storia di cosa si è deciso: non si rilancia, se ne scrive uno nuovo.
 
-Per sapere quale provider di OpenRouter serve il modello e a quanto:
+Per controllare il modello, il listino e la chiave (con `--prova`, una chiamata vera che costa una frazione di centesimo):
 
 ```bash
-docker compose exec backend python -m app.cli.llm_prices
+docker compose exec backend python -m app.cli.check_llm --prova
 ```
 
 ### Le unità di misura delle dosi
@@ -241,7 +241,7 @@ reparto (o se ne sceglie la figura a mano in Anagrafica) e rilanciare ancora non
 Se l'AI non risponde, il comando lo dice con una riga «figure non disponibili (…)», col
 perché fra parentesi: i lotti già decisi prima del guasto restano scritti (ogni lotto si
 salva appena finito), e il guasto ferma solo quelli dopo. Se quella riga torna identica a
-ogni lancio, il perché è lì. Senza `OPENROUTER_API_KEY` non si rompe niente: le righe
+ogni lancio, il perché è lì. Senza `ANTHROPIC_API_KEY` non si rompe niente: le righe
 mostrano l'icona del reparto. Una figura sbagliata si corregge nella scheda dell'ingrediente in
 Anagrafica, «Cambia figura»; una scelta fatta lì, «Nessuna» compresa, il comando non la
 tocca più. In produzione, con `-f docker-compose.prod.yml` come ogni altro comando.
@@ -433,7 +433,7 @@ lancia da sé `docker compose exec` sul progetto `spena-e2e`: se il progetto ha 
 nome, lo si passa in `E2E_PROJECT`. L'aiutante che gira è quello montato nel container del
 backend, cioè quello della copia del repository da cui lo stack è stato avviato, non
 necessariamente quella da cui si lancia Playwright. Parte solo dove c'è `SPENA_E2E=1`, che
-sta in `.env.e2e`; lo stesso file lascia vuota `OPENROUTER_API_KEY`, così una chiamata al
+sta in `.env.e2e`; lo stesso file lascia vuota `ANTHROPIC_API_KEY`, così una chiamata al
 modello che sfuggisse a uno stub finisce in un 503 e nel ripiego a mano, non in una spesa.
 
 ## Lo stile, e dove abita il colore
@@ -562,16 +562,12 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `SESSION_SECRET` | nessuno, obbligatorio | firma del cookie di sessione; vuota, il backend non parte |
 | `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso; illeggibile (troncato), il backend non parte |
 | `COOKIE_SECURE` | `false` | `true` in produzione: il cookie solo su HTTPS |
-| `OPENROUTER_API_KEY` | vuoto | stesura ricette con l'AI e decisione dei termini incerti nell'import |
-| `OPENROUTER_MODEL` | `google/gemma-4-26b-a4b-it` | il modello; cambiarlo è come passare a uno più grosso (es. `anthropic/claude-sonnet-5`) |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | endpoint dell'API, sovrascrivibile nei test |
-| `OPENROUTER_APP_TITLE` | `Spena Import Ricette` | header `X-Title`: per OpenRouter è solo il **nome visualizzato**, e da solo non attribuisce niente |
-| `OPENROUTER_APP_URL` | vuoto | header `HTTP-Referer`, **la chiave con cui OpenRouter riconosce l'app**. Vuota, l'header si omette e i log mostrano «Unknown» qualunque titolo si mandi. Mettici il dominio dell'installazione |
-| `OPENROUTER_PROVIDER_ONLY` | vuoto | vuoto: instradamento per prezzo scelto da OpenRouter. Valorizzata (es. `darkbloom`): pinni il provider a mano, e perdi la caduta automatica sul successivo |
-| `LLM_TIMEOUT_SECONDS` | `60` | oltre il quale una chiamata al modello si considera persa |
+| `LLM_MODEL` | `claude-haiku-5-5` | il modello dell'import e dell'AI sulle ricette, con `ANTHROPIC_API_KEY` (la stessa dei Pasti); un modello che `app/domain/llm_pricing.py` non conosce lascia il costo vuoto |
+| `LLM_TIMEOUT_SECONDS` | `45` | per tentativo; la bozza e la variante hanno il loro (50 s, un tentativo solo, per stare nei 60 s di Nginx) |
+| `LLM_MAX_RETRIES` | `2` | i tentativi in più dell'SDK su 429, 5xx, 529 e rete |
 | `LLM_MAX_CONCURRENCY` | `8` | quante domande in volo nel riconoscimento parallelo dei termini |
-| `ANTHROPIC_API_KEY` | vuoto | la chiave API di Anthropic: oggi la chat, la pianificazione e le ricette dei Pasti, a consumo sul credito API; domani anche l'LLM dell'import con Claude Haiku. **Solo nel `.env` del server**. Vuota, la chat dice che Claude non è collegato e il resto dei Pasti funziona a mano |
-| `CLAUDE_MODEL` | `claude-opus-5-5` | il modello dei Pasti, con la chiave API (non su OpenRouter) |
+| `ANTHROPIC_API_KEY` | vuoto | la chiave API di Anthropic: la chat, la pianificazione e le ricette dei Pasti e l'LLM dell'import e dell'AI sulle ricette, a consumo sul credito API. **Solo nel `.env` del server**. Vuota, la chat dice che Claude non è collegato e il resto dei Pasti funziona a mano; la coda dell'import e le ricette si fanno a mano |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | il modello dei Pasti, con la chiave API |
 | `CLAUDE_REPLY_TIMEOUT_SECONDS` | `240` | il tempo massimo di una risposta della chat; oltre, il messaggio resta con l'avviso e «Riprova» |
 | `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
 | `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
@@ -581,16 +577,16 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `OFF_TIMEOUT_SECONDS` | `3` | oltre il quale si degrada all'inserimento manuale |
 | `SPENA_HOST` | nessuno | solo in produzione: host pubblicato da Traefik |
 
-**Quanto costa ogni pezzo dell'app** non lo dicono i log di OpenRouter. Per loro
-un'app è un indirizzo — `HTTP-Referer` è l'identificatore, `X-Title` ne cambia solo il
-nome visualizzato — quindi mandare un titolo diverso per sezione non produrrebbe voci
-di spesa separate, ma una sola app con il nome che sfarfalla. La divisione la tiene la
-tabella `llm_calls`: una riga per chiamata, con la sezione che l'ha fatta e il costo
-che OpenRouter dichiara in `usage.cost` nella risposta stessa. I fallimenti si
-registrano come tali, perché un modello giù è spesa sprecata che si vuole vedere.
+**Quanto costa ogni pezzo dell'app** lo tiene la tabella `llm_calls`: una riga per
+chiamata, con la sezione che l'ha fatta, i token (quelli letti e scritti in cache a
+parte) e il costo. Per l'import e l'AI sulle ricette il costo lo calcola spena dai token
+col listino di `backend/app/domain/llm_pricing.py`, che va aggiornato a mano se
+Anthropic cambia prezzo; per i Pasti lo dichiara Claude Code. I fallimenti si
+registrano come tali, con l'uso che la risposta aveva: un modello giù è spesa sprecata
+che si vuole vedere.
 
 Nessuna di queste, mancando, porta a un vicolo cieco nell'interfaccia: senza
-`OPENROUTER_API_KEY` la ricetta si scrive a mano e i termini dell'import si decidono
+`ANTHROPIC_API_KEY` la ricetta si scrive a mano e i termini dell'import si decidono
 dalla coda, senza modello di embedding la ricerca resta quella testuale, con Open
 Food Facts irraggiungibile il prodotto si crea a mano. È una regola di casa, non un
 caso fortunato.
