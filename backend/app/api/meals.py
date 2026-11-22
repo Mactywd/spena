@@ -111,7 +111,7 @@ async def _refuse(session: AsyncSession, exc: MealRefusal):
     return response
 
 
-async def _meals_out(
+async def meals_out(
     session: AsyncSession,
     meals: list[Meal],
     today: date,
@@ -162,7 +162,7 @@ async def get_week(
         previous=monday - timedelta(days=7),
         next=monday + timedelta(days=7),
         days=[monday + timedelta(days=i) for i in range(7)],
-        meals=await _meals_out(session, list(meals), today, live),
+        meals=await meals_out(session, list(meals), today, live),
         preparing=any(m.id in live for m in meals),
     )
 
@@ -175,7 +175,7 @@ async def get_leftover_candidates(
     jobs: RecipeJobs = Depends(get_recipe_jobs),
 ) -> list[MealOut]:
     today = today_in_pantry()
-    return await _meals_out(
+    return await meals_out(
         session, list(await leftover_candidates(session, day, slot)), today, jobs.live_ids()
     )
 

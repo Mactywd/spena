@@ -10,18 +10,16 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.meal_chat import start_turn_stream
-from app.api.meals import meal_out
+from app.api.meals import meals_out
 from app.api.refusals import meal_refusal_response
 from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.security import require_session
 from app.db.models.conversation import Conversation, ConversationKind
-from app.db.models.meal import Meal
 from app.db.models.planning import MealProposal, ProposalKind
 from app.domain.meal_chat import FailureKind, failure_notice
 from app.domain.rules import today_in_pantry
 from app.repositories.conversations import create_planning, set_focus
-from app.schemas.meal import MealOut
 from app.schemas.meal_chat import ChatMessageIn
 from app.schemas.planning import (
     PlaceIn,
@@ -30,7 +28,6 @@ from app.schemas.planning import (
     PlanningCreateIn,
     PlanningFocusIn,
 )
-from app.services.change_cards import open_cards_for_meals
 from app.services.chat_turns import TurnRegistry, get_turn_registry
 from app.services.claude.client import ClaudeClient, claude_configured, get_claude_client
 from app.services.meals import MealRefusal
@@ -64,18 +61,6 @@ async def _view(
 ) -> PlanningChatOut:
     replying = conversation is not None and registry.running(conversation.id)
     return await planning_view(session, conversation, replying=replying, now=datetime.now(UTC))
-
-
-async def _meals_out(
-    session: AsyncSession, meals: list[Meal], preparing: frozenset[uuid.UUID]
-) -> list[MealOut]:
-    """I pasti come li legge la settimana: la scheda aperta di ciascuno con una query sola."""
-    open_cards = await open_cards_for_meals(session, [m.id for m in meals])
-    today = today_in_pantry()
-    return [
-        meal_out(m, today, preparing=preparing, open_card_id=open_cards.get(m.id))
-        for m in meals
-    ]
 
 
 @router.get("/current", response_model=PlanningChatOut)
@@ -166,11 +151,15 @@ async def place(
     conversation_id = found.conversation_id
     now = datetime.now(UTC)
     try:
-        placement = await place_proposal(session, proposal_id, replace=replace, now=now)
+        placement = await place_proposal(
+            session, proposal_id, replace=replace, now=now, today=today_in_pantry(now)
+        )
     except PlanningRefusal as refusal:
         # gli occupanti si serializzano prima del rollback, che li scade
         occupants = (
-            await _meals_out(session, refusal.occupants, jobs.live_ids())
+            await meals_out(
+                session, refusal.occupants, today_in_pantry(now), jobs.live_ids()
+            )
             if refusal.code == PlanningRefusalCode.SLOTS_TAKEN
             else None
         )
@@ -210,7 +199,9 @@ async def place(
                 meal.recipe_requested_at = None
                 meal.recipe_notice = failure_notice(FailureKind.NOT_CONFIGURED, None, now)
         await session.flush()
-    meals = await _meals_out(session, placement.meals, jobs.live_ids() | frozenset(queued))
+    meals = await meals_out(
+        session, placement.meals, today_in_pantry(now), jobs.live_ids() | frozenset(queued)
+    )
     chat = await _view(session, registry, await session.get(Conversation, conversation_id))
     await session.commit()
     # Dopo il commit nessuna lettura: la coda parte al primo `await` e usa le sue sessioni.

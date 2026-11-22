@@ -44,6 +44,7 @@ from app.services.planning import (
     conversation_for_meal,
     place_proposal,
     planning_concluded,
+    planning_to_reopen,
     propose_meals,
     row_occupants,
 )
@@ -367,3 +368,81 @@ async def test_la_pianificazione_si_conclude_dopo_una_scheda_sostituita(db_sessi
     assert await planning_concluded(db_session, conversation, TODAY) is False
     await apply_card(db_session, seconda.id, [])
     assert await planning_concluded(db_session, conversation, TODAY) is True
+
+
+async def test_una_proposta_con_un_giorno_passato_non_si_mette(db_session, chat):
+    proposta = await proponi(db_session, chat, OFFICIAL, ProposedMeal(VEN, D, "Frittata", None))
+
+    with pytest.raises(PlanningRefusal) as passato:
+        await place_proposal(
+            db_session, proposta.id, replace=False, now=now(), today=date(2026, 11, 14)
+        )
+
+    assert passato.value.code == PlanningRefusalCode.PAST
+    assert passato.value.message == (
+        "Questa proposta ha un giorno già passato (venerdì 13 novembre): "
+        "chiedi a Claude di rifarla."
+    )
+    await db_session.refresh(proposta)
+    assert proposta.status == "open"
+    assert await meal_at(db_session, VEN, D) is None
+
+
+async def test_senza_oggi_non_si_controlla(db_session, chat):
+    proposta = await proponi(db_session, chat, OFFICIAL, ProposedMeal(VEN, D, "Frittata", None))
+    placement = await place_proposal(db_session, proposta.id, replace=False, now=now())
+    assert [m.dish for m in placement.meals] == ["Frittata"]
+
+
+async def _con_messaggio(db_session, conversation):
+    db_session.add(
+        ConversationMessage(
+            conversation_id=conversation.id, role="user", text="Ciao", created_at=now()
+        )
+    )
+    await db_session.flush()
+
+
+async def test_una_conversazione_vuota_non_nasconde_una_bozza_aperta(db_session):
+    a = await create_planning(db_session)
+    await _con_messaggio(db_session, a)
+    proposta = await propose_meals(
+        db_session, conversation_id=a.id, turn_message_id=None, kind=DRAFT,
+        meals=[ProposedMeal(SAB, L, "Lasagne", None)], today=TODAY,
+    )
+    await place_proposal(db_session, proposta.id, replace=False, now=now())
+    await create_planning(db_session)  # B, più nuova e senza messaggi
+
+    assert (await planning_to_reopen(db_session, TODAY)).id == a.id
+
+
+async def test_una_conversazione_vuota_non_nasconde_una_aperta_piu_vecchia(db_session):
+    a = await create_planning(db_session)
+    await _con_messaggio(db_session, a)
+    await create_planning(db_session)
+
+    assert (await planning_to_reopen(db_session, TODAY)).id == a.id
+
+
+async def test_la_conversazione_vuota_si_riapre_se_non_c_e_altro(db_session):
+    b = await create_planning(db_session)
+    assert (await planning_to_reopen(db_session, TODAY)).id == b.id
+
+
+async def test_la_vuota_si_riapre_se_l_altra_e_conclusa(db_session):
+    a = await create_planning(db_session)
+    await _con_messaggio(db_session, a)
+    proposta = await propose_meals(
+        db_session, conversation_id=a.id, turn_message_id=None, kind=OFFICIAL,
+        meals=[ProposedMeal(VEN, D, "Orata", None)], today=TODAY,
+    )
+    (orata,) = (await place_proposal(db_session, proposta.id, replace=False, now=now())).meals
+    scheda = await propose_card(
+        db_session, meals=[orata], pantry=[], shopping=[ListProposal(None, "Limoni")],
+        conversation_id=a.id,
+    )
+    await apply_card(db_session, scheda.id, [])
+    assert await planning_concluded(db_session, a, TODAY) is True
+    b = await create_planning(db_session)
+
+    assert (await planning_to_reopen(db_session, TODAY)).id == b.id

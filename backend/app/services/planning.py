@@ -219,7 +219,12 @@ def _follow_up(kind: ProposalKind, rows: Sequence[dict[str, Any]]) -> str:
 
 
 async def place_proposal(
-    session: AsyncSession, proposal_id: uuid.UUID, *, replace: bool, now: datetime
+    session: AsyncSession,
+    proposal_id: uuid.UUID,
+    *,
+    replace: bool,
+    now: datetime,
+    today: date | None = None,
 ) -> Placement:
     """«Metti nella settimana»: mette i pasti della proposta, una volta sola.
 
@@ -260,6 +265,15 @@ async def place_proposal(
         raise PlanningRefusal(
             PlanningRefusalCode.SUPERSEDED, "C'è una proposta più nuova: usa quella."
         )
+
+    if today is not None:
+        past = [d for d in (_row_place(row)[0] for row in proposal.rows) if d < today]
+        if past:
+            raise PlanningRefusal(
+                PlanningRefusalCode.PAST,
+                f"Questa proposta ha un giorno già passato ({day_name(past[0])}): "
+                "chiedi a Claude di rifarla.",
+            )
 
     rows = await row_occupants(session, proposal)
     taken = [occupant for _, occupant, effect in rows if effect == "replace"]
@@ -371,11 +385,26 @@ async def planning_to_reopen(session: AsyncSession, today: date) -> Conversation
 
     Il filtro sta prima di ogni limite: le candidate sono tutte le conversazioni che hanno
     messo una delle bozze aperte (poche: solo bozze da oggi in avanti), e «conclusa» resta
-    quella di `planning_concluded`."""
-    newest = await latest_planning(session)
-    if newest is None or not await planning_concluded(session, newest, today):
+    quella di `planning_concluded`.
+
+    Le conversazioni senza messaggi non contano come «la più recente» (decisione 12): una
+    vuota non nasconde quella da riaprire. Se non c'è altro, la vuota si riapre, così non
+    se ne crea una nuova a ogni tocco."""
+    newest = await latest_planning(session, with_messages=True)
+    if newest is not None and not await planning_concluded(session, newest, today):
         return newest
 
+    candidate = await _open_draft_conversation(session, today)
+    if candidate is not None:
+        return candidate
+    # Una conversazione vuota si riapre solo se non c'è nient'altro (decisione 12).
+    latest = await latest_planning(session)
+    if latest is not None and (newest is None or latest.id != newest.id):
+        return latest
+    return None
+
+
+async def _open_draft_conversation(session: AsyncSession, today: date) -> Conversation | None:
     drafts = (
         await session.execute(
             select(Meal.id).where(Meal.status == MealStatus.DRAFT.value, Meal.day >= today)

@@ -9,7 +9,7 @@ nella stessa avrebbero lo stesso istante.
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -85,11 +85,18 @@ async def latest_turn(
 # --- la pianificazione ---------------------------------------------------------------
 
 
-async def latest_planning(session: AsyncSession) -> Conversation | None:
+async def latest_planning(
+    session: AsyncSession, *, with_messages: bool = False
+) -> Conversation | None:
+    """L'ultima conversazione di pianificazione; con `with_messages`, l'ultima che ha almeno
+    un messaggio (il filtro sta nella query che porta il `limit`)."""
+    statement = select(Conversation).where(Conversation.kind == ConversationKind.PLANNING.value)
+    if with_messages:
+        statement = statement.where(
+            exists().where(ConversationMessage.conversation_id == Conversation.id)
+        )
     statement = (
-        select(Conversation)
-        .where(Conversation.kind == ConversationKind.PLANNING.value)
-        .order_by(Conversation.created_at.desc(), Conversation.id.desc())
+        statement.order_by(Conversation.created_at.desc(), Conversation.id.desc())
         .limit(1)
     )
     return (await session.execute(statement)).scalar_one_or_none()

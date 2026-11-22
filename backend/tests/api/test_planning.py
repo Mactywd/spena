@@ -572,3 +572,24 @@ async def test_un_testo_vuoto_e_422(chat):
 async def test_senza_accesso_401(client, metodo, percorso):
     risposta = await getattr(client, metodo)(f"{BASE}{percorso}")
     assert risposta.status_code == 401
+
+
+async def test_place_di_una_proposta_passata_e_409(chat, db_session):
+    chat.fake = FakeClaude([Say("niente"), Finish()])
+    conversation_id, proposal_id = await proponi(chat, "Frittata")
+    proposta = await db_session.get(MealProposal, uuid.UUID(proposal_id))
+    ieri = TODAY - timedelta(days=1)
+    proposta.rows = [{**riga, "day": ieri.isoformat()} for riga in proposta.rows]
+    await db_session.flush()
+
+    risposta = await metti(chat, proposal_id)
+
+    assert risposta.status_code == 409
+    corpo = risposta.json()
+    assert corpo["code"] == "proposal_past"
+    assert corpo["detail"] == (
+        f"Questa proposta ha un giorno già passato ({day_name(ieri)}): "
+        "chiedi a Claude di rifarla."
+    )
+    [aperta] = corpo["chat"]["messages"][1]["proposals"]
+    assert aperta["status"] == "open"
