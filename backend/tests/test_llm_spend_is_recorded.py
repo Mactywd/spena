@@ -19,13 +19,18 @@ from pathlib import Path
 
 APP = Path(__file__).resolve().parent.parent / "app"
 DEFINIZIONE = APP / "services" / "llm.py"
+# Il controllo `check_llm --prova` è una chiamata di verifica, non una sezione: non si
+# registra apposta (lo dice il suo docstring).
+ESENTI = {APP / "cli" / "check_llm.py"}
 
 
 def moduli_che_chiamano_llm() -> list[Path]:
     return [
         percorso
         for percorso in sorted(APP.rglob("*.py"))
-        if percorso != DEFINIZIONE and "await complete_json(" in percorso.read_text()
+        if percorso != DEFINIZIONE
+        and percorso not in ESENTI
+        and "await complete_json(" in percorso.read_text()
     ]
 
 
