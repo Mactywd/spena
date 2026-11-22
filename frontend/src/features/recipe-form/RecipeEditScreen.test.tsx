@@ -10,7 +10,7 @@ import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
-  id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
+  version: "v1", id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 1, cookable: false, missing_names: ["Basilico"], image_url: null,
   prep_minutes: null, cook_minutes: null, category: null, cost: null, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 2, source_ref: null, scaled_to: null,

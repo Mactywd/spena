@@ -18,7 +18,7 @@ import {
 } from "./formModel";
 
 const DETAIL: RecipeDetail = {
-  id: "r1", title: "Pasta al pomodoro", description: null, source: "dataset",
+  version: "v1", id: "r1", title: "Pasta al pomodoro", description: null, source: "dataset",
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null,
   cook_minutes: null, category: "Primi piatti", cost: 2, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 4, source_ref: "https://esempio.invalid/pasta",

@@ -7,7 +7,7 @@ import { CookSheet } from "./CookSheet";
 import type { PantryItem, RecipeDetail } from "../../domain/types";
 
 const RECIPE: RecipeDetail = {
-  id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
+  version: "v1", id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, cost: null, archived_at: null, main_department: null, instructions: "Cuoci.", servings: 2, source_ref: null,
   scaled_to: null, unscalable_lines: 0, dose_lines: 1, anchor: null, owned_by_import: false, derived_from: null,

@@ -58,6 +58,8 @@ from app.schemas.meal import MealRefOut
 from app.services.ai_recipes import RecipeDraft, draft_recipe, draft_variant
 from app.services.embeddings import get_embedding_provider
 from app.services.llm import LlmUnavailable
+from app.domain.recipe_changes import recipe_version
+from app.services.meal_recipes import recipe_snapshot
 from app.services.meals import MealRefusal, check_can_take_recipe, link_recipe
 from app.services.recipe_writing import RepeatedIngredient, embedding_for, resolve_lines
 from app.services.recipe_search import search_recipes, semantic_search_usable
@@ -208,6 +210,7 @@ async def _to_out(
             else None
         ),
         in_book=recipe.in_book,
+        version=recipe_version(recipe_snapshot(recipe)),
         meal=(
             None
             if meal is None

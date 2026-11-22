@@ -11,7 +11,7 @@ import type { RecipeDetail, RecipeDraft } from "../../domain/types";
 import type { VariantState } from "./variantState";
 
 const ORIGINALE: RecipeDetail = {
-  id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
+  version: "v1", id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null,
   cook_minutes: null, category: "Primi piatti", cost: 1, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 2, source_ref: null, scaled_to: null,

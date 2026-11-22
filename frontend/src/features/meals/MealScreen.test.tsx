@@ -53,7 +53,7 @@ function renderMeal() {
 
 function recipeDetail(extra: Partial<RecipeDetail> = {}): RecipeDetail {
   return {
-    id: "r1", title: "Pollo al limone", description: null, source: "manual",
+    version: "v1", id: "r1", title: "Pollo al limone", description: null, source: "manual",
     missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null, cook_minutes: null,
     category: null, cost: null, archived_at: null, main_department: null, instructions: "Cuoci il pollo.",
     servings: 2, source_ref: null, scaled_to: null, owned_by_import: false, derived_from: null,

@@ -544,3 +544,26 @@ async def test_la_ricerca_manda_il_minimo_solo_a_piscina_piena(logged_client, mo
     monkeypatch.setattr(recipes_api, "search_recipes", non_piena)
     senza_minimo = await logged_client.get("/api/v1/recipes/search?q=zuppa")
     assert "x-total-count-lower-bound" not in senza_minimo.headers
+
+
+async def test_il_dettaglio_ha_una_versione_che_cambia_col_procedimento(logged_client, cucina):
+    created = await _create_recipe(logged_client, cucina)
+    first = (await logged_client.get(f"/api/v1/recipes/{created['id']}")).json()
+    assert len(first["version"]) == 16
+    again = (await logged_client.get(f"/api/v1/recipes/{created['id']}")).json()
+    assert again["version"] == first["version"]
+
+    corpo = {
+        "title": first["title"], "description": first["description"],
+        "instructions": "Un altro procedimento.", "servings": first["servings"],
+        "ingredients": [
+            {"ingredient_id": i["ingredient_id"], "role": i["role"],
+             "quantity_text": i["quantity_text"], "note": i["note"]}
+            for i in first["ingredients"]
+        ],
+    }
+    put = await logged_client.put(f"/api/v1/recipes/{created['id']}", json=corpo)
+    assert put.status_code == 200
+    assert put.json()["version"] != first["version"]
+    after = (await logged_client.get(f"/api/v1/recipes/{created['id']}")).json()
+    assert after["version"] == put.json()["version"]

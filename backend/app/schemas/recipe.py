@@ -188,6 +188,9 @@ class RecipeOut(BaseModel):
     # la ha, se c'è. Default: un backend o un test che non li dice parla del ricettario
     in_book: bool = True
     meal: MealRefOut | None = None
+    # l'impronta di quel che la chat può cambiare (`recipe_version`): il modulo la rimanda
+    # al salvataggio, e il server dice se la ricetta è cambiata nel frattempo
+    version: str
 
 
 class RecipeSummaryOut(BaseModel):
