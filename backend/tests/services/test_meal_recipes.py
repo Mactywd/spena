@@ -11,6 +11,8 @@ from app.db.models.recipe_change import RecipeChange
 from app.domain.meals import MealSlot, MealStatus
 from app.repositories.recipes import get_recipe, write_recipe_ingredients
 from app.services.meal_recipes import (
+    CREATE_ONLY_MESSAGE,
+    MEAL_GONE_MESSAGE,
     UNSET,
     ChangeRefusal,
     ChangeRefusalCode,
@@ -573,3 +575,43 @@ async def test_undoable_change_ids_con_la_ricetta_archiviata(db_session, voci, m
     recipe.archived_at = datetime.now(UTC)
     await db_session.flush()
     assert await undoable_change_ids(db_session, changes) == set()
+
+
+async def test_solo_una_ricetta_nuova_rifiuta_quella_che_c_era_gia(db_session, voci, meal):
+    """`allowed_recipe_ids` (i giri della coda): una ricetta che il giro non ha scritto non si
+    riscrive, e il rifiuto arriva prima di ogni scrittura."""
+    await write_meal_recipe(db_session, meal, draft(line(voci["uova"]), title="A mano"))
+    before = await meal_snapshot(db_session, meal)
+    changes = (await db_session.execute(select(RecipeChange))).scalars().all()
+
+    with pytest.raises(RecipeWriteRefused) as caught:
+        await write_meal_recipe(
+            db_session, meal, draft(line(voci["spinaci"])), allowed_recipe_ids=frozenset({None})
+        )
+    assert caught.value.message == CREATE_ONLY_MESSAGE == (
+        "Il pasto ha già una ricetta: non riscriverla."
+    )
+    assert await meal_snapshot(db_session, meal) == before
+    assert (await db_session.execute(select(RecipeChange))).scalars().all() == changes
+
+
+async def test_solo_una_ricetta_nuova_riscrive_la_sua(db_session, voci, meal):
+    first = await write_meal_recipe(
+        db_session, meal, draft(line(voci["uova"])), allowed_recipe_ids=frozenset({None})
+    )
+    await write_meal_recipe(
+        db_session, meal, draft(line(voci["spinaci"]), title="Rifatta"),
+        allowed_recipe_ids=frozenset({None, first.recipe_id}),
+    )
+    assert meal.recipe_id == first.recipe_id
+    assert meal.recipe.title == "Rifatta"
+
+
+async def test_il_pasto_sparito_non_si_scrive(db_session, voci, meal):
+    recipes = (await db_session.execute(select(Recipe))).scalars().all()
+    await db_session.delete(meal)
+    await db_session.flush()
+    with pytest.raises(RecipeWriteRefused) as caught:
+        await write_meal_recipe(db_session, meal, draft(line(voci["uova"])))
+    assert caught.value.message == MEAL_GONE_MESSAGE == "Il pasto non esiste più."
+    assert (await db_session.execute(select(Recipe))).scalars().all() == recipes

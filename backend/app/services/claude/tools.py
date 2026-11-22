@@ -50,6 +50,7 @@ from app.services.change_cards import (
 from app.services.claude.client import SPENA_SERVER
 from app.services.claude.prompts import SLOT_NAMES, day_name
 from app.services.meal_recipes import (
+    MEAL_GONE_MESSAGE,
     UNSET,
     DraftLine,
     MealRecipeDraft,
@@ -429,14 +430,10 @@ def write_recipe_tool(ctx: TurnContext) -> SdkMcpTool:
             meal = await get_meal(ctx.session, ctx.meal_id)
             if meal is None:
                 await ctx.session.commit()
-                return _error("Il pasto non esiste più.")
-            if (
-                ctx.create_only
-                and meal.recipe_id is not None
-                and meal.recipe_id not in written
-            ):
-                await ctx.session.commit()
-                return _error("Il pasto ha già una ricetta: non riscriverla.")
+                return _error(MEAL_GONE_MESSAGE)
+            # «solo una ricetta nuova» si controlla dentro `write_meal_recipe`, col pasto
+            # bloccato: qui la lettura è senza lucchetto e una ricetta a mano può arrivare dopo
+            allowed = frozenset({None, *written}) if ctx.create_only else None
             try:
                 change = await write_meal_recipe(
                     ctx.session,
@@ -445,6 +442,7 @@ def write_recipe_tool(ctx: TurnContext) -> SdkMcpTool:
                     conversation_id=ctx.conversation_id,
                     turn_message_id=ctx.turn_message_id,
                     expected=ctx.seen,
+                    allowed_recipe_ids=allowed,
                 )
             except (RecipeWriteRefused, MealRefusal) as exc:
                 # La lettura ha aperto una transazione: chiuderla (come `_end_read`), o la connessione resta

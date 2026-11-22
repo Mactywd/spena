@@ -26,7 +26,7 @@ from app.domain.recipe_changes import (
 )
 from app.domain.rules import IngredientKind, IngredientRole
 from app.repositories.ingredients import delete_ingredient_if_unused
-from app.repositories.meals import get_meal
+from app.repositories.meals import get_meal, lock_meal
 from app.repositories.recipes import (
     IngredientLine,
     NonFoodInRecipe,
@@ -116,6 +116,8 @@ STALE_WRITE_MESSAGE = (
 INGREDIENT_GONE_MESSAGE = (
     "Un ingrediente della versione di prima non c'è più: correggi la ricetta dal modulo."
 )
+CREATE_ONLY_MESSAGE = "Il pasto ha già una ricetta: non riscriverla."
+MEAL_GONE_MESSAGE = "Il pasto non esiste più."
 RECIPE_DELETED_MESSAGE = (
     "La ricetta di questo pasto è stata eliminata: Mattia deve ripristinarla prima."
 )
@@ -220,6 +222,7 @@ async def write_meal_recipe(
     conversation_id: uuid.UUID | None = None,
     turn_message_id: uuid.UUID | None = None,
     expected: MealSnapshot | None = None,
+    allowed_recipe_ids: frozenset[uuid.UUID | None] | None = None,
 ) -> RecipeChange:
     """La sola strada con cui Claude scrive la ricetta di un pasto: la chat del piatto ora,
     la generazione dopo l'ufficializzazione nel piano 4.
@@ -236,7 +239,20 @@ async def write_meal_recipe(
 
     Con `expected` (l'istantanea che Claude ha visto) scrive solo se il pasto è ancora
     quello: se Mattia l'ha corretto nel frattempo rifiuta, prima di ogni scrittura.
+
+    Con `allowed_recipe_ids` (i giri della coda: `{None}` più le ricette che il giro ha già
+    scritto) scrive solo se la ricetta del pasto è fra quelle: una ricetta che c'è già, scritta
+    a mano o scelta dal ricettario nel frattempo, non si riscrive.
     """
+    # Il lucchetto, per primo (idea 52): due ricette nello stesso istante, l'ultima vince e
+    # l'altra resta orfana. Chi arriva secondo aspetta il commit del primo e rilegge il pasto
+    # com'è, poi i controlli qui sotto lo trovano con la ricetta già legata.
+    locked = await lock_meal(session, meal.id)
+    if locked is None:
+        raise RecipeWriteRefused(MEAL_GONE_MESSAGE)
+    meal = locked  # con `populate_existing` è lo stesso oggetto di chi chiama, riletto
+    if allowed_recipe_ids is not None and meal.recipe_id not in allowed_recipe_ids:
+        raise RecipeWriteRefused(CREATE_ONLY_MESSAGE)
     refuse_if_no_recipe_here(meal)
     _check_fields(draft)
     meal_id = meal.id
@@ -375,6 +391,12 @@ async def change_is_undoable(session: AsyncSession, change: RecipeChange) -> boo
 async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> None:
     """Rimette la versione di prima, solo se la ricetta e il piatto sono ancora come li ha
     lasciati questa modifica: non sovrascrive mai un lavoro più nuovo (decisione 16)."""
+    # Il lucchetto, per primo (idea 52): un «Annulla» nello stesso istante di una scrittura (o
+    # di un altro «Annulla») riscriverebbe sopra l'altra. Preso il pasto, la modifica si
+    # rilegge: chi l'ha annullata o superata intanto ha già committato.
+    if await lock_meal(session, change.meal_id) is None:
+        raise ChangeRefusal(ChangeRefusalCode.STALE, MEAL_GONE_MESSAGE)
+    await session.refresh(change)
     if change.undone_at is not None:
         raise ChangeRefusal(ChangeRefusalCode.ALREADY_UNDONE, ALREADY_UNDONE_MESSAGE)
     if not await change_is_undoable(session, change):

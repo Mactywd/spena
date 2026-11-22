@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe
 from app.domain.meals import MealSlot, MealStatus, in_leftover_window, place_words
-from app.repositories.meals import get_meal, meal_at
+from app.repositories.meals import get_meal, lock_meal, meal_at
 from app.repositories.recipes import copy_recipe
 from app.services.change_cards import (
     InverseReason,
@@ -293,6 +293,13 @@ def check_can_take_recipe(meal: Meal) -> None:
 
 
 async def link_recipe(session: AsyncSession, meal: Meal, recipe: Recipe) -> None:
+    # Il lucchetto (idea 52): due ricette nello stesso istante, l'ultima vince e l'altra resta
+    # orfana. Il controllo si fa sul pasto bloccato e riletto, non su quello che chi chiama ha
+    # letto prima: con `populate_existing` è lo stesso oggetto, aggiornato
+    locked = await lock_meal(session, meal.id)
+    if locked is None:
+        raise MealRefusal(MealRefusalCode.NO_RECIPE_HERE, "Il pasto non esiste più.")
+    meal = locked
     check_can_take_recipe(meal)
     meal.recipe_id = recipe.id
     meal.recipe_notice = None

@@ -538,7 +538,14 @@ async def create(
             in_book=meal is None,
         )
         if meal is not None:
-            await link_recipe(session, meal, recipe)
+            try:
+                # col pasto bloccato: se intanto la coda o un'altra scheda gli ha dato una
+                # ricetta, si rifiuta, e la ricetta appena creata se ne va col rollback
+                await link_recipe(session, meal, recipe)
+            except MealRefusal as exc:
+                response = meal_refusal_response(exc)
+                await session.rollback()
+                return response
         await session.commit()
     stored = await get_recipe(session, recipe.id)
     return await _to_out(session, stored)

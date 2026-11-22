@@ -304,3 +304,30 @@ async def test_l_avviso_vecchio_non_ricompare(logged_client, db_session, pasta):
     assert body["recipe_state"] == "none"
     assert body["can_ask_recipe"] is True
     assert body["recipe_notice"] is None
+
+
+async def test_scrivi_la_ricetta_dopo_la_coda_non_lascia_orfane(logged_client, db_session, pasta):
+    """Review Focus 3, in fila: la coda ha già scritto la ricetta del pasto quando arriva
+    «Scrivi la ricetta». La rotta rifiuta e non lascia la ricetta a mano fuori dal ricettario
+    senza pasto (la corsa vera, a metà rotta, è in `tests/db/test_meal_lock.py`)."""
+    meal = await _pasto(db_session)
+    await write_meal_recipe(
+        db_session, meal,
+        MealRecipeDraft(
+            title="Pasta della coda", description=None, instructions="Cuoci.", servings=2,
+            lines=(DraftLine(pasta.id, None, None, "primary", "320 g", None),),
+            summary="dalla coda",
+        ),
+        allowed_recipe_ids=frozenset({None}),
+    )
+    await db_session.commit()
+    prima = (await db_session.execute(select(func.count()).select_from(Recipe))).scalar_one()
+
+    r = await logged_client.post(R, json=_corpo(pasta, "Pasta a mano", meal_id=str(meal.id)))
+
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == "has_recipe"
+    dopo = (await db_session.execute(select(func.count()).select_from(Recipe))).scalar_one()
+    assert dopo == prima
+    pasto = (await logged_client.get(f"{M}/{meal.id}")).json()
+    assert pasto["recipe"]["title"] == "Pasta della coda"

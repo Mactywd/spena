@@ -30,6 +30,15 @@ async def get_meal(session: AsyncSession, meal_id: uuid.UUID) -> Meal | None:
     return (await session.execute(_select().where(Meal.id == meal_id))).scalar_one_or_none()
 
 
+async def lock_meal(session: AsyncSession, meal_id: uuid.UUID) -> Meal | None:
+    """Il pasto, con la sua riga bloccata (`SELECT … FOR UPDATE`) fino alla fine della
+    transazione di chi chiama: chi scrive la ricetta di un pasto lo prende per primo, e un
+    secondo scrittore aspetta il `commit` del primo e poi rilegge il pasto com'è (idea 52).
+    Solo la riga del pasto: la ricetta e l'origine dell'avanzo si leggono senza bloccarle."""
+    statement = _select().where(Meal.id == meal_id).with_for_update(of=Meal)
+    return (await session.execute(statement)).scalar_one_or_none()
+
+
 async def meal_at(session: AsyncSession, day: date, slot: MealSlot) -> Meal | None:
     statement = _select().where(Meal.day == day, Meal.slot == MealSlot(slot).value)
     return (await session.execute(statement)).scalar_one_or_none()

@@ -35,7 +35,7 @@ from app.repositories.conversations import (
     messages_of,
     move_turn_products,
 )
-from app.repositories.meals import get_meal
+from app.repositories.meals import get_meal, lock_meal
 from app.schemas.meal_chat import ChatMessageIn, ChatMessageOut, DishChatOut
 from app.services.chat_turns import TurnBusy, TurnRegistry, get_turn_registry
 from app.services.claude.client import ClaudeClient, claude_configured, get_claude_client
@@ -248,7 +248,14 @@ async def undo_change(
     session: AsyncSession = Depends(get_session),
     registry: TurnRegistry = Depends(get_turn_registry),
 ):
-    meal = await _meal_or_404(session, meal_id)
+    # Il lucchetto, prima di guardare se Claude sta rispondendo (idea 42; idea 52: due
+    # scritture nello stesso istante, l'ultima vince). Dopo il lucchetto, un giro che parte
+    # adesso scrive solo dopo il nostro `commit`, e l'istantanea di C1 (`expected`) lo ferma:
+    # la ricetta che aveva visto non è più quella. Un rifiuto qui sotto non scrive niente, e il
+    # lucchetto se ne va con la sessione, alla fine della richiesta.
+    meal = await lock_meal(session, meal_id)
+    if meal is None:
+        raise HTTPException(404, "pasto inesistente")
     change = await session.get(RecipeChange, change_id)
     if change is None or change.meal_id != meal.id:
         raise HTTPException(404, "modifica inesistente")
