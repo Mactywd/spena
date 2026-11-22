@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { act } from "@testing-library/react";
 import { PlanningScreen } from "./PlanningScreen";
 import { planningChatKey } from "./api";
 import type { Meal } from "../../domain/types";
@@ -275,6 +274,21 @@ describe("Pianifica con Claude", () => {
     expect(screen.getAllByText(NOT_CONFIGURED)).toHaveLength(1);
   });
 
+  it("senza Claude, un rifiuto con un altro testo si legge comunque", async () => {
+    const OTHER = "Claude sta già rispondendo in un'altra conversazione.";
+    stubFetch((url, init) =>
+      init?.method === "POST" && url.endsWith("/messages")
+        ? [{ code: "claude_busy", detail: OTHER }, 409]
+        : [planningChat({ claude_ready: false, claude_notice: NOT_CONFIGURED }), 200]
+    );
+    renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
+    const field = await screen.findByRole("textbox", { name: "Messaggio per Claude" });
+    await userEvent.type(field, "Cosa ceno?");
+    await userEvent.click(screen.getByRole("button", { name: "Invia" }));
+    expect(await screen.findByText(OTHER)).toBeInTheDocument();
+    expect(screen.getAllByText(NOT_CONFIGURED)).toHaveLength(1);
+  });
+
   it("la conferma dei posti occupati resta quando la risposta si salva", async () => {
     const reply = (id: string) =>
       planningChat({
@@ -300,12 +314,17 @@ describe("Pianifica con Claude", () => {
     const client = renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
     await userEvent.click(await screen.findByRole("button", { name: "Metti nella settimana" }));
     expect(await screen.findByText("Questi posti sono occupati:")).toBeInTheDocument();
-    // la risposta salvata porta la proposta in un messaggio con un altro id
+    // la risposta salvata porta la proposta in un messaggio con un altro id: il `<li>` ha
+    // un'altra chiave e la scheda si rimonta. react-query avvisa gli osservatori con un
+    // setTimeout(0), quindi il ridisegno arriva dopo `act`: si aspetta il pulsante nuovo.
     saved = "a2";
+    const before = screen.getByRole("button", { name: "Sostituisci e metti" });
     act(() => client.setQueryData(planningChatKey("k1"), reply("a2")));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Sostituisci e metti" })).not.toBe(before)
+    );
+    expect(before.isConnected).toBe(false);
     expect(screen.getByText("Questi posti sono occupati:")).toBeInTheDocument();
-    // la rilettura della chat che segue il salvataggio ridisegna ancora una volta: si aspetta
-    await new Promise((r) => setTimeout(r, 100));
     await userEvent.click(screen.getByRole("button", { name: "Sostituisci e metti" }));
     await waitFor(() => expect(requests(spy, "POST", PLACE)).toEqual([{ replace: false }, { replace: true }]));
   });
