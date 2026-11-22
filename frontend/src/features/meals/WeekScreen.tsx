@@ -31,11 +31,18 @@ export function WeekScreen() {
         <PendingCards />
       </div>
       {week.isError ? (
-        <ErrorState
-          message="La settimana non si carica."
-          onRetry={() => week.refetch()}
-          retrying={week.isFetching}
-        />
+        <>
+          <ErrorState
+            message="La settimana non si carica."
+            onRetry={() => week.refetch()}
+            retrying={week.isFetching}
+          />
+          {of !== null && (
+            <Link to="/pasti" className="mb-2 inline-flex min-h-11 items-center text-sm font-medium text-brand">
+              Torna a oggi
+            </Link>
+          )}
+        </>
       ) : !week.data ? (
         <p className="text-sm text-ink-soft">Carico la settimana…</p>
       ) : (

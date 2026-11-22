@@ -249,13 +249,26 @@ export function MealScreen() {
             È una bozza: la ricetta arriva quando diventa ufficiale.
           </p>
         ) : !m.recipe && !m.leftover_of && m.recipe_state === "preparing" ? (
-          <p aria-live="polite" className="text-sm text-ink-soft">
-            Ricetta in preparazione: arriva fra poco.
-          </p>
+          <div className="flex flex-col gap-2">
+            <p aria-live="polite" className="text-sm text-ink-soft">
+              Ricetta in preparazione: arriva fra poco.
+            </p>
+            <p className="text-sm text-ink-soft">
+              Puoi anche scriverla tu: quella di Claude allora non arriva.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link to={`/pasti/${m.id}/ricetta/nuova`} className={buttonClasses("secondary")}>
+                Scrivi la ricetta
+              </Link>
+              <Link to={`/pasti/${m.id}/ricetta/scegli`} className={buttonClasses("secondary")}>
+                Scegli dal ricettario
+              </Link>
+            </div>
+          </div>
         ) : !m.recipe && !m.leftover_of ? (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-ink-soft">Questo pasto non ha ancora una ricetta.</p>
-            {m.recipe_notice && <Alert>{m.recipe_notice}</Alert>}
+            {m.recipe_notice && <Alert tone="degraded">{m.recipe_notice}</Alert>}
             <div className="flex flex-wrap gap-2">
               {m.can_ask_recipe && (
                 <Button variant="secondary" busy={asking} onClick={() => void askRecipe()}>

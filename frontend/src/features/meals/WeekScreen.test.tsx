@@ -154,6 +154,21 @@ describe("la settimana", () => {
     await waitFor(() => expect(weekCalls().length).toBeGreaterThanOrEqual(4));
     await screen.findByText("Lunedì 10");
   });
+  it("una settimana non valida offre Torna a oggi", async () => {
+    stubFetch(() => [{ detail: "x" }, 422]);
+    renderWeek("/pasti?settimana=abc");
+    expect(await screen.findByText("La settimana non si carica.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Riprova" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Torna a oggi" })).toHaveAttribute("href", "/pasti");
+  });
+
+  it("l'errore della settimana di oggi non offre Torna a oggi", async () => {
+    stubFetch(() => [{ detail: "x" }, 500]);
+    renderWeek();
+    await screen.findByText("La settimana non si carica.");
+    expect(screen.queryByRole("link", { name: "Torna a oggi" })).toBeNull();
+  });
+
   it("in fondo «Pianifica con Claude»; in testa le schede dei cambi da applicare", async () => {
     stubFetch(undefined, [
       {

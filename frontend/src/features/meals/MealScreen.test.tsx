@@ -188,13 +188,23 @@ describe("la schermata del piatto", () => {
     expect(calls(spy, "PATCH")[0].body).toEqual({ status: "official" });
   });
 
-  it("con la ricetta in preparazione: l'attesa al posto dei pulsanti", async () => {
+  it("in preparazione si può scrivere la ricetta o sceglierla", async () => {
     stubFetch(reads(meal({ recipe_state: "preparing", can_ask_recipe: false })));
     renderMeal();
     const wait = await screen.findByText("Ricetta in preparazione: arriva fra poco.");
     expect(wait.closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
-    expect(screen.queryByRole("link", { name: "Scrivi la ricetta" })).toBeNull();
+    expect(screen.getByText("Puoi anche scriverla tu: quella di Claude allora non arriva.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Scrivi la ricetta" })).toHaveAttribute("href", "/pasti/m1/ricetta/nuova");
+    expect(screen.getByRole("link", { name: "Scegli dal ricettario" })).toHaveAttribute("href", "/pasti/m1/ricetta/scegli");
     expect(screen.queryByRole("button", { name: "Chiedi la ricetta a Claude" })).toBeNull();
+  });
+
+  it("l'avviso della ricetta non arrivata ha il tono dell'AI", async () => {
+    stubFetch(reads(meal({ recipe_state: "failed", recipe_notice: "Claude non risponde." })));
+    renderMeal();
+    const notice = await screen.findByText("Claude non risponde.");
+    expect(notice).toHaveClass("text-low");
+    expect(notice).not.toHaveClass("text-danger");
   });
 
   it("la ricetta fallita: l'avviso e tre strade; «Chiedi la ricetta a Claude» manda la richiesta", async () => {
