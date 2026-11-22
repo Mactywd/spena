@@ -317,7 +317,10 @@ ancora una scelta, e l'ultima riga dice quanti ne restano. Una scelta si corregg
 scheda dell'ingrediente in Anagrafica, «Valori nutrizionali»: «Cambia alimento» (si cerca
 in francese, come la tabella, o per codice), «Nessun alimento adatto», o «Annulla la
 scelta», che la ridà all'AI. Una scelta fatta lì il comando non la tocca. In produzione,
-con `-f docker-compose.prod.yml` come ogni altro comando.
+con `-f docker-compose.prod.yml` come ogni altro comando. Il pilota dice, per ogni caso
+mancato, se la ricerca non ha trovato candidati o se l'AI non ha scelto, con le parole
+francesi che ha usato; `decide_ciqual` conta a parte gli ingredienti senza nemmeno un
+candidato.
 
 ### I pesi delle dosi, e i nutrienti di una ricetta
 
@@ -332,6 +335,9 @@ docker compose exec backend python -m app.cli.decide_grams
 ```
 
 Scrive solo dove una coppia non ha ancora un peso; l'ultima riga dice quante ne restano.
+Se l'AI risponde a un lotto in modo illeggibile, il lotto si divide a metà fino alla coppia
+sola; una coppia che non si legge nemmeno da sola si salta per quel giro, e il comando la
+nomina: resta da pesare.
 Un peso si corregge nella scheda dell'ingrediente in Anagrafica, «Pesi per unità», e
 «Annulla il peso» lo ridà all'AI. Il pilota (`s4_pilot`) prova anche venti pesi noti.
 Nel dettaglio di una ricetta, in fondo, «Valori nutrizionali» somma le righe che hanno una

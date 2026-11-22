@@ -1,8 +1,10 @@
 """Un piccolo XLSX nella forma della tabella CIQUAL, costruito al volo (S4, fetta 1).
 
 I VALORI SONO INVENTATI, per le prove: non sono quelli di CIQUAL, e i codici (900xx) non
-esistono nella tabella vera. Il file vero non sta nella suite: la suite non legge niente
-da fuori, e il file è di Mattia (spec §4.1).
+esistono nella tabella vera. Questo file serve le prove del lettore e del caricamento. La
+tabella vera, `data/ciqual/ciqual-2025.xlsx` del repository, la leggono dal 2026-11-21 le
+prove che devono vedere i nomi veri: l'ordine dei candidati (`tabella_vera` di
+`tests/ciqual_veri.py`) e le espressioni del pilota (`tests/services/test_s4_pilot.py`).
 
 Si usa in due modi: dai test (`from ciqual_fixture import …`, come `llm_fakes`: pytest
 mette `tests/` in `sys.path`), e come script nello stack e2e:

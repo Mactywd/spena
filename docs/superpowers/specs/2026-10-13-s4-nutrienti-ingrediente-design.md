@@ -1,5 +1,7 @@
 # S4 — I nutrienti dell'ingrediente generico: CIQUAL, i grammi delle dosi, i nutrienti di una ricetta
 
+_2026-11-21: i candidati e i lotti dei pesi cambiano dopo il pilota sulla tabella vera; §4.10 e §4.23 aggiornati, vedi `docs/superpowers/plans/2026-11-21-s4-candidati.md`._
+
 _2026-10-13. Voce di `next-steps.md`: «S4, resto: nutrienti sull'ingrediente generico… e il tasto
 «Stima» con l'AI» [S4]. Il ragionamento d'archivio è in `docs/prossimi-passi.md`, «## S4.», e in
 P1 e P2. La prima metà di S4 (il livello prodotto, il vocabolario dell'Allegato XIII) è nella spec
@@ -120,8 +122,15 @@ Reversibili; Mattia le rivede.
 9. **Primo passo, le parole di ricerca**: lotti da 25 nomi italiani, col reparto; l'AI risponde
    per numero e nome (come `decide_emoji` di S12) da una a tre parole in francese, «come le
    scriverebbe CIQUAL» («tomate crue»). Sezione della spesa `ciqual_terms`.
-10. **I candidati**: per ogni ingrediente, le parole dell'AI più il nome italiano, contro
-    `ciqual_foods.name_fr` con `word_similarity` di `pg_trgm`; i 15 migliori sopra 0,3.
+10. **I candidati**: per ogni ingrediente, le parole dell'AI contro `ciqual_foods.name_fr` con
+    `word_similarity` di `pg_trgm`; i 15 migliori sopra 0,3. `word_similarity` vale 1 per ogni
+    nome che contiene la parola (sulla tabella vera «riz» ne lega 43: amido, bevanda, riso al
+    latte), quindi a parità vince il nome che comincia con la prima parola, poi la
+    `similarity` di tutto il nome, poi l'alfabeto. Il nome italiano si cerca solo se le parole
+    dell'AI non trovano niente: aggiunto sempre portava rumore («sale» → «Salers», «Eau
+    minérale Salvetat»). _Cambiato il 2026-11-21, dopo il pilota del 2026-10-20 (20 su 29):
+    con l'ordine alfabetico, 12 di 24 gruppi di parole plausibili non avevano l'alimento fra i
+    candidati; con questo, nessuno._
 11. **Secondo passo, la scelta**: lotti da 10 ingredienti, ciascuno coi suoi candidati
     (codice, nome, gruppo); l'AI risponde il codice di uno dei **suoi** candidati, oppure `null`
     se nessuno è quell'ingrediente. «Nello stato in cui una ricetta lo pesa»: crudo se si cucina,
@@ -158,8 +167,9 @@ Reversibili; Mattia le rivede.
     con gli stessi servizi del lancio vero, **senza scrivere niente** sugli ingredienti (registra
     le chiamate in `llm_calls`, come ogni chiamata). La fetta 1 lo costruisce con **30
     abbinamenti**; la fetta 2 gli aggiunge **20 pesi**. Un abbinamento atteso è un'espressione
-    regolare sul nome francese senza accenti né maiuscole (`^tomate, crue`), perché i codici del
-    2025 non li ha visti nessuno; un caso la cui espressione non trova **nessun** alimento nella
+    regolare sul nome francese senza accenti né maiuscole (`^tomate, crue`; nella 2025 quel nome
+    non c'è: il caso del pomodoro aspetta `^tomate (sans precision|ronde), crue`), perché i codici
+    del 2025 non li ha visti nessuno; un caso la cui espressione non trova **nessun** alimento nella
     tabella caricata si segna «da rivedere» e non entra nel conto. Un peso atteso è un intervallo
     in grammi.
 19. **Le soglie**: almeno il **90%** degli abbinamenti giusti, almeno l'**80%** dei pesi
@@ -190,7 +200,11 @@ Reversibili; Mattia le rivede.
     ingrediente, unità e un esempio di dose; risponde i grammi **netti della parte che si mangia**
     di una unità, o `null` se una unità di quell'ingrediente non ha un peso sensato. Si applica
     solo una risposta col numero e i nomi giusti e un peso fra 0 e 5.000 g; `null` si scrive come
-    «nessun peso» e non si richiede.
+    «nessun peso» e non si richiede. Un lotto a cui l'AI risponde in modo illeggibile (troncato,
+    JSON rotto) si divide a metà e si richiede, fino alla coppia sola; una coppia che non si
+    legge nemmeno da sola si salta per quel giro, resta da pesare e il comando la nomina. Se
+    nessuna coppia di un lotto di più coppie si legge, il giro si ferma. (2026-11-21: prima si
+    fermava al primo lotto rotto, e il lotto era sempre lo stesso.)
 24. **La correzione è in Anagrafica**, nella stessa scheda, sotto i valori: «Pesi per unità», una
     riga per coppia («1 spicchio — 5 g · AI»), e per ciascuna «Correggi» che apre il campo dei
     grammi con «Salva il peso», «Annulla il peso» (torna da decidere) e «Lascia com'è». Una scelta

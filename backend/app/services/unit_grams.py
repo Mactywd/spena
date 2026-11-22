@@ -497,8 +497,9 @@ async def decide_grams(
     legge nemmeno da sola si salta per questo giro — resta da pesare, finisce in `skipped`
     e un giro dopo si richiede — e il giro va avanti. Il freno: se di un lotto di più
     coppie tutte sono state saltate, il guasto non è nel lotto, e il giro si ferma con
-    `GRAMS_ALL_BROKEN`; un lotto di una coppia sola che non si legge è solo un salto. Ogni altro guasto dell'AI ferma subito il giro, anche a metà di una
-    divisione, e quel che è già scritto resta."""
+    `GRAMS_ALL_BROKEN`; un lotto di una coppia sola che non si legge è solo un salto. Ogni
+    altro guasto dell'AI ferma subito il giro, anche a metà di una divisione, e quel che è
+    già scritto resta."""
     pairs = await pending_pairs(session, limit)
     tally = _Tally()
     unavailable: str | None = None

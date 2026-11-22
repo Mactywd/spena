@@ -16,7 +16,7 @@ cook a recipe → whatever ran out goes back on the list.
 does; the code is now the authority on what it does. `README.md` covers running,
 testing and deploying.
 
-Seven things reviews here kept rediscovering, written down so the next person does
+Eight things reviews here kept rediscovering, written down so the next person does
 not pay for them again:
 
 - **A test that builds its own object is not testing the one production uses.**
@@ -65,6 +65,14 @@ not pay for them again:
   `npm run build` (`tsc -b && vite build`, now also `npm run typecheck`) caught it,
   and only at the final browser-verification task. Ask of any green type check: did
   it compile project references, or find none to compile?
+- **A similarity of 1.0 is a tie, not a match.** `word_similarity` in `pg_trgm` scores
+  1.0 for every name that contains the word, so on the real CIQUAL table «riz» tied 43
+  names — rice pudding, rice starch, rice drink — and the alphabetical tie-break left
+  `Riz blanc, cru` outside the 15 candidates. The pilot read it as the model failing (20
+  of 29); four invented fixture rows never tie, so no test could see it. `find_candidates`
+  now breaks ties on the name starting with the term, then on whole-name `similarity`,
+  and `tests/repositories/test_ciqual_repository.py` runs the search on the real file.
+  When a ranking sorts on a score, ask how many rows reach the top score on the real data.
 
 ## The two decisions everything else follows from
 
