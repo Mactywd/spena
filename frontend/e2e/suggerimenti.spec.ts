@@ -60,3 +60,55 @@ test("un ingrediente che non c'è: nei filtri del ricettario niente righe, e la 
     page.getByRole("listbox", { name: "Suggerimenti: Contiene ingredienti" })
   ).toHaveCount(0);
 });
+
+test("«Abbina» di una voce lunga suggerisce l'ingrediente: l'elenco intero", async ({ page }) => {
+  // «pasta barilla integrale» somiglia a «pasta» per circa 0,250, sotto la soglia del
+  // taglio (0,30): con l'elenco tagliato «Abbina» non offriva la pasta. Chiede l'elenco
+  // intero, e «Pasta» c'è, con «Aggiungi «…»» accanto. Non si sceglie niente: la voce
+  // si archivia e basta.
+  // il `beforeEach` non aspetta la risposta di «Entra»: l'attesa del link «Dispensa»
+  // evita una prima `page.request` senza cookie
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  const testo = "pasta barilla integrale";
+  const creata = await page.request.post("/api/v1/shopping-list", {
+    data: { raw_text: testo, ingredient_id: null },
+  });
+  expect(creata.status()).toBe(201);
+  const id = ((await creata.json()) as { id: string }).id;
+  try {
+    const spunta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+      data: { status: "checked" },
+    });
+    expect(spunta.ok()).toBe(true);
+    await page.goto("/sistema");
+    await page.getByRole("button", { name: `Abbina: ${testo}`, exact: true }).click();
+    const campo = page.getByRole("textbox", { name: `Abbina un ingrediente per ${testo}` });
+    await expect(campo).toHaveValue(testo);
+    await expect(page.getByRole("option", { name: "Pasta", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Aggiungi «${testo}»` })).toBeVisible();
+  } finally {
+    try {
+      const risposta = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+        data: { status: "archived" },
+      });
+      expect.soft(risposta.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+    } catch (guasto) {
+      expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
+    }
+  }
+});
+
+test("l'Anagrafica con «zucchina» mostra anche i vicini, la Lista no", async ({ page }) => {
+  // «zucca» somiglia a «zucchina» per circa 0,364 e «zucchero» per circa 0,385: sotto
+  // la soglia del taglio, quindi in Lista restano fuori; l'Anagrafica chiede l'elenco
+  // intero e li mostra, per correggere un ingrediente registrato male
+  await page.goto("/anagrafica");
+  await page.getByLabel("Cerca un ingrediente o un prodotto").fill("zucchina");
+  await expect(page.getByRole("link", { name: /^Zucchina\b/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Zucca\b/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Zucchero\b/ }).first()).toBeVisible();
+  // lo stesso testo, nella stessa sessione, in Lista resta tagliato
+  const elenco = await suggerimentiInLista(page, "zucchina");
+  await expect(elenco.getByRole("option", { name: /^Zucchina\b/ })).toBeVisible();
+  await expect(elenco.getByRole("option", { name: /^Zucca\b/ })).toHaveCount(0);
+});
