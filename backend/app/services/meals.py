@@ -15,7 +15,11 @@ from app.db.models.recipe import Recipe
 from app.domain.meals import MealSlot, MealStatus, in_leftover_window, place_words
 from app.repositories.meals import get_meal, meal_at
 from app.repositories.recipes import copy_recipe
-from app.services.change_cards import InverseReason, propose_inverse_card
+from app.services.change_cards import (
+    InverseReason,
+    discard_proposed_inverses,
+    propose_inverse_card,
+)
 
 _ALLOWED = {"dish", "sides", "away", "day", "slot", "status"}
 
@@ -131,11 +135,16 @@ async def release_recipe(session: AsyncSession, meal: Meal) -> None:
 
 
 async def delete_meal(
-    session: AsyncSession, meal: Meal, *, _reason: InverseReason = InverseReason.DELETED
+    session: AsyncSession,
+    meal: Meal,
+    *,
+    today: date | None = None,
+    _reason: InverseReason = InverseReason.DELETED,
 ) -> None:
     # prima di toglierlo: la scheda inversa legge il pasto com'è (decisione 22).
-    # `_reason` è delle sostituzioni di questo modulo, che tolgono l'occupante
-    await propose_inverse_card(session, meal, _reason)
+    # `_reason` è delle sostituzioni di questo modulo, che tolgono l'occupante e non passano
+    # `today`; con `today`, l'inversa di un pasto passato nasce senza spunte
+    await propose_inverse_card(session, meal, _reason, today=today)
     await release_recipe(session, meal)
     await _unlink_leftovers_of(session, meal)
     await session.delete(meal)
@@ -240,6 +249,10 @@ async def update_meal(
     for row in behind:
         row.leftover_of_id = None
 
+    if not away and meal.away:
+        # le inverse proposte di un pasto vivo sono quelle del «fuori casa»: tornato a casa,
+        # quello che usava gli serve di nuovo (decisione 3 di Mattia, 2026-11-21)
+        await discard_proposed_inverses(session, str(meal.id))
     if away and not meal.away:
         await propose_inverse_card(session, meal, InverseReason.AWAY)
         # un pasto fuori casa non ha legame d'avanzo (decisione 14), e gli avanzi che venivano

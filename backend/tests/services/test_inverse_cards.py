@@ -18,12 +18,15 @@ from app.domain.rules import PantryStatus
 from app.repositories.pantry import set_status
 from app.repositories.shopping import StockEntry, patch_item, stock_items
 from app.services.change_cards import (
+    PAST_MEAL_NOTE,
+    InverseReason,
     ListProposal,
     PantryProposal,
     apply_card,
     discard_card,
     get_card,
     propose_card,
+    propose_inverse_card,
 )
 from app.services.meals import create_meal, delete_meal, update_meal
 
@@ -478,4 +481,92 @@ async def test_un_pasto_bozza_non_tiene_la_voce_in_lista(db_session, mondo):
     await delete_meal(db_session, mondo["A"])
     assert [(r.kind, r.label) for r in (await l_inversa(db_session)).rows] == [
         ("unlist", "Pesto")
+    ]
+
+
+# --- l'inversa di un pasto passato (decisioni 3 e 16 del piano 2026-11-21) -----------
+
+PAST = "Pasto già passato: rimettila solo se non l'hai mangiato."
+
+
+async def _a_con_ricotta_e_parmigiano_cambiato(db_session, mondo):
+    """La scheda di A (20 novembre) finisce la ricotta e avvia il parmigiano; poi il
+    parmigiano si finisce a mano: la sua riga inversa avrà `CHANGED_NOTE`."""
+    v = mondo["voci"]
+    await applicata(
+        db_session, [mondo["A"]],
+        [PantryProposal(v["ricotta"].id, F), PantryProposal(v["parmigiano"].id, L)],
+    )
+    await set_status(db_session, v["parmigiano"].id, F)
+
+
+async def test_eliminare_un_pasto_passato_propone_l_inversa_senza_spunte(db_session, mondo):
+    assert PAST_MEAL_NOTE == PAST
+    await _a_con_ricotta_e_parmigiano_cambiato(db_session, mondo)
+    await delete_meal(db_session, mondo["A"], today=date(2026, 11, 23))
+
+    card = await l_inversa(db_session)
+    assert card.status == "proposed"
+    assert [(r.kind, r.label) for r in card.rows] == [
+        ("pantry", "ricotta"), ("pantry", "parmigiano"), ("unlist", "ricotta"),
+    ]
+    assert all(r.checked is False and r.editable is True for r in card.rows)
+    assert riga(card, "pantry", "ricotta").note == PAST
+    assert riga(card, "unlist", "ricotta").note == PAST
+    assert riga(card, "pantry", "parmigiano").note == CHANGED
+
+
+async def test_eliminare_un_pasto_passato_tiene_la_nota_del_carrello(db_session, mondo):
+    await applicata(db_session, [mondo["A"]], [PantryProposal(mondo["voci"]["ricotta"].id, F)])
+    voce = await voce_in_lista(db_session, mondo["ing"]["ricotta"])
+    await patch_item(db_session, voce.id, status=ShoppingStatus.CHECKED)
+    await delete_meal(db_session, mondo["A"], today=date(2026, 11, 23))
+    card = await l_inversa(db_session)
+    assert riga(card, "unlist", "ricotta").note == IN_CART
+    assert riga(card, "pantry", "ricotta").note == PAST
+
+
+async def test_eliminare_un_pasto_di_oggi_spunta_come_sempre(db_session, mondo):
+    await _a_con_ricotta_e_parmigiano_cambiato(db_session, mondo)
+    await delete_meal(db_session, mondo["A"], today=date(2026, 11, 20))
+
+    card = await l_inversa(db_session)
+    assert [(r.kind, r.label, r.checked, r.note) for r in card.rows] == [
+        ("pantry", "ricotta", True, None),
+        ("pantry", "parmigiano", False, CHANGED),
+        ("unlist", "ricotta", True, None),
+    ]
+
+
+async def test_senza_oggi_l_inversa_e_quella_di_sempre(db_session, mondo):
+    await _a_con_ricotta_e_parmigiano_cambiato(db_session, mondo)
+    await delete_meal(db_session, mondo["A"])  # il 20 novembre 2026 è passato, ma nessun controllo
+
+    card = await l_inversa(db_session)
+    assert [(r.kind, r.label, r.checked, r.note) for r in card.rows] == [
+        ("pantry", "ricotta", True, None),
+        ("pantry", "parmigiano", False, CHANGED),
+        ("unlist", "ricotta", True, None),
+    ]
+
+
+@pytest.mark.parametrize("come", ["create_meal", "diretta", "fuori_casa"])
+async def test_sostituire_un_pasto_passato_spunta_come_sempre(db_session, mondo, come):
+    # decisione 16: solo l'eliminazione di un pasto passato toglie le spunte; sostituirlo o
+    # mandarlo fuori casa vuol dire che quel pasto non si è mangiato
+    a = mondo["A"]
+    await applicata(db_session, [a], [PantryProposal(mondo["voci"]["ricotta"].id, F)])
+    if come == "create_meal":
+        await create_meal(
+            db_session, day=a.day, slot=MealSlot(a.slot), dish="Frittata", replace=True
+        )
+    elif come == "diretta":
+        await propose_inverse_card(
+            db_session, a, InverseReason.REPLACED, today=date(2026, 11, 23)
+        )
+    else:
+        await propose_inverse_card(db_session, a, InverseReason.AWAY, today=date(2026, 11, 23))
+    card = await l_inversa(db_session)
+    assert [(r.kind, r.checked, r.note) for r in card.rows] == [
+        ("pantry", True, None), ("unlist", True, None),
     ]

@@ -4,9 +4,11 @@ from datetime import date, timedelta
 import pytest
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
+from app.db.models.pantry import PantryItem
 from app.domain.meals import MealSlot, MealStatus
-from app.domain.rules import today_in_pantry
+from app.domain.rules import PantryStatus, today_in_pantry
 from app.repositories.recipes import create_recipe
+from app.services.change_cards import PantryProposal, apply_card, propose_card
 from app.services.meals import create_meal
 
 M = "/api/v1/meals"
@@ -304,3 +306,38 @@ async def test_patch_con_detach_origin_sposta(logged_client, db_session):
     assert r.json()["day"] == "2026-11-13"
     assert r.json()["leftover_of"] is None
     assert r.json()["dish"] == "Avanzo"
+
+
+async def test_delete_di_un_pasto_passato_propone_l_inversa_senza_spunte(
+    logged_client, db_session
+):
+    ricotta = Ingredient(
+        name="ricotta", display_name="Ricotta", category=IngredientCategory.LATTICINI
+    )
+    db_session.add(ricotta)
+    await db_session.flush()
+    voce = PantryItem(ingredient_id=ricotta.id, status=PantryStatus.AVAILABLE)
+    db_session.add(voce)
+    await db_session.flush()
+    m = await create_meal(
+        db_session, day=today_in_pantry() - timedelta(days=2), slot=D, dish="Pasta alla ricotta"
+    )
+    card = await propose_card(
+        db_session, meals=[m], pantry=[PantryProposal(voce.id, PantryStatus.FINISHED)],
+        shopping=[],
+    )
+    await apply_card(db_session, card.id, [])
+    meal_id = m.id
+    await db_session.commit()
+
+    assert (await logged_client.delete(f"{M}/{meal_id}")).status_code == 204
+    proposte = (await logged_client.get("/api/v1/change-cards?status=proposed")).json()
+    (inversa,) = [c for c in proposte if c["kind"] == "inverse"]
+    body = (await logged_client.get(f"/api/v1/change-cards/{inversa['id']}")).json()
+    assert [(r["kind"], r["label"]) for r in body["rows"]] == [
+        ("pantry", "ricotta"), ("unlist", "ricotta"),
+    ]
+    assert all(r["checked"] is False for r in body["rows"])
+    assert {r["note"] for r in body["rows"]} == {
+        "Pasto già passato: rimettila solo se non l'hai mangiato."
+    }

@@ -249,7 +249,7 @@ async def remove_meal(
     meal_id: uuid.UUID, session: AsyncSession = Depends(get_session)
 ) -> Response:
     meal = await _meal_or_404(session, meal_id)
-    await delete_meal(session, meal)
+    await delete_meal(session, meal, today=today_in_pantry())
     await session.commit()
     return Response(status_code=204)
 

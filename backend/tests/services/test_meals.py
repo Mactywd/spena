@@ -5,11 +5,14 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
+from app.db.models.change_card import CardStatus, ChangeCard
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.meal import Meal
+from app.db.models.pantry import PantryItem
 from app.db.models.recipe import Recipe
 from app.domain.meal_chat import can_chat
 from app.domain.meals import MealSlot, MealStatus
+from app.domain.rules import PantryStatus
 from app.repositories.meals import (
     get_meal,
     leftover_candidates,
@@ -18,6 +21,12 @@ from app.repositories.meals import (
     meals_between,
 )
 from app.repositories.recipes import create_recipe, get_recipe
+from app.services.change_cards import (
+    PantryProposal,
+    apply_card,
+    open_cards_for_meals,
+    propose_card,
+)
 from app.services.meals import (
     MealRefusal,
     MealRefusalCode,
@@ -626,3 +635,62 @@ async def test_staccare_la_ricetta_azzera_l_avviso(db_session, frittata):
     await db_session.flush()
     await release_recipe(db_session, m)
     assert m.recipe_notice is None
+
+
+async def _pasto_con_scheda_applicata(db_session):
+    """Un pasto ufficiale con una scheda applicata: la ricotta è finita per lui."""
+    ricotta = Ingredient(
+        name="ricotta", display_name="Ricotta", category=IngredientCategory.LATTICINI
+    )
+    db_session.add(ricotta)
+    await db_session.flush()
+    voce = PantryItem(ingredient_id=ricotta.id, status=PantryStatus.AVAILABLE)
+    db_session.add(voce)
+    await db_session.flush()
+    m = await create_meal(db_session, day=d(20), slot=D, dish="Pasta alla ricotta")
+    card = await propose_card(
+        db_session, meals=[m], pantry=[PantryProposal(voce.id, PantryStatus.FINISHED)],
+        shopping=[],
+    )
+    applied = await apply_card(db_session, card.id, [])
+    return m, applied
+
+
+async def _schede_di(db_session, kind):
+    return (
+        await db_session.execute(
+            select(ChangeCard)
+            .where(ChangeCard.kind == kind)
+            .order_by(ChangeCard.created_at, ChangeCard.id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalars().all()
+
+
+async def test_tornare_a_casa_scarta_l_inversa_del_fuori_casa(db_session):
+    m, _ = await _pasto_con_scheda_applicata(db_session)
+    await update_meal(db_session, m, {"away": True})
+    (inversa,) = await _schede_di(db_session, "inverse")
+    assert inversa.status == CardStatus.PROPOSED
+    assert await open_cards_for_meals(db_session, [m.id]) == {m.id: inversa.id}
+
+    await update_meal(db_session, m, {"away": False})
+    (inversa,) = await _schede_di(db_session, "inverse")
+    assert inversa.status == CardStatus.DISCARDED
+    assert inversa.discarded_at is not None
+    assert await open_cards_for_meals(db_session, [m.id]) == {}
+
+
+async def test_tornare_a_casa_senza_inversa_non_tocca_niente(db_session):
+    m, applied = await _pasto_con_scheda_applicata(db_session)
+    m.away = True  # fuori casa senza passare dall'inversa
+    await db_session.flush()
+    altra = await propose_card(db_session, meals=[m], pantry=[], shopping=[])
+    prima = {c.id: (c.status, c.discarded_at) for c in await _schede_di(db_session, "forward")}
+
+    await update_meal(db_session, m, {"away": False})
+    dopo = {c.id: (c.status, c.discarded_at) for c in await _schede_di(db_session, "forward")}
+    assert dopo == prima
+    assert dopo[applied.id][0] == CardStatus.APPLIED
+    assert dopo[altra.id][0] == CardStatus.PROPOSED
+    assert await _schede_di(db_session, "inverse") == []

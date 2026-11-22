@@ -11,7 +11,7 @@ Tutto fa `flush`, mai `commit`: la transazione è di chi chiama.
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 
 from sqlalchemy import select
@@ -43,6 +43,7 @@ CHANGED_NOTE = "Cambiata dopo la scheda: controlla prima di rimetterla."
 IN_CART_NOTE = "È già nel carrello."
 BOUGHT_NOTE = "Già comprata: resta com'è."
 REVERSED_NOTE = "Già rimessa da un'altra scheda."
+PAST_MEAL_NOTE = "Pasto già passato: rimettila solo se non l'hai mangiato."
 
 
 @dataclass(frozen=True)
@@ -670,7 +671,7 @@ async def _drop_meal_from_proposed(session: AsyncSession, meal_id: str) -> None:
         await session.flush()
 
 
-async def _discard_proposed_inverses(session: AsyncSession, meal_id: str) -> None:
+async def discard_proposed_inverses(session: AsyncSession, meal_id: str) -> None:
     """Una scheda inversa sola per pasto: quella nuova si ricalcola dalle stesse righe
     d'origine sullo stato di adesso, quindi prende il posto delle vecchie ancora
     proposte (per esempio quella del «fuori casa» quando poi il pasto si toglie)."""
@@ -743,7 +744,7 @@ async def _inverse_list_row(
 
 
 async def propose_inverse_card(
-    session: AsyncSession, meal: Meal, reason: InverseReason
+    session: AsyncSession, meal: Meal, reason: InverseReason, *, today: date | None = None
 ) -> ChangeCard | None:
     """La scheda che rimette quello che le schede applicate di `meal` avevano usato.
 
@@ -780,6 +781,15 @@ async def propose_inverse_card(
     un'inversa) non si ripropongono. Le righe si leggono dall'ultima scheda applicata
     alla prima, così applicandole in ordine si torna indietro nell'ordine giusto.
 
+    **Un pasto passato che si elimina** (`reason` `DELETED`, `meal.day < today`): la scheda
+    nasce lo stesso, ma nessuna riga è spuntata e quelle senza nota hanno
+    `PAST_MEAL_NOTE` (`CHANGED_NOTE` e `IN_CART_NOTE` restano, più precise). Un pasto
+    passato di solito si è mangiato, e quello che ha usato è davvero finito: rimettere di
+    default sbaglierebbe; se non si è mangiato, Mattia spunta da sé. Sostituirlo o
+    mandarlo fuori casa dice invece che non si è mangiato, e lì le spunte restano.
+    `today` è di chi chiama (la rotta, con `today_in_pantry`): `None` vuol dire nessun
+    controllo.
+
     Pulisce anche le schede in avanti ancora proposte del pasto, anche di una bozza:
     perdono le righe che servivano solo a lui, e si scartano se restano vuote e senza
     pasti. E scarta sempre, anche quando la nuova non nasce, le inverse ancora proposte
@@ -787,7 +797,7 @@ async def propose_inverse_card(
     """
     meal_id = str(meal.id)
     await _drop_meal_from_proposed(session, meal_id)
-    await _discard_proposed_inverses(session, meal_id)
+    await discard_proposed_inverses(session, meal_id)
     if meal.status != MealStatus.OFFICIAL.value:
         return None
 
@@ -837,6 +847,11 @@ async def propose_inverse_card(
             pantry_rows.append(fields)
     if not pantry_rows and not unlist_rows:
         return None
+    if reason == InverseReason.DELETED and today is not None and meal.day < today:
+        for fields in [*pantry_rows, *unlist_rows]:
+            fields["checked"] = False
+            if fields["note"] is None:
+                fields["note"] = PAST_MEAL_NOTE
 
     card = _new_card(
         kind=CardKind.INVERSE.value, list_only=False,
