@@ -100,6 +100,12 @@ L'ordine dei filtri è uno, ed è scritto in una funzione pura in `pantryView.ts
 - **Aggiungere una voce dell'altro mondo** (sono su «Casa» e aggiungo il latte): a
   aggiunta riuscita il selettore passa a «Tutto», come oggi la barra si svuota e il
   riepilogo si spegne, perché la riga nuova deve potersi vedere (`revealId`).
+- **In serie** (la scansione di S3 §4.5, deciso da Mattia il 2026-11-18) il selettore resta
+  com'è: l'avviso dice dov'è finita la voce, «In dispensa: Fage Total 0%, sotto «Cibo»»
+  (o «sotto «Casa»»), coi nomi dei pulsanti del selettore. Chiuso il pannello, l'ultima riga
+  entrata va in vista come un'aggiunta singola: se è dell'altro mondo, il selettore passa a
+  «Tutto». Scegliere un mondo in cui il riepilogo delle scadenze non c'è spegne il suo filtro:
+  è un gesto di chi guarda (S15 §3).
 - **«Dispensa vuota»** resta il messaggio della dispensa davvero vuota: col selettore
   nascosto quando un mondo manca (§3), un mondo scelto non è mai vuoto.
 - **S15**: il mondo non apre e non chiude i reparti; nasconde quelli senza voci di quel

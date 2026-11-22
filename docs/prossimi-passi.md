@@ -593,6 +593,14 @@ tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezi
 dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre
 si rinumerano; nella serie, con tante righe in dispensa, ogni «Metti in dispensa» porta in vista la riga nuova e lo scanner esce dallo schermo (vedi la voce `tbd` in `next-steps.md`).
 
+↳ **2026-11-18, la serie e la riga in vista** (decisione di Mattia, piano
+`docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`, ramo
+`night/dispensa-serie-reparti`): finché il pannello della scansione è aperto la pagina non
+scorre più alla riga nuova, e chiuso il pannello (la ✕, o «Annulla» dello scanner nello
+stadio di lettura) va in vista l'ultima riga entrata. In serie su «Cibo» o «Casa» il
+selettore resta com'è e l'avviso dice dov'è finita la voce («…, sotto «Cibo»»). Le bozze di
+S3 §4.5, S14 §4 e S15 §3 lo dicono.
+
 ## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE — il prodotto il 2026-09-24; l'ingrediente da CIQUAL e i nutrienti di una ricetta il 2026-10-18 sui rami night/s4-ciqual e night/s4-grammi, non ancora in produzione; il tasto «Stima» da pianificare]**
 Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero
 nella forma ma povero nel contenuto. Spec:
@@ -1221,6 +1229,8 @@ server aggiunge `ingredient_kind`, oppure filtra lui. Il selettore
 ricordato fra una visita e l'altra è una comodità per dispositivo, quindi
 `localStorage` basta.
 
+↳ **2026-11-18:** in serie il selettore non va più a «Tutto»; vedi S3 e la bozza §4.
+
 ## S15. Reparti della dispensa collassabili **[FATTO 2026-10-19 — sul ramo night/s15-reparti-collassabili, non ancora in produzione]**
 `PantryScreen.tsx` raggruppa per reparto (`groupByCategory`) con un titolo per gruppo.
 I titoli diventano apribili e chiudibili, così la dispensa si naviga per reparto.
@@ -1243,6 +1253,8 @@ in vista, e lo salva aperto; il mondo di S14 non apre né chiude. `Section` senz
 da Mattia il 2026-10-09: un reparto chiuso durante una ricerca resta chiuso finché la
 ricerca non si cancella; «in scadenza» conta anche le voci oltre la scadenza; un reparto
 chiuso che si svuota e torna, torna chiuso.
+
+↳ **2026-11-18:** il riepilogo spento dallo schermo lascia aperti a video i reparti che aveva aperto, finché non si tocca qualcosa; spento da chi guarda torna il salvato. Vedi la bozza §3 e il piano `docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`.
 
 ## S16. La lista scorre di lato quando una voce porta la nota del rientro **[FATTO 2026-09-27]**
 

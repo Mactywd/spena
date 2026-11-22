@@ -61,10 +61,24 @@ Lo stato **salvato** (quel che l'utente ha chiuso) e lo stato **a video** sono d
 | Mondo scelto (S14) | lo stato salvato, sui reparti di quel mondo | — |
 | Voce appena aggiunta (`revealId`) in un reparto chiuso | il suo reparto si apre e la riga si porta in vista | **sì, si salva aperto**: l'utente ha appena messo lì qualcosa |
 | Toccare il titolo durante una ricerca | chiude o apre per davvero | sì |
+| Riepilogo spento dallo schermo (l'ultima voce in scadenza finita, tolta o senza più data) | i reparti che il riepilogo mostrava aperti restano aperti, finché non si tocca qualcosa (sotto) | niente: alla prossima apertura della Dispensa torna il salvato |
+| Voce entrata nella serie della scansione (S3 §4.5) | il suo reparto si apre, senza scorrere; chiuso il pannello, l'ultima riga va in vista | sì, si salva aperto |
 
 Cancellata la ricerca o spento il riepilogo, la dispensa torna allo stato salvato. La regola
 è: **un filtro mostra quel che ha trovato, e non cambia quel che l'utente aveva deciso**.
 Ricerca e riepilogo sono filtri; il mondo (S14) è una vista, e una vista non apre niente.
+
+**Chi spegne il riepilogo (deciso da Mattia il 2026-11-18).** Se lo spegne chi guarda — un
+tocco sul riepilogo, «Mostra tutto», un mondo senza scadenze scelto dal selettore — torna il
+salvato, come sopra. Se lo spegne lo schermo, perché il riepilogo è rimasto senza voci (si è
+segnata «Finito» l'ultima voce in scadenza, o le si è tolta la data, o la ✕), i reparti che
+mostrava aperti restano aperti a video, senza salvarli: altrimenti il reparto si richiuderebbe
+sotto il dito portandosi via la riga col suo «In lista». Li lascia andare il primo tocco su un
+titolo di reparto, sul selettore o su «Cerca in tutto», sul riepilogo tornato, un cambio del
+testo della barra (scrivere o cancellare, non toccarla), una
+voce entrata dall'ingresso diretto, o lasciare la Dispensa. I gesti sulle righe (tacche, ✕,
+«In lista», scadenza) e gli avvisi no: sono quelli che questa regola protegge. Piano
+`docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`.
 
 ## 4. Dove si ricorda
 

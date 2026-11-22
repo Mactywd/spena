@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-21 (fase notte: il terzo giro dei Pasti)_
+_Ultimo aggiornamento: 2026-11-22 (merge su master dei rami della notte del 2026-11-21)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -26,8 +26,6 @@ continua il ramo `night/suggerimenti-soglia`, e il suo piano sta nel worktree di
 ancora committato.
 
 3. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — il taglio è già costruito sul ramo (piano `2026-10-08-suggerimenti-soglia.md`); resta la strada (b) decisa da Mattia il 2026-11-18: il ramo al pari di `master`, poi l'elenco non tagliato (`trim=false`) per «Abbina» in «Sistema la spesa» e per i quasi-doppioni dell'Anagrafica, il taglio per tutti gli altri [T3, esito del giro] → `.worktrees/suggerimenti-soglia/docs/superpowers/plans/2026-11-18-suggerimenti-elenco-intero.md`, ramo `night/suggerimenti-soglia` (lo continua)
-4. [pronto] P2 · S3, la serie della scansione e la riga nuova portata in vista: finché il pannello di «Scansiona» è aperto la pagina non scorre più alla riga nuova (l'avviso «In dispensa: …» conferma già), e alla ✕ va in vista l'ultima riga entrata; su «Cibo» o «Casa» una voce dell'altro mondo lascia il selettore com'è e l'avviso dice dov'è finita (Mattia, 2026-11-18) [S3, S14] → `docs/superpowers/plans/2026-11-18-dispensa-serie-reparti.md`, ramo `night/dispensa-serie-reparti` da `master`, insieme alla 5
-5. [pronto] P2 · S15, il riepilogo delle scadenze che si spegne da solo richiude i reparti che aveva aperto: quando è lo schermo a spegnerlo, i reparti che aveva aperto restano aperti a video, senza salvarli, finché non si tocca qualcosa (Mattia, 2026-11-18) [S15] → stesso piano e stesso ramo della 4
 6. [pronto] P3 · Gli avvisi di `docker compose` sul server stampano pezzi dell'hash della password (visto il 2026-10-19): l'hash va in `password.env`, un secondo `env_file` in forma lunga con `format: raw`, scritto da `scripts/imposta-password.sh <file compose>`, con un test sui file Compose, come Training il 2026-10-04; dopo il deploy Mattia cambia la password, e `SESSION_SECRET` resta com'è (confermato il 2026-11-21) → `docs/superpowers/plans/2026-11-18-hash-password.md`, ramo `night/hash-password` da `master`
 
 ## Da approfondire (giorno)
@@ -126,6 +124,7 @@ _(niente: H3, P3 e M1 sono usciti il 2026-11-12, sostituiti dalla sezione Pasti 
 - [tbd] P2 · Dopo il deploy dell'LLM su Haiku: `check_llm --prova` sul server, qualche decisione vera dalla coda, il pilota di S4 una volta, e il costo di «Spese dell'AI» confrontato con la console di Anthropic dopo qualche giorno (vedi «Dopo il deploy» in `docs/superpowers/plans/2026-11-21-llm-haiku.md`) [Parte IV]
 - [fatto] 2026-11-21 · Prima del deploy dei Pasti con Claude: confermare l'uso del token del piano con l'Agent SDK: superata il 2026-11-21, Mattia ha scelto la chiave API [Parte IV]
 - [tbd] P2 · Prima del deploy dei Pasti con Claude: una chiave API nuova nella console di Anthropic, nel `.env` del server come `ANTHROPIC_API_KEY` (al posto di quella vecchia, mai usata dal codice), un limite di spesa nella console, poi `check_claude --prova` e il giro completo sul telefono (vedi «Dopo il deploy» in `docs/superpowers/plans/2026-11-18-pasti-chiave-api.md`) [Parte IV]
+- [tbd] P2 · Prove sul telefono dopo il deploy di night/dispensa-serie-reparti: un censimento vero con la dispensa lunga (lo scanner resta in vista, alla ✕ si arriva all'ultima riga), una serie su «Casa» con un cibo in mezzo (l'avviso «sotto «Cibo»» si legge in tempo?), e il riepilogo premuto con un reparto chiuso, «Finito» sull'ultima voce e poi «In lista» [S3, S15]
 - [tbd] P3 · Dopo il deploy dei Pasti con Claude: provare il giro completo bozza → spesa → ufficializzazione (bozza della settimana, scheda della lista applicata, spesa, «Sistema la spesa», ufficializzazione con Claude, ricette arrivate, scheda della dispensa applicata), togliere un pasto e applicare la scheda inversa; poi decidere se ritirare o ridurre la skill `pasti` [Parte IV]
 - [tbd] P3 · Dopo il deploy degli utensili: scrivere in «Utensili» gli strumenti veri della cucina, e provare una bozza AI che di solito chiede uno strumento che manca (per esempio montare gli albumi senza frusta), per vedere se la ricetta lo evita [H4]
 
@@ -167,6 +166,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-11-21 · S3 e S15, la Dispensa che non si muove sotto il dito: la serie della scansione non scorre più alla riga nuova e, su «Cibo» o «Casa», non cambia mondo (l'avviso dice «…, sotto «Cibo»»); chiuso il pannello (la ✕, o «Annulla» dello scanner nello stadio di lettura) va in vista l'ultima riga entrata. Il riepilogo delle scadenze spento dallo schermo lascia aperti i reparti che aveva aperto, finché non si tocca un titolo o il selettore, o non si scrive nella barra [S3, S14, S15] → branch night/dispensa-serie-reparti (da revisionare)
 - [fatto] 2026-11-21 · Pasti: la conferma «Questi posti sono occupati» di «Metti nella settimana» non dice quali ricette fuori dal ricettario si eliminano con i pasti sostituiti (decisione 11) — risolta col piano `2026-11-21-pasti-terzo-giro.md` → branch night/pasti-terzo-giro (da revisionare)
 - [fatto] 2026-11-21 · Pasti, il terzo giro: gli avanzi (i 3 giorni controllati anche alla scrittura, con «Sposta e stacca dal pasto d'origine»), «Elimina» dal ricettario su una ricetta di un pasto la toglie dal ricettario, le schede inverse (scartata al ritorno a casa, non spuntata per un pasto passato), la lista che segue la correzione di una scheda (migrazione `0026`), il lucchetto sulla ricetta del pasto, e le piccole della pianificazione e del pasto (Mattia, 2026-11-21) [Parte IV] → `docs/superpowers/plans/2026-11-21-pasti-terzo-giro.md`, ramo `night/pasti-terzo-giro` da `night/s4-candidati`, dopo l'8 → branch night/pasti-terzo-giro (da revisionare)
 - [fatto] 2026-11-21 · Pasti: la scrittura non controlla la finestra di 3 giorni dell'avanzo (la offre solo il modulo) — risolta col piano `2026-11-21-pasti-terzo-giro.md` → branch night/pasti-terzo-giro (da revisionare)
