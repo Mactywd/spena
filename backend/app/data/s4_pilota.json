@@ -1,7 +1,7 @@
 {
-  "nota": "Il pilota di S4 (spec docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md, §4.18). Ogni abbinamento atteso è un'espressione regolare sul nome francese di CIQUAL senza accenti né maiuscole.",
+  "nota": "Il pilota di S4 (spec docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md, §4.18). Ogni abbinamento atteso è un'espressione regolare sul nome francese di CIQUAL senza accenti né maiuscole. Il pomodoro aspetta l'alimento generico: nella 2025 «Tomate, crue» non c'è (2026-11-21).",
   "abbinamenti": [
-    {"ingrediente": "pomodoro", "reparto": "verdura", "atteso": "^tomate, crue"},
+    {"ingrediente": "pomodoro", "reparto": "verdura", "atteso": "^tomate (sans precision|ronde), crue"},
     {"ingrediente": "cipolla", "reparto": "verdura", "atteso": "^oignon.*cru"},
     {"ingrediente": "aglio", "reparto": "verdura", "atteso": "^ail.*cru"},
     {"ingrediente": "carota", "reparto": "verdura", "atteso": "^carotte.*crue"},

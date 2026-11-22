@@ -11,7 +11,11 @@ from app.db.models.ingredient import IngredientCategory
 from app.domain.ciqual import CiqualRow
 from app.domain.rules import kind_for_category
 from app.repositories.ciqual import upsert_foods
+from app.cli.load_ciqual import CANDIDATE_FILES
+from app.domain.ciqual import normalize_name
 from app.services.ai_spend import Spend
+from app.services.ciqual_file import read_ciqual
+from app.services.ciqual_match import Searched
 from app.services.s4_pilot import (
     MATCH_THRESHOLD,
     PILOT_FILE,
@@ -25,6 +29,7 @@ from app.services.s4_pilot import (
     score,
     spend_line,
 )
+from ciqual_veri import ALIMENTI_VERI
 from llm_fakes import FakeLlm, user_of
 
 ALIMENTI = [
@@ -128,7 +133,9 @@ def test_il_rapporto_dice_soglia_casi_e_spesa():
     esiti = [
         MatchOutcome(MatchCase("pomodoro", "verdura", "^tomate, crue"), Verdict.RIGHT, "90001", "Tomate, crue"),
         MatchOutcome(MatchCase("burro", "latticini", "^beurre"), Verdict.WRONG, "90013", "Lait entier"),
-        MatchOutcome(MatchCase("uova", "altro", "^oeuf"), Verdict.WRONG),
+        MatchOutcome(
+            MatchCase("uova", "altro", "^oeuf"), Verdict.WRONG, searched=Searched(("oeuf cru",), 0)
+        ),
         MatchOutcome(MatchCase("riso", "cereali", "^riz"), Verdict.UNANSWERED),
         MatchOutcome(MatchCase("nduja", "carne", "^nduja"), Verdict.REVIEW),
     ]
@@ -136,8 +143,8 @@ def test_il_rapporto_dice_soglia_casi_e_spesa():
     assert match_report(esiti) == [
         "Abbinamenti: 1 giusti su 4 (25%): non bastano (soglia 90%).",
         "  ✗ «burro»: scelto «Lait entier» (90013); atteso ^beurre",
-        "  ✗ «uova»: nessun alimento scelto; atteso ^oeuf",
-        "  – «riso»: nessuna risposta verificabile dall'AI",
+        "  ✗ «uova»: nessun candidato (le parole oeuf cru e il nome italiano non trovano alimenti); atteso ^oeuf",
+        "  – «riso»: le parole di ricerca dell'AI non si sono potute verificare",
         "  ? «nduja»: nessun alimento della tabella corrisponde a ^nduja: il caso va rivisto",
     ]
     assert passes(9, 10, MATCH_THRESHOLD) and not passes(8, 10, MATCH_THRESHOLD)
@@ -148,6 +155,60 @@ def test_il_rapporto_dice_soglia_casi_e_spesa():
     )
     assert final_line(True) == "Il pilota passa: si può lanciare l'AI su tutto il catalogo."
     assert final_line(False) == (
-        "Il pilota non passa: prima del lancio su tutto il catalogo serve un modello più "
-        "forte (spec di S4, §9)."
+        "Il pilota non passa: non lanciare l'AI su tutto il catalogo. "
+        "Le righe ✗ e – qui sopra dicono se è mancato il candidato o la scelta."
     )
+
+
+def test_il_pomodoro_aspetta_il_pomodoro_crudo_generico():
+    caso = next(c for c in load_cases().matches if c.ingredient == "pomodoro")
+
+    assert caso.expected == "^tomate (sans precision|ronde), crue"
+    for nome in ("Tomate sans précision, crue (aliment moyen)", "Tomate ronde, crue"):
+        assert re.search(caso.expected, normalize_name(nome)), nome
+    for nome in (
+        "Tomate, chair et peau, cuite (aliment moyen)",
+        "Tomate cerise, crue",
+        "Tomate verte, crue",
+    ):
+        assert not re.search(caso.expected, normalize_name(nome)), nome
+
+
+def test_ogni_caso_trova_un_alimento_nella_tabella_vera():
+    nomi = [normalize_name(f.name_fr) for f in read_ciqual(CANDIDATE_FILES[0]).foods]
+
+    for caso in load_cases().matches:
+        if caso.expected is not None:
+            assert any(re.search(caso.expected, nome) for nome in nomi), caso
+
+
+async def test_il_rapporto_dice_perche(db_session):
+    await upsert_foods(db_session, ALIMENTI_VERI)
+    casi = [
+        MatchCase("riso", "cereali", "^riz.*cru"),
+        MatchCase("tonno in scatola", "pesce", "^thon.*appertise"),
+        MatchCase("pomodoro", "verdura", "^tomate (sans precision|ronde), crue"),
+        MatchCase("patata", "verdura", "^pomme de terre.*crue"),
+        MatchCase("salmone", "pesce", "^saumon"),
+    ]
+    finto = FakeLlm(
+        _termini(
+            (1, "riso", ["riz"]),
+            (2, "tonno in scatola", ["zzzz qqqq"]),
+            (3, "pomodori", ["tomate"]),
+            (4, "patata", ["pomme de terre"]),
+            (5, "salmone", ["saumon"]),
+        ),
+        _scelte((1, "riso", None), (2, "patata", "4003"), (3, "salmone", "9100")),
+    )
+
+    esiti, guasto = await run_match_pilot(db_session, casi, client=finto)
+
+    assert guasto is None
+    assert match_report(esiti)[1:] == [
+        "  ✗ «riso»: l'AI non ha scelto fra 7 candidati (parole: riz); atteso ^riz.*cru",
+        "  ✗ «tonno in scatola»: nessun candidato (le parole zzzz qqqq e il nome italiano non trovano alimenti); atteso ^thon.*appertise",
+        "  – «pomodoro»: le parole di ricerca dell'AI non si sono potute verificare",
+        "  ✗ «patata»: scelto «Pomme de terre, bouillie/cuite à l'eau» (4003) fra 5 candidati (parole: pomme de terre); atteso ^pomme de terre.*crue",
+        "  – «salmone»: la scelta dell'AI fra 7 candidati non si è potuta verificare (parole: saumon)",
+    ]

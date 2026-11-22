@@ -28,7 +28,7 @@ from app.db.models.nutrition import CiqualFood
 from app.domain.ciqual import normalize_name
 from app.domain.recipe_nutrition import PIECE_LABEL
 from app.services.ai_spend import Spend
-from app.services.ciqual_match import NameToMatch, match_names
+from app.services.ciqual_match import NameToMatch, Searched, match_names
 from app.services.llm import LlmUnavailable
 from app.services.unit_grams import GRAMS_BATCH, PairQuestion, ask_grams
 
@@ -58,6 +58,8 @@ class MatchOutcome:
     verdict: Verdict
     code: str | None = None
     name: str | None = None
+    # cosa si è cercato per il caso; None negli esiti costruiti a mano e per le parole rifiutate
+    searched: Searched | None = None
 
 
 @dataclass(frozen=True)
@@ -125,8 +127,9 @@ async def run_match_pilot(
             outcomes.append(MatchOutcome(case, Verdict.REVIEW))
             continue
         matched = result.decided.get(case.ingredient)
+        searched = result.searched.get(case.ingredient)
         if matched is None:
-            outcomes.append(MatchOutcome(case, Verdict.UNANSWERED))
+            outcomes.append(MatchOutcome(case, Verdict.UNANSWERED, searched=searched))
             continue
         name = names.get(matched.code) if matched.code is not None else None
         if case.expected is None:
@@ -134,7 +137,9 @@ async def run_match_pilot(
         else:
             right = name is not None and re.search(case.expected, normalize_name(name)) is not None
         outcomes.append(
-            MatchOutcome(case, Verdict.RIGHT if right else Verdict.WRONG, matched.code, name)
+            MatchOutcome(
+                case, Verdict.RIGHT if right else Verdict.WRONG, matched.code, name, searched
+            )
         )
     return outcomes, result.unavailable
 
@@ -147,6 +152,50 @@ def score(outcomes: Sequence[MatchOutcome | GramsOutcome]) -> tuple[int, int]:
 
 def passes(right: int, counted: int, threshold: float) -> bool:
     return counted > 0 and right / counted >= threshold
+
+
+def _terms(searched: Searched) -> str:
+    return " / ".join(searched.terms)
+
+
+def _wrong_line(outcome: MatchOutcome, expected: str) -> str:
+    ingredient = outcome.case.ingredient
+    searched = outcome.searched
+    if searched is None:
+        if outcome.code is None:
+            return f"  ✗ «{ingredient}»: nessun alimento scelto; atteso {expected}"
+        return f"  ✗ «{ingredient}»: scelto «{outcome.name}» ({outcome.code}); atteso {expected}"
+    if searched.candidates == 0:
+        return (
+            f"  ✗ «{ingredient}»: nessun candidato (le parole {_terms(searched)} e il nome "
+            f"italiano non trovano alimenti); atteso {expected}"
+        )
+    words = f"parole: {_terms(searched)}"
+    if searched.by_italian_name:
+        words += "; candidati dal nome italiano"
+    if outcome.code is None:
+        return (
+            f"  ✗ «{ingredient}»: l'AI non ha scelto fra {searched.candidates} candidati "
+            f"({words}); atteso {expected}"
+        )
+    return (
+        f"  ✗ «{ingredient}»: scelto «{outcome.name}» ({outcome.code}) fra "
+        f"{searched.candidates} candidati ({words}); atteso {expected}"
+    )
+
+
+def _unanswered_line(outcome: MatchOutcome) -> str:
+    ingredient = outcome.case.ingredient
+    searched = outcome.searched
+    if searched is None:
+        return f"  – «{ingredient}»: le parole di ricerca dell'AI non si sono potute verificare"
+    words = f"parole: {_terms(searched)}"
+    if searched.by_italian_name:
+        words += "; candidati dal nome italiano"
+    return (
+        f"  – «{ingredient}»: la scelta dell'AI fra {searched.candidates} candidati "
+        f"non si è potuta verificare ({words})"
+    )
 
 
 def match_report(outcomes: Sequence[MatchOutcome]) -> list[str]:
@@ -162,12 +211,10 @@ def match_report(outcomes: Sequence[MatchOutcome]) -> list[str]:
     for outcome in outcomes:
         ingredient = outcome.case.ingredient
         expected = outcome.case.expected or "nessun alimento"
-        if outcome.verdict == Verdict.WRONG and outcome.code is None:
-            lines.append(f"  ✗ «{ingredient}»: nessun alimento scelto; atteso {expected}")
-        elif outcome.verdict == Verdict.WRONG:
-            lines.append(f"  ✗ «{ingredient}»: scelto «{outcome.name}» ({outcome.code}); atteso {expected}")
+        if outcome.verdict == Verdict.WRONG:
+            lines.append(_wrong_line(outcome, expected))
         elif outcome.verdict == Verdict.UNANSWERED:
-            lines.append(f"  – «{ingredient}»: nessuna risposta verificabile dall'AI")
+            lines.append(_unanswered_line(outcome))
         elif outcome.verdict == Verdict.REVIEW:
             lines.append(
                 f"  ? «{ingredient}»: nessun alimento della tabella corrisponde a {expected}: "
@@ -255,6 +302,6 @@ def final_line(passed: bool) -> str:
     if passed:
         return "Il pilota passa: si può lanciare l'AI su tutto il catalogo."
     return (
-        "Il pilota non passa: prima del lancio su tutto il catalogo serve un modello più "
-        "forte (spec di S4, §9)."
+        "Il pilota non passa: non lanciare l'AI su tutto il catalogo. "
+        "Le righe ✗ e – qui sopra dicono se è mancato il candidato o la scelta."
     )
