@@ -15,6 +15,7 @@ from app.services.ai_recipes import (
     draft_variant,
 )
 from app.services.utensils import (
+    UTENSILS_JSON_RULE,
     UTENSILS_PROMPT_RULE,
     render_utensils_block,
     utensils_prompt_block,
@@ -43,6 +44,9 @@ ATTESO = (
     "- padella antiaderente (da 24 cm)\n"
     + UTENSILS_PROMPT_RULE
 )
+
+
+ATTESO_JSON = ATTESO[: -len(UTENSILS_PROMPT_RULE)] + UTENSILS_JSON_RULE
 
 
 @pytest_asyncio.fixture
@@ -85,7 +89,7 @@ async def test_la_bozza_dice_all_ai_gli_utensili(db_session):
     finto = FakeLlm(BOZZA)
     await draft_recipe(db_session, "una frittata", client=finto)
     sistema = system_of(finto.bodies[0])
-    assert sistema == SYSTEM_PROMPT + "\n" + ATTESO + "\n"
+    assert sistema == SYSTEM_PROMPT + "\n" + ATTESO_JSON + "\n"
     # la richiesta resta com'è: gli utensili non la cambiano
     assert user_of(finto.bodies[0]) == "una frittata"
 
@@ -100,7 +104,7 @@ async def test_la_variante_dice_all_ai_gli_utensili(db_session, ricetta):
     await _due_utensili(db_session)
     finto = FakeLlm(BOZZA)
     await draft_variant(db_session, ricetta, "senza forno", client=finto)
-    assert system_of(finto.bodies[0]) == VARIANT_SYSTEM_PROMPT + "\n" + ATTESO + "\n"
+    assert system_of(finto.bodies[0]) == VARIANT_SYSTEM_PROMPT + "\n" + ATTESO_JSON + "\n"
     assert json.loads(user_of(finto.bodies[0]))["richiesta"] == "senza forno"
 
 
@@ -108,3 +112,15 @@ async def test_la_variante_senza_utensili_ha_il_prompt_di_sempre(db_session, ric
     finto = FakeLlm(BOZZA)
     await draft_variant(db_session, ricetta, "senza forno", client=finto)
     assert system_of(finto.bodies[0]) == VARIANT_SYSTEM_PROMPT
+
+
+def test_la_regola_per_le_risposte_json():
+    blocco = render_utensils_block([("padella", None)], rule=UTENSILS_JSON_RULE)
+    assert blocco is not None and blocco.endswith(UTENSILS_JSON_RULE)
+    assert UTENSILS_PROMPT_RULE not in blocco
+    assert UTENSILS_JSON_RULE == UTENSILS_PROMPT_RULE[:-1] + " nella descrizione."
+
+
+def test_la_regola_di_default_non_cambia():
+    blocco = render_utensils_block([("padella", None)])
+    assert blocco is not None and blocco.endswith(UTENSILS_PROMPT_RULE)

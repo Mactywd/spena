@@ -306,7 +306,7 @@ GRAMS_SCHEMA = {
                     "n": {"type": "integer"},
                     "ingrediente": {"type": "string"},
                     "unita": {"type": "string"},
-                    "grammi": {"type": ["number", "null"]},
+                    "grammi": {"anyOf": [{"type": "number"}, {"type": "null"}]},
                 },
                 "required": ["n", "ingrediente", "unita", "grammi"],
                 "additionalProperties": False,

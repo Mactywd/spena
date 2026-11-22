@@ -91,7 +91,9 @@ async def test_la_domanda_porta_numero_ingrediente_unita_ed_esempio(db_session):
     }
     assert "parte che si mangia" in system_of(corpo)
     schema = schema_of(corpo)
-    assert schema["properties"]["pesi"]["items"]["properties"]["grammi"] == {"type": ["number", "null"]}
+    assert schema["properties"]["pesi"]["items"]["properties"]["grammi"] == {
+        "anyOf": [{"type": "number"}, {"type": "null"}]
+    }
 
 
 async def test_nessun_peso_si_scrive_e_non_si_richiede(db_session):

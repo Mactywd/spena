@@ -60,14 +60,13 @@ TERM_SCHEMA = {
     "type": "object",
     "properties": {
         "action": {"type": "string", "enum": ["map", "create", "ignore"]},
-        "ingredient": {"type": ["string", "null"]},
-        "name": {"type": ["string", "null"]},
-        "display_name": {"type": ["string", "null"]},
-        "category": {"type": ["string", "null"]},
+        "ingredient": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "display_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "category": {"anyOf": [{"type": "string"}, {"type": "null"}]},
     },
-    # Vincolo dello strict mode: ogni proprietà in `required`, additionalProperties a
-    # false. È il motivo per cui i campi di una sola azione sono nullable e non
-    # opzionali — dichiararli opzionali farebbe rifiutare lo schema.
+    # Vincolo delle structured outputs: ogni proprietà in `required`, `additionalProperties`
+    # a false; i campi di una sola azione sono un `anyOf` con `null`, non opzionali.
     "required": ["action", "ingredient", "name", "display_name", "category"],
     "additionalProperties": False,
 }

@@ -31,7 +31,12 @@ from app.services.llm import (
     complete_json,
     open_client,
 )
+from app.services.ciqual_match import CHOICE_SCHEMA, TERMS_SCHEMA
+from app.services.ingredient_emoji import EMOJI_SCHEMA
 from app.services.recipe_import.decide import COLLAPSE_SCHEMA, TERM_SCHEMA
+from app.services.substitutions import SUBSTITUTE_SCHEMA
+from app.services.unit_forms import FORMS_SCHEMA
+from app.services.unit_grams import GRAMS_SCHEMA
 from llm_fakes import FakeLlm, errore_api, messaggio
 
 CHIAVE = "chiave-finta-per-i-test"
@@ -376,9 +381,8 @@ def test_i_tipi_terminali():
 def _sotto_oggetti(schema: dict):
     """Genera ogni sotto-schema di tipo "object", in profondità.
 
-    Basta per le forme che le tre schede reali usano: oggetti con "properties" e
-    array con "items". Non serve altro perché nessuna delle tre ricorre a "anyOf",
-    "oneOf" o "$ref".
+    Scende nelle proprietà, negli "items" e negli "anyOf" (dove stanno i campi
+    nullable). Nessuno schema reale ricorre a "oneOf" o "$ref".
     """
     if not isinstance(schema, dict):
         return
@@ -388,25 +392,52 @@ def _sotto_oggetti(schema: dict):
             yield from _sotto_oggetti(sotto_schema)
     elif schema.get("type") == "array":
         yield from _sotto_oggetti(schema.get("items") or {})
+    for ramo in schema.get("anyOf") or []:
+        yield from _sotto_oggetti(ramo)
+
+
+def _tutti_i_sotto_schemi(schema):
+    """Ogni dizionario dentro `schema`, a qualunque profondità."""
+    if isinstance(schema, dict):
+        yield schema
+        for valore in schema.values():
+            yield from _tutti_i_sotto_schemi(valore)
+    elif isinstance(schema, list):
+        for elemento in schema:
+            yield from _tutti_i_sotto_schemi(elemento)
+
+
+CHIAVI_NON_ACCETTATE = {
+    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+    "minLength", "maxLength", "minItems", "maxItems", "pattern",
+}
 
 
 @pytest.mark.parametrize(
     "schema",
-    [TERM_SCHEMA, COLLAPSE_SCHEMA, DRAFT_SCHEMA],
-    ids=["TERM_SCHEMA", "COLLAPSE_SCHEMA", "DRAFT_SCHEMA"],
+    [
+        TERM_SCHEMA, COLLAPSE_SCHEMA, DRAFT_SCHEMA, SUBSTITUTE_SCHEMA, FORMS_SCHEMA,
+        EMOJI_SCHEMA, TERMS_SCHEMA, CHOICE_SCHEMA, GRAMS_SCHEMA,
+    ],
+    ids=[
+        "TERM_SCHEMA", "COLLAPSE_SCHEMA", "DRAFT_SCHEMA", "SUBSTITUTE_SCHEMA",
+        "FORMS_SCHEMA", "EMOJI_SCHEMA", "TERMS_SCHEMA", "CHOICE_SCHEMA", "GRAMS_SCHEMA",
+    ],
 )
-def test_gli_schemi_veri_rispettano_lo_strict_mode(schema):
-    """Le tre schede che l'app manda davvero, non delle copie.
+def test_gli_schemi_veri_sono_accettati_dalle_structured_outputs(schema):
+    """Gli schemi che l'app manda davvero, non delle copie (spec §2.12).
 
-    Sta qui perché questo file è già dove il vincolo dello strict mode di
-    OpenRouter — ogni proprietà in "required", "additionalProperties" a false a ogni
-    livello — si dichiara e si prova, finora solo sulla scheda giocattolo del file
-    (`SCHEMA`). Importare le costanti vere da `decide.py` e da `ai_recipes.py`, invece
-    di riscriverle qui, è ciò che rende la prova vera: una copia si scollerebbe dalla
-    scheda che la richiesta manda davvero, e la suite resterebbe verde mentre
-    OpenRouter rifiuta con un 400 che qui diventa `LlmUnavailable` in silenzio.
+    Le structured outputs di Anthropic vogliono, a ogni livello: ogni proprietà in
+    "required" e "additionalProperties" a false; nessun "type" che sia una lista (un
+    campo nullable è un "anyOf" con "null"); nessun vincolo numerico o di lunghezza.
+    Le costanti si importano, non si copiano: una copia si scollerebbe dallo schema che
+    la richiesta manda davvero, e la suite resterebbe verde mentre l'API rifiuta con un
+    400 che qui diventa `LlmUnavailable` in silenzio.
     """
     for oggetto in _sotto_oggetti(schema):
         proprieta = set((oggetto.get("properties") or {}).keys())
         assert oggetto.get("additionalProperties") is False
         assert set(oggetto.get("required") or []) == proprieta
+    for sotto in _tutti_i_sotto_schemi(schema):
+        assert not isinstance(sotto.get("type"), list), sotto
+        assert not (CHIAVI_NON_ACCETTATE & set(sotto)), sotto

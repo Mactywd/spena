@@ -25,14 +25,21 @@ from app.db.models.recipe import Recipe
 from app.domain.rules import IngredientKind, IngredientRole, cost_in_scale
 from app.services.ingredient_match import match_name
 from app.repositories.llm_calls import record_llm_call
-from app.services.llm import LlmCallSite, LlmUnavailable, LlmUsage, complete_json
+from app.services.llm import CallProfile, LlmCallSite, LlmUnavailable, LlmUsage, complete_json
 from app.services.recipe_import.decide import CATEGORIES
-from app.services.utensils import utensils_prompt_block
+from app.services.utensils import UTENSILS_JSON_RULE, utensils_prompt_block
 
-DRAFT_MAX_TOKENS = 2000
-# La variante rimanda indietro la ricetta intera, e un procedimento importato è lungo:
-# col tetto della bozza una risposta troncata sarebbe JSON rotto, cioè un 503.
-VARIANT_MAX_TOKENS = 4000
+# Bozza e variante sono scrittura e non classificazione: il pensiero è acceso, a sforzo
+# basso. Un tentativo solo da 50 s, perché la rotta passa da Nginx, che aspetta 60 s, e
+# tre tentativi da 45 diventerebbero un 504. I `max_tokens` sono alti perché il pensiero
+# conta nel tetto, e una ricetta tagliata è un 503.
+WRITE_PROFILE = CallProfile(thinking=True, effort="low", timeout_seconds=50.0, max_retries=0)
+
+DRAFT_MAX_TOKENS = 6000
+# La variante rimanda indietro la ricetta intera, e un procedimento importato è lungo: in
+# più, il pensiero conta nel tetto. Con un tetto stretto una risposta troncata sarebbe
+# JSON rotto, cioè un 503.
+VARIANT_MAX_TOKENS = 8000
 
 SYSTEM_PROMPT = """Sei un assistente di cucina. Rispondi SOLO con un oggetto JSON valido, senza testo attorno e senza blocchi di codice.
 
@@ -72,12 +79,12 @@ DRAFT_SCHEMA = {
     "type": "object",
     "properties": {
         "title": {"type": "string"},
-        "description": {"type": ["string", "null"]},
+        "description": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "instructions": {"type": "string"},
-        "servings": {"type": ["integer", "null"]},
-        # niente `minimum`/`maximum`: non tutti i fornitori li accettano in modalità
-        # rigorosa, e la scala la controlla comunque `cost_in_scale` qui sotto
-        "cost": {"type": ["integer", "null"]},
+        "servings": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        # niente `minimum`/`maximum`: le structured outputs non li accettano, e la scala
+        # la controlla `cost_in_scale` qui sotto
+        "cost": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
         "ingredients": {
             "type": "array",
             "items": {
@@ -85,7 +92,7 @@ DRAFT_SCHEMA = {
                 "properties": {
                     "name": {"type": "string"},
                     "role": {"type": "string", "enum": ["primary", "secondary"]},
-                    "quantity_text": {"type": ["string", "null"]},
+                    "quantity_text": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "category": {"type": "string"},
                 },
                 "required": ["name", "role", "quantity_text", "category"],
@@ -131,7 +138,7 @@ def system_with_utensils(base: str, block: str | None) -> str:
 async def draft_recipe(
     session: AsyncSession, prompt: str, client: AsyncAnthropic | None = None
 ) -> RecipeDraft:
-    block = await utensils_prompt_block(session)
+    block = await utensils_prompt_block(session, rule=UTENSILS_JSON_RULE)
     payload = await _ask(
         session, call_site=LlmCallSite.RECIPE_DRAFT,
         system=system_with_utensils(SYSTEM_PROMPT, block), user=prompt,
@@ -183,7 +190,7 @@ async def draft_variant(
     `commit` sulla sessione.
     """
     question = variant_question(recipe, prompt)
-    block = await utensils_prompt_block(session)
+    block = await utensils_prompt_block(session, rule=UTENSILS_JSON_RULE)
     payload = await _ask(
         session, call_site=LlmCallSite.RECIPE_VARIANT,
         system=system_with_utensils(VARIANT_SYSTEM_PROMPT, block),
@@ -209,6 +216,7 @@ async def _ask(
             user=user,
             schema=DRAFT_SCHEMA,
             max_tokens=max_tokens,
+            profile=WRITE_PROFILE,
             client=client,
         )
     except LlmUnavailable as exc:

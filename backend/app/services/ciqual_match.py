@@ -109,7 +109,7 @@ CHOICE_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "n": {"type": "integer"},
                     "nome": {"type": "string"},
-                    "codice": {"type": ["string", "null"]},
+                    "codice": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                 },
                 "required": ["n", "nome", "codice"],
                 "additionalProperties": False,

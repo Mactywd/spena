@@ -335,6 +335,38 @@ async def test_la_bozza_fallita_registra_l_uso(db_session):
     assert riga.cost_usd == pytest.approx(COSTO_FINTO)
 
 
+async def test_la_bozza_pensa_con_il_suo_profilo(db_session, originale):
+    """Scrittura e non classificazione: pensiero adattivo, sforzo basso, tetto alto."""
+    bozza = FakeLlm(DRAFT)
+    await draft_recipe(db_session, "pasta veloce", client=bozza)
+    corpo = bozza.bodies[0]
+    assert corpo["thinking"] == {"type": "adaptive"}
+    assert corpo["output_config"]["effort"] == "low"
+    assert corpo["max_tokens"] == 6000
+
+    variante = FakeLlm(VARIANTE)
+    await draft_variant(db_session, originale, "senza basilico", client=variante)
+    corpo = variante.bodies[0]
+    assert corpo["thinking"] == {"type": "adaptive"}
+    assert corpo["output_config"]["effort"] == "low"
+    assert corpo["max_tokens"] == 8000
+    assert schema_of(corpo) == DRAFT_SCHEMA
+
+
+async def test_la_bozza_ha_un_tentativo_solo(db_session):
+    """Un 529 non si ritenta: una richiesta sola e un guasto transitorio (il profilo
+    è provato col client vero in test_llm.py)."""
+    from llm_fakes import errore_api
+
+    from app.services.llm import LlmFailureKind
+
+    finto = FakeLlm(errore_api(529, "overloaded_error"))
+    with pytest.raises(LlmUnavailable) as eccezione:
+        await draft_recipe(db_session, "pasta veloce", client=finto)
+    assert finto.calls == 1
+    assert eccezione.value.kind is LlmFailureKind.TRANSIENT
+
+
 async def test_la_bozza_propone_un_costo(db_session, anagrafica):
     draft = await draft_recipe(db_session, "qualcosa di veloce", client=FakeLlm(DRAFT))
     assert draft.cost == 1
@@ -360,7 +392,9 @@ def test_lo_schema_chiede_il_costo():
     from app.services.ai_recipes import DRAFT_SCHEMA, SYSTEM_PROMPT
 
     assert "cost" in DRAFT_SCHEMA["required"]
-    assert DRAFT_SCHEMA["properties"]["cost"] == {"type": ["integer", "null"]}
+    assert DRAFT_SCHEMA["properties"]["cost"] == {
+        "anyOf": [{"type": "integer"}, {"type": "null"}]
+    }
     assert '"cost"' in SYSTEM_PROMPT
 
 
@@ -414,7 +448,7 @@ async def test_la_variante_manda_all_ai_la_ricetta_e_la_richiesta(db_session, or
     assert system_of(corpo) == VARIANT_SYSTEM_PROMPT
     # le regole della bozza valgono anche qui: la variante le estende, non le riscrive
     assert VARIANT_SYSTEM_PROMPT.startswith(SYSTEM_PROMPT)
-    assert corpo["max_tokens"] == VARIANT_MAX_TOKENS == 4000
+    assert corpo["max_tokens"] == VARIANT_MAX_TOKENS == 8000
     # lo schema è quello della bozza: il modulo legge la stessa forma
     assert schema_of(corpo) == DRAFT_SCHEMA
     domanda = json.loads(user_of(corpo))

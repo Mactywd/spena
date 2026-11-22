@@ -19,16 +19,27 @@ UTENSILS_PROMPT_RULE = (
     "per montare gli albumi, per esempio), scegli un'altra tecnica che si fa con quelli che "
     "ci sono; se senza quello strumento il piatto non si fa, dillo."
 )
+# La bozza e la variante rispondono con uno schema stretto: «dillo» lì ha un posto solo,
+# la descrizione. La chat dei Pasti chiama senza `rule` e ha la frase di sempre.
+UTENSILS_JSON_RULE = (
+    "Usa solo questi strumenti. Se la tecnica di sempre ne chiede uno che manca (la frusta "
+    "per montare gli albumi, per esempio), scegli un'altra tecnica che si fa con quelli che "
+    "ci sono; se senza quello strumento il piatto non si fa, dillo nella descrizione."
+)
 
 
-def render_utensils_block(entries: Sequence[tuple[str, str | None]]) -> str | None:
+def render_utensils_block(
+    entries: Sequence[tuple[str, str | None]], *, rule: str = UTENSILS_PROMPT_RULE
+) -> str | None:
     """Il blocco di prompt per `entries` (nome, nota), nell'ordine ricevuto."""
     if not entries:
         return None
     righe = [f"- {name} ({note})" if note else f"- {name}" for name, note in entries]
-    return "\n".join([UTENSILS_PROMPT_INTRO, *righe, UTENSILS_PROMPT_RULE])
+    return "\n".join([UTENSILS_PROMPT_INTRO, *righe, rule])
 
 
-async def utensils_prompt_block(session: AsyncSession) -> str | None:
+async def utensils_prompt_block(
+    session: AsyncSession, *, rule: str = UTENSILS_PROMPT_RULE
+) -> str | None:
     utensils = await list_utensils(session)
-    return render_utensils_block([(u.name, u.note) for u in utensils])
+    return render_utensils_block([(u.name, u.note) for u in utensils], rule=rule)

@@ -7,6 +7,7 @@ from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe import RecipeSource
 from app.repositories.recipes import create_recipe
 from app.services.ai_recipes import SYSTEM_PROMPT, VARIANT_SYSTEM_PROMPT
+from app.services.utensils import UTENSILS_JSON_RULE, UTENSILS_PROMPT_RULE
 
 U = "/api/v1/utensils"
 
@@ -136,6 +137,8 @@ async def test_la_rotta_della_bozza_manda_gli_utensili_scritti_dalla_rotta(logge
     sistema = system_of(finto.bodies[0])
     assert "\n- frusta elettrica\n" in sistema
     assert sistema.startswith(SYSTEM_PROMPT)
+    assert UTENSILS_JSON_RULE in sistema
+    assert UTENSILS_PROMPT_RULE not in sistema
 
 
 async def test_la_rotta_della_variante_manda_gli_utensili(logged_client, db_session, monkeypatch):
@@ -156,3 +159,5 @@ async def test_la_rotta_della_variante_manda_gli_utensili(logged_client, db_sess
     sistema = system_of(finto.bodies[0])
     assert "\n- padella antiaderente (da 24 cm)\n" in sistema
     assert sistema.startswith(VARIANT_SYSTEM_PROMPT)
+    assert UTENSILS_JSON_RULE in sistema
+    assert UTENSILS_PROMPT_RULE not in sistema

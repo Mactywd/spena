@@ -108,7 +108,7 @@ async def test_la_scelta_vede_i_candidati_delle_parole_francesi(db_session):
     assert "90008" not in {candidato["codice"] for candidato in voce["candidati"]}
     schema = schema_of(finto.bodies[1])
     assert schema["properties"]["scelte"]["items"]["properties"]["codice"] == {
-        "type": ["string", "null"]
+        "anyOf": [{"type": "string"}, {"type": "null"}]
     }
 
 
