@@ -333,3 +333,63 @@ async def test_il_refuso_e_l_alias_di_sempre_passano_anche_dall_endpoint(logged_
     sta a metà dell'alias «pomodori pelati», e con la decisione 4 è un riscontro."""
     assert (await _suggeriti(logged_client, "yogrut greco"))[0] == "yogurt greco"
     assert await _suggeriti(logged_client, "pelati") == ["pomodoro"]
+
+
+async def test_l_elenco_intero_mostra_il_quasi_doppione_accanto_al_riscontro(logged_client, db_session):
+    """Il caso 2 della revisione del 2026-10-18, deciso da Mattia il 2026-11-18 (strada b):
+    l'Anagrafica chiede l'elenco intero, perché esiste per trovare i doppioni. «zuchina»
+    (0,700) non contiene «zucchina»: il taglio la toglie, l'elenco intero no."""
+    await _ingredienti(db_session, "zucchina", "zuchina")
+
+    assert await _suggeriti(logged_client, "zucchina") == ["zucchina"]
+    assert await _suggeriti(logged_client, "zucchina", trim="false") == ["zucchina", "zuchina"]
+
+
+async def test_l_elenco_intero_trova_l_ingrediente_nel_testo_lungo_della_voce(logged_client, db_session):
+    """Il caso 1: «Abbina» precompila il testo della voce. Nessun nome contiene «pasta
+    barilla integrale», e pasta somiglia 0,250, sotto il pavimento: tagliato è vuoto,
+    intero la pasta viene prima."""
+    await _ingredienti(db_session, "pasta", "pane")
+
+    assert await _suggeriti(logged_client, "pasta barilla integrale") == []
+    intero = await _suggeriti(logged_client, "pasta barilla integrale", trim="false")
+    assert intero[0] == "pasta"
+
+
+async def test_l_elenco_tagliato_e_l_inizio_di_quello_intero(logged_client, db_session):
+    """Decisione 4 del piano: il taglio non riordina, e i riscontri vengono prima di ogni
+    sfumato, quindi la lista tagliata è sempre la testa di quella intera. Senza `trim` è
+    la tagliata (il default che tutti gli altri chiamanti usano)."""
+    await _ingredienti(
+        db_session, "zucchero", "zucchina", "zucca", "olio di oliva",
+        ("tonno in scatola", "tonno sott'olio"), "olive verdi", "pomodoro", "pomodorini",
+        "pomodori secchi", "caffè", "caffelatte", "pasta",
+    )
+
+    for testo in ["zucch", "olio", "pomodorr", "caffe", "te", "zenzero", "pasta barilla integrale"]:
+        tagliato = await _suggeriti(logged_client, testo)
+        assert await _suggeriti(logged_client, testo, trim="true") == tagliato, testo
+        intero = await _suggeriti(logged_client, testo, trim="false")
+        assert intero[: len(tagliato)] == tagliato, testo
+        assert len(intero) >= len(tagliato), testo
+
+
+async def test_l_elenco_intero_tiene_il_limite_e_il_kind(logged_client, db_session):
+    """Senza taglio il `LIMIT` della query è il solo freno, e il filtro del cibo vale
+    come sempre: una ricetta non nomina un non alimentare (decisione 2 di CLAUDE.md)."""
+    from app.repositories.ingredients import create_ingredient
+
+    await _ingredienti(db_session, *[f"pollame {i:02}" for i in range(1, 13)])
+    await create_ingredient(db_session, "candeggina", "Candeggina", "casa")
+    await create_ingredient(db_session, "canditi", "Canditi", "dolci")
+    await db_session.commit()
+
+    assert len(await _suggeriti(logged_client, "pollo", trim="false")) == 10
+    assert len(await _suggeriti(logged_client, "pollo", trim="false", limit="3")) == 3
+    cibo = await _suggeriti(logged_client, "cand", trim="false", kind="food")
+    assert "canditi" in cibo and "candeggina" not in cibo
+
+
+async def test_trim_che_non_e_un_booleano_e_un_422(logged_client):
+    risposta = await logged_client.get("/api/v1/ingredients/search", params={"q": "zucch", "trim": "boh"})
+    assert risposta.status_code == 422

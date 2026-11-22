@@ -182,17 +182,24 @@ async def _suggestion_candidates(
 
 async def suggest_ingredients(
     session: AsyncSession, query: str, limit: int = 10,
-    kind: IngredientKind | None = None,
+    kind: IngredientKind | None = None, *, trim: bool = True,
 ) -> list[Ingredient]:
     """I suggerimenti che `/ingredients/search` mostra: chi contiene il testo, e gli altri
     solo se nessuno lo contiene (`trim_suggestions`; spec
     docs/superpowers/specs/2026-10-06-suggerimenti-soglia-bozza.md).
+
+    `trim=False` dà l'elenco intero, i candidati così come arrivano: lo chiedono «Abbina»
+    (il testo lungo della voce) e l'Anagrafica (i quasi-doppioni), decisi da Mattia il
+    2026-11-18. Il taglio non riordina mai e i riscontri vengono prima di ogni sfumato,
+    quindi l'elenco tagliato è sempre l'inizio di quello intero (decisione 4 del piano).
 
     La chiamano l'endpoint e il comando che misura (`app.cli.measure_suggestions`), e
     nessun altro: `match_name` e i vicini per l'AI restano su `search_ingredients`
     (decisione 3).
     """
     candidates = await _suggestion_candidates(session, query, limit, kind)
+    if not trim:
+        return [candidate.ingredient for candidate in candidates]
     return [candidate.ingredient for candidate in trim_suggestions(candidates, limit)]
 
 
