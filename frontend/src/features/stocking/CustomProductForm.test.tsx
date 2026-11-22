@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { CustomProductForm } from "./CustomProductForm";
 import type { ProductSuggestion } from "./CustomProductForm";
 
@@ -39,9 +40,7 @@ function bodyOf(spy: ReturnType<typeof stubFetch>) {
 }
 
 function renderForm(props: Partial<Parameters<typeof CustomProductForm>[0]> = {}) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  const client = createTestQueryClient();
   return render(
     <QueryClientProvider client={client}>
       <CustomProductForm
@@ -154,20 +153,42 @@ describe("CustomProductForm", () => {
 
       expect(screen.getByLabelText("Nome")).toHaveValue("");
       const save = screen.getByRole("button", { name: "Salva prodotto" });
-      expect(save).toBeDisabled();
+      expect(save).toHaveAttribute("aria-disabled", "true");
+      expect(save).not.toBeDisabled();
+      expect(save).toHaveAccessibleDescription("Scrivi il nome del prodotto per salvarlo.");
       // un pulsante spento e muto non si spiega da sé
       expect(screen.getByText("Scrivi il nome del prodotto per salvarlo.")).toBeDefined();
 
       // solo spazi non è un nome
       await userEvent.type(screen.getByLabelText("Nome"), "   ");
-      expect(save).toBeDisabled();
+      expect(save).toHaveAttribute("aria-disabled", "true");
+      expect(save).not.toBeDisabled();
 
       await userEvent.type(screen.getByLabelText("Nome"), "Passata");
-      expect(save).toBeEnabled();
+      expect(save).not.toHaveAttribute("aria-disabled");
       expect(screen.queryByText("Scrivi il nome del prodotto per salvarlo.")).toBeNull();
       await userEvent.click(save);
       await vi.waitFor(() => expect(spy).toHaveBeenCalled());
       expect(bodyOf(spy).name).toBe("Passata");
+    });
+
+    it("senza nome, né il tocco né l'Invio nel campo mandano il prodotto", async () => {
+      const spy = stubFetch();
+      renderForm({ suggestion: { ...SUGGESTION, name: null }, barcode: "88990" });
+      await userEvent.click(screen.getByRole("button", { name: "Salva prodotto" }));
+      await userEvent.type(screen.getByLabelText("Marca"), "x{Enter}");
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("in volo «Salva prodotto» è spento ma tiene il fuoco", async () => {
+      vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+      renderForm({ suggestion: SUGGESTION, barcode: "88990" });
+      const save = screen.getByRole("button", { name: "Salva prodotto" });
+      save.focus();
+      await userEvent.keyboard("{Enter}");
+      await waitFor(() => expect(save).toHaveAttribute("aria-disabled", "true"));
+      expect(save).not.toBeDisabled();
+      expect(save).toHaveFocus();
     });
 
     it("dice che il codice è stato trovato su Open Food Facts, e quale codice lega", () => {

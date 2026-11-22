@@ -2,15 +2,15 @@ import { COST_STEPS, costLabel } from "../../domain/cost";
 
 /** Il costo di una ricetta, da scegliere: gli stessi cinque € di `CostMeter`, come
  * bottoni. Si tocca il terzo e la ricetta è da tre; si ritocca quello scelto e il
- * costo torna non indicato — l'unico modo di dire «non lo so» dopo averlo detto. */
+ * costo torna non indicato — l'unico modo di dire «non lo so» dopo averlo detto. Non si
+ * spegne: nessuno schermo lo chiedeva, e lo spento che aveva sbiadiva (pulizie del
+ * 2026-10-13). */
 export function CostPicker({
   value,
   onChange,
-  disabled = false,
 }: {
   value: number | null;
   onChange: (cost: number | null) => void;
-  disabled?: boolean;
 }) {
   return (
     <div role="group" aria-label="Costo" className="flex">
@@ -22,10 +22,9 @@ export function CostPicker({
           aria-pressed={step === value}
           data-cost-step={step}
           data-on={value !== null && step <= value}
-          disabled={disabled}
           onClick={() => onChange(step === value ? null : step)}
           // bersaglio da pollice, 44px, anche se il segno è piccolo
-          className={`min-h-11 min-w-11 text-xl font-semibold disabled:opacity-60 ${
+          className={`min-h-11 min-w-11 text-xl font-semibold ${
             value !== null && step <= value ? "text-ink" : "text-ink-ghost"
           }`}
         >

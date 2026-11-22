@@ -9,9 +9,7 @@ from sqlalchemy.orm import joinedload
 
 from app.db.models.pantry import PantryItem
 from app.db.models.shopping import ShoppingListItem, ShoppingReason, ShoppingStatus
-from app.domain.rules import PantryStatus
-from app.repositories.pantry import add_pantry_item
-from app.repositories.products import give_barcode_if_missing
+from app.repositories.pantry import stock_one
 from app.services.ingredient_match import exact_ingredient
 
 
@@ -168,14 +166,13 @@ async def stock_items(session: AsyncSession, entries: list[StockEntry]) -> list[
         shopping_item = await session.get(ShoppingListItem, entry.shopping_item_id)
         if shopping_item is None:
             raise KeyError(entry.shopping_item_id)
-        item = await add_pantry_item(
+        # una confezione: la voce e poi il codice, nell'ordine che è la guardia di S8
+        # (stock_one). Più righe possono avere la stessa voce (S3 §10.2): la voce si
+        # chiude alla prima, e alle altre non cambia niente
+        item = await stock_one(
             session, ingredient_id=entry.ingredient_id, product_id=entry.product_id,
-            status=PantryStatus.AVAILABLE, expires_on=entry.expires_on,
+            expires_on=entry.expires_on, barcode=entry.barcode,
         )
-        # dopo add_pantry_item e non prima: il codice va solo a un prodotto che
-        # quel controllo ha già riconosciuto come dell'ingrediente della voce
-        if entry.product_id is not None and entry.barcode:
-            await give_barcode_if_missing(session, entry.product_id, entry.barcode)
         shopping_item.ingredient_id = entry.ingredient_id
         shopping_item.status = ShoppingStatus.DONE
         shopping_item.done_at = now

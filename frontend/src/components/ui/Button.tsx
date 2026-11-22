@@ -1,6 +1,6 @@
 import { useId, type MouseEvent, type ReactNode, type Ref } from "react";
 import { buttonClasses, type ButtonShape, type ButtonVariant } from "./buttonClasses";
-import type { IconComponent } from "./icons";
+import { IconLoader2, type IconComponent } from "./icons";
 
 // La regola dei pulsanti spenti, una per tutta l'app (T3 Consegna 6a, decisa da Mattia):
 // - una richiesta partita da qui è in volo → `busy`;
@@ -18,7 +18,10 @@ type Common = {
   onClick?: () => void;
   /** Un'azione che adesso non si può fare, dove non c'è niente da aspettare né da
    * spiegare. Il browser toglie il fuoco a un pulsante che diventa `disabled`: per «sto
-   * già lavorando» c'è `busy`, per «non ancora» c'è `unavailableReason`. */
+   * già lavorando» c'è `busy`, per «non ancora» c'è `unavailableReason`.
+   *
+   * Insieme a `busy` o a `unavailableReason`, vincono loro: il pulsante non prende il
+   * `disabled` nativo, resta raggiungibile e il perché si sente (pulizie del 2026-10-13). */
   disabled?: boolean;
   /** Una richiesta partita da qui è in volo (T3 Consegna 2). Il pulsante si spegne con
    * `aria-disabled` e non con `disabled`, così tiene il fuoco: dopo una ✕ fallita chi
@@ -95,6 +98,10 @@ export function Button(props: WithText | IconOnly) {
   // una stringa vuota non è un motivo: i chiamanti scrivono `cond ? "…" : undefined`
   const reason = unavailableReason ? unavailableReason : null;
   const inert = busy || reason !== null;
+  // In volo, un pulsante di sola icona mostra un segno d'attesa al posto della sua icona:
+  // «Elimina» non mostrava niente mentre archiviava (dal giro della Consegna 5), e prima
+  // diceva «Elimino…». Uno con il testo no: lì il chiamante cambia già la parola.
+  const ShownIcon = iconOnly && busy ? IconLoader2 : Icon;
   const describedBy =
     [props["aria-describedby"], reason !== null ? reasonId : undefined].filter(Boolean).join(" ") ||
     undefined;
@@ -118,7 +125,8 @@ export function Button(props: WithText | IconOnly) {
         type={type}
         ref={ref}
         onClick={handleClick}
-        disabled={disabled}
+        // `busy` e `unavailableReason` vincono su `disabled`: il nativo toglierebbe il fuoco
+        disabled={inert ? undefined : disabled}
         aria-disabled={inert || undefined}
         aria-label={iconOnly ? props.label : props.accessibleName}
         aria-describedby={describedBy}
@@ -127,7 +135,15 @@ export function Button(props: WithText | IconOnly) {
         aria-pressed={props["aria-pressed"]}
         className={`${buttonClasses(variant, shape)} ${className}`}
       >
-        {Icon && <Icon aria-hidden="true" className={iconOnly ? "size-5" : "size-[1.1em]"} stroke={1.8} />}
+        {ShownIcon && (
+          <ShownIcon
+            aria-hidden="true"
+            className={
+              iconOnly ? (busy ? "size-5 motion-safe:animate-spin" : "size-5") : "size-[1.1em]"
+            }
+            stroke={1.8}
+          />
+        )}
         {props.children}
       </button>
       {reason !== null && (

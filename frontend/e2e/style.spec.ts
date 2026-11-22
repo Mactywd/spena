@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { ImportTerm, Ingredient, RecipeDraft } from "../src/domain/types.ts";
-import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
+import { buttonClasses, type ButtonVariant } from "../src/components/ui/buttonClasses.ts";
+import { giornoDiRoma } from "./giornoDiRoma.ts";
 
 /**
  * Lo stile è l'unica parte dell'app che i test in jsdom non possono vedere: Tailwind
@@ -24,7 +25,10 @@ import { buttonClasses } from "../src/components/ui/buttonClasses.ts";
  * riepilogo — e i giri dei due temi, che creano un prodotto e una sua confezione
  * (`perOgniLuogo`); tutti tolgono quel che hanno messo prima di finire: questo file
  * non lascia niente dietro di sé, e nessun altro file dipende dal proprio posto
- * nell'ordine alfabetico.
+ * nell'ordine alfabetico. Fa eccezione l'ultima prova, «attività e collegamento a
+ * 375px»: crea una chiave e manda un corpo di HC Webhook, e per l'attività non c'è
+ * un'API che cancelli, quindi passi, camminata e pesata restano nello stack finché
+ * `down -v` non lo toglie (i valori sono suoi, diversi da quelli di `attivita.spec.ts`).
  */
 const PASSWORD = process.env.E2E_PASSWORD ?? "test";
 
@@ -115,6 +119,8 @@ test("le tacche della dispensa sono bersagli da pollice", async ({ page }) => {
   await page.getByLabel("Cerca o aggiungi in dispensa").fill("cipoll");
   await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Cipolla\b/ }).click();
+  // la scheda di conferma dell'ingresso diretto (S3): un tocco in più
+  await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
 
   // la riga di QUESTA voce, non la prima dello schermo: la dispensa può contenere
   // anche quel che ha lasciato il resto della suite
@@ -269,7 +275,7 @@ test("il riepilogo delle scadenze conta chi sta per scadere, ed è un bersaglio 
   expect(creata.ok()).toBe(true);
   const voceId = ((await creata.json()) as { id: string }).id;
 
-  const fraDueGiorni = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const fraDueGiorni = giornoDiRoma(2);
   const scritta = await page.request.patch(`/api/v1/pantry/${voceId}`, {
     data: { expires_on: fraDueGiorni },
   });
@@ -493,8 +499,13 @@ function tokenDelTemaScuro(nome: string): string {
 }
 
 /** Ogni testo visibile della pagina, col suo contrasto contro il primo fondo dipinto
- * dietro di lui. Salta ciò che è nascosto, i controlli spenti (WCAG li esenta) e il
- * testo dentro un `aria-hidden`. Torna solo i casi sotto 4,5:1, descritti.
+ * dietro di lui. Salta ciò che è nascosto, il testo sotto un'opacità minore di 1 (gli
+ * elementi velati: dal 2026-10-13 nessun controllo spento usa più l'opacità, e
+ * `src/disabledLook.test.ts` lo tiene) e il testo dentro un
+ * `aria-hidden`. I pulsanti spenti si misurano come ogni altro testo: WCAG li esenta, la
+ * regola di casa no, e dal tema scuro (bozza del 2026-10-06, decisione 6) hanno un colore
+ * pieno — lasciarli fuori vorrebbe dire che il prossimo `opacity` torna senza che nessuno
+ * lo veda. Torna solo i casi sotto 4,5:1, descritti.
  *
  * Gira da `body` e non da `page.evaluate`, per il motivo di `contrastoAVideo` più
  * sotto: questo file non ha la libreria DOM, e `document` o `getComputedStyle` come
@@ -518,7 +529,7 @@ async function testiIlleggibili(page: Page): Promise<string[]> {
       const testo = n.textContent?.trim();
       const el = n.parentElement;
       if (!testo || !el) continue;
-      if (el.closest("[aria-hidden=true], [disabled], [aria-disabled=true], .sr-only")) continue;
+      if (el.closest("[aria-hidden=true], .sr-only")) continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
       let fondo: string | null = null;
@@ -742,6 +753,8 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   await page.getByLabel("Cerca o aggiungi in dispensa").fill("carot");
   await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Carota\b/ }).click();
+  // la scheda di conferma dell'ingresso diretto (S3): un tocco in più
+  await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
 
   const riga = page.locator("li", { hasText: "carota" });
 
@@ -769,10 +782,8 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
 
   // fra tre giorni: dentro la soglia, quindi il server deve rispondere «soon» e la
   // pastiglia prendere il token nuovo. La data si calcola qui e non si scrive a
-  // mano, o il test scadrebbe da solo.
-  const fraTreGiorni = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  // mano, o il test scadrebbe da solo. Nel giorno di Roma, come il server (giornoDiRoma.ts).
+  const fraTreGiorni = giornoDiRoma(3);
   //
   // Il `blur()` dopo il `fill()` non è cerimonia: la riga scrive all'uscita dal
   // campo, non a ogni battuta, perché un `input[type="date"]` fa scattare `change`
@@ -814,9 +825,7 @@ test("il campo data si vede, e la pastiglia della scadenza porta il suo colore",
   // non torna, e un pulsante `disabled` perde il fuoco senza nemmeno un blur: finiva
   // sul `body`. jsdom non toglie il fuoco a un pulsante disabilitato, quindi lo vede
   // solo un browser, e solo con una scrittura vera.
-  const fraCinqueGiorni = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  const fraCinqueGiorni = giornoDiRoma(5);
   await correggi.click();
   const salvata = page.waitForResponse(
     (risposta) => risposta.request().method() === "PATCH" && risposta.url().includes("/pantry/")
@@ -862,6 +871,8 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
   await page.getByLabel("Cerca o aggiungi in dispensa").fill("mascarp");
   await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
   await page.getByRole("option", { name: /^Mascarpone\b/ }).click();
+  // la scheda di conferma dell'ingresso diretto (S3): un tocco in più
+  await page.getByRole("button", { name: "Metti in dispensa", exact: true }).click();
   await expect(page.locator("li", { hasText: "mascarpone" })).toBeVisible();
 
   await page.getByRole("link", { name: "Ricette", exact: true }).click();
@@ -904,7 +915,7 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
   // S17: il bersaglio della spunta è la label intorno a casella, nome e nota, e il
   // pollice la prende solo se è alta almeno 44px. La X resta fuori: dentro, un
   // tocco per togliere una voce la spunterebbe anche
-  await expect(etichetta).toContainText("mascarpone");
+  await expect(etichetta).toContainText("Mascarpone");
   await expect(etichetta.getByRole("button")).toHaveCount(0);
   const box = await etichetta.boundingBox();
   expect(box!.height).toBeGreaterThanOrEqual(44);
@@ -937,8 +948,9 @@ test("a 375px nessuna schermata scorre di lato, e in lista si spunta toccando il
 //
 // Cosa lo scanner (`testiIlleggibili`) misura e cosa no, detto esatto: prende il colore
 // calcolato del testo e quello del primo antenato con un fondo non trasparente, e ne fa
-// il rapporto WCAG. Salta il testo sotto un antenato con `opacity` minore di 1 (i
-// controlli spenti, gli elementi velati), dentro `aria-hidden`, `disabled` o `.sr-only`.
+// il rapporto WCAG. Salta il testo sotto un antenato con `opacity` minore di 1
+// (gli elementi velati), dentro `aria-hidden` o
+// `.sr-only`; i pulsanti spenti li misura.
 // Non misura segnaposto e valori dei campi (non sono nodi di testo), né il testo sopra
 // un'immagine o un gradiente, che confronta col primo fondo pieno. Legge i colori come
 // `rgb()`/`rgba()`: un colore con l'alfa di Tailwind 4 (`text-ink/60`) si calcola in
@@ -951,7 +963,13 @@ const SCHERMATE = [
   "/ricette",
   "/ricette/nuova-ai",
   "/ricette/importa",
+  "/pasti",
+  "/pasti/pianifica",
   "/anagrafica",
+  "/utensili",
+  "/attivita",
+  "/attivita/collega",
+  "/spese-ai",
   "/non-esiste",
 ];
 
@@ -1326,6 +1344,9 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
   const lungo =
     "fagioli cannellini lessati in barattolo di vetro formato famiglia del supermercato sotto casa";
   const libera = "prova sistemazione senza ingrediente";
+  // a video il testo di una voce prende la maiuscola (Mattia, 2026-10-13); i nomi
+  // accessibili delle icone e dei pannelli restano com'è scritto
+  const aVideo = (testo: string) => testo.charAt(0).toUpperCase() + testo.slice(1);
   const voci = [
     { nome: "bresaola", raw_text: "bresaola" },
     { nome: "succo d'arancia", raw_text: "succo d'arancia" },
@@ -1360,7 +1381,7 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     }
 
     await page.goto("/sistema");
-    await expect(page.getByText(lungo, { exact: true })).toBeVisible();
+    await expect(page.getByText(aVideo(lungo), { exact: true })).toBeVisible();
 
     // 1. niente scorrimento di lato, nemmeno col nome lungo accanto alle tre icone.
     // Stringhe e non funzioni: questo file non ha la libreria DOM (vedi il test
@@ -1407,8 +1428,8 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     await catalogo.click();
     const titolo = page.getByRole("heading", { name: `Cerca a catalogo per «${lungo}»` });
     await expect(titolo).toBeVisible();
-    await expect(page.getByText("bresaola", { exact: true })).toHaveCount(0);
-    await expect(page.getByText(libera, { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Bresaola", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(aVideo(libera), { exact: true })).toHaveCount(0);
     // le intestazioni dei reparti se ne vanno: l'unico h2 rimasto è il titolo del
     // pannello, che è un h2 anche lui (Task 7)
     await expect(page.getByRole("heading", { level: 2 })).toHaveText([
@@ -1434,7 +1455,7 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     // 5. «Annulla» rimette tutto com'era: le altre voci, la scelta fatta, e il fuoco sul
     // pulsante che aveva aperto il pannello
     await page.getByRole("button", { name: "Annulla", exact: true }).click();
-    await expect(page.getByText("bresaola", { exact: true })).toBeVisible();
+    await expect(page.getByText("Bresaola", { exact: true })).toBeVisible();
     await expect(page.getByText("Sfuso", { exact: true })).toBeVisible();
     await expect(catalogo).toBeFocused();
 
@@ -1454,7 +1475,7 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     }
     await page.emulateMedia({ colorScheme: "light" });
     await page.getByRole("button", { name: "Annulla", exact: true }).click();
-    await expect(page.getByText(libera, { exact: true })).toBeVisible();
+    await expect(page.getByText(aVideo(libera), { exact: true })).toBeVisible();
 
     // 7. un abbinamento riuscito porta la voce nel suo reparto, e il fuoco la segue sulla
     // prima icona (decisione 18) invece di restare sulla pagina: la riga rinasce in
@@ -1465,7 +1486,7 @@ test("Sistema la spesa a 375px: una riga per voce, e un pannello alla volta sott
     await page.getByRole("textbox", { name: `Abbina un ingrediente per ${libera}` }).fill("farina");
     await page.getByRole("option", { name: "Farina", exact: true }).click();
     await expect(
-      page.getByRole("region", { name: "Cereali" }).getByText(libera, { exact: true })
+      page.getByRole("region", { name: "Cereali" }).getByText(aVideo(libera), { exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: `Codice a barre per ${libera}`, exact: true })
@@ -2583,7 +2604,7 @@ test("R12 a 375px: «Aggiungi «…»» nel modulo, il passo del nome e la riga 
 
   const togli = page.getByRole("button", { name: `Togli ${nomeLungo}` });
   const riga = page.getByRole("listitem").filter({ has: togli });
-  await expect(riga.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(riga.getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeVisible();
   await expect(page.getByLabel(`Reparto per «${nomeLungo}»`)).toHaveValue("verdura");
   await expect(page.getByLabel(`Quantità per ${nomeLungo}`)).toBeFocused();
   await page.waitForLoadState("networkidle");
@@ -2706,7 +2727,7 @@ test("il modulo della ricetta e la coda d'import si leggono nei due temi, negli 
   await leggibile("modulo col passo del nome");
 
   await page.getByRole("button", { name: "Aggiungi alla ricetta", exact: true }).click();
-  await expect(page.getByText("Non è in anagrafica: lo creo io salvando.")).toBeVisible();
+  await expect(page.getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeVisible();
   await leggibile("modulo con la riga nuova");
 
   // la coda: la scheda con «Forse» e la casella, e il guasto dell'AI
@@ -2731,6 +2752,2131 @@ test("nessuna parola tecnica a video: né «backend», né «dataset», né «au
   await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
   await page.waitForLoadState("networkidle");
   expect(await page.locator("body").innerText(), "dettaglio").not.toMatch(tecniche);
+});
+
+// --- S3: l'ingresso diretto in dispensa, e le confezioni in «Sistema la spesa» ---
+
+/** Ogni testo della pagina sopra 4,5:1 nei due temi, nello stato che la prova ha aperto:
+ * gli stati di S3 non li apre nessun altro giro di questo file. */
+async function leggibileNeiDueTemi(page: Page, dove: string) {
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `${dove}, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+}
+
+/** Pulsanti della stessa riga: ognuno almeno 44×44, e tutti alla stessa altezza. */
+async function bersagliInFila(page: Page, nomi: string[]) {
+  const scatole: { x: number; y: number; width: number; height: number }[] = [];
+  for (const nome of nomi) {
+    const scatola = await page.getByRole("button", { name: nome, exact: true }).boundingBox();
+    expect(scatola, nome).not.toBeNull();
+    expect(scatola!.width, nome).toBeGreaterThanOrEqual(44);
+    expect(scatola!.height, nome).toBeGreaterThanOrEqual(44);
+    scatole.push(scatola!);
+  }
+  for (const scatola of scatole.slice(1)) {
+    expect(Math.abs(scatola.y - scatole[0].y), `${nomi.join(", ")}: vanno a capo`).toBeLessThan(1);
+  }
+}
+
+test("l'ingresso diretto a 375px: «Scansiona», la scheda in due tocchi, la serie e «Annulla» nell'avviso", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // Una confezione vera da leggere: il seme non ha prodotti. Sotto «lenticchie», che
+  // nessun altro file nomina, con un codice che cambia a ogni esecuzione. In fondo si
+  // tolgono la voce (se «Annulla» non l'ha già tolta) e il prodotto: il file non lascia
+  // niente dietro di sé
+  const trovate = (await (
+    await page.request.get("/api/v1/ingredients/search?q=lenticchie")
+  ).json()) as { id: string; name: string }[];
+  const lenticchie = trovate.find((voce) => voce.name === "lenticchie");
+  expect(lenticchie, "«lenticchie» non è nel seme").toBeDefined();
+  const codice = String(Date.now());
+  const nome = `Lenticchie e2e ${codice}`;
+  const creato = await page.request.post("/api/v1/products", {
+    data: { ingredient_id: lenticchie!.id, name: nome, brand: "Marca e2e", barcode: codice },
+  });
+  expect(creato.ok()).toBe(true);
+  const prodottoId = ((await creato.json()) as { id: string }).id;
+
+  try {
+    await page.goto("/dispensa");
+    // «Scansiona» accanto al +: un bersaglio da pollice, sulla stessa riga
+    await bersagliInFila(page, ["Scansiona", "Aggiungi in dispensa"]);
+    await page.getByRole("button", { name: "Scansiona", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Codice a barre", exact: true })).toBeVisible();
+    await senzaScorrimentoLaterale(page, "lo scanner della Dispensa");
+    await leggibileNeiDueTemi(page, "lo scanner della Dispensa");
+
+    // primo tocco: il codice letto (qui scritto: la fotocamera non c'è)
+    const campo = page.getByLabel("Codice a barre", { exact: true });
+    await campo.fill(codice);
+    await campo.press("Enter");
+    const metti = page.getByRole("button", { name: "Metti in dispensa", exact: true });
+    await expect(metti).toBeFocused();
+    await expect(page.getByText(nome, { exact: true })).toBeVisible();
+    await expect(page.getByText("Marca e2e · lenticchie", { exact: true })).toBeVisible();
+    await bersagliInFila(page, [`Cambia: ${nome}`]);
+    // la scadenza aperta, perché si misuri anche il campo; poi richiusa
+    await page.getByRole("button", { name: `+ scadenza per ${nome}`, exact: true }).click();
+    await expect(page.getByLabel(`Scadenza di ${nome}`)).toBeVisible();
+    await senzaScorrimentoLaterale(page, "la scheda di conferma");
+    await leggibileNeiDueTemi(page, "la scheda di conferma, col campo della data");
+    await page
+      .getByRole("button", { name: `Togli la data di scadenza per ${nome}`, exact: true })
+      .click();
+
+    // secondo tocco
+    await metti.click();
+    const avviso = page.getByRole("status").filter({ hasText: `In dispensa: Marca e2e ${nome}` });
+    await expect(avviso).toBeVisible();
+    await expect(page.locator("li", { hasText: nome })).toBeVisible();
+    // in serie: lo scanner è di nuovo lì, pronto per il codice dopo
+    await expect(page.getByRole("heading", { name: "Codice a barre", exact: true })).toBeVisible();
+    await expect(campo).toHaveValue("");
+
+    // «Annulla» nell'avviso (che dura sei secondi) toglie la voce appena entrata
+    await avviso.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(page.locator("li", { hasText: nome })).toHaveCount(0);
+
+    // lo stesso codice riletto: la scheda lo dice, invece di scriverlo due volte
+    await campo.fill(codice);
+    await campo.press("Enter");
+    await expect(
+      page.getByText("L'hai appena messo in dispensa: se è un'altra confezione, mettila pure.")
+    ).toBeVisible();
+    await leggibileNeiDueTemi(page, "la scheda con la nota della serie");
+    await page.getByRole("button", { name: "Chiudi l'aggiunta", exact: true }).click();
+    await expect(metti).toHaveCount(0);
+  } finally {
+    // prima le voci, poi il prodotto (come `perOgniLuogo`): ogni passo è un `expect.soft`,
+    // che non lancia e non salta il passo dopo, ma segna la prova fallita
+    try {
+      const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
+        id: string;
+        product_id: string | null;
+      }[];
+      for (const voce of dispensa.filter((riga) => riga.product_id === prodottoId)) {
+        const risposta = await page.request.patch(`/api/v1/pantry/${voce.id}`, {
+          data: { archived: true },
+        });
+        expect.soft(risposta.ok(), `pulizia: la voce ${voce.id} non si è archiviata`).toBe(true);
+      }
+    } catch (guasto) {
+      expect.soft(false, `pulizia: non sono riuscito a rileggere la dispensa (${guasto})`).toBe(true);
+    }
+    try {
+      const risposta = await page.request.delete(`/api/v1/products/${prodottoId}`);
+      expect.soft(risposta.ok(), `pulizia: il prodotto ${prodottoId} non si è eliminato`).toBe(true);
+    } catch (guasto) {
+      expect
+        .soft(false, `pulizia: non sono riuscito a eliminare il prodotto ${prodottoId} (${guasto})`)
+        .toBe(true);
+    }
+  }
+});
+
+test("il + della Dispensa a 375px: la scheda sfusa con le strade del codice e del catalogo, nei due temi", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // niente si scrive: la scheda si apre, si misura e si chiude. «melanzana» la nomina
+  // anche la prova S12 della figura scelta in Anagrafica, che la lascia in dispensa
+  // archiviata e con la figura «Nessuna»
+  await page.goto("/dispensa");
+  await page.getByLabel("Cerca o aggiungi in dispensa").fill("melanz");
+  await page.getByRole("button", { name: "Aggiungi in dispensa" }).click();
+  await page.getByRole("option", { name: /^Melanzana\b/ }).click();
+  const metti = page.getByRole("button", { name: "Metti in dispensa", exact: true });
+  await expect(metti).toBeFocused();
+  await expect(page.getByText("Sfuso, senza marca · melanzana", { exact: true })).toBeVisible();
+  await bersagliInFila(page, ["Codice a barre per Melanzana", "Cerca a catalogo per Melanzana"]);
+  await bersagliInFila(page, ["Cambia: Melanzana"]);
+  await senzaScorrimentoLaterale(page, "la scheda sfusa");
+  await leggibileNeiDueTemi(page, "la scheda sfusa");
+
+  // «Codice»: lo scanner con l'ingrediente atteso; il suo «Annulla» torna alla scheda
+  await page.getByRole("button", { name: "Codice a barre per Melanzana", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Codice a barre per «Melanzana»" })).toBeVisible();
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  await expect(metti).toBeVisible();
+  // «Annulla» della scheda chiude, e niente è entrato
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  await expect(metti).toHaveCount(0);
+  await expect(page.locator("li", { hasText: "melanzana" })).toHaveCount(0);
+});
+
+test("Sistema la spesa a 375px: «+ un'altra confezione» e «Articolo aggiuntivo», nei due temi", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // una voce nel carrello con un ingrediente che nessun altro file nomina, creata con
+  // l'API e tolta in fondo; niente entra in dispensa
+  const trovati = (await (
+    await page.request.get("/api/v1/ingredients/search?q=kiwi")
+  ).json()) as { id: string; name: string }[];
+  const kiwi = trovati.find((voce) => voce.name === "kiwi");
+  expect(kiwi, "«kiwi» non è nel seme").toBeDefined();
+  const risposta = await page.request.post("/api/v1/shopping-list", {
+    data: { raw_text: "kiwi", ingredient_id: kiwi!.id },
+  });
+  // 201: una voce che c'era già (S18) risponde 200 ed è di qualcun altro
+  expect(risposta.status(), "«kiwi» era già in lista").toBe(201);
+  const voceId = ((await risposta.json()) as { id: string }).id;
+
+  try {
+    const spunta = await page.request.patch(`/api/v1/shopping-list/${voceId}`, {
+      data: { status: "checked" },
+    });
+    expect(spunta.ok()).toBe(true);
+    await page.goto("/sistema");
+
+    await page.getByRole("button", { name: "Sfuso, senza marca: kiwi", exact: true }).click();
+    await page.getByRole("button", { name: "+ un'altra confezione di kiwi", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Codice a barre per kiwi, confezione 2", exact: true })
+    ).toBeFocused();
+    await bersagliInFila(page, [
+      "Codice a barre per kiwi, confezione 2",
+      "Cerca a catalogo per kiwi, confezione 2",
+      "Sfuso, senza marca: kiwi, confezione 2",
+      "Togli la confezione 2 di kiwi",
+    ]);
+    await page.getByRole("button", { name: "+ scadenza per kiwi, confezione 2", exact: true }).click();
+    await expect(page.getByLabel("Scadenza di kiwi, confezione 2")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Metti in dispensa 1", exact: true })).toBeVisible();
+    await senzaScorrimentoLaterale(page, "Sistema la spesa con due confezioni");
+    await leggibileNeiDueTemi(page, "Sistema la spesa con due confezioni");
+
+    await page.getByRole("button", { name: "Articolo aggiuntivo", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Articolo aggiuntivo" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Cosa hai comprato?" })).toBeFocused();
+    await senzaScorrimentoLaterale(page, "«Articolo aggiuntivo» aperto");
+    await leggibileNeiDueTemi(page, "«Articolo aggiuntivo» aperto");
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Articolo aggiuntivo", exact: true })).toBeVisible();
+  } finally {
+    try {
+      const archiviata = await page.request.patch(`/api/v1/shopping-list/${voceId}`, {
+        data: { status: "archived" },
+      });
+      expect.soft(archiviata.ok(), `pulizia: la voce ${voceId} non si è archiviata`).toBe(true);
+    } catch (guasto) {
+      expect
+        .soft(false, `pulizia: non sono riuscito ad archiviare la voce ${voceId} (${guasto})`)
+        .toBe(true);
+    }
+  }
+});
+
+// --- S12: le righe della dispensa riconoscibili ---
+//
+// Le due prove mettono in dispensa una voce con `page.request` e la tolgono nel `finally`.
+// L'unica traccia che restano sullo stack è «melanzana» decisa «Nessuna» (`""`): identica a
+// video a prima e letta da nessuna prova (l'intestazione del file dice che non lascia niente
+// dietro di sé).
+
+/** Un ingrediente del seme, per nome, dalla ricerca vera. */
+async function dalSeme(page: Page, nome: string): Promise<{ id: string; name: string }> {
+  const risposta = await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`);
+  expect(risposta.ok()).toBe(true);
+  const trovati = (await risposta.json()) as { id: string; name: string }[];
+  const voce = trovati.find((trovato) => trovato.name === nome);
+  expect(voce, `«${nome}» non è nel seme`).toBeDefined();
+  return voce!;
+}
+
+/** Una voce sfusa in dispensa, messa con `page.request`; chi la chiede la toglie nel suo
+ * `finally` con `togliDallaDispensa`. */
+async function inDispensa(page: Page, ingredientId: string): Promise<string> {
+  const risposta = await page.request.post("/api/v1/pantry", { data: { ingredient_id: ingredientId } });
+  expect(risposta.ok()).toBe(true);
+  return ((await risposta.json()) as { id: string }).id;
+}
+
+async function togliDallaDispensa(page: Page, voceId: string) {
+  const risposta = await page.request.patch(`/api/v1/pantry/${voceId}`, { data: { archived: true } });
+  // soft: una pulizia che fallisce lascia una voce in dispensa per le prove dopo, ma non
+  // deve coprire con il suo errore l'asserzione che stava cadendo nel `try`
+  expect.soft(risposta.ok(), "la voce non è stata tolta dalla dispensa").toBe(true);
+}
+
+test("S12 a 375px: la figura a sinistra del nome, il ripiego del reparto si legge nei due temi, e il nome più lungo del seme va a capo senza spingere fuori tacche e ✕", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta, e la prima cosa qui è una
+  // `page.request`: l'attesa va messa a mano
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // il nome più lungo del seme, e nessun altro file della suite lo nomina. Il seme non
+  // decide figure, quindi la riga mostra il ripiego: lo spruzzino di «casa», in grigio
+  const detersivo = await dalSeme(page, "detersivo per la lavatrice");
+  const voceId = await inDispensa(page, detersivo.id);
+  // «bagnoschiuma»: una parola sola, più larga della colonna del nome (99px a 375px dopo la
+  // figura). Il nome lungo sopra va a capo fra le parole e non prova questo caso: una
+  // parola lunga non andava a capo, e sbordava sulla prima tacca
+  const bagnoschiuma = await dalSeme(page, "bagnoschiuma");
+  const bagnoId = await inDispensa(page, bagnoschiuma.id);
+  try {
+    await page.goto("/dispensa");
+    const togli = page.getByRole("button", { name: "Togli detersivo per la lavatrice dalla dispensa" });
+    const riga = page.getByRole("listitem").filter({ has: togli });
+    await riga.scrollIntoViewIfNeeded();
+
+    const figura = riga.locator("[data-figure]");
+    await expect(figura).toHaveAttribute("data-figure", "reparto");
+    await expect(figura).toHaveAttribute("aria-hidden", "true");
+    await expect(figura.locator("svg.tabler-icon-spray")).toHaveCount(1);
+    const boxFigura = (await figura.boundingBox())!;
+    expect(boxFigura.width).toBe(28);
+    expect(boxFigura.height).toBe(28);
+
+    // a sinistra del nome, e il nome va a capo invece di spingere le tacche
+    const nome = riga.getByRole("link", { name: "Detersivo per la lavatrice" });
+    const boxNome = (await nome.boundingBox())!;
+    expect(boxFigura.x + boxFigura.width, "la figura e il nome si sovrappongono").toBeLessThanOrEqual(
+      boxNome.x
+    );
+    expect(boxNome.height, "il nome lungo non va a capo: la prova non misura niente").toBeGreaterThan(44);
+    for (const tacca of await riga.getByRole("radio").all()) {
+      await expect(tacca).toBeInViewport({ ratio: 1 });
+    }
+    await expect(togli).toBeInViewport({ ratio: 1 });
+
+    // la scadenza comincia sotto il nome, non sotto la figura
+    const scadenza = riga.getByRole("button", { name: "+ scadenza per detersivo per la lavatrice" });
+    const boxScadenza = (await scadenza.boundingBox())!;
+    expect(Math.abs(boxScadenza.x - boxNome.x), "la scadenza non è allineata al nome").toBeLessThanOrEqual(1);
+
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      await senzaScorrimentoLaterale(page, `la dispensa, tema ${tema}`);
+
+      // il ripiego è un segno (WCAG 1.4.11): `ink-faint` sul quadratino `page`, ≥ 3:1
+      const misura = await contrastoAVideo(figura);
+      const token = tema === "light" ? tokenDelTema : tokenDelTemaScuro;
+      expect(misura.colore, `il ripiego non è ink-faint, tema ${tema}`).toBe(token("ink-faint"));
+      expect(misura.fondo, `il quadratino non è page, tema ${tema}`).toBe(token("page"));
+      test.info().annotations.push({
+        type: "contrasto",
+        description: `ripiego della figura su page, ${tema}: ${misura.rapporto.toFixed(2)}:1`,
+      });
+      expect(misura.rapporto, `il ripiego su --color-page, tema ${tema}`).toBeGreaterThanOrEqual(3);
+      expect(await testiIlleggibili(page), `dispensa, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // una parola più larga della colonna: il suo testo finisce a sinistra della prima
+    // tacca. Si misura il testo con un Range, non il box del Link: il Link è un contenitore
+    // flex e può essere stretto mentre il testo che contiene lo sborda
+    const rigaBagno = page.getByRole("listitem").filter({
+      has: page.getByRole("button", { name: "Togli bagnoschiuma dalla dispensa" }),
+    });
+    await rigaBagno.scrollIntoViewIfNeeded();
+    const finePerTesto = await rigaBagno
+      .getByRole("link", { name: "Bagnoschiuma" })
+      .evaluate((link) => {
+        const intervallo = link.ownerDocument.createRange();
+        intervallo.selectNodeContents(link);
+        return intervallo.getBoundingClientRect().right;
+      });
+    const primaTacca = (await rigaBagno.getByRole("radio").first().boundingBox())!;
+    expect(
+      finePerTesto,
+      "il nome di una parola lunga sborda sulla prima tacca"
+    ).toBeLessThanOrEqual(primaTacca.x);
+  } finally {
+    await togliDallaDispensa(page, voceId);
+    await togliDallaDispensa(page, bagnoId);
+  }
+});
+
+test("S12: la figura si sceglie in Anagrafica e compare nella riga della Dispensa; «Nessuna» torna all'icona del reparto", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // «melanzana»: anche la prova del + della Dispensa (S3) la nomina, ma non scrive niente;
+  // questa archivia la sua voce nel `finally`
+  const melanzana = await dalSeme(page, "melanzana");
+  const voceId = await inDispensa(page, melanzana.id);
+  const figuraInDispensa = () =>
+    page
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("button", { name: "Togli melanzana dalla dispensa" }) })
+      .locator("[data-figure]");
+
+  /** Dalla scheda dell'ingrediente: «Cambia figura», la scelta, «Salva la figura». La
+   * prima volta misura anche la griglia aperta: a 375 px non scorre di lato, e ogni
+   * testo si legge nei due temi. */
+  async function scegli(voce: string, misura: boolean) {
+    await page.goto(`/anagrafica/ingrediente/${melanzana.id}`);
+    await page.getByRole("button", { name: "Cambia figura", exact: true }).click();
+    const gruppo = page.getByRole("group", { name: "Figura in dispensa" });
+    // si tocca il riquadro che si vede, non il radio nascosto: è quel che fa il pollice
+    await gruppo.locator("label").filter({ hasText: voce }).click();
+    await expect(gruppo.getByRole("radio", { name: voce, exact: true })).toBeChecked();
+    if (misura) {
+      await senzaScorrimentoLaterale(page, "la griglia di «Cambia figura»");
+      await leggibileNeiDueTemi(page, "«Cambia figura»");
+      // i riquadri sono bersagli da pollice
+      const riquadro = (await gruppo.locator("label").filter({ hasText: "🥕" }).boundingBox())!;
+      expect(riquadro.width).toBeGreaterThanOrEqual(44);
+      expect(riquadro.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.getByRole("button", { name: "Salva la figura", exact: true }).click();
+    await expect(gruppo).toHaveCount(0);
+  }
+
+  try {
+    await scegli("🍆", true);
+    await expect(page.getByText("In dispensa", { exact: true })).toBeVisible();
+    await page.goto("/dispensa");
+    await expect(figuraInDispensa()).toHaveAttribute("data-figure", "emoji");
+    await expect(figuraInDispensa()).toHaveText("🍆");
+
+    await scegli("Nessuna: l'icona del reparto", false);
+    await expect(page.getByText("In dispensa: l'icona del reparto", { exact: true })).toBeVisible();
+    await page.goto("/dispensa");
+    await expect(figuraInDispensa()).toHaveAttribute("data-figure", "reparto");
+    await expect(figuraInDispensa().locator("svg.tabler-icon-carrot")).toHaveCount(1);
+  } finally {
+    await togliDallaDispensa(page, voceId);
+  }
+});
+
+// --- Tema scuro: i pulsanti spenti e il velo del ☰ (bozza del 2026-10-06, decisa il 2026-10-07) ---
+
+/** Un token di `index.css` nel tema in prova, come `rgb(r, g, b)`. */
+function tokenIn(tema: "light" | "dark", nome: string): string {
+  return tema === "light" ? tokenDelTema(nome) : tokenDelTemaScuro(nome);
+}
+
+/** L'alfa del velo del ☰ scritta in `index.css` per il tema: `--scrim-alpha`, in un `:root`
+ * prima del blocco scuro per il chiaro e dentro il blocco scuro per lo scuro. Letta dal
+ * file come i token, per lo stesso motivo: se cambia lì, la prova misura il valore nuovo. */
+function veloDelTema(tema: "light" | "dark"): number {
+  const css = readFileSync(fileURLToPath(new URL("../src/index.css", import.meta.url)), "utf8");
+  const bloccoScuro = /@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([\s\S]*?)\}\s*\}/;
+  const dove = tema === "light" ? css.replace(bloccoScuro, "") : (css.match(bloccoScuro)?.[1] ?? "");
+  const percento = dove.match(/--scrim-alpha:\s*(\d+(?:\.\d+)?)%\s*;/)?.[1];
+  expect(percento, `--scrim-alpha non è scritta per il tema ${tema} in index.css`).toBeDefined();
+  return Number(percento) / 100;
+}
+
+/** L'alfa di un colore calcolato dal browser. Chromium rende un `color-mix(in oklab, …,
+ * transparent)` come `oklab(L a b / α)` e non come `rgba()` (vedi `testiIlleggibili`): si
+ * legge il numero dopo la barra, o il quarto di un `rgba()`. Un colore senza alfa è pieno. */
+function alfaDi(colore: string): number {
+  const dopoLaBarra = colore.match(/\/\s*([\d.]+)(%?)\s*\)$/);
+  if (dopoLaBarra) return Number(dopoLaBarra[1]) / (dopoLaBarra[2] ? 100 : 1);
+  const rgba = colore.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/);
+  return rgba ? Number(rgba[1]) : 1;
+}
+
+const VARIANTI: ButtonVariant[] = ["primary", "secondary", "warn", "ghost", "danger"];
+
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`spenti e velo, tema ${tema === "light" ? "chiaro" : "scuro"}`, () => {
+    test.use({ colorScheme: tema });
+
+    test("«Entra» a campo vuoto è grigio pieno, senza opacità, e la sua scritta si legge", async ({
+      page,
+    }) => {
+      // si esce come nella prova dell'accesso a 375px: aspettato l'accesso del
+      // `beforeEach` (o il suo cookie arriverebbe dopo), via il cookie, e il primo 401
+      // riporta all'accesso. «Entra» a campo vuoto è `aria-disabled` (`unavailableReason`)
+      await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+      await page.context().clearCookies();
+      await page.goto("/");
+      const entra = page.getByRole("button", { name: "Entra", exact: true });
+      await expect(entra).toHaveAttribute("aria-disabled", "true");
+      await fermo(page);
+
+      const misura = await contrastoAVideo(entra);
+      test.info().annotations.push({
+        type: "contrasto",
+        description: `«Entra» spento in ${tema}: ${misura.colore} su ${misura.fondo}, ${misura.rapporto.toFixed(2)}:1`,
+      });
+      // senza opacità, e proprio il grigio del tema: è la prova che `aria-disabled:bg-…`
+      // vince su `bg-brand` nel CSS compilato, che jsdom non vede
+      expect(misura.opacita).toBe(1);
+      expect(misura.fondo).toBe(tokenIn(tema, "disabled"));
+      expect(misura.colore).toBe(tokenIn(tema, "on-disabled"));
+      expect(misura.rapporto).toBeGreaterThanOrEqual(4.5);
+    });
+
+    test("ogni variante spenta, con `disabled` o `aria-disabled`, si legge sulla pagina e su una scheda", async ({
+      page,
+    }) => {
+      // Nessuna schermata seminata mostra spente tutte e cinque le varianti: qui si
+      // creano dei pulsanti con le classi vere di `buttonClasses`, come fa la prova del
+      // pulsante quadrato, e si tolgono subito. Il CSS è quello compilato e servito.
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+      const misure = await page.locator("body").evaluate(
+        (body, varianti: { variante: string; classi: string }[]) => {
+          const doc = body.ownerDocument;
+          const view = doc.defaultView;
+          const canali = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+          const lum = (c: string) => {
+            const [r, g, b] = canali(c).map((v) => {
+              const s = v / 255;
+              return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          };
+          const esiti: { dove: string; variante: string; sotto: string; opacita: string; fondo: string | null; colore: string; rapporto: number }[] = [];
+          // "" è la pagina (il contenitore è trasparente, dietro c'è il `body`); `bg-card`
+          // è una scheda, una classe che l'app usa e che quindi è nel CSS compilato
+          for (const sotto of ["", "bg-card"]) {
+            const contenitore = doc.createElement("div");
+            contenitore.className = sotto;
+            body.appendChild(contenitore);
+            for (const { variante, classi } of varianti) {
+              for (const modo of ["disabled", "aria-disabled"]) {
+                const bottone = doc.createElement("button");
+                bottone.className = classi;
+                if (modo === "disabled") bottone.disabled = true;
+                else bottone.setAttribute("aria-disabled", "true");
+                bottone.textContent = "Prova";
+                contenitore.appendChild(bottone);
+                const stile = view.getComputedStyle(bottone);
+                let fondo: string | null = null;
+                for (let nodo = bottone; nodo && fondo === null; nodo = nodo.parentElement) {
+                  const s = view.getComputedStyle(nodo);
+                  if ((canali(s.backgroundColor)[3] ?? 1) > 0) fondo = s.backgroundColor;
+                }
+                const a = lum(stile.color);
+                const b = lum(fondo ?? "rgb(255, 255, 255)");
+                esiti.push({
+                  dove: `${variante} ${modo} su ${sotto || "page"}`,
+                  variante,
+                  sotto,
+                  opacita: stile.opacity as string,
+                  fondo,
+                  colore: stile.color as string,
+                  rapporto: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+                });
+                bottone.remove();
+              }
+            }
+            contenitore.remove();
+          }
+          return esiti;
+        },
+        VARIANTI.map((variante) => ({ variante, classi: buttonClasses(variante) }))
+      );
+
+      expect(misure).toHaveLength(VARIANTI.length * 2 * 2);
+      for (const m of misure) {
+        expect(m.opacita, m.dove).toBe("1");
+        expect(m.rapporto, `${m.dove}: ${m.colore} su ${m.fondo}`).toBeGreaterThanOrEqual(4.5);
+      }
+      // primario e ambra: il grigio pieno del tema, non un verde o un'ambra spenti
+      for (const m of misure.filter((m) => m.variante === "primary" || m.variante === "warn")) {
+        expect(m.fondo, m.dove).toBe(tokenIn(tema, "disabled"));
+        expect(m.colore, m.dove).toBe(tokenIn(tema, "on-disabled"));
+      }
+      // Il fondo trovato è proprio quello previsto, non uno qualunque: senza questo, se
+      // `bg-card` sparisse dal CSS compilato il caso «scheda» misurerebbe in silenzio contro
+      // la pagina e il contrasto resterebbe verde. Il secondario ha la sua scheda addosso;
+      // ghost e pericolo non hanno fondo e vedono quello del contenitore.
+      for (const m of misure.filter((m) => m.variante !== "primary" && m.variante !== "warn")) {
+        const atteso = m.variante === "secondary" || m.sotto === "bg-card" ? "card" : "page";
+        expect(m.fondo, `${m.dove}: il fondo dev'essere ${atteso}`).toBe(tokenIn(tema, atteso));
+      }
+    });
+
+    test("il velo del ☰ ha l'alfa del tema, e il pannello il suo bordo", async ({ page }) => {
+      // il `beforeEach` di testa preme «Entra» e non aspetta: prima la barra delle schede
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+      await page.goto("/lista");
+      await page.getByRole("button", { name: "Apri il menu" }).click();
+      const pannello = page.getByRole("dialog", { name: "Menu" });
+      await expect(pannello).toBeVisible();
+      await fermo(page);
+
+      // l'alfa e non la stringa: Chromium può dare `oklab(0 0 0 / 0.6)` invece di `rgba()`.
+      // Se l'alfa chiara di index.css stesse dopo il blocco scuro, qui in scuro si
+      // leggerebbe 0,45: è la prova della cascata (scelta 7 del piano)
+      const velo = await page
+        .locator("[data-menu-backdrop]")
+        .evaluate((el) => el.ownerDocument.defaultView.getComputedStyle(el).backgroundColor as string);
+      expect(alfaDi(velo), `il velo è ${velo}`).toBeCloseTo(veloDelTema(tema), 2);
+
+      await expect(pannello).toHaveCSS("border-left-width", "1px");
+      await expect(pannello).toHaveCSS("border-left-style", "solid");
+      await expect(pannello).toHaveCSS("border-left-color", tokenIn(tema, "panel-edge"));
+    });
+  });
+}
+
+// --- S14: «Tutto / Cibo / Casa» in dispensa ---
+
+test("S14 a 375px: «Tutto / Cibo / Casa» coi due mondi in dispensa — bersagli da 44, niente di lato, ricordato ricaricando, leggibile nei due temi", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: la prima cosa qui è una
+  // `page.request`, quindi l'attesa va messa a mano
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+
+  // il seme non popola la dispensa: una voce per mondo, creata qui e tolta nel `finally`.
+  // «finocchio» e «ammorbidente» non li nomina nessun altro file della suite
+  const create: string[] = [];
+  async function inDispensa(nome: string) {
+    const trovati = (await (
+      await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)
+    ).json()) as { id: string; name: string }[];
+    const ingrediente = trovati.find((voce) => voce.name === nome);
+    expect(ingrediente, `«${nome}» non è nel seme`).toBeDefined();
+    const risposta = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: ingrediente!.id },
+    });
+    expect(risposta.ok()).toBe(true);
+    const voce = (await risposta.json()) as { id: string; ingredient_kind: string };
+    create.push(voce.id);
+    return voce;
+  }
+
+  try {
+    expect((await inDispensa("finocchio")).ingredient_kind).toBe("food");
+    expect((await inDispensa("ammorbidente")).ingredient_kind).toBe("non_food");
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/dispensa");
+    const mondi = page.getByRole("group", { name: "Cosa mostrare" });
+    await expect(mondi).toBeVisible();
+    for (const nome of ["Tutto", "Cibo", "Casa"]) {
+      const box = await mondi.getByRole("button", { name: nome, exact: true }).boundingBox();
+      expect(box, `«${nome}» non c'è`).not.toBeNull();
+      expect(box!.height, `«${nome}» è più basso di 44 px`).toBeGreaterThanOrEqual(44);
+    }
+    await expect(mondi.getByRole("button", { name: "Tutto", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    const casa = mondi.getByRole("button", { name: "Casa", exact: true });
+    await casa.click();
+    await expect(casa).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("li", { hasText: "ammorbidente" })).toBeVisible();
+    await expect(page.locator("li", { hasText: "finocchio" })).toHaveCount(0);
+
+    await page.waitForLoadState("networkidle");
+    const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+    const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+    expect(scrollWidth, "la Dispensa col selettore scorre di lato").toBeLessThanOrEqual(clientWidth);
+
+    // il premuto e gli altri due, nei due temi: stati che solo questa prova apre
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `Dispensa su «Casa», tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // ricordato per la sessione (Mattia, 2026-10-07): ricaricando, la Dispensa riapre su «Casa»
+    await page.reload();
+    await expect(
+      page.getByRole("group", { name: "Cosa mostrare" }).getByRole("button", { name: "Casa", exact: true })
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("li", { hasText: "ammorbidente" })).toBeVisible();
+    await expect(page.locator("li", { hasText: "finocchio" })).toHaveCount(0);
+  } finally {
+    // `expect.soft` e non un'asserzione: un `finally` che lancia nasconderebbe l'errore
+    // vero del `try`, ma la prova risulta comunque fallita (come in `perOgniLuogo`)
+    for (const id of create) {
+      try {
+        const risposta = await page.request.patch(`/api/v1/pantry/${id}`, {
+          data: { archived: true },
+        });
+        expect.soft(risposta.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+      } catch (guasto) {
+        expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
+      }
+    }
+  }
+});
+
+// --- S15: i reparti della dispensa che si aprono e si chiudono ---
+
+test("S15 a 375px: un reparto chiuso dice quante voci ha e cosa chiede attenzione, si legge nei due temi, e ricerca e riepilogo lo aprono senza salvarlo", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: la prima cosa qui è una
+  // `page.request`, quindi l'attesa va messa a mano (vedi il test del riepilogo)
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  /** L'id di un ingrediente del seme, cercato per nome intero. */
+  async function ingrediente(nome: string): Promise<string> {
+    const trovati = (await (
+      await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)
+    ).json()) as { id: string; name: string }[];
+    const voce = trovati.find((t) => t.name === nome);
+    expect(voce, `«${nome}» non è nel seme`).toBeDefined();
+    return voce!.id;
+  }
+  /** I reparti chiusi che la Dispensa ha salvato nel `localStorage`. */
+  const chiusiSalvati = async () =>
+    JSON.parse(
+      await page.evaluate<string>("localStorage.getItem('spena.dispensa.reparti-chiusi') ?? '[]'")
+    ) as string[];
+
+  // Due voci nel reparto «pesce», che nessun altro file della suite nomina: l'orata finita,
+  // il calamaro che scade fra due giorni. Questo file non lascia niente dietro di sé:
+  // si archiviano nel `finally`
+  const creati: string[] = [];
+  try {
+    const orata = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: await ingrediente("orata"), status: "finished" },
+    });
+    expect(orata.ok()).toBe(true);
+    creati.push(((await orata.json()) as { id: string }).id);
+    const calamaro = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: await ingrediente("calamaro") },
+    });
+    expect(calamaro.ok()).toBe(true);
+    const calamaroId = ((await calamaro.json()) as { id: string }).id;
+    creati.push(calamaroId);
+    const fraDueGiorni = giornoDiRoma(2);
+    const scritta = await page.request.patch(`/api/v1/pantry/${calamaroId}`, {
+      data: { expires_on: fraDueGiorni },
+    });
+    expect(scritta.ok()).toBe(true);
+
+    await page.getByRole("link", { name: "Dispensa" }).click();
+    const pesce = page.getByRole("region", { name: "Pesce" });
+    const titolo = pesce.getByRole("button", { name: /^Pesce\b/ });
+    const rigaOrata = pesce.locator("li", { hasText: "orata" });
+    const rigaCalamaro = pesce.locator("li", { hasText: "calamaro" });
+
+    // aperto, come per chi non ha mai chiuso niente; il titolo intero è il bersaglio
+    await expect(titolo).toHaveAttribute("aria-expanded", "true");
+    await expect(rigaOrata).toBeVisible();
+    const box = await titolo.boundingBox();
+    const scheda = await pesce.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.width, "il titolo intero è il pulsante").toBeGreaterThanOrEqual(scheda!.width - 1);
+
+    // chiuso: le righe spariscono, il titolo dice il numero e cosa chiede attenzione
+    await titolo.click();
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+    await expect(rigaOrata).toBeHidden();
+    await expect(titolo).toHaveAccessibleName(/^Pesce\s+2\s+·\s+1 finito\s+·\s+1 in scadenza$/);
+    expect(await chiusiSalvati()).toEqual(["pesce"]);
+    const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+    const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+    expect(scrollWidth, "il titolo chiuso fa scorrere di lato").toBeLessThanOrEqual(clientWidth);
+
+    // i due colori sono quelli delle righe, e si leggono sul fondo della scheda, nei due temi
+    const finito = titolo.getByText("1 finito", { exact: true });
+    const inScadenza = titolo.getByText("1 in scadenza", { exact: true });
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `dispensa col reparto chiuso, tema ${tema}`).toEqual([]);
+      const token = tema === "light" ? tokenDelTema : tokenDelTemaScuro;
+      const misuraFinito = await contrastoAVideo(finito);
+      expect(misuraFinito.colore, `«1 finito», tema ${tema}`).toBe(token("finished"));
+      expect(misuraFinito.rapporto).toBeGreaterThanOrEqual(4.5);
+      const misuraScadenza = await contrastoAVideo(inScadenza);
+      expect(misuraScadenza.colore, `«1 in scadenza», tema ${tema}`).toBe(token("expiry"));
+      expect(misuraScadenza.rapporto).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // ricordato: ricaricata la pagina, è ancora chiuso
+    await page.reload();
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+
+    // la ricerca lo apre, e non lo salva aperto; cancellata, torna chiuso
+    const barra = page.getByLabel("Cerca o aggiungi in dispensa");
+    await barra.fill("orat");
+    await expect(titolo).toHaveAttribute("aria-expanded", "true");
+    await expect(rigaOrata).toBeVisible();
+    expect(await chiusiSalvati()).toEqual(["pesce"]);
+    await barra.fill("");
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+
+    // il riepilogo delle scadenze premuto lo apre allo stesso modo, e spento lo richiude
+    const riepilogo = page.getByRole("button", { name: /in scadenza questa settimana/ });
+    await riepilogo.click();
+    await expect(titolo).toHaveAttribute("aria-expanded", "true");
+    await expect(rigaCalamaro).toBeVisible();
+    await riepilogo.click();
+    await expect(titolo).toHaveAttribute("aria-expanded", "false");
+    expect(await chiusiSalvati()).toEqual(["pesce"]);
+  } finally {
+    // `expect.soft` e non un'asserzione, e ogni voce nel suo try/catch: una richiesta che
+    // lancia non deve fermare il ciclo né nascondere l'errore vero del `try`
+    for (const id of creati) {
+      try {
+        const tolta = await page.request.patch(`/api/v1/pantry/${id}`, { data: { archived: true } });
+        expect.soft(tolta.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+      } catch (guasto) {
+        expect.soft(false, `pulizia: non sono riuscito ad archiviare la voce ${id} (${guasto})`).toBe(true);
+      }
+    }
+  }
+});
+
+// --- «Rimetti in lista» anche per quasi finito (2026-10-09) ---
+
+test("«Rimetti in lista» a 375px: la riga gialla offre «In lista», e il foglio della cottura rimette in lista una confezione già quasi finita senza toccarla", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: la prima cosa qui è una
+  // `page.request`, quindi l'attesa va messa a mano (vedi il test del riepilogo)
+  await expect(page.getByRole("link", { name: "Dispensa", exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  /** L'id di un ingrediente del seme, cercato per nome intero. */
+  async function ingrediente(nome: string): Promise<string> {
+    const trovati = (await (
+      await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)
+    ).json()) as { id: string; name: string }[];
+    const voce = trovati.find((t) => t.name === nome);
+    expect(voce, `«${nome}» non è nel seme`).toBeDefined();
+    return voce!.id;
+  }
+  /** Le voci aperte della lista per un ingrediente. */
+  async function inLista(ingredienteId: string) {
+    const voci = (await (
+      await page.request.get("/api/v1/shopping-list?status=pending&status=checked")
+    ).json()) as { id: string; ingredient_id: string | null; reason: string }[];
+    return voci.filter((voce) => voce.ingredient_id === ingredienteId);
+  }
+
+  // Due ingredienti che nessun altro file della suite nomina, e che nessuna ricetta del
+  // seme usa: l'asparago quasi finito, le fave disponibili. Questo file non lascia niente
+  // dietro di sé: voci di lista, confezioni e ricetta si tolgono nel `finally`
+  const asparagoId = await ingrediente("asparago");
+  const faveId = await ingrediente("fave");
+  expect(
+    await inLista(asparagoId),
+    "lo stack e2e non è pulito: ricrealo con `down -v` e riesegui"
+  ).toEqual([]);
+
+  const confezioni: string[] = [];
+  let ricettaId: string | undefined;
+  try {
+    const asparago = await page.request.post("/api/v1/pantry", {
+      data: { ingredient_id: asparagoId, status: "low" },
+    });
+    expect(asparago.ok()).toBe(true);
+    const asparagoVoce = ((await asparago.json()) as { id: string }).id;
+    confezioni.push(asparagoVoce);
+    const fave = await page.request.post("/api/v1/pantry", { data: { ingredient_id: faveId } });
+    expect(fave.ok()).toBe(true);
+    confezioni.push(((await fave.json()) as { id: string }).id);
+
+    // 1. In Dispensa la riga gialla dice «Quasi finito» e offre «In lista»; la verde no
+    await page.getByRole("link", { name: "Dispensa", exact: true }).click();
+    const rigaAsparago = page.locator("li", { hasText: "asparago" });
+    const rigaFave = page.locator("li", { hasText: "fave" });
+    const parola = rigaAsparago.getByText("Quasi finito", { exact: true });
+    const inListaBottone = rigaAsparago.getByRole("button", { name: "In lista", exact: true });
+    await expect(parola).toBeVisible();
+    await expect(inListaBottone).toBeVisible();
+    await expect(rigaFave.getByRole("button", { name: "In lista", exact: true })).toHaveCount(0);
+    const scatola = (await inListaBottone.boundingBox())!;
+    expect(scatola.width).toBeGreaterThanOrEqual(44);
+    expect(scatola.height).toBeGreaterThanOrEqual(44);
+    await senzaScorrimentoLaterale(page, "la dispensa con una riga gialla");
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `dispensa con la riga gialla, tema ${tema}`).toEqual([]);
+      const token = tema === "light" ? tokenDelTema : tokenDelTemaScuro;
+      const misura = await contrastoAVideo(parola);
+      expect(misura.colore, `«Quasi finito», tema ${tema}`).toBe(token("low"));
+      expect(misura.rapporto).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // il tocco rimette in lista come una richiesta a mano, e la riga resta gialla
+    await inListaBottone.click();
+    await expect(page.getByText("Rimesso in lista: asparago")).toBeVisible();
+    await expect(rigaAsparago.getByText("Già in lista")).toBeVisible();
+    await expect(
+      rigaAsparago.getByRole("radio", { name: "Quasi finito", exact: true })
+    ).toHaveAttribute("aria-checked", "true");
+    const dallaDispensa = await inLista(asparagoId);
+    expect(dallaDispensa.map((voce) => voce.reason)).toEqual(["manual"]);
+    // si toglie, perché il foglio della cottura possa rimetterla in lista lui
+    const tolta = await page.request.patch(`/api/v1/shopping-list/${dallaDispensa[0].id}`, {
+      data: { status: "archived" },
+    });
+    expect(tolta.ok()).toBe(true);
+
+    // 2. Il foglio della cottura: la confezione già gialla ha la casella, vuota
+    const creata = await page.request.post("/api/v1/recipes", {
+      data: {
+        title: `Rimetti in lista e2e ${Date.now()}`,
+        instructions: "1. Lessa gli asparagi.\n2. Unisci le fave.",
+        servings: 2,
+        source: "manual",
+        ingredients: [
+          { ingredient_id: asparagoId, role: "primary", quantity_text: "8 gambi" },
+          { ingredient_id: faveId, role: "secondary", quantity_text: "100 g" },
+        ],
+      },
+    });
+    expect(creata.ok()).toBe(true);
+    ricettaId = ((await creata.json()) as { id: string }).id;
+    await page.goto(`/ricette/${ricettaId}`);
+    await page.getByRole("button", { name: "Cucina", exact: true }).click();
+
+    const tacche = page.getByRole("radiogroup", { name: /asparago/ });
+    await expect(tacche.getByRole("radio", { name: "Quasi finito", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    const casella = page.getByRole("checkbox", { name: /Rimetti in lista asparago/ });
+    await expect(casella).toBeVisible();
+    await expect(casella).not.toBeChecked();
+    await expect(page.getByRole("checkbox", { name: /Rimetti in lista fave/ })).toHaveCount(0);
+    await senzaScorrimentoLaterale(page, "il foglio della cottura con una confezione gialla");
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `foglio con la casella del giallo, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+
+    await casella.click();
+    await expect(casella).toBeChecked();
+    await expect(tacche.getByRole("radio", { name: "Quasi finito", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    await page.getByRole("button", { name: "Ho cucinato", exact: true }).click();
+    // per il testo: l'avviso unico tiene sempre la sua regione
+    await expect(page.getByRole("status").filter({ hasText: /^Segnato\./ })).toHaveText(
+      "Segnato. Una cosa è tornata in lista della spesa."
+    );
+
+    // la confezione è ancora gialla, e la voce in lista ha il motivo del giallo
+    const dispensa = (await (await page.request.get("/api/v1/pantry")).json()) as {
+      id: string;
+      status: string;
+    }[];
+    expect(dispensa.find((voce) => voce.id === asparagoVoce)?.status).toBe("low");
+    expect((await inLista(asparagoId)).map((voce) => voce.reason)).toEqual(["low_while_cooking"]);
+
+    // 3. In Lista la nota del rientro lo dice
+    await page.getByRole("link", { name: "Lista", exact: true }).click();
+    await expect(
+      page.locator("li", { hasText: "asparago" }).getByText("rientrata perché quasi finita cucinando")
+    ).toBeVisible();
+  } finally {
+    for (const id of [asparagoId, faveId]) {
+      for (const voce of await inLista(id)) {
+        const tolta = await page.request.patch(`/api/v1/shopping-list/${voce.id}`, {
+          data: { status: "archived" },
+        });
+        expect.soft(tolta.ok(), `archiviare la voce di lista ${voce.id}`).toBe(true);
+      }
+    }
+    for (const id of confezioni) {
+      const tolta = await page.request.patch(`/api/v1/pantry/${id}`, { data: { archived: true } });
+      expect.soft(tolta.ok(), `archiviare la confezione ${id}`).toBe(true);
+    }
+    if (ricettaId) {
+      const tolta = await page.request.patch(`/api/v1/recipes/${ricettaId}`, {
+        data: { archived: true },
+      });
+      expect.soft(tolta.ok(), `eliminare la ricetta ${ricettaId}`).toBe(true);
+    }
+  }
+});
+
+test("Modifica con AI a 375px: il guasto è ambra, e il pannello e il modulo della variante si leggono nei due temi", async ({
+  page,
+}) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${ricetta.id}`);
+    const tasto = page
+      .getByRole("toolbar", { name: "Azioni della ricetta" })
+      .getByRole("button", { name: "Modifica con AI", exact: true });
+    const scatola = (await tasto.boundingBox())!;
+    expect(scatola.width).toBeGreaterThanOrEqual(44);
+    expect(scatola.height).toBeGreaterThanOrEqual(44);
+
+    await tasto.click();
+    await page.getByLabel("Cosa vuoi cambiare?").fill("senza scamorza");
+    // lo stack e2e non ha la chiave dell'AI: il server risponde 503 da sé, senza rete
+    await page.getByRole("button", { name: "Proponi la variante", exact: true }).click();
+    const guasto = page.getByText(
+      "L'AI non ha risposto: questa ricetta resta com'è. Riprova fra poco.",
+      { exact: true }
+    );
+    await expect(guasto).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      const misura = await contrastoAVideo(guasto);
+      expect(misura.colore, `il guasto della variante non è ambra, tema ${tema}`).toBe(
+        tema === "light" ? tokenDelTema("low") : tokenDelTemaScuro("low")
+      );
+      expect(await testiIlleggibili(page), `dettaglio col pannello della variante, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "il dettaglio col pannello della variante");
+
+    // il modulo della variante: la proposta la costruisce il test (il modello qui non si chiama)
+    await page.route(`**/api/v1/recipes/${ricetta.id}/ai-variant`, (route) =>
+      route.fulfill({
+        json: {
+          title: `${ricetta.titolo} senza scamorza`, description: null,
+          instructions: "1. Pulisci le verdure.\n2. Cuoci il farro.", servings: 2, cost: 2,
+          ingredients: [
+            {
+              raw_name: "farro", role: "primary", quantity_text: "160 g", ingredient_id: ricetta.ids.farro,
+              matched_name: "farro", confident: true, proposed_category: null,
+            },
+          ],
+        } satisfies RecipeDraft,
+      })
+    );
+    await page.getByRole("button", { name: "Proponi la variante", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Nuova variante" })).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `modulo della variante, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "il modulo della variante");
+  } finally {
+    await ricetta.pulisci();
+  }
+});
+
+test("il legame «Variante di «…»» sta sotto il titolo, è un bersaglio da pollice e si legge nei due temi", async ({
+  page,
+}) => {
+  const ricetta = await ricettaDiProva(page);
+  let varianteId: string | null = null;
+  try {
+    const titoloVariante = `${ricetta.titolo} variante`;
+    const creata = await page.request.post("/api/v1/recipes", {
+      data: {
+        title: titoloVariante, instructions: "1. Cuoci il farro.", servings: 2,
+        source: "ai", source_ref: "prompt: prova e2e", derived_from_id: ricetta.id,
+        ingredients: [{ ingredient_id: ricetta.ids.farro, role: "primary", quantity_text: "160 g" }],
+      },
+    });
+    expect(creata.ok()).toBe(true);
+    varianteId = ((await creata.json()) as { id: string }).id;
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${varianteId}`);
+    const titolo = page.getByRole("heading", { level: 1, name: titoloVariante });
+    const legame = page.getByRole("link", { name: `Variante di «${ricetta.titolo}»`, exact: true });
+    await expect(legame).toBeVisible();
+    const sTitolo = (await titolo.boundingBox())!;
+    const sLegame = (await legame.boundingBox())!;
+    expect(sLegame.y, "il legame sta sotto il titolo").toBeGreaterThanOrEqual(sTitolo.y + sTitolo.height - 1);
+    expect(sLegame.height).toBeGreaterThanOrEqual(44);
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `dettaglio di una variante, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "il dettaglio di una variante");
+
+    // eliminata l'originale, il legame lo dice
+    const via = await page.request.patch(`/api/v1/recipes/${ricetta.id}`, { data: { archived: true } });
+    expect(via.ok()).toBe(true);
+    await page.reload();
+    await expect(
+      page.getByRole("link", { name: `Variante di «${ricetta.titolo}» (eliminata)`, exact: true })
+    ).toBeVisible();
+  } finally {
+    if (varianteId) {
+      const risposta = await page.request.patch(`/api/v1/recipes/${varianteId}`, {
+        data: { archived: true },
+      });
+      expect.soft(risposta.ok(), `pulizia: la variante ${varianteId} non si è eliminata`).toBe(true);
+    }
+    await ricetta.pulisci();
+  }
+});
+
+// --- Pulizie del 2026-10-13: i controlli spenti senza opacità, e il fuoco ---
+
+/** Trattiene le richieste `metodo` verso `rotta` finché non si chiama la funzione che
+ * restituisce: un controllo resta «in volo» per tutto il tempo che serve a misurarlo. */
+async function trattieni(page: Page, rotta: string, metodo: string): Promise<() => void> {
+  let rilascia!: () => void;
+  const via = new Promise<void>((resolve) => (rilascia = resolve));
+  await page.route(rotta, async (route) => {
+    if (route.request().method() !== metodo) return route.continue();
+    await via;
+    return route.continue();
+  });
+  return rilascia;
+}
+
+/** Le proprietà calcolate che servono qui, così come il browser le dà. */
+async function stileDi(elemento: Locator) {
+  return elemento.evaluate((el) => {
+    const s = el.ownerDocument.defaultView.getComputedStyle(el);
+    return {
+      opacita: s.opacity as string,
+      colore: s.color as string,
+      fondo: s.backgroundColor as string,
+      accento: s.accentColor as string,
+    };
+  });
+}
+
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`controlli spenti senza opacità, tema ${tema === "light" ? "chiaro" : "scuro"}`, () => {
+    test.use({ colorScheme: tema });
+
+    test("in Lista la casella in volo è grigia e piena, nel suo quadrato da 44 px", async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+      const creata = await page.request.post("/api/v1/shopping-list", {
+        data: { raw_text: "prova casella spenta", ingredient_id: null },
+      });
+      expect(creata.ok()).toBe(true);
+      const id = ((await creata.json()) as { id: string }).id;
+      const rotta = `**/api/v1/shopping-list/${id}`;
+      try {
+        const rilascia = await trattieni(page, rotta, "PATCH");
+        await page.goto("/lista");
+        const casella = page.getByRole("checkbox", { name: "prova casella spenta" });
+        const quadrato = (await casella.locator("xpath=..").boundingBox())!;
+        expect(quadrato.width).toBeGreaterThanOrEqual(44);
+        expect(quadrato.height).toBeGreaterThanOrEqual(44);
+
+        const risposta = page.waitForResponse(
+          (r) => r.request().method() === "PATCH" && r.url().includes(`/shopping-list/${id}`)
+        );
+        await casella.click();
+        await expect(casella).toHaveAttribute("aria-disabled", "true");
+        await fermo(page);
+        const spenta = await stileDi(casella);
+        expect(spenta.opacita).toBe("1");
+        expect(spenta.accento).toBe(tokenIn(tema, "ink-faint"));
+
+        rilascia();
+        await risposta;
+        await expect(casella).not.toHaveAttribute("aria-disabled", "true");
+      } finally {
+        await page.unroute(rotta);
+        const pulizia = await page.request.patch(`/api/v1/shopping-list/${id}`, {
+          data: { status: "archived" },
+        });
+        expect.soft(pulizia.ok(), `pulizia: la voce ${id} non si è archiviata`).toBe(true);
+      }
+    });
+
+    test("in Dispensa le tacche e la scadenza in volo sono grigie, non sbiadite", async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+      const trovati = (await (
+        await page.request.get("/api/v1/ingredients/search?q=cavolfiore")
+      ).json()) as { id: string; name: string }[];
+      const cavolfiore = trovati.find((voce) => voce.name === "cavolfiore");
+      expect(cavolfiore, "«cavolfiore» non è nel seme").toBeDefined();
+      const creata = await page.request.post("/api/v1/pantry", {
+        data: { ingredient_id: cavolfiore!.id, status: "available" },
+      });
+      expect(creata.ok()).toBe(true);
+      const id = ((await creata.json()) as { id: string }).id;
+      const rotta = `**/api/v1/pantry/${id}`;
+      try {
+        const rilascia = await trattieni(page, rotta, "PATCH");
+        await page.goto("/dispensa");
+        const tacche = page.getByRole("radiogroup", { name: /cavolfiore/ });
+        await expect(tacche).toBeVisible();
+
+        const risposta = page.waitForResponse(
+          (r) => r.request().method() === "PATCH" && r.url().includes(`/pantry/${id}`)
+        );
+        await tacche.getByRole("radio", { name: "Quasi finito", exact: true }).click();
+        await expect(tacche.getByRole("radio", { name: "Disponibile", exact: true })).toHaveAttribute(
+          "aria-disabled",
+          "true"
+        );
+        await fermo(page);
+        for (const tacca of await tacche.getByRole("radio").all()) {
+          expect((await stileDi(tacca)).opacita).toBe("1");
+        }
+        const accesa = tacche.locator("[data-lit=true] > span").first();
+        expect((await stileDi(accesa)).fondo).toBe(tokenIn(tema, "on-disabled"));
+        const scadenza = page.getByRole("button", { name: "+ scadenza per cavolfiore" });
+        const spenta = await stileDi(scadenza);
+        expect(spenta.opacita).toBe("1");
+        expect(spenta.colore).toBe(tokenIn(tema, "ink-faint"));
+
+        rilascia();
+        await risposta;
+        await expect(tacche.getByRole("radio", { name: "Disponibile", exact: true })).not.toHaveAttribute(
+          "aria-disabled",
+          "true"
+        );
+      } finally {
+        await page.unroute(rotta);
+        const pulizia = await page.request.patch(`/api/v1/pantry/${id}`, { data: { archived: true } });
+        expect.soft(pulizia.ok(), `pulizia: la confezione ${id} non si è archiviata`).toBe(true);
+      }
+    });
+  });
+}
+
+// S4, fetta 1: la sezione «Valori nutrizionali» con un alimento scelto e le vitamine
+// aperte, poi la ricerca della correzione con un risultato scelto (e il perché sotto
+// «Salva l'alimento»), nei due temi. Lo stack ha la tabella CIQUAL di prova (piano
+// `2026-10-13-s4-ciqual.md`); la scelta si toglie alla fine.
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`i valori nutrizionali in Anagrafica, tema ${tema === "light" ? "chiaro" : "scuro"} (S4)`, () => {
+    test.use({ colorScheme: tema, viewport: { width: 375, height: 812 } });
+
+    test("ogni testo della sezione e della ricerca sta sopra 4,5:1", async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+      const trovati = (await (
+        await page.request.get("/api/v1/ingredients/search?q=pomodoro")
+      ).json()) as Ingredient[];
+      const pomodoro = trovati.find((voce) => voce.name === "pomodoro")!;
+      const percorso = `/api/v1/ingredients/${pomodoro.id}/nutrition`;
+      try {
+        expect((await page.request.put(percorso, { data: { ciqual_code: "90001" } })).ok()).toBe(true);
+        await page.goto(`/anagrafica/ingrediente/${pomodoro.id}`);
+        await expect(page.getByRole("cell", { name: "18 kcal", exact: true })).toBeVisible();
+        await page.getByText("Vitamine e minerali (3)", { exact: true }).click();
+        await page.waitForLoadState("networkidle");
+        expect(await testiIlleggibili(page)).toEqual([]);
+
+        await page.getByRole("button", { name: "Cambia alimento", exact: true }).click();
+        await page.getByLabel("Cerca nella tabella CIQUAL", { exact: true }).fill("tomate");
+        await page.getByRole("radio", { name: "Tomate, crue", exact: true }).check();
+        await expect(page.getByText("È già il suo alimento: scegline un altro.")).toBeVisible();
+        expect(await testiIlleggibili(page)).toEqual([]);
+      } finally {
+        expect.soft((await page.request.delete(percorso)).ok(), "pulizia").toBe(true);
+      }
+    });
+  });
+}
+
+test("lo stepper delle porzioni da tastiera: arrivato a 1, il fuoco passa al «+»", async ({ page }) => {
+  // in Chromium un pulsante che diventa `disabled` perde il fuoco davvero: jsdom no
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+  const meno = page.getByRole("button", { name: "Una porzione in meno" });
+  const piu = page.getByRole("button", { name: "Una porzione in più" });
+  await expect(meno).toBeEnabled();
+  await meno.focus();
+  await page.keyboard.press("Enter");
+  await expect(meno).toBeDisabled();
+  await expect(piu).toBeFocused();
+});
+
+test("nel foglio della cottura la casella «Rimetti in lista» è un bersaglio da 44 px", async ({ page }) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/ricette/${ricetta.id}`);
+    await page.getByRole("button", { name: "Cucina", exact: true }).click();
+    const radicchio = page.getByRole("radiogroup", { name: /radicchio/ });
+    await radicchio.getByRole("radio", { name: "Finito", exact: true }).click();
+    const casella = page.getByRole("checkbox", { name: /Rimetti in lista radicchio/ });
+    await expect(casella).toBeChecked();
+    const quadrato = (await casella.locator("xpath=..").boundingBox())!;
+    expect(quadrato.width).toBeGreaterThanOrEqual(44);
+    expect(quadrato.height).toBeGreaterThanOrEqual(44);
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  } finally {
+    await ricetta.pulisci();
+  }
+});
+
+test("il campo «Quanto ne fai?» e la dose fissata si leggono nei due temi, coi bersagli da pollice (R2)", async ({
+  page,
+}) => {
+  // jsdom non calcola il CSS: la sottolineatura, i 44 px senza alzare la riga e il
+  // contrasto del campo dentro la scheda si vedono solo qui. La vista riscalata non scrive
+  // niente: la ricetta del seme basta, ed è letta e basta.
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole("link", { name: "Ricette", exact: true }).click();
+  await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+
+  const dose = page.getByRole("button", { name: "180 g: riscala da pasta" });
+  expect((await dose.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(dose).toHaveCSS("text-decoration-style", "dotted");
+  await dose.click();
+  const campo = page.getByRole("textbox", { name: "Quanto ne fai?" });
+  await expect(campo).toBeFocused();
+  for (const [nome, bersaglio] of [
+    ["la casella", campo],
+    ["Riscala", page.getByRole("button", { name: "Riscala", exact: true })],
+    ["Annulla", page.getByRole("button", { name: "Annulla", exact: true })],
+  ] as const) {
+    expect((await bersaglio.boundingBox())!.height, nome).toBeGreaterThanOrEqual(44);
+  }
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `il campo aperto, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await senzaScorrimentoLaterale(page, "il dettaglio col campo «Quanto ne fai?» aperto");
+
+  // «Pasta al pomodoro» del seme è per 2, con 180 g di pasta: 135 g sono «≈ 1,5»
+  await campo.fill("135");
+  await page.getByRole("button", { name: "Riscala", exact: true }).click();
+  await expect(page.getByText("≈ 1,5", { exact: true })).toBeVisible();
+  const torna = page.getByRole("button", { name: "Torna alle dosi della ricetta" });
+  expect((await torna.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `la dose fissata, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await senzaScorrimentoLaterale(page, "il dettaglio riscalato da una dose");
+
+  await torna.click();
+  await expect(page.getByRole("button", { name: "180 g: riscala da pasta" })).toBeVisible();
+});
+
+test("la nota di una riga della ricetta si legge nei due temi", async ({ page }) => {
+  // La nota nasce dalla pulizia delle dosi dell'import (spec 2026-10-13): il seme non ne
+  // ha, quindi `perOgniLuogo` non la vede. Una ricetta con la nota, scritta con
+  // `page.request`, e tolta alla fine.
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const farro = (
+    (await (await page.request.get("/api/v1/ingredients/search?q=farro")).json()) as {
+      id: string;
+      name: string;
+    }[]
+  ).find((voce) => voce.name === "farro");
+  expect(farro, "«farro» non è nel seme").toBeDefined();
+  const creata = await page.request.post("/api/v1/recipes", {
+    data: {
+      title: `Nota e2e ${Date.now()}`,
+      instructions: "Cuoci.",
+      servings: 2,
+      source: "manual",
+      ingredients: [
+        { ingredient_id: farro!.id, role: "primary", quantity_text: "160 g", note: "da sciacquare" },
+      ],
+    },
+  });
+  expect(creata.ok()).toBe(true);
+  const id = ((await creata.json()) as { id: string }).id;
+  try {
+    await page.goto(`/ricette/${id}`);
+    await expect(page.getByText("da sciacquare", { exact: true })).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `dettaglio con la nota, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    const tolta = await page.request.patch(`/api/v1/recipes/${id}`, { data: { archived: true } });
+    expect.soft(tolta.ok(), `pulizia: la ricetta ${id} non si è eliminata`).toBe(true);
+  }
+});
+
+test("le pagine scartate della coda d'import: bersagli da pollice, niente di lato a 375px, leggibili nei due temi", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  // L'elenco finto: il seme non ha pagine scartate, e qui si misura solo come si vedono.
+  // Un indirizzo lungo senza titolo e un titolo lungo con le cotture che aspettano: i due
+  // casi che a 375px potrebbero spingere la pagina di lato
+  await page.route("**/api/v1/imports/**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/imports/pages/skipped"))
+      return route.fulfill({
+        json: {
+          total: 2,
+          pages: [
+            {
+              id: "e2e-vuota",
+              url: "https://e2e.invalid/scartate/una-pagina-senza-ricetta-con-un-indirizzo-molto-lungo.html",
+              title: null,
+              cause: "unreadable",
+              non_food_name: null,
+              requeueable: false,
+              waiting_cooking_events: 0,
+            },
+            {
+              id: "e2e-torta",
+              url: "https://e2e.invalid/scartate/torta.html",
+              title: "Torta della nonna con crema pasticcera, pinoli tostati e scorza di limone",
+              cause: "non_food",
+              non_food_name: "Carta forno",
+              requeueable: true,
+              waiting_cooking_events: 2,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith("/imports/terms")) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/imports/status"))
+      return route.fulfill({
+        json: { fetched: 2, pending_recipes: 0, imported: 0, skipped: 2, pending_terms: 0 },
+      });
+    return route.fallback();
+  });
+  await page.goto("/ricette/importa");
+
+  const titolo = page.getByRole("button", { name: "Scartate (2)", exact: true });
+  await expect(titolo).toBeVisible();
+  expect((await titolo.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await titolo.click();
+
+  for (const bersaglio of [
+    page.getByRole("button", { name: /^Rimetti in coda/ }),
+    page.getByRole("link", { name: /^Apri la pagina/ }),
+  ]) {
+    await bersaglio.scrollIntoViewIfNeeded();
+    await expect(bersaglio).toBeInViewport({ ratio: 1 });
+    expect((await bersaglio.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  const scrollWidth = await page.evaluate<number>("document.documentElement.scrollWidth");
+  const clientWidth = await page.evaluate<number>("document.documentElement.clientWidth");
+  expect(scrollWidth, "la coda con le scartate scorre di lato").toBeLessThanOrEqual(clientWidth);
+
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `scartate aperte, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+});
+
+test("il modulo della ricetta: la nota e l'avviso del non alimentare si leggono nei due temi (piano 20)", async ({
+  page,
+}) => {
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  async function leggibile(dove: string) {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `${dove}, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  }
+
+  // niente si salva: la riga vive nel modulo, e il passo del non alimentare si chiude
+  await page.goto("/ricette/nuova-ai");
+  await page.getByLabel("Aggiungi un ingrediente").fill("zz prova nota");
+  await page.getByRole("button", { name: "Aggiungi «zz prova nota»" }).click();
+  await page.getByRole("button", { name: "Aggiungi alla ricetta", exact: true }).click();
+  const aggiungiNota = page.getByRole("button", { name: "Aggiungi una nota: zz prova nota" });
+  await expect(aggiungiNota).toBeVisible();
+  await leggibile("modulo con «Aggiungi una nota»");
+
+  await aggiungiNota.click();
+  await page.getByLabel("Nota per zz prova nota").fill("da grattugiare");
+  await leggibile("modulo con la nota aperta");
+
+  await page.getByLabel("Aggiungi un ingrediente").fill("detersivo per i piatti");
+  await page.getByRole("button", { name: "Aggiungi «detersivo per i piatti»" }).click();
+  await expect(page.getByText(/un non alimentare: una ricetta non può averlo/)).toBeVisible();
+  await expect(page.getByText("Cambia il nome: questo è un non alimentare.")).toBeVisible();
+  await leggibile("passo del nome col non alimentare");
+  await page.getByRole("button", { name: "Annulla", exact: true }).click();
+});
+
+// --- Pulizie del 2026-10-13: le parole a video ---
+
+test("nel foglio della cottura una confezione senza prodotto si legge con la maiuscola", async ({ page }) => {
+  // «porro» del seme entra in dispensa senza prodotto (ricettaDiProva): il titolo della sua
+  // confezione è il nome dell'ingrediente, e apre la riga (spec T3 §4.7)
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.goto(`/ricette/${ricetta.id}`);
+    await page.getByRole("button", { name: "Cucina", exact: true }).click();
+    const porro = page.getByRole("radiogroup", { name: /porro/ });
+    await expect(porro).toBeVisible();
+    const riga = page.getByRole("listitem").filter({ has: porro });
+    await expect(riga.getByText("Porro", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+  } finally {
+    await ricetta.pulisci();
+  }
+});
+
+// R5: i sostituti nei due temi, a 375 px. Nessuna scrittura: le risposte dell'AI si
+// fingono deviando le letture, perché lo stack e2e non ha la chiave. La ricetta è quella
+// di `ricettaDiProva`, che toglie da sé quel che mette.
+test("i sostituti a 375px: il pannello, il modulo e la sezione in Anagrafica si leggono nei due temi", async ({ page }) => {
+  const ricetta = await ricettaDiProva(page);
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const risposta = {
+      ingredient_id: ricetta.ids.carciofo, ingredient_name: "carciofo", context: "salato",
+      scope: "general", verdict: "substitutes", decided_by: "ai", ai_failed: false,
+      substitutes: [
+        { ingredient_id: ricetta.ids.radicchio, name: "radicchio", note: "cotto a parte",
+          availability: "available", satisfied: true },
+        { ingredient_id: ricetta.ids.porro, name: "porro", note: null, availability: "low", satisfied: false },
+      ],
+    };
+    await page.route(
+      new RegExp(`/api/v1/recipes/${ricetta.id}/substitutes/${ricetta.ids.carciofo}$`),
+      (route) => route.fulfill({ json: risposta })
+    );
+    await page.goto(`/ricette/${ricetta.id}`);
+    await page.getByRole("button", { name: "Sostituisci carciofo" }).click();
+    await expect(page.getByText("Suggerito dall'AI per i piatti salati.")).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il pannello dei sostituti, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    for (const nome of ["Sostituisci carciofo", "Non va bene qui"]) {
+      const scatola = (await page.getByRole("button", { name: nome }).boundingBox())!;
+      expect(scatola.height, nome).toBeGreaterThanOrEqual(44);
+      expect(scatola.width, nome).toBeGreaterThanOrEqual(44);
+    }
+
+    // il modulo aperto: le pastiglie, le note, i pulsanti
+    await page.getByRole("button", { name: "Non va bene qui" }).click();
+    await expect(page.getByRole("radio", { name: "Un altro ingrediente" })).toBeChecked();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il modulo dei sostituti, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "il modulo dei sostituti");
+
+    // in Anagrafica: una voce dell'AI da rivedere, una senza risposta, le correzioni
+    await page.route(
+      new RegExp(`/api/v1/ingredients/${ricetta.ids.carciofo}/substitutes$`),
+      (route) =>
+        route.fulfill({
+          json: {
+            ingredient_id: ricetta.ids.carciofo, recipe_overrides: 2,
+            contexts: [
+              { context: "salato", recipes: 12, verdict: "omit", decided_by: "ai", substitutes: [] },
+              { context: "dolce", recipes: 1, verdict: null, decided_by: null, substitutes: [] },
+            ],
+          },
+        })
+    );
+    await page.goto(`/anagrafica/ingrediente/${ricetta.ids.carciofo}`);
+    await expect(page.getByText("Deciso dall'AI: da rivedere.")).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la sezione dei sostituti, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    for (const nome of ["Va bene così: nei piatti salati", "Correggi: nei piatti salati", "Scrivi tu: nei dolci"]) {
+      expect((await page.getByRole("button", { name: nome }).boundingBox())!.height, nome).toBeGreaterThanOrEqual(44);
+    }
+    await senzaScorrimentoLaterale(page, "la sezione dei sostituti");
+  } finally {
+    await ricetta.pulisci();
+  }
+});
+
+// S4, fetta 2: il pannello «Valori nutrizionali» del dettaglio aperto, con una riga contata
+// e le altre fuori dal conto, e in Anagrafica «Pesi per unità» col campo dei grammi aperto,
+// nei due temi. La scelta dell'alimento si toglie alla fine.
+for (const tema of ["light", "dark"] as const) {
+  test.describe(`i valori di una ricetta e i pesi, tema ${tema === "light" ? "chiaro" : "scuro"} (S4)`, () => {
+    test.use({ colorScheme: tema, viewport: { width: 375, height: 812 } });
+
+    test("ogni testo del pannello e dei pesi sta sopra 4,5:1", async ({ page }) => {
+      await expect(page.getByRole("link", { name: "Ricette", exact: true })).toBeVisible();
+      const cerca = async (nome: string) =>
+        ((await (await page.request.get(`/api/v1/ingredients/search?q=${encodeURIComponent(nome)}`)).json()) as Ingredient[]).find(
+          (voce) => voce.name === nome
+        )!;
+      const pasta = await cerca("pasta");
+      const aglio = await cerca("aglio");
+      const scelta = `/api/v1/ingredients/${pasta.id}/nutrition`;
+      try {
+        expect((await page.request.put(scelta, { data: { ciqual_code: "90003" } })).ok()).toBe(true);
+        await page.goto("/ricette");
+        await page.getByRole("link", { name: /Pasta al pomodoro/ }).first().click();
+        await page.getByRole("button", { name: "Mostra i valori nutrizionali", exact: true }).click();
+        await expect(page.getByText(/^Contate 1 riga su|^Contata 1 riga su/)).toBeVisible();
+        await page.waitForLoadState("networkidle");
+        expect(await testiIlleggibili(page)).toEqual([]);
+
+        await page.goto(`/anagrafica/ingrediente/${aglio.id}`);
+        await page.getByRole("button", { name: "Correggi il peso di 1 spicchio", exact: true }).click();
+        await expect(page.getByText("Scrivi un numero di grammi più grande di zero.")).toBeVisible();
+        expect(await testiIlleggibili(page)).toEqual([]);
+      } finally {
+        expect.soft((await page.request.delete(scelta)).ok(), "pulizia").toBe(true);
+      }
+    });
+  });
+}
+
+// H2, «Attività». Il telefono non c'è: il corpo di HC Webhook lo manda la prova, con la chiave
+// creata dalla rotta (la sessione della prova la apre). Un totale dei passi, una finestra di
+// 15 minuti che non si salva (per misurare l'avviso ambra del problema), una camminata, una
+// pesata, il sonno che Spena non usa. Vedi `frontend/e2e/attivita.spec.ts`.
+test("attività e collegamento a 375px: i testi si leggono nei due temi, e niente scorre di lato", async ({
+  page,
+}) => {
+  // il `beforeEach` tocca «Entra» ma non aspetta la risposta: la prima `page.request` qui
+  // sotto partirebbe prima del cookie di sessione e tornerebbe 401
+  await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const creata = await page.request.post("/api/v1/activity/token");
+  expect(creata.status()).toBe(201);
+  const { token } = (await creata.json()) as { token: string };
+  const giorno = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(
+    new Date(Date.now() - 86_400_000)
+  );
+  const inviato = await page.request.post("/api/v1/activity/hc-webhook", {
+    headers: { "X-Spena-Token": token },
+    data: {
+      timestamp: new Date().toISOString(),
+      // dalla 1.9.23 HC Webhook lo mette in ogni corpo
+      timezone: "Europe/Rome",
+      steps: [
+        { count: 6789, start_time: `${giorno}T08:00:00.123Z`, end_time: `${giorno}T20:00:00.456Z` },
+        { count: 120, start_time: `${giorno}T06:00:00Z`, end_time: `${giorno}T06:15:00Z` },
+      ],
+      exercise: [
+        {
+          type: "79",
+          title: "Giro del parco",
+          start_time: `${giorno}T15:00:00Z`,
+          end_time: `${giorno}T15:20:00Z`,
+          metadata: { data_origin: "com.sec.android.app.shealth" },
+        },
+      ],
+      weight: [{ kilograms: 81.7, time: `${giorno}T05:00:00Z` }],
+      sleep: [{ session_end_time: `${giorno}T05:00:00Z`, duration_seconds: 25200, stages: [] }],
+    },
+  });
+  expect(inviato.status()).toBe(200);
+
+  await page.goto("/attivita");
+  await expect(page.getByRole("list", { name: "Passi degli ultimi 7 giorni" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Passi non salvati" })).toBeVisible();
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `«Attività», tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await senzaScorrimentoLaterale(page, "«Attività»");
+
+  // il collegamento con la chiave appena creata: i tre campi da copiare a video
+  await page.goto("/attivita/collega");
+  await page.getByRole("button", { name: "Rigenera la chiave" }).click();
+  await page.getByRole("button", { name: "Rigenera", exact: true }).click();
+  await expect(page.getByLabel("Intestazioni (JSON)", { exact: true })).toBeVisible();
+  for (const tema of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: tema });
+    await fermo(page);
+    expect(await testiIlleggibili(page), `il collegamento, tema ${tema}`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await senzaScorrimentoLaterale(page, "il collegamento");
+});
+
+// H1, le spese dell'AI. Lo stack e2e non ha spese (la chiave di OpenRouter è vuota): le
+// semina `backend/tests/e2e_spese.py` nel container del backend, nessuna rete, e le toglie.
+// Vedi `frontend/e2e/spese.spec.ts`.
+function aiutanteSpese(comando: "seed" | "clean"): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_spese.py", comando],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+/** Il contrasto WCAG 1.4.11 di un segno SVG: il suo `fill` calcolato contro il fondo del
+ * primo antenato che ne dipinge uno (la scheda). `contrastoSegno` legge il
+ * `backgroundColor`, che un `<rect>` non ha: per il resto è la stessa risalita. */
+async function contrastoRiempimento(segno: Locator) {
+  return segno.evaluate((el) => {
+    const view = el.ownerDocument.defaultView;
+    const canali = (colore: string) => (colore.match(/[\d.]+/g) ?? []).map(Number);
+    const luminanza = (colore: string) => {
+      const [r, g, b] = canali(colore).map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+
+    const proprio = view.getComputedStyle(el).fill;
+    let fondo: string | null = null;
+    for (let nodo = el.parentElement; nodo; nodo = nodo.parentElement) {
+      const stile = view.getComputedStyle(nodo);
+      const alfa = canali(stile.backgroundColor)[3] ?? 1;
+      if (alfa > 0) {
+        fondo = stile.backgroundColor;
+        break;
+      }
+    }
+
+    const a = luminanza(proprio);
+    const b = luminanza(fondo ?? "rgb(255, 255, 255)");
+    return {
+      colore: proprio as string,
+      fondo: fondo as string | null,
+      rapporto: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+    };
+  });
+}
+
+test("le spese dell'AI a 375px: barre e colonne si distinguono dalla scheda, e i testi si leggono, nei due temi", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  aiutanteSpese("clean");
+  aiutanteSpese("seed");
+  try {
+    await page.goto("/spese-ai");
+    await page.getByRole("group", { name: "Periodo" }).getByRole("button", { name: "Ultimi 30 giorni" }).click();
+    const barra = page.locator("[data-bar]").first();
+    const colonna = page.locator("[data-day]").first();
+    await expect(colonna).toBeVisible();
+    await expect(barra).toBeVisible();
+
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      const scheda = tema === "light" ? tokenDelTema("card") : tokenDelTemaScuro("card");
+      const verde = tema === "light" ? tokenDelTema("brand") : tokenDelTemaScuro("brand");
+      for (const [nome, segno] of [
+        ["la barra di una sezione", barra],
+        ["la colonna di un giorno", colonna],
+      ] as const) {
+        const misura = await contrastoRiempimento(segno);
+        expect(misura.colore, `${nome}, tema ${tema}`).toBe(verde);
+        expect(misura.fondo, `${nome}, tema ${tema}`).toBe(scheda);
+        expect(misura.rapporto, `${nome} su --color-card, tema ${tema}`).toBeGreaterThanOrEqual(3);
+      }
+      expect(await testiIlleggibili(page), `le spese dell'AI, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await senzaScorrimentoLaterale(page, "le spese dell'AI");
+  } finally {
+    try {
+      aiutanteSpese("clean");
+    } catch (guasto) {
+      expect.soft(false, `pulizia: non sono riuscito a togliere le spese seminate (${guasto})`).toBe(true);
+    }
+  }
+});
+
+test("gli utensili a 375px: un nome lungo con la nota e la correzione aperta si leggono nei due temi, e niente scorre di lato", async ({
+  page,
+}) => {
+  // lo stato vuoto lo misura `perOgniLuogo` (`/utensili` è in SCHERMATE); qui l'elenco
+  // pieno e la correzione aperta, che solo questa prova apre. L'utensile si crea con
+  // `page.request` e si toglie alla fine
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const nome = "padella antiaderente in alluminio pressofuso per induzione";
+  const creato = await page.request.post("/api/v1/utensils", {
+    data: { name: nome, note: "da 28 cm, con il coperchio di vetro" },
+  });
+  expect(creato.ok()).toBe(true);
+  const id = ((await creato.json()) as { id: string }).id;
+  try {
+    await page.goto("/utensili");
+    // il nome e la nota stanno nello stesso elemento: si cerca la riga
+    await expect(page.getByRole("listitem").filter({ hasText: nome })).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `utensili, tema ${tema}`).toEqual([]);
+    }
+    await senzaScorrimentoLaterale(page, "gli utensili con un nome lungo");
+    await page.getByRole("button", { name: `Correggi «${nome}»` }).click();
+    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue(nome);
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      expect(await testiIlleggibili(page), `utensili, correzione aperta, tema ${tema}`).toEqual([]);
+    }
+    await senzaScorrimentoLaterale(page, "la correzione di un utensile");
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    const tolto = await page.request.delete(`/api/v1/utensils/${id}`);
+    expect.soft(tolto.ok(), `pulizia: l'utensile ${id} non si è tolto`).toBe(true);
+  }
+});
+
+test("la settimana dei pasti a 375 px: si legge nei due temi, oggi si distingue, niente scorre di lato", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const creati: string[] = [];
+  const crea = async (data: Record<string, unknown>) => {
+    const risposta = await page.request.post("/api/v1/meals", { data });
+    expect(risposta.ok()).toBe(true);
+    const id = ((await risposta.json()) as { id: string }).id;
+    creati.push(id);
+    return id;
+  };
+  try {
+    await crea({
+      day: giornoDiRoma(0),
+      slot: "lunch",
+      dish: "Pasta al pomodoro e basilico di prova",
+      sides: "insalata · pane · una banana",
+    });
+    const passata = "2026-01-05";
+    const pranzoLunedi = await crea({ day: passata, slot: "lunch", dish: "Bozza di prova", status: "draft" });
+    await crea({ day: passata, slot: "dinner", dish: "Pizzeria di prova", away: true });
+    // un avanzo del pranzo di lunedì (un fuori casa non può essere l'origine di un avanzo)
+    await crea({ day: "2026-01-06", slot: "lunch", dish: "Avanzo di prova", leftover_of_id: pranzoLunedi });
+
+    for (const indirizzo of ["/pasti", `/pasti?settimana=${passata}`]) {
+      for (const tema of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: tema });
+        await page.goto(indirizzo);
+        await expect(page.getByRole("heading", { name: "Pasti", level: 1 })).toBeVisible();
+        await fermo(page);
+        expect(await testiIlleggibili(page), `${indirizzo}, tema ${tema}`).toEqual([]);
+        const misura = await page.evaluate<{ s: number; c: number }>(
+          "({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth })"
+        );
+        expect(misura.s, `${indirizzo}, tema ${tema}: scorre di lato`).toBeLessThanOrEqual(misura.c);
+        if (indirizzo === "/pasti") {
+          const sfondi = await page.evaluate<{ oggi: string; altro: string }>(
+            `(() => {
+              const oggi = document.querySelector('[aria-current="date"]').closest('li');
+              const altro = [...oggi.parentElement.children].find((li) => li !== oggi);
+              return {
+              oggi: getComputedStyle(oggi).backgroundColor,
+              altro: getComputedStyle(altro).backgroundColor,
+              };
+            })()`
+          );
+          const sfondoOggi = sfondi.oggi;
+          const sfondoAltro = sfondi.altro;
+          expect(sfondoOggi, `oggi non si distingue, tema ${tema}`).not.toBe(sfondoAltro);
+        } else {
+          await expect(page.getByText("Non registrata", { exact: true })).toBeVisible();
+          await expect(page.getByText("Fuori casa", { exact: true })).toBeVisible();
+          await expect(page.getByText("Avanzo", { exact: true })).toBeVisible();
+        }
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    for (const id of creati.reverse()) {
+      const tolto = await page.request.delete(`/api/v1/meals/${id}`);
+      expect.soft([200, 204, 404], `pulizia: il pasto ${id} non si è tolto`).toContain(tolto.status());
+    }
+  }
+});
+
+test("il piatto con la ricetta a 375 px, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const trovate = (await (await page.request.get("/api/v1/ingredients/search?q=uova")).json()) as {
+    id: string;
+    name: string;
+  }[];
+  const uova = trovate.find((voce) => voce.name === "uova") ?? trovate[0];
+  expect(uova, "nessun ingrediente «uova» nel seme").toBeDefined();
+  const pasto = await page.request.post("/api/v1/meals", {
+    data: { day: giornoDiRoma(4), slot: "dinner", dish: "Frittata di prova stile" },
+  });
+  expect(pasto.ok()).toBe(true);
+  const pastoId = ((await pasto.json()) as { id: string }).id;
+  try {
+    const ricetta = await page.request.post("/api/v1/recipes", {
+      data: {
+        title: "Frittata di prova stile",
+        instructions: "Sbatti le uova, cuoci in padella.",
+        servings: 1,
+        source: "manual",
+        meal_id: pastoId,
+        ingredients: [{ ingredient_id: uova.id, role: "primary", quantity_text: "3" }],
+      },
+    });
+    expect(ricetta.ok()).toBe(true);
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${pastoId}`);
+      const salva = page.getByRole("button", { name: "Salva nel ricettario" });
+      await expect(salva).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il piatto, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `il piatto, tema ${tema}`);
+      const alto = (await salva.boundingBox())?.height ?? 0;
+      expect(alto, "«Salva nel ricettario» è troppo basso").toBeGreaterThanOrEqual(44);
+      await expect(page.getByRole("button", { name: /Cucina/ })).toHaveCount(0);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    const tolto = await page.request.delete(`/api/v1/meals/${pastoId}`);
+    expect.soft([200, 204, 404], `pulizia: il pasto ${pastoId} non si è tolto`).toContain(tolto.status());
+  }
+});
+
+/** Lancia l'aiutante della chat del piatto nel container del backend e torna la sua ultima riga. */
+function aiutanteChat(comando: "seed" | "clean"): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_chat.py", comando],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+test("la chat del piatto a 375 px, con la modifica evidenziata, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutanteChat("seed")) as { meal_change: string; meal_failed: string };
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${seminato.meal_change}`);
+      const annulla = page.getByRole("button", { name: "Annulla", exact: true });
+      await expect(annulla).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la chat con la modifica, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la chat con la modifica, tema ${tema}`);
+      const alto = (await annulla.boundingBox())?.height ?? 0;
+      expect(alto, "«Annulla» è troppo basso").toBeGreaterThanOrEqual(44);
+      // La tinta sta sulla prima linea della riga cambiata, non sul `<li>`: il campo della
+      // dose e il pannello «Sostituisci», che stanno nel `<li>`, restano sul fondo della
+      // scheda («non basta» in `text-low` sulla tinta è sotto 4,5:1).
+      const fondi = await page.evaluate<{ linea: string; lineaNormale: string; riga: string; rigaNormale: string }>(
+        `(() => {
+          const cambiata = document.querySelector('li[data-changed]');
+          const normale = [...cambiata.parentElement.children].find((li) => li !== cambiata);
+          return {
+            linea: getComputedStyle(cambiata.firstElementChild).backgroundColor,
+            lineaNormale: getComputedStyle(normale.firstElementChild).backgroundColor,
+            riga: getComputedStyle(cambiata).backgroundColor,
+            rigaNormale: getComputedStyle(normale).backgroundColor,
+          };
+        })()`
+      );
+      expect(fondi.linea, `la riga cambiata non si distingue, tema ${tema}`).not.toBe(fondi.lineaNormale);
+      expect(fondi.riga, `la tinta è finita sul <li> dei pannelli, tema ${tema}`).toBe(fondi.rigaNormale);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    aiutanteChat("clean");
+  }
+});
+
+test("la chat con l'avviso e il campo, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutanteChat("seed")) as { meal_change: string; meal_failed: string };
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${seminato.meal_failed}`);
+      const riprova = page.getByRole("button", { name: "Riprova", exact: true });
+      await expect(riprova).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la chat con l'avviso, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la chat con l'avviso, tema ${tema}`);
+      for (const [nome, bottone] of [
+        ["Riprova", riprova],
+        ["Invia", page.getByRole("button", { name: "Invia", exact: true })],
+      ] as const) {
+        const alto = (await bottone.boundingBox())?.height ?? 0;
+        expect(alto, `«${nome}» è troppo basso`).toBeGreaterThanOrEqual(44);
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    aiutanteChat("clean");
+  }
+});
+
+// La pianificazione con Claude e le schede dei cambi. Le proposte e le schede nascono solo
+// quando Claude chiama i suoi strumenti, e lo stack e2e non ha il token: le semina
+// `backend/tests/e2e_planning.py` nel container del backend, passando dai servizi veri, e
+// le toglie nel `finally`. Vedi `frontend/e2e/pianificazione.spec.ts`.
+function aiutantePianificazione(comando: "seed" | "clean"): string {
+  const uscita = execFileSync(
+    "docker",
+    [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_planning.py", comando],
+    { cwd: RADICE, encoding: "utf8" }
+  );
+  return uscita.trim().split("\n").pop() ?? "";
+}
+
+type PianificazioneSeminata = {
+  conversation: string;
+  proposal_draft: string;
+  proposal_official: string;
+  card: string;
+  meal: string;
+};
+
+function pulisciPianificazione() {
+  try {
+    aiutantePianificazione("clean");
+  } catch (guasto) {
+    expect.soft(false, `pulizia: non sono riuscito a togliere la pianificazione seminata (${guasto})`).toBe(true);
+  }
+}
+
+/** Ogni bersaglio nominato è alto almeno 44 px, la regola di casa (`min-h-11`). */
+async function bersagliDaPollice(bersagli: [string, Locator][], luogo: string) {
+  for (const [nome, bersaglio] of bersagli) {
+    await expect(bersaglio, `${luogo}: «${nome}» non c'è`).toBeVisible();
+    const alto = (await bersaglio.boundingBox())?.height ?? 0;
+    expect(alto, `${luogo}: «${nome}» è troppo basso`).toBeGreaterThanOrEqual(44);
+  }
+}
+
+test("la pianificazione con le proposte, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/pianifica?conversazione=${seminato.conversation}`);
+      const metti = page.getByRole("button", { name: "Metti nella settimana" });
+      await expect(metti).toBeVisible();
+      // la proposta ufficiale sostituita dalla bozza: anche il suo stato si legge
+      await expect(page.getByText("Sostituita da una proposta più nuova.")).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la pianificazione con le proposte, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la pianificazione con le proposte, tema ${tema}`);
+      await bersagliDaPollice(
+        [
+          ["Metti nella settimana", metti],
+          ["Invia", page.getByRole("button", { name: "Invia", exact: true })],
+        ],
+        `la pianificazione, tema ${tema}`
+      );
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
+  }
+});
+
+test("la scheda dei cambi, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/cambi/${seminato.card}`);
+      const applica = page.getByRole("button", { name: "Applica", exact: true });
+      await expect(applica).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la scheda dei cambi, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la scheda dei cambi, tema ${tema}`);
+      // la casella si tocca dal suo contenitore, la `label` che porta anche la voce
+      const caselle = page.getByRole("checkbox");
+      expect(await caselle.count(), "la scheda seminata ha tre righe").toBe(3);
+      const contenitori: [string, Locator][] = [];
+      for (let i = 0; i < 3; i++) {
+        contenitori.push([`la casella ${i + 1}`, caselle.nth(i).locator("xpath=ancestor::label[1]")]);
+      }
+      await bersagliDaPollice(
+        [
+          ["Applica", applica],
+          ["Scarta", page.getByRole("button", { name: "Scarta", exact: true })],
+          ...contenitori,
+        ],
+        `la scheda dei cambi, tema ${tema}`
+      );
+      // il valore di un `select` non è un nodo di testo, e `testiIlleggibili` non lo vede:
+      // si misura qui, sul fondo che il campo dipinge
+      const selettori = page.locator("select");
+      expect(await selettori.count(), "due righe di dispensa, due selettori").toBe(2);
+      for (let i = 0; i < 2; i++) {
+        const misura = await contrastoAVideo(selettori.nth(i));
+        expect(misura.opacita, `il selettore ${i + 1} è velato, tema ${tema}`).toBe(1);
+        expect(
+          misura.rapporto,
+          `il selettore ${i + 1}: ${misura.colore} su ${misura.fondo}, tema ${tema}`
+        ).toBeGreaterThanOrEqual(4.5);
+        const alto = (await selettori.nth(i).boundingBox())?.height ?? 0;
+        expect(alto, `il selettore ${i + 1} è troppo basso, tema ${tema}`).toBeGreaterThanOrEqual(44);
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
+  }
+});
+
+test("la settimana con le schede da applicare e il piatto con l'avviso della ricetta, nei due temi", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("seed")) as PianificazioneSeminata;
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+
+      await page.goto("/pasti");
+      await expect(page.getByText("Schede dei cambi da applicare")).toBeVisible();
+      const scheda = page
+        .getByRole("listitem")
+        .filter({ hasText: "Per «e2e-plan Pasta ricotta e parmigiano»" });
+      await expect(scheda).toHaveCount(1);
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la settimana con le schede, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la settimana con le schede, tema ${tema}`);
+      await bersagliDaPollice(
+        [["Apri", scheda.getByRole("link", { name: "Apri" })]],
+        `la settimana con le schede, tema ${tema}`
+      );
+
+      await page.goto(`/pasti/${seminato.meal}`);
+      const chiedi = page.getByRole("button", { name: "Chiedi la ricetta a Claude" });
+      await expect(chiedi).toBeVisible();
+      await expect(page.getByText(/^Claude non risponde: hai raggiunto il limite del piano/)).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `il piatto con l'avviso della ricetta, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `il piatto con l'avviso della ricetta, tema ${tema}`);
+      await bersagliDaPollice(
+        [
+          ["Chiedi la ricetta a Claude", chiedi],
+          ["Scrivi la ricetta", page.getByRole("link", { name: "Scrivi la ricetta" })],
+          ["Scheda dei cambi da applicare", page.getByRole("link", { name: "Scheda dei cambi da applicare" })],
+        ],
+        `il piatto con l'avviso della ricetta, tema ${tema}`
+      );
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
+  }
 });
 
 test("la nota di ripiego dei suggerimenti si legge nei due temi", async ({ page }) => {

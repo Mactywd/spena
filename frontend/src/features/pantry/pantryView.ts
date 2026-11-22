@@ -37,6 +37,76 @@ export function hasExpiry(item: PantryItem): boolean {
   return item.expiry !== null;
 }
 
+/** Il mondo che la Dispensa mostra (S14): tutto, solo il cibo, solo le cose di casa.
+ * «Casa» è `non_food`, cioè i reparti `casa` e `igiene`; quale voce stia dove lo dice il
+ * server (`ingredient_kind`), non questo file. */
+export type PantryWorld = "all" | "food" | "non_food";
+
+/** L'ordine dei pulsanti del selettore. */
+export const WORLDS: readonly PantryWorld[] = ["all", "food", "non_food"];
+
+/** I nomi a video, decisi da Mattia il 2026-10-07: «Casa» e non «Non alimentari», che a
+ * 375 px non ci sta. Servono anche al vuoto del mondo («Niente in Casa per «…»»). */
+export const WORLD_LABELS: Record<PantryWorld, string> = {
+  all: "Tutto",
+  food: "Cibo",
+  non_food: "Casa",
+};
+
+/** Se la voce sta nel mondo scelto. Un confronto su un verdetto del server e non un
+ * calcolo: il mondo discende dal reparto in `kind_for_category`, nel backend, e una
+ * seconda copia qui resterebbe indietro il giorno in cui un reparto cambia mondo. */
+export function inWorld(item: PantryItem, world: PantryWorld): boolean {
+  return world === "all" || item.ingredient_kind === world;
+}
+
+/** Se in dispensa ci sono voci dei due mondi: solo allora il selettore serve (bozza S14
+ * §3). Con un mondo solo, ogni scelta diversa da «Tutto» potrebbe solo svuotare la
+ * pagina. Contano tutte le voci che arrivano, finite comprese: sono a video. */
+export function hasBothWorlds(items: PantryItem[]): boolean {
+  return (
+    items.some((item) => item.ingredient_kind === "food") &&
+    items.some((item) => item.ingredient_kind === "non_food")
+  );
+}
+
+/** Quel che chi guarda ha chiesto alla Dispensa: il mondo, il testo della barra, il
+ * riepilogo delle scadenze premuto. */
+export interface PantryView {
+  world: PantryWorld;
+  query: string;
+  expiringOnly: boolean;
+}
+
+/** Le voci a video, coi filtri in un ordine solo (bozza S14 §4): mondo, ricerca (S11),
+ * in scadenza. Il raggruppamento per reparto viene dopo (`groupForDisplay`), e un reparto
+ * senza voci del mondo scelto sparisce intero: non è chiuso, non c'è. */
+export function visibleItems(items: PantryItem[], view: PantryView): PantryItem[] {
+  return items
+    .filter((item) => inWorld(item, view.world))
+    .filter((item) => matchesQuery(item, view.query))
+    .filter((item) => !view.expiringOnly || hasExpiry(item));
+}
+
+/** Il mondo da applicare davvero, dato quello scelto. Torna «Tutto» in due casi:
+ * - il selettore non c'è più (un mondo solo): una dispensa vuota per un filtro che non si
+ *   vede sarebbe una bugia, come per il riepilogo delle scadenze che sparisce;
+ * - la voce appena aggiunta (`revealId`) è dell'altro mondo: deve potersi vedere, come
+ *   dopo un'aggiunta la barra si svuota e il riepilogo si spegne.
+ * Una voce appena aggiunta dello stesso mondo si vede già, e il mondo resta. Una che non
+ * è ancora arrivata nell'elenco non cambia niente: se ne riparla quando arriva. */
+export function settleWorld(
+  world: PantryWorld,
+  items: PantryItem[],
+  revealId: string | null
+): PantryWorld {
+  if (world === "all") return world;
+  if (!hasBothWorlds(items)) return "all";
+  const revealed = revealId === null ? undefined : items.find((item) => item.id === revealId);
+  if (revealed !== undefined && !inWorld(revealed, world)) return "all";
+  return world;
+}
+
 export function expiryCounts(items: PantryItem[]): { soon: number; expired: number } {
   let soon = 0;
   let expired = 0;
@@ -72,4 +142,50 @@ export function groupForDisplay(items: PantryItem[]): [string, PantryItem[]][] {
       category,
       [...rows.filter((r) => r.status !== "finished"), ...rows.filter((r) => r.status === "finished")],
     ]);
+}
+
+// --- S15: i reparti che si aprono e si chiudono ---
+
+/** Come sta un reparto a video (spec S15 §3). `collapsed` è quel che l'utente ha chiuso
+ * e che si ricorda; `filtering` è una ricerca scritta o il riepilogo delle scadenze
+ * premuto; `closedWhileFiltering` sono i reparti chiusi a mano mentre quel filtro era
+ * acceso, e si svuota quando il filtro si spegne. */
+export interface SectionView {
+  collapsed: ReadonlySet<string>;
+  filtering: boolean;
+  closedWhileFiltering: ReadonlySet<string>;
+}
+
+/** Se un reparto è aperto a video. Un filtro mostra quel che ha trovato e non cambia
+ * quel che l'utente aveva deciso: con un filtro acceso a video restano solo i reparti
+ * che hanno un risultato, e sono aperti — salvo quelli che si chiudono a mano proprio
+ * adesso, perché toccare il titolo durante una ricerca chiude per davvero. Spento il
+ * filtro, vale il salvato. Il mondo di S14 non passa da qui: decide quali reparti ci
+ * sono, non come stanno. */
+export function sectionOpen(category: string, view: SectionView): boolean {
+  return view.filtering
+    ? !view.closedWhileFiltering.has(category)
+    : !view.collapsed.has(category);
+}
+
+/** Quel che un reparto chiuso non deve nascondere (spec S15 §2): le voci finite, che
+ * hanno il loro «In lista» da toccare, e quelle in scadenza o oltre, che hanno un tempo
+ * che corre. Una finita conta una volta, come finita: è la regola del riepilogo in cima
+ * (`isExpiring` lascia fuori le finite). */
+export function attentionCounts(rows: PantryItem[]): { finished: number; expiring: number } {
+  let finished = 0;
+  let expiring = 0;
+  for (const row of rows) {
+    if (row.status === "finished") finished += 1;
+    else if (isExpiring(row)) expiring += 1;
+  }
+  return { finished, expiring };
+}
+
+export function finishedText(count: number): string {
+  return count === 1 ? "1 finito" : `${count} finiti`;
+}
+
+export function expiringText(count: number): string {
+  return `${count} in scadenza`;
 }

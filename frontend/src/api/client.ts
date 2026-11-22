@@ -80,3 +80,10 @@ export async function apiFetchWithHeaders<T>(
   const data = response.status === 204 ? (null as T) : ((await response.json()) as T);
   return { data, headers: response.headers };
 }
+
+/** La risposta così com'è, col corpo ancora da leggere: per lo streaming della chat
+ * (SSE su una `POST`). Passa da `request`, quindi un rifiuto prima dello stream arriva
+ * come ogni altro (`ApiError` con il corpo, `UnauthorizedError` sul 401). */
+export async function apiStream(path: string, init: RequestInit = {}): Promise<Response> {
+  return request(path, init);
+}

@@ -26,11 +26,16 @@ class Settings(BaseSettings):
     # successiva risponderebbe 401, senza dire perché. In produzione vale true
     # (docker-compose.prod.yml lo impone al servizio).
     cookie_secure: bool = False
-    # OpenRouter è l'unico fornitore di LLM dell'applicazione. Un secondo fornitore
-    # dietro un'interfaccia scelta da una variabile (come EMBEDDING_BACKEND) non
-    # girerebbe mai in produzione, e sarebbe il difetto in cima a CLAUDE.md. Quel che
-    # resta configurabile è il modello: OpenRouter fa da proxy anche a Claude, quindi
-    # passare a un modello grosso è questa riga, non un secondo client.
+    # OpenRouter è l'unico fornitore di LLM dell'import e dell'AI sulle ricette. Un
+    # secondo fornitore dietro un'interfaccia scelta da una variabile (come
+    # EMBEDDING_BACKEND) non girerebbe mai in produzione, e sarebbe il difetto in cima
+    # a CLAUDE.md. Quel che resta configurabile è il modello: OpenRouter fa da proxy
+    # anche a Claude, quindi passare a un modello grosso è questa riga, non un secondo
+    # client. C'è un secondo percorso, ed è per i Pasti (la chat dei piatti): Claude sul
+    # piano di Mattia, via Agent SDK. Non è il caso che la regola vieta, perché non è una
+    # scelta fra due client per lo stesso lavoro: ogni lavoro ha un solo percorso, che
+    # in produzione gira davvero (il token è obbligatorio per la chat, e `check_claude`
+    # lo prova nello stack).
     openrouter_api_key: str | None = None
     openrouter_model: str = "google/gemma-4-26b-a4b-it"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
@@ -47,6 +52,12 @@ class Settings(BaseSettings):
     # dentro è lento, e un timeout troppo corto si presenta come «decidi a mano».
     llm_timeout_seconds: float = 60.0
     llm_max_concurrency: int = 8
+    # Claude per i Pasti. Vuoto o assente: la chat dice che Claude non è collegato.
+    claude_code_oauth_token: str | None = None
+    claude_model: str = "claude-opus-5-5"
+    claude_reply_timeout_seconds: float = 240.0
+    # Una cartella vuota come `cwd` dell'SDK: nessun CLAUDE.md di progetto è vicino.
+    claude_workdir: str = "/tmp/spena-claude"
     embedding_backend: str = "local"
     embedding_model: str = "intfloat/multilingual-e5-small"
     embedding_endpoint: str = ""

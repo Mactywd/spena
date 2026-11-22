@@ -2,6 +2,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ActionBar } from "./ActionBar";
+import { IconBarcode } from "./icons";
 
 function Harness({ onAdd }: { onAdd: (text: string) => void }) {
   const [value, setValue] = useState("");
@@ -51,5 +52,24 @@ describe("ActionBar", () => {
       .className.split(/\s+/)
       .filter((c) => c.startsWith("rounded"));
     expect(radii).toEqual(["rounded-[10px]"]);
+  });
+
+  it("il pulsante in più sta accanto al +, col suo nome, e non manda il modulo (S3)", () => {
+    const onAdd = vi.fn();
+    const onScan = vi.fn();
+    render(
+      <ActionBar
+        inputLabel="Cerca o aggiungi in dispensa"
+        placeholder="Cerca o aggiungi"
+        addLabel="Aggiungi in dispensa"
+        value="latte"
+        onChange={() => {}}
+        onAdd={onAdd}
+        secondaryAction={{ icon: IconBarcode, label: "Scansiona", onClick: onScan }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Scansiona" }));
+    expect(onScan).toHaveBeenCalledTimes(1);
+    expect(onAdd).not.toHaveBeenCalled();
   });
 });

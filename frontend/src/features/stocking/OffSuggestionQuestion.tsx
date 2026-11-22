@@ -1,12 +1,6 @@
 import { Button } from "../../components/ui/Button";
 import type { ProductSuggestion } from "./CustomProductForm";
-
-/** Il nome di Open Food Facts accanto alla domanda, in una frase sola. */
-function describeSuggestion(suggestion: ProductSuggestion): string {
-  const what = suggestion.name ? `«${suggestion.name}»` : "senza nome";
-  const by = suggestion.brand ? `, di ${suggestion.brand}` : "";
-  return `Su Open Food Facts è ${what}${by}.`;
-}
+import { describeSuggestion } from "./wording";
 
 /**
  * La domanda prima del modulo, quando un codice nuovo al catalogo è noto a Open
@@ -31,7 +25,9 @@ export function OffSuggestionQuestion({
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-card border border-line p-3">
-      <h2 className="font-semibold">È un «{ingredientName}»?</h2>
+      {/* senza articolo: l'«un» della domanda di prima non si accordava con «zucchina», e un articolo
+          giusto per ogni nome lo saprebbe solo un dizionario (giro del 2026-10-07) */}
+      <h2 className="font-semibold">È «{ingredientName}»?</h2>
       <p className="text-ink">{describeSuggestion(suggestion)}</p>
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={onYes}>

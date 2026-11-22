@@ -221,6 +221,51 @@ solo dove manca. Un costo scelto a mano non si tocca; se la fonte chiede di smet
 si ferma, e rilanciato riprende da dove era. Le pagine importate da qui in avanti il
 costo lo portano già.
 
+### Le figure degli ingredienti in dispensa
+
+Ogni riga della Dispensa ha a sinistra del nome la figura del suo ingrediente: un'emoji
+di un elenco chiuso (fermo a Emoji 14.0, in `backend/app/domain/emoji.py`), o, dove non
+ce n'è una, l'icona del reparto in grigio. Un ingrediente nasce senza figura; a deciderla
+è l'AI, con un comando da lanciare a mano — una volta dopo la migrazione `0013`, e poi
+quando si vuole dare una figura agli ingredienti nati dopo:
+
+```bash
+docker compose exec backend python -m app.cli.decide_emoji
+```
+
+Chiede all'AI cento nomi per volta, e scrive solo dove la figura non è ancora decisa e
+solo un'emoji dell'elenco (o «nessuna», se nessuna va bene); una risposta che non sa
+verificare la lascia da decidere. L'ultima riga dice quanti ingredienti restano, e allora
+si rilancia; ma se quel numero non scende fra due lanci, quelli restano col ripiego del
+reparto (o se ne sceglie la figura a mano in Anagrafica) e rilanciare ancora non serve.
+Se l'AI non risponde, il comando lo dice con una riga «figure non disponibili (…)», col
+perché fra parentesi: i lotti già decisi prima del guasto restano scritti (ogni lotto si
+salva appena finito), e il guasto ferma solo quelli dopo. Se quella riga torna identica a
+ogni lancio, il perché è lì. Senza `OPENROUTER_API_KEY` non si rompe niente: le righe
+mostrano l'icona del reparto. Una figura sbagliata si corregge nella scheda dell'ingrediente in
+Anagrafica, «Cambia figura»; una scelta fatta lì, «Nessuna» compresa, il comando non la
+tocca più. In produzione, con `-f docker-compose.prod.yml` come ogni altro comando.
+
+### I sostituti degli ingredienti
+
+«Sostituisci», dentro una ricetta, legge una risposta salvata per ingrediente e contesto
+(dolce o salato): uno o più sostituti, «si può omettere», «insostituibile». Le decide
+l'AI, una voce per chiamata, e le scrive solo dove non c'è una risposta:
+
+```bash
+docker compose exec backend python -m app.cli.decide_substitutes --dry-run
+docker compose exec backend python -m app.cli.decide_substitutes --limit 20
+docker compose exec backend python -m app.cli.decide_substitutes
+```
+
+Il primo non chiama nessuno: dice quante voci mancano e, dopo un lancio vero, quanto
+costerebbe il resto con la media pagata. Il secondo chiede le venti più usate e stampa
+una riga per voce, da guardare prima del resto. L'ultima riga dice sempre quante voci
+restano. Senza il comando non si rompe niente: una voce che manca si chiede all'AI la
+prima volta che qualcuno tocca «Sostituisci». Le risposte si correggono in Anagrafica,
+nella scheda dell'ingrediente, e per una ricetta sola dalla ricetta («Non va bene qui»);
+una correzione a mano il comando non la tocca mai.
+
 ### I vettori della ricerca semantica
 
 Se tieni accesa la ricerca semantica (`INSTALL_EMBEDDINGS=1`), dopo un import esegui:
@@ -242,6 +287,56 @@ scelta di usarlo è di chi lo esegue: le ricette restano nel tuo database, non s
 ridistribuiscono, e ognuna conserva l'indirizzo originale, che la schermata della
 ricetta offre con «apri l'originale». La decisione e i suoi limiti stanno in §3 di
 `docs/superpowers/specs/2026-09-12-import-ricette-design.md`.
+
+## I valori nutrizionali degli ingredienti (CIQUAL)
+
+I nutrienti medi di un ingrediente generico — `pomodoro`, non una marca — vengono dalla
+tabella CIQUAL 2025 dell'Anses: Anses. 2025. Table de composition nutritionnelle des
+aliments Ciqual (<https://doi.org/10.57745/RDMHWY>, licenza Etalab 2.0, che chiede di
+citare la fonte). Il file è `data/ciqual/ciqual-2025.xlsx`; si carica, e si ricarica
+quando esce un'edizione nuova:
+
+```bash
+docker compose exec backend python -m app.cli.load_ciqual --dry-run   # legge e conta, non scrive
+docker compose exec backend python -m app.cli.load_ciqual
+```
+
+Un file che non torna — una colonna con un'unità diversa da quella attesa, una colonna
+d'obbligo che manca — non scrive niente e dice quale colonna. Poi l'AI sceglie l'alimento
+di ogni ingrediente alimentare che non ne ha uno, fra candidati trovati nella tabella:
+
+```bash
+docker compose exec backend python -m app.cli.s4_pilot             # prima: 30 casi con la risposta nota
+docker compose exec backend python -m app.cli.decide_ciqual --limit 20
+docker compose exec backend python -m app.cli.decide_ciqual
+```
+
+Il pilota non scrive niente sugli ingredienti: dice quanti casi l'AI azzecca, contro la
+soglia del 90%, e quanto è costato. `decide_ciqual` scrive solo dove un ingrediente non ha
+ancora una scelta, e l'ultima riga dice quanti ne restano. Una scelta si corregge nella
+scheda dell'ingrediente in Anagrafica, «Valori nutrizionali»: «Cambia alimento» (si cerca
+in francese, come la tabella, o per codice), «Nessun alimento adatto», o «Annulla la
+scelta», che la ridà all'AI. Una scelta fatta lì il comando non la tocca. In produzione,
+con `-f docker-compose.prod.yml` come ogni altro comando.
+
+### I pesi delle dosi, e i nutrienti di una ricetta
+
+Una ricetta dice dosi, non grammi. Le dosi in grammi o in litri si pesano da sé (i litri
+con densità 1, salvo olio, miele, sciroppi e latte condensato); le altre — «1 spicchio»,
+«2 cucchiai», «2» uova — hanno un peso per coppia ingrediente × unità canonica, che decide
+l'AI:
+
+```bash
+docker compose exec backend python -m app.cli.decide_grams --limit 40
+docker compose exec backend python -m app.cli.decide_grams
+```
+
+Scrive solo dove una coppia non ha ancora un peso; l'ultima riga dice quante ne restano.
+Un peso si corregge nella scheda dell'ingrediente in Anagrafica, «Pesi per unità», e
+«Annulla il peso» lo ridà all'AI. Il pilota (`s4_pilot`) prova anche venti pesi noti.
+Nel dettaglio di una ricetta, in fondo, «Valori nutrizionali» somma le righe che hanno una
+dose, un alimento CIQUAL e un peso, e dice quali restano fuori e perché («q.b.» fuori per
+scelta). Gli stessi numeri escono da `GET /api/v1/recipes/{id}/nutrition`.
 
 ## Test
 
@@ -475,6 +570,9 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 | `OPENROUTER_PROVIDER_ONLY` | vuoto | vuoto: instradamento per prezzo scelto da OpenRouter. Valorizzata (es. `darkbloom`): pinni il provider a mano, e perdi la caduta automatica sul successivo |
 | `LLM_TIMEOUT_SECONDS` | `60` | oltre il quale una chiamata al modello si considera persa |
 | `LLM_MAX_CONCURRENCY` | `8` | quante domande in volo nel riconoscimento parallelo dei termini |
+| `CLAUDE_CODE_OAUTH_TOKEN` | vuoto | la chat dei Pasti con Claude: il token del piano di Mattia, da `claude setup-token` (dura un anno), **solo nel `.env` del server**. Vuoto, la chat dice che Claude non è collegato e il resto dei Pasti funziona a mano |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | il modello dei Pasti, sul piano di Claude (non su OpenRouter) |
+| `CLAUDE_REPLY_TIMEOUT_SECONDS` | `240` | il tempo massimo di una risposta della chat; oltre, il messaggio resta con l'avviso e «Riprova» |
 | `EMBEDDING_BACKEND` | `local` | `local`, `http` oppure `fake`; `local` richiede `INSTALL_EMBEDDINGS=1` |
 | `INSTALL_EMBEDDINGS` | `0` | argomento di build: a `1` l'immagine installa sentence-transformers |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-small` | modello locale; cambiandolo va rimisurata `SEMANTIC_MAX_DISTANCE` (vedi sotto) |
@@ -496,6 +594,17 @@ Nessuna di queste, mancando, porta a un vicolo cieco nell'interfaccia: senza
 dalla coda, senza modello di embedding la ricerca resta quella testuale, con Open
 Food Facts irraggiungibile il prodotto si crea a mano. È una regola di casa, non un
 caso fortunato.
+
+**Claude per i Pasti** si controlla dentro l'immagine che gira:
+`docker compose -f docker-compose.prod.yml exec backend python -m app.cli.check_claude [--prova]`.
+Senza argomenti non usa la rete: stampa la versione di `claude-agent-sdk`, la versione
+del binario di Claude Code incluso e `token: presente` o `token: assente` (mai il
+valore). Con `--prova` fa una sola chiamata minima e deve dire «prova: ok». La chat
+spegne `ANTHROPIC_API_KEY` e `ANTHROPIC_AUTH_TOKEN` nell'ambiente del CLI, così usa
+sempre il token del piano anche se il `.env` del server ha ancora la chiave;
+`check_claude` avvisa se la chiave c'è (senza stamparla), e la prova vera resta
+`--prova` con «prova: ok». Che il valore vuoto basti a spegnere la chiave è stato
+verificato leggendo il codice dell'SDK e del CLI, non con una chiamata vera.
 
 ### La ricerca semantica è facoltativa, e per default è spenta
 

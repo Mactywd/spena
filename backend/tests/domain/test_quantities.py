@@ -4,7 +4,11 @@ import pytest
 
 from app.domain.quantities import (
     UNIT_MAX_LENGTH,
+    AnchorOutOfRange,
     UnitForms,
+    anchor_factor,
+    decimal_text,
+    equivalent_servings,
     parse_quantity,
     render_quantity,
     scale_quantity,
@@ -47,7 +51,15 @@ from app.domain.quantities import (
         ("1 + 2", (Decimal("3"), None)),
         # ...unità diverse no: la somma di due cose diverse non è un numero
         ("500 g + 2 cucchiai", (None, None)),
-        ("300 g + q.b.", (None, None)),
+        # «q.b.» accanto a una dose non la rende illeggibile: i 300 g si riscalano, e il
+        # «+ q.b.» lo rimette accanto `with_qb_tail` (Mattia, 2026-10-13)
+        ("300 g + q.b.", (Decimal("300"), "g")),
+        ("10 g + q.b.", (Decimal("10"), "g")),
+        ("1 pizzico + q.b.", (Decimal("1"), "pizzico")),
+        ("q.b. per spolverare + 50 g", (Decimal("50"), "g")),
+        # solo «q.b.», o «q.b.» con quel che non si legge: niente da riscalare
+        ("q.b. + q.b.", (None, None)),
+        ("abbondante + q.b.", (None, None)),
         # maiuscole e spazi non contano
         ("  300  G  ", (Decimal("300"), "g")),
         # numero misto: «2 1/2» sono due e mezzo, e leggerne solo il 2 vorrebbe dire
@@ -55,6 +67,19 @@ from app.domain.quantities import (
         ("2 1/2 cucchiai", (None, None)),
         ("1 1/2", (None, None)),
         ("2  1/2 tazze", (None, None)),
+        # le frazioni di un carattere solo, come le scrive GialloZafferano
+        ("½", (Decimal("0.5"), None)),
+        ("½ cucchiaino", (Decimal("0.5"), "cucchiaino")),
+        ("¼ cucchiaino", (Decimal("0.25"), "cucchiaino")),
+        ("¾ tazza", (Decimal("0.75"), "tazza")),
+        # col numero intero davanti è una dose sola, e «½» non è mai un'unità
+        ("1 ½ cucchiai", (Decimal("1.5"), "cucchiai")),
+        ("1½", (Decimal("1.5"), None)),
+        ("1 ½", (Decimal("1.5"), None)),
+        # le somme di merge_quantities con le frazioni: «½ + ½» sono due metà dello
+        # stesso limone, cioè uno
+        ("1 + ½", (Decimal("1.5"), None)),
+        ("½ + ½", (Decimal("1"), None)),
     ],
 )
 def test_parse_quantity(text, expected):
@@ -121,3 +146,67 @@ def test_scale_quantity(value, factor, expected):
 )
 def test_render_quantity(value, unit, expected):
     assert render_quantity(value, unit) == expected
+
+
+# R2, secondo modo: la dose di una riga fissata a mano, e il resto che la segue
+
+
+@pytest.mark.parametrize(
+    "base,amount,expected",
+    [
+        (Decimal("400"), Decimal("150"), Decimal("0.375")),
+        (Decimal("300"), Decimal("112.5"), Decimal("0.375")),
+        # un mezzo bicchiere fissato a uno: il doppio
+        (Decimal("0.5"), Decimal("1"), Decimal("2")),
+        (Decimal("300"), Decimal("300"), Decimal("1")),
+        # gli estremi sono dentro: cinquanta volte in giù e in su
+        (Decimal("300"), Decimal("6"), Decimal("0.02")),
+        (Decimal("300"), Decimal("15000"), Decimal("50")),
+    ],
+)
+def test_anchor_factor(base, amount, expected):
+    assert anchor_factor(base, amount) == expected
+
+
+@pytest.mark.parametrize("amount", [Decimal("5.999"), Decimal("15000.001"), Decimal("0.001")])
+def test_anchor_factor_oltre_50_volte(amount):
+    with pytest.raises(AnchorOutOfRange) as caught:
+        anchor_factor(Decimal("300"), amount)
+    # gli estremi arrivano già scalati come si mostrano: la frase che li cita non
+    # promette un numero che poi si rifiuta
+    assert caught.value.low == Decimal("6")
+    assert caught.value.high == Decimal("15000")
+
+
+@pytest.mark.parametrize(
+    "servings,factor,expected",
+    [
+        (4, Decimal("0.375"), Decimal("1.5")),
+        # sotto una porzione, due decimali: «≈ 0,75» e non «≈ 0,8»
+        (2, Decimal("0.375"), Decimal("0.75")),
+        (4, Decimal("1"), Decimal("4")),
+        (3, Decimal(1) / Decimal(3), Decimal("1")),
+        (2, Decimal(1) / Decimal(3), Decimal("0.67")),
+        (1, Decimal("0.02"), Decimal("0.02")),
+        # metà in su: 1,85 → 1,9
+        (4, Decimal("0.4625"), Decimal("1.9")),
+        (50, Decimal("50"), Decimal("2500")),
+    ],
+)
+def test_equivalent_servings(servings, factor, expected):
+    assert equivalent_servings(servings, factor) == expected
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (Decimal("150"), "150"),
+        (Decimal("150.500"), "150.5"),
+        # un «1e3» arrivato dalla query: niente esponenti nello storico
+        (Decimal("1E+3"), "1000"),
+        (Decimal("0.375"), "0.375"),
+        (Decimal("50.000000"), "50"),
+    ],
+)
+def test_decimal_text(value, expected):
+    assert decimal_text(value) == expected

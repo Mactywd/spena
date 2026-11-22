@@ -116,6 +116,10 @@ async def test_se_il_salvataggio_fallisce_nessun_ingrediente_resta_orfano(logged
     }
     response = await logged_client.post("/api/v1/recipes", json=payload)
     assert response.status_code == 409
+    # e dice quale: le due righe «speck» diventano lo stesso ingrediente
+    assert response.json()["detail"] == (
+        "Due righe puntano allo stesso ingrediente, «Speck»: togline una, poi salva."
+    )
 
     trovati = (
         await db_session.execute(select(Ingredient).where(Ingredient.name == "speck"))
@@ -149,3 +153,27 @@ async def test_un_nome_che_e_alias_di_una_voce_non_alimentare_non_passa(
 
     assert response.status_code == 422
     assert "Sapone per le mani" in response.json()["detail"]
+
+
+async def test_due_righe_sullo_stesso_ingrediente_dicono_quale(logged_client, db_session):
+    """Un nome nuovo che coincide con una riga già agganciata: il 409 lo nomina.
+
+    Prima la frase diceva «due righe» e basta, e su dodici righe si cercavano a occhio.
+    """
+    pasta = await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI,
+    )
+    await db_session.commit()
+
+    response = await logged_client.post("/api/v1/recipes", json={
+        "title": "Pasta e pasta", "instructions": "1. cuoci", "servings": 2, "source": "manual",
+        "ingredients": [
+            {"ingredient_id": str(pasta.id), "role": "primary"},
+            {"name": "pasta", "category": "cereali", "role": "secondary"},
+        ],
+    })
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Due righe puntano allo stesso ingrediente, «Pasta»: togline una, poi salva."
+    )

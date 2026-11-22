@@ -17,6 +17,7 @@ import {
   undoTerm,
 } from "./api";
 import { DecidedTermRow } from "./DecidedTermRow";
+import { SkippedPages } from "./SkippedPages";
 import { TermCard, type Decision } from "./TermCard";
 
 /** Il messaggio da mostrare quando una decisione fallisce.
@@ -186,6 +187,8 @@ export function ImportQueueScreen() {
   const notice = useNotice();
   const [lastRun, setLastRun] = useState<LastRun | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
+  // il termine appena annullato, finché la sua scheda non ha preso il fuoco (TermCard)
+  const [arriving, setArriving] = useState<string | null>(null);
 
   const { data: queue = [], isLoading, isError } = useQuery({
     queryKey: ["import-terms"],
@@ -253,8 +256,9 @@ export function ImportQueueScreen() {
       // questo, annullare un secondo termine con successo lascerebbe in vista
       // l'alert del primo tentativo fallito
       setUndoError(null);
+      setArriving(null);
     },
-    onSuccess: (result) => {
+    onSuccess: (result, termId) => {
       // l'esito passa dall'avviso unico (spec T3 §4.7, dal giro: «Annulla parte senza
       // lapide»): la riga annullata sparisce dall'elenco, e la frase che dice cosa ha
       // disfatto sta dove stanno tutte le conferme. Senza azione: rifare la decisione è
@@ -270,6 +274,7 @@ export function ImportQueueScreen() {
         }),
       });
       setLastRun(null);
+      setArriving(termId);
       queryClient.invalidateQueries({ queryKey: ["import-terms"] });
       queryClient.invalidateQueries({ queryKey: ["import-status"] });
       queryClient.invalidateQueries({ queryKey: ["recipes"] });
@@ -341,6 +346,8 @@ export function ImportQueueScreen() {
                 suggestionName={focused.suggestion?.name ?? null}
                 pending={decide.isPending}
                 onDecide={(decision) => decide.mutate({ termId: focused.id, decision })}
+                arriving={arriving === focused.id}
+                onArrived={() => setArriving(null)}
               />
             ) : (
               <DecidedTermRow
@@ -413,6 +420,8 @@ export function ImportQueueScreen() {
               suggestionName={term.suggestion?.name ?? null}
               pending={decide.isPending}
               onDecide={(decision) => decide.mutate({ termId: term.id, decision })}
+              arriving={arriving === term.id}
+              onArrived={() => setArriving(null)}
             />
           ))}
         </ul>
@@ -440,6 +449,10 @@ export function ImportQueueScreen() {
           </ul>
         </section>
       )}
+      {/* le pagine scartate, chiuse di partenza (spec 2026-10-09-scartate-in-coda): in
+          fondo, perché la coda resta la cosa da fare; il numero è quello che lo stato porta
+          già, e senza scartate la sezione non c'è */}
+      <SkippedPages count={status?.skipped ?? 0} />
     </Screen>
   );
 }

@@ -1,22 +1,53 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { IngredientPicker } from "../../components/IngredientPicker";
-import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorState } from "../../components/ui/ErrorState";
 import { Screen } from "../../components/ui/Screen";
 import { Section } from "../../components/ui/Section";
 import { ActionBar } from "../../components/ui/ActionBar";
-import { IconCalendarEvent, IconPlus, IconSearch, IconX } from "../../components/ui/icons";
+import { IconBarcode, IconCalendarEvent, IconPlus, IconSearch, IconX } from "../../components/ui/icons";
 import { useNotice } from "../../components/ui/noticeContext";
+import { DirectEntry, type EntryDoor } from "./DirectEntry";
 import { PantryRow } from "./PantryRow";
-import { expiryCounts, expirySummary, groupForDisplay, hasExpiry, itemLabel, matchesQuery } from "./pantryView";
-import { addPantryItem, fetchPantry, patchPantryItem, restockPantryItem } from "./api";
+import {
+  attentionCounts,
+  expiryCounts,
+  expirySummary,
+  expiringText,
+  finishedText,
+  groupForDisplay,
+  hasBothWorlds,
+  inWorld,
+  itemLabel,
+  settleWorld,
+  visibleItems,
+  WORLD_LABELS,
+  type PantryWorld,
+} from "./pantryView";
+import { useCollapsedSections } from "./collapsedSections";
+import { loadWorld, saveWorld } from "./pantryWorld";
+import { WorldSelector } from "./WorldSelector";
+import { fetchPantry, patchPantryItem, restockPantryItem } from "./api";
 import { fetchShoppingList } from "../shopping-list/api";
 import { ShoppingEntryCard } from "../shopping-list/ShoppingEntryCard";
-import type { Ingredient, PantryItem, PantryStatus } from "../../domain/types";
+import type { PantryItem, PantryStatus } from "../../domain/types";
+
+/** Quel che un reparto chiuso non deve nascondere (spec S15 §2): le voci finite, che
+ * hanno il loro «In lista» da toccare, e quelle in scadenza, che hanno un tempo che
+ * corre. In parole, e non con un pallino: un colore solo non dice niente a chi non lo
+ * distingue. Gli stessi colori delle righe: il «Finito» e la scadenza di `PantryRow`. */
+function attentionNote(rows: PantryItem[]): ReactNode {
+  const { finished, expiring } = attentionCounts(rows);
+  if (finished === 0 && expiring === 0) return null;
+  return (
+    <>
+      {finished > 0 && <span className="font-medium text-finished">{finishedText(finished)}</span>}
+      {finished > 0 && expiring > 0 && " · "}
+      {expiring > 0 && <span className="font-medium text-expiry">{expiringText(expiring)}</span>}
+    </>
+  );
+}
 
 export function PantryScreen() {
   const queryClient = useQueryClient();
@@ -110,35 +141,72 @@ export function PantryScreen() {
     onError: (_error, item) => markFailed(item.id),
   });
 
-  // Spec §4 e §8.3: l'ingresso diretto, cioè senza passare dalla lista. Serve a chi
-  // torna a casa con una cosa che non aveva scritto, e a censire la dispensa la
-  // prima volta; senza, l'unica strada era inventare una voce di lista, spuntarla e
-  // sistemarla. Entra `available` e sfusa: lo stato si corregge col controllo qui
-  // accanto, la marca si aggancia dove c'è un codice da leggere.
-  const [addFailed, setAddFailed] = useState(false);
-
   const [query, setQuery] = useState("");
   const [expiringOnly, setExpiringOnly] = useState(false);
-  // il testo con cui si è aperta l'aggiunta; `null` quando è chiusa
-  const [adding, setAdding] = useState<string | null>(null);
+  // S15: ricerca e riepilogo sono filtri, e aprono i reparti che hanno un risultato senza
+  // salvare niente; il mondo di S14 no, è una vista. `matchesQuery` ignora gli spazi ai
+  // lati, e così questa condizione
+  const filtering = query.trim() !== "" || expiringOnly;
+  const sections = useCollapsedSections(filtering);
+  // S14: il mondo scelto, ricordato per la sessione (`pantryWorld.ts`). Si scrive a ogni
+  // cambio, anche quando è il disegno a riportarlo a «Tutto» (`settleWorld`, più giù)
+  const [world, setWorld] = useState<PantryWorld>(() => loadWorld());
+  useEffect(() => saveWorld(world), [world]);
+  // L'ingresso diretto (S3): una confezione che non passa dalla lista — chi torna a
+  // casa con una cosa che non aveva scritto, e il censimento della dispensa. Due porte:
+  // il + col testo della barra, e «Scansiona». `null` quando è chiuso; `serial` lo fa
+  // rinascere quando si riapre con un testo nuovo
+  const [entry, setEntry] = useState<{ door: EntryDoor; serial: number } | null>(null);
   // la voce appena aggiunta, da portare in vista quando arriva nell'elenco
   const [revealId, setRevealId] = useState<string | null>(null);
   const clearReveal = useCallback(() => setRevealId(null), []);
 
-  const add = useMutation({
-    mutationFn: (ingredient: Ingredient) => addPantryItem(ingredient.id),
-    onMutate: () => setAddFailed(false),
-    onSuccess: (created, ingredient) => {
-      invalidate();
-      setAdding(null);
-      // la barra torna vuota e il riepilogo si spegne: la riga nuova deve potersi vedere
-      setQuery("");
-      setExpiringOnly(false);
-      setRevealId(created.id);
-      notice({ text: `In dispensa: ${ingredient.display_name}` });
-    },
-    onError: () => setAddFailed(true),
-  });
+  // Un tocco sul selettore, o su «Cerca in tutto», è una scelta esplicita di chi guarda: spegne
+  // la riga da portare in vista. Se restasse in sospeso (la riga non monta, per esempio perché
+  // la ricerca la filtra via), `settleWorld` riporterebbe a «Tutto» ogni tocco successivo
+  function chooseWorld(next: PantryWorld) {
+    setRevealId(null);
+    setWorld(next);
+  }
+
+  function openEntry(door: EntryDoor) {
+    setEntry((prev) => ({ door, serial: (prev?.serial ?? 0) + 1 }));
+  }
+
+  // L'annulla di un ingresso: archivia la voce appena creata, come la ✕ di una riga.
+  // Vive nell'avviso, che è dell'app: se fallisce, un avviso nuovo lo dice e offre di
+  // riprovare — la voce è in dispensa davvero, e perderla qui sarebbe il vicolo cieco
+  function undoEntry(created: PantryItem, label: string) {
+    patchPantryItem(created.id, { archived: true }).then(
+      () => queryClient.invalidateQueries({ queryKey: ["pantry"] }),
+      () =>
+        notice({
+          text: `Non sono riuscito a togliere ${label} dalla dispensa.`,
+          action: { label: "Riprova", onClick: () => undoEntry(created, label) },
+        })
+    );
+  }
+
+  /** Una confezione è entrata, da una delle due porte. La riga nuova deve potersi
+   * vedere: la barra torna vuota, il riepilogo si spegne, e `revealId` la porta in
+   * vista quando arriva nell'elenco. Il mondo (S14) non si rimette qui: se la voce è
+   * dell'altro mondo ci pensa `settleWorld` nel disegno, guardando `revealId`. Il
+   * reparto della voce, se è chiuso, si apre (S15). */
+  function afterEntry(created: PantryItem, label: string) {
+    invalidate();
+    setQuery("");
+    setExpiringOnly(false);
+    setRevealId(created.id);
+    // S15: la voce entra in un reparto forse chiuso. Si apre adesso, insieme a `revealId`, e
+    // si salva aperto (l'utente ha appena messo lì qualcosa): `PantryRow` la porta in vista
+    // nel suo effetto, che React esegue prima di quelli di questo schermo, quindi quando la
+    // riga arriva il suo reparto deve essere già aperto
+    sections.setOpen(created.ingredient_category, true);
+    notice({
+      text: `In dispensa: ${label}`,
+      action: { label: "Annulla", onClick: () => undoEntry(created, label) },
+    });
+  }
 
   // il rientro in lista tocca la lista, non la dispensa: si invalida quella chiave,
   // altrimenti tornando in Lista il numero della scheda d'ingresso resta vecchio
@@ -174,7 +242,16 @@ export function PantryScreen() {
   if (restock.isPending) busyIds.add(restock.variables.id);
   if (expiry.isPending) busyIds.add(expiry.variables.id);
 
-  const summary = expirySummary(expiryCounts(items));
+  // S14 §3 e §4: un selettore che sparisce (un mondo solo) si porta via il suo filtro, e
+  // una voce appena aggiunta dell'altro mondo porta a «Tutto», perché si veda. Nel disegno
+  // e non in un effetto, come il riepilogo qui sotto: nessun giro col filtro fantasma. Solo
+  // a dispensa caricata: la lista vuota del caricamento non è una dispensa con un mondo solo
+  const settledWorld = settleWorld(world, items, revealId);
+  if (loaded && settledWorld !== world) setWorld(settledWorld);
+  const showWorlds = hasBothWorlds(items);
+  // il riepilogo conta il mondo scelto (Mattia, 2026-10-07): su «Cibo» dice quanti cibi
+  // scadono, o col riepilogo premuto direbbe «2 in scadenza» sopra zero righe
+  const summary = expirySummary(expiryCounts(items.filter((item) => inWorld(item, world))));
   // un riepilogo che sparisce (l'ultima voce in scadenza tolta o finita) si porta via
   // il filtro: una dispensa vuota per un filtro invisibile sarebbe una bugia, e quando
   // il riepilogo torna deve tornare non premuto. Si spegne qui, durante il disegno, e
@@ -183,9 +260,7 @@ export function PantryScreen() {
   if (summary === null && expiringOnly) setExpiringOnly(false);
   // il filtro guarda la data, non il conteggio: una voce finita non conta nel
   // riepilogo ma resta in vista, col suo «In lista» (hasExpiry)
-  const visible = items
-    .filter((item) => matchesQuery(item, query))
-    .filter((item) => !expiringOnly || hasExpiry(item));
+  const visible = visibleItems(items, { world, query, expiringOnly });
 
   return (
     <Screen title="Dispensa">
@@ -199,56 +274,27 @@ export function PantryScreen() {
           leadingIcon={IconSearch}
           value={query}
           onChange={setQuery}
-          onAdd={(text) => {
-            setAddFailed(false);
-            setAdding(text);
+          onAdd={(text) => openEntry({ kind: "plus", text })}
+          // la seconda porta (S3): la confezione in mano, il codice da leggere
+          secondaryAction={{
+            icon: IconBarcode,
+            label: "Scansiona",
+            onClick: () => openEntry({ kind: "scan" }),
           }}
         />
 
-        {adding !== null && (
-          <div className="flex flex-col gap-2 rounded-2xl bg-card p-3">
-            <div className="flex items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <IngredientPicker
-                  key={adding}
-                  label="Ingrediente da mettere in dispensa"
-                  initialTerm={adding}
-                  autoFocus
-                  failureNote="Riprova, oppure scrivilo in lista e sistemalo da lì."
-                  // la dispensa non crea ingredienti: quel che l'anagrafica non ha passa
-                  // dalla lista, che prende anche il testo libero — la stessa via
-                  // d'uscita di `failureNote`, con la strada a portata di dito
-                  emptyNote={
-                    <>
-                      Non è in anagrafica: scrivilo in{" "}
-                      <Link to="/lista" className="inline-flex min-h-11 items-center font-medium text-brand">
-                        lista
-                      </Link>{" "}
-                      e sistemalo da lì.
-                    </>
-                  }
-                  onPick={(ingredient) => add.mutate(ingredient)}
-                  disabled={add.isPending}
-                />
-              </div>
-              <Button
-                variant="ghost"
-                icon={IconX}
-                label="Chiudi l'aggiunta"
-                onClick={() => {
-                  setAddFailed(false);
-                  setAdding(null);
-                }}
-              />
-            </div>
-            <p className="text-xs text-ink-faint">Entra come disponibile e senza marca.</p>
-            {/* accanto al controllo che ha fallito, e la scelta non si perde: si
-                rifà toccando di nuovo l'ingrediente */}
-            {addFailed && (
-              <Alert>Non sono riuscito ad aggiungere la voce in dispensa. Riprova.</Alert>
-            )}
-          </div>
+        {entry !== null && (
+          <DirectEntry
+            key={entry.serial}
+            door={entry.door}
+            onEntered={afterEntry}
+            onClose={() => setEntry(null)}
+          />
         )}
+
+        {/* S14: sotto la barra (e sotto il pannello dell'aggiunta, quando è aperto), sopra il
+            riepilogo che conta il mondo scelto. Solo coi due mondi in dispensa */}
+        {showWorlds && <WorldSelector value={world} onChange={chooseWorld} />}
 
         {summary !== null && (
           <button
@@ -298,18 +344,26 @@ export function PantryScreen() {
           />
         )}
 
+        {/* S14 §4: col mondo scelto il vuoto è del mondo, non della dispensa. Il sale può stare
+            sotto «Cibo»: «Niente in dispensa» sarebbe falso, e «Aggiungi» ne farebbe un
+            doppione. La via d'uscita allarga a «Tutto» e tiene il testo; l'offerta di
+            aggiungere torna lì, se anche «Tutto» non trova niente */}
+        {loaded && visible.length === 0 && query.trim() !== "" && !expiringOnly && world !== "all" && (
+          <EmptyState
+            title={`Niente in ${WORLD_LABELS[world]} per «${query.trim()}»`}
+            action={<Button onClick={() => chooseWorld("all")}>Cerca in tutto</Button>}
+          />
+        )}
+
         {/* con l'aggiunta già aperta l'offerta sarebbe un doppione del pannello qui sopra */}
-        {loaded && visible.length === 0 && query.trim() !== "" && !expiringOnly && (
+        {loaded && visible.length === 0 && query.trim() !== "" && !expiringOnly && world === "all" && (
           <EmptyState
             title={`Niente in dispensa per «${query.trim()}»`}
             action={
-              adding === null && (
+              entry === null && (
                 <Button
                   icon={IconPlus}
-                  onClick={() => {
-                    setAddFailed(false);
-                    setAdding(query.trim());
-                  }}
+                  onClick={() => openEntry({ kind: "plus", text: query.trim() })}
                 >
                   {`Aggiungi «${query.trim()}»`}
                 </Button>
@@ -320,7 +374,14 @@ export function PantryScreen() {
 
         {loaded &&
           groupForDisplay(visible).map(([category, rows]) => (
-            <Section key={category} category={category} count={rows.length}>
+            <Section
+              key={category}
+              category={category}
+              count={rows.length}
+              collapsed={!sections.isOpen(category)}
+              onToggle={() => sections.setOpen(category, !sections.isOpen(category))}
+              closedNote={attentionNote(rows)}
+            >
               <ul>
                 {rows.map((item) => (
                   <PantryRow

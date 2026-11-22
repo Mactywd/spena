@@ -13,6 +13,7 @@ from app.core.security import require_session
 from app.db.models.ingredient import Ingredient, IngredientAlias
 from app.db.models.product import Product
 from app.db.models.recipe_import import ImportTerm
+from app.domain.emoji import shown_emoji
 from app.domain.rules import IngredientKind
 from app.repositories.ingredients import (
     add_alias,
@@ -33,9 +34,11 @@ from app.schemas.ingredient import (
     IngredientUsageOut,
     MergeIn,
     MergeOut,
+    NewNameMatchOut,
     ProductBriefOut,
 )
 from app.services import registry
+from app.services.ingredient_match import ingredient_for_new_name
 from app.services.registry import RegistryRefusal
 
 router = APIRouter(
@@ -54,6 +57,26 @@ async def search(
     # e per i vicini dell'AI (spec 2026-10-06-suggerimenti-soglia, decisione 3)
     found = await suggest_ingredients(session, q, limit, kind=kind)
     return [IngredientOut.model_validate(i) for i in found]
+
+
+@router.get("/match", response_model=NewNameMatchOut)
+async def match_new_name(
+    # lo stesso limite di `RecipeIngredientIn.name`: è il nome che la riga manderebbe
+    name: str = Query(min_length=1, max_length=120),
+    session: AsyncSession = Depends(get_session),
+) -> NewNameMatchOut:
+    """Dove finirebbe questo nome, scritto nel passo del nome del modulo, salvando la
+    ricetta (piano 20). Sola lettura.
+
+    La risposta è `ingredient_for_new_name`, la stessa funzione che `resolve_lines`
+    (`app/services/recipe_writing.py`) chiama salvando: se dice un non alimentare, il salvataggio lo rifiuterebbe, e il
+    modulo lo dice prima. Dichiarata prima di `/{ingredient_id}`, che altrimenti la
+    prenderebbe e risponderebbe 422 su «match», che non è un UUID.
+    """
+    found = await ingredient_for_new_name(session, name)
+    return NewNameMatchOut(
+        ingredient=IngredientOut.model_validate(found) if found is not None else None
+    )
 
 
 @router.post(
@@ -156,6 +179,7 @@ async def _detail(session: AsyncSession, ingredient_id: uuid.UUID) -> Ingredient
     usage = await ingredient_usage(session, ingredient_id)
     return IngredientDetailOut(
         **IngredientOut.model_validate(ingredient).model_dump(),
+        emoji=shown_emoji(ingredient.emoji),
         aliases=await _aliases_out(session, ingredient_id),
         products=[ProductBriefOut.model_validate(product) for product in products],
         usage=IngredientUsageOut(**asdict(usage)),
@@ -174,7 +198,11 @@ async def update(
     ingredient_id: uuid.UUID, payload: IngredientPatch,
     session: AsyncSession = Depends(get_session),
 ) -> IngredientDetailOut | JSONResponse:
-    if payload.name is None and payload.category is None:
+    if (
+        payload.name is None
+        and payload.category is None
+        and "emoji" not in payload.model_fields_set
+    ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "niente da cambiare")
     try:
         if payload.name is not None:
@@ -183,6 +211,8 @@ async def update(
             )
         if payload.category is not None:
             await registry.recategorize_ingredient(session, ingredient_id, payload.category)
+        if "emoji" in payload.model_fields_set:
+            await registry.set_ingredient_emoji(session, ingredient_id, payload.emoji)
     except LookupError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ingrediente inesistente") from exc

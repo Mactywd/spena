@@ -603,3 +603,53 @@ async def test_solo_il_ritorno_da_archiviata_e_controllato(
         f"/api/v1/shopping-list/{sistemata.id}", json={"status": "pending"}
     )
     assert riapri.status_code == 200
+
+
+# S3 §10.2: da una voce di lista possono uscire più confezioni — due vasetti, uno di
+# marca e uno sfuso, con due scadenze. Sono righe con lo stesso `shopping_item_id`; la
+# voce si chiude una volta sola. E sono dello stesso ingrediente: la voce ne ha uno.
+
+
+async def test_due_confezioni_della_stessa_voce_entrano_tutte_e_due(
+    logged_client, db_session, ingredienti
+):
+    product = Product(ingredient_id=ingredienti["yogurt"].id, name="Total 0%", brand="Fage",
+                      source="custom")
+    item = ShoppingListItem(raw_text="yogurt greco", ingredient_id=ingredienti["yogurt"].id,
+                            status=ShoppingStatus.CHECKED, reason=ShoppingReason.MANUAL)
+    db_session.add_all([product, item])
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={"entries": [
+        {"shopping_item_id": str(item.id), "ingredient_id": str(ingredienti["yogurt"].id),
+         "product_id": str(product.id), "expires_on": "2026-10-20"},
+        {"shopping_item_id": str(item.id), "ingredient_id": str(ingredienti["yogurt"].id),
+         "product_id": None, "expires_on": "2026-10-25"},
+    ]})
+    assert response.status_code == 201
+    assert response.json() == {"created": 2}
+
+    voci = list((await db_session.execute(select(PantryItem))).scalars())
+    assert {(v.product_id, v.expires_on) for v in voci} == {
+        (product.id, date(2026, 10, 20)), (None, date(2026, 10, 25)),
+    }
+    await db_session.refresh(item)
+    assert item.status == "done"
+
+
+async def test_le_confezioni_di_una_voce_sono_dello_stesso_ingrediente(
+    logged_client, db_session, ingredienti
+):
+    item = ShoppingListItem(raw_text="yogurt greco", ingredient_id=ingredienti["yogurt"].id,
+                            status=ShoppingStatus.CHECKED, reason=ShoppingReason.MANUAL)
+    db_session.add(item)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/shopping-list/stock", json={"entries": [
+        {"shopping_item_id": str(item.id), "ingredient_id": str(ingredienti["yogurt"].id)},
+        {"shopping_item_id": str(item.id), "ingredient_id": str(ingredienti["mela"].id)},
+    ]})
+    assert response.status_code == 422
+    assert list((await db_session.execute(select(PantryItem))).scalars()) == []
+    await db_session.refresh(item)
+    assert item.status == "checked"

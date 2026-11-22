@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { ImportQueueScreen } from "./ImportQueueScreen";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { ImportTerm } from "../../domain/types";
 
@@ -35,13 +35,9 @@ const TERMINI: ImportTerm[] = [
 
 const STATO_NORMALE = { fetched: 20, pending_recipes: 19, imported: 1, skipped: 0, pending_terms: 2 };
 
-// Il predicato vero di App.tsx, non un `retry: false` di comodo: CLAUDE.md lo dice
-// verbatim (primo punto) — un client che si costruisce da sé non prova niente sul
-// client vero. Con successi ovunque (il caso della quasi totalità dei test di
-// questo file) non cambia niente: il predicato conta solo quando una query fallisce
-// per davvero, ed è lì che deve essere questo e non un altro.
+// il client dell'app (src/test/queryClient.ts): predicato vero, tentativi senza attesa
 function renderScreen(
-  client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } }),
+  client = createTestQueryClient(),
   path = "/ricette/importa"
 ) {
   return render(
@@ -345,7 +341,8 @@ describe("coda di revisione dell'import", () => {
 
       // Con il predicato vero (sopra) un 500 permanente si vede solo dopo i due
       // tentativi che quel predicato concede, non al primo giro: il timeout più
-      // lungo copre quell'attesa reale, non la nasconde.
+      // lungo copre quell'attesa reale, non la nasconde — dal 2026-10-13 i tentativi
+      // non aspettano, e il tempo lungo resta solo come margine.
       expect(await screen.findByRole("alert", {}, { timeout: 8000 })).toHaveTextContent(
         /ricettario/i
       );
@@ -808,6 +805,49 @@ describe("coda di revisione dell'import", () => {
     expect(esito.closest('[role="status"]')).not.toBeNull();
   });
 
+  // La riga annullata sparisce col suo «Annulla», e il fuoco cadeva sulla pagina (T3
+  // Consegna 6b): va al nome del termine, tornato in coda come scheda
+  it("annullata una decisione, il fuoco va al nome del termine tornato in coda", async () => {
+    const DECISO: ImportTerm = {
+      id: "t5", display_name: "Speck", occurrences: 3, suggestion: null,
+      waiting_titles: ["Pasta e speck"], decided_by: "ai", decided_action: "map",
+      decided_name: "speck", decided_at: "2026-10-01T10:00:00Z",
+    };
+    const TORNATO: ImportTerm = {
+      ...DECISO, decided_by: null, decided_action: null, decided_name: null, decided_at: null,
+    };
+    let annullato = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown, init?: RequestInit) => {
+        const path = String(url);
+        const method = init?.method ?? "GET";
+        const rispondi = (body: unknown, status = 200) =>
+          Promise.resolve(new Response(JSON.stringify(body), { status }));
+        if (path.endsWith("/imports/terms/t5/undo") && method === "POST") {
+          annullato = true;
+          return rispondi({ recipes_requeued: 1, ingredient_deleted: false, remaining_terms: 3 });
+        }
+        if (path.includes("decided_by=ai")) return rispondi(annullato ? [] : [DECISO]);
+        if (path.includes("decided_by=human")) return rispondi([]);
+        if (path.includes("/imports/terms")) return rispondi(annullato ? [...TERMINI, TORNATO] : TERMINI);
+        if (path.includes("/imports/status")) return rispondi(STATO_NORMALE);
+        return rispondi({}, 404);
+      })
+    );
+    renderScreen();
+
+    const annulla = await screen.findByRole("button", { name: "Annulla la decisione su «Speck»" });
+    annulla.focus();
+    await userEvent.keyboard("{Enter}");
+
+    await screen.findByRole("button", { name: "Ignora «Speck»" });
+    await waitFor(() => {
+      expect(document.activeElement?.tagName).toBe("P");
+      expect(document.activeElement).toHaveTextContent("Speck");
+    });
+  });
+
   it("il suggerimento testuale non è più grande del resto della scheda", async () => {
     renderQueue();
 
@@ -845,6 +885,86 @@ describe("coda di revisione dell'import", () => {
 
     await userEvent.click(crea);
     expect(spy.mock.calls.some(([url]) => String(url).includes("/decision"))).toBe(false);
+  });
+
+  /** Coda, decisioni e stato come `renderQueue`, ma la decisione e l'annullamento non
+   * tornano mai: restano in volo per tutta la prova. Conta quante ne partono. */
+  function stubInVolo(decided: ImportTerm[] = []) {
+    const partite = { decisioni: 0, annullamenti: 0 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown, init?: RequestInit) => {
+        const path = String(url);
+        const method = init?.method ?? "GET";
+        const rispondi = (body: unknown, status = 200) =>
+          Promise.resolve(new Response(JSON.stringify(body), { status }));
+        if (path.includes("/decision") && method === "POST") {
+          partite.decisioni += 1;
+          return new Promise<Response>(() => {});
+        }
+        if (path.includes("/undo") && method === "POST") {
+          partite.annullamenti += 1;
+          return new Promise<Response>(() => {});
+        }
+        if (path.includes("decided_by=ai")) return rispondi(decided);
+        if (path.includes("decided_by=human")) return rispondi([]);
+        if (path.includes("/imports/terms")) return rispondi(TERMINI);
+        if (path.includes("/imports/status")) return rispondi(STATO_NORMALE);
+        return rispondi({}, 404);
+      })
+    );
+    return partite;
+  }
+
+  it("con una decisione in volo i pulsanti di ogni scheda sono spenti ma tengono il fuoco, e non si decide due volte", async () => {
+    const partite = stubInVolo();
+    renderScreen();
+
+    const ignoraAcqua = await screen.findByRole("button", { name: /^Ignora «Acqua»$/ });
+    ignoraAcqua.focus();
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() => expect(ignoraAcqua).toHaveAttribute("aria-disabled", "true"));
+    expect(ignoraAcqua).not.toBeDisabled();
+    expect(ignoraAcqua).toHaveFocus();
+    // ogni pulsante di ogni scheda, non solo quello premuto: una decisione alla volta
+    for (const nome of [
+      /Forse «pasta»/,
+      /^Ignora «Rigatoni»$/,
+      /Crea un ingrediente nuovo per «Rigatoni»/,
+      /Crea un ingrediente nuovo per «Acqua»/,
+    ]) {
+      const pulsante = screen.getByRole("button", { name: nome });
+      expect(pulsante).toHaveAttribute("aria-disabled", "true");
+      expect(pulsante).not.toBeDisabled();
+    }
+
+    await userEvent.click(ignoraAcqua);
+    await userEvent.click(screen.getByRole("button", { name: /^Ignora «Rigatoni»$/ }));
+    expect(partite.decisioni).toBe(1);
+  });
+
+  it("con un annullamento in volo ogni «Annulla» è spento ma tiene il fuoco, e non si annulla due volte", async () => {
+    const decisa = (id: string, nome: string): ImportTerm => ({
+      ...TERMINI[1], id, display_name: nome, decided_by: "ai", decided_action: "map",
+      decided_name: nome.toLowerCase(), decided_at: "2026-10-01T10:00:00Z",
+    });
+    const partite = stubInVolo([decisa("t7", "Speck"), decisa("t8", "Bottarga")]);
+    renderScreen();
+
+    const annullaSpeck = await screen.findByRole("button", { name: "Annulla la decisione su «Speck»" });
+    annullaSpeck.focus();
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() => expect(annullaSpeck).toHaveAttribute("aria-disabled", "true"));
+    expect(annullaSpeck).not.toBeDisabled();
+    expect(annullaSpeck).toHaveFocus();
+    const annullaBottarga = screen.getByRole("button", { name: "Annulla la decisione su «Bottarga»" });
+    expect(annullaBottarga).toHaveAttribute("aria-disabled", "true");
+
+    await userEvent.click(annullaBottarga);
+    await userEvent.click(annullaSpeck);
+    expect(partite.annullamenti).toBe(1);
   });
 });
 
@@ -894,13 +1014,10 @@ describe("un termine messo a fuoco con ?termine=", () => {
   });
 
   it("un guasto nel leggere il termine non si spaccia per «non c'è», e offre «Riprova»", async () => {
-    // il predicato vero, senza l'attesa fra un tentativo e l'altro: il test guarda cosa
-    // si dice dopo i tentativi, non quanto durano
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: defaultQueryRetryPredicate, retryDelay: 0 } },
-    });
+    // il client dell'app: il predicato vero, senza l'attesa fra un tentativo e l'altro; il
+    // test guarda cosa si dice dopo i tentativi, non quanto durano
     const spy = renderQueue({
-      path: "/ricette/importa?termine=t9", focused: [{ detail: "guasto" }, 500], client,
+      path: "/ricette/importa?termine=t9", focused: [{ detail: "guasto" }, 500],
     });
 
     expect(await screen.findByText(/Non sono riuscito a leggere quel termine/)).toBeInTheDocument();
@@ -922,5 +1039,20 @@ describe("un termine messo a fuoco con ?termine=", () => {
 
     await screen.findByText("Rigatoni");
     expect(spy.mock.calls.some(([url]) => /\/imports\/terms\/[^/?]+$/.test(String(url)))).toBe(false);
+  });
+});
+
+describe("le pagine scartate", () => {
+  it("con pagine scartate, in fondo alla coda c'è «Scartate (N)», chiusa", async () => {
+    renderQueue({ status: { ...STATO_NORMALE, skipped: 4 } });
+    const titolo = await screen.findByRole("button", { name: "Scartate (4)" });
+    expect(titolo).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("senza pagine scartate la sezione non c'è", async () => {
+    renderQueue();
+    // lo stato è arrivato: la riga che lo racconta c'è
+    await screen.findByText(/19 ricette scaricate aspettano/);
+    expect(screen.queryByRole("button", { name: /^Scartate/ })).toBeNull();
   });
 });

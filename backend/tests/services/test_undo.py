@@ -227,6 +227,57 @@ async def test_la_cottura_ritrova_la_ricetta_quando_la_pagina_torna(db_session, 
     assert "cooking_event_ids" not in pagina.payload
 
 
+async def _variante_di(db_session, recipe, speck):
+    """Una variante scritta con l'AI (R8) della ricetta importata del `deciso`."""
+    return await create_recipe(
+        db_session, title="Pasta allo speck, senza panna", description=None,
+        instructions="cuoci", servings=2, source=RecipeSource.AI,
+        source_ref="prompt: senza panna", ingredients=[(speck.id, "primary", "80 g", None)],
+        embedding=None, derived_from_id=recipe.id,
+    )
+
+
+async def test_le_varianti_di_una_ricetta_rifatta_aspettano_nella_pagina(
+    db_session, deciso, dal_database
+):
+    """R8: annullare una decisione cancella la ricetta importata per rifarla, e
+    `derived_from_id` è ON DELETE SET NULL. Come le cotture, gli id delle varianti passano
+    nel `payload` prima della cancellazione; la variante resta, senza legame per ora."""
+    term, speck, recipe, page = deciso
+    variante = await _variante_di(db_session, recipe, speck)
+    variante_id, page_id = variante.id, page.id
+
+    await undo_decision(db_session, term)
+
+    pagina = await dal_database(RecipeImport, page_id)
+    assert pagina.payload["variant_recipe_ids"] == [str(variante_id)]
+    letta = await dal_database(Recipe, variante_id)
+    assert letta is not None
+    assert letta.derived_from_id is None
+
+
+async def test_la_variante_ritrova_l_originale_quando_la_pagina_torna(
+    db_session, deciso, dal_database
+):
+    term, speck, recipe, page = deciso
+    variante = await _variante_di(db_session, recipe, speck)
+    variante_id, page_id = variante.id, page.id
+
+    await undo_decision(db_session, term)
+    pancetta = await create_ingredient(
+        db_session, name="pancetta", display_name="Pancetta", category=IngredientCategory.CARNE
+    )
+    await decide_by_hand(db_session, term, ManualDecision(action="map", ingredient_id=pancetta.id))
+    esito = await materialize_ready(db_session, GIALLOZAFFERANO)
+
+    assert esito.created == 1
+    pagina = await dal_database(RecipeImport, page_id)
+    letta = await dal_database(Recipe, variante_id)
+    assert pagina.recipe_id is not None
+    assert letta.derived_from_id == pagina.recipe_id
+    assert "variant_recipe_ids" not in pagina.payload
+
+
 async def test_annullare_un_termine_ignorato_funziona(db_session):
     """Un `ignore` non ha ingrediente né alias: l'annullamento deve reggerlo comunque."""
     term = ImportTerm(

@@ -1,26 +1,48 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter } from "react-router-dom";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import { PantryScreen } from "./PantryScreen";
 
 const ITEMS = [
   { id: "p1", ingredient_id: "i1", product_id: "pr1", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Total 0%", product_brand: "Fage",
     status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
     expires_on: null, expiry: null },
   { id: "p2", ingredient_id: "i1", product_id: "pr2", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Pesca", product_brand: "Carrefour",
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Pesca", product_brand: "Carrefour",
     status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
     expires_on: null, expiry: null },
   { id: "p3", ingredient_id: "i2", product_id: null, ingredient_name: "mela",
-    ingredient_category: "frutta", product_name: null, product_brand: null,
+    ingredient_category: "frutta", ingredient_kind: "food", product_name: null, product_brand: null,
     status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
     expires_on: "2026-09-28", expiry: "soon" },
 ];
 
 const MELA = { id: "i2", name: "mela", display_name: "Mela", category: "frutta" };
+
+// S14: una cosa di casa, accanto al cibo di ITEMS
+const DETERSIVO = {
+  id: "p4", ingredient_id: "i4", product_id: null, ingredient_name: "detersivo per i piatti",
+  ingredient_category: "casa", ingredient_kind: "non_food", product_name: null, product_brand: null,
+  status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z",
+  expires_on: null, expiry: null,
+};
+const DUE_MONDI = [...ITEMS, DETERSIVO];
+
+// il mondo scelto si ricorda nella sessionStorage (S14): ogni test parte e finisce senza
+beforeEach(() => {
+  sessionStorage.clear();
+});
+afterEach(() => {
+  sessionStorage.clear();
+});
+
+function mondo(nome: "Tutto" | "Cibo" | "Casa") {
+  return within(screen.getByRole("group", { name: "Cosa mostrare" })).getByRole("button", { name: nome });
+}
 
 /** Un fetch che risponde in base al percorso: l'ingresso diretto ne attraversa tre
  * (la dispensa, la ricerca in anagrafica, la scrittura), e ogni chiamata deve
@@ -37,16 +59,23 @@ function stubRoutedFetch(route: (path: string, init?: RequestInit) => [unknown, 
 // senza `NoticeProvider` l'avviso di conferma (la X, il rientro in lista) non
 // avrebbe dove comparire: `useNotice()` restituirebbe il no-op del contesto vuoto
 function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <NoticeProvider>
-          <PantryScreen />
-        </NoticeProvider>
-      </MemoryRouter>
-    </QueryClientProvider>
-  );
+  const client = createTestQueryClient();
+  // il client si restituisce perché un guasto di una lettura secondaria si prova
+  // solo guardandolo arrivare: con i tentativi veri la query resta in attesa
+  // finché non li ha finiti, e un'asserzione negativa prima di allora guarda il
+  // caricamento e non l'errore
+  return {
+    ...render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <NoticeProvider>
+            <PantryScreen />
+          </NoticeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    ),
+    client,
+  };
 }
 
 describe("PantryScreen", () => {
@@ -136,9 +165,9 @@ describe("PantryScreen", () => {
     expect(screen.getByText("Niente in dispensa per «sale»")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi «sale»" }));
     expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toHaveProperty("value", "sale");
-    // l'anagrafica non ha «sale»: il pannello non resta muto, dice dove andare
-    expect(await screen.findByText(/Non è in anagrafica/)).toBeDefined();
-    expect(screen.getByRole("link", { name: "lista" }).getAttribute("href")).toBe("/lista");
+    // l'anagrafica non ha «sale»: la Dispensa lo crea lì (S3), e non rimanda più alla lista
+    expect(await screen.findByRole("button", { name: "Aggiungi «sale»" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "lista" })).toBeNull();
   });
 
   it("il + apre l'aggiunta con il testo della barra, e scegliere mette in dispensa", async () => {
@@ -165,11 +194,16 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    // la scheda di conferma (S3): un tocco in più, e lì si scrive la scadenza
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
     expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
     const post = fetchSpy.mock.calls.find(([, init]) => init?.method === "POST");
-    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ ingredient_id: "i2", status: "available" });
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+      ingredient_id: "i2", product_id: null, status: "available", expires_on: null, barcode: null,
+    });
     // l'aggiunta si chiude e la barra torna vuota
     expect(screen.queryByLabelText("Ingrediente da mettere in dispensa")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Metti in dispensa" })).toBeNull();
     expect(screen.getByLabelText("Cerca o aggiungi in dispensa")).toHaveProperty("value", "");
     // la riga nuova arriva e va in vista una volta sola: `onRevealed` spegne `revealId`
     // subito dopo, e un secondo giro non deve richiamare lo scorrimento
@@ -189,6 +223,7 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
     expect(await screen.findByText("Non sono riuscito ad aggiungere la voce in dispensa. Riprova.")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Chiudi l'aggiunta" }));
 
@@ -211,8 +246,9 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
     expect(await screen.findByText("Non sono riuscito ad aggiungere la voce in dispensa. Riprova.")).toBeDefined();
-    expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Metti in dispensa" })).toBeDefined();
   });
 
   it("il nome del campo dell'aggiunta è quello che si legge (WCAG 2.5.3)", async () => {
@@ -298,7 +334,12 @@ describe("PantryScreen", () => {
     fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "sale" } });
     fireEvent.click(screen.getByRole("button", { name: "Aggiungi «sale»" }));
     expect(screen.getByLabelText("Ingrediente da mettere in dispensa")).toBeDefined();
+    // subito, prima dell'attesa della ricerca: il vuoto non offre il suo «Aggiungi»
     expect(screen.queryByRole("button", { name: "Aggiungi «sale»" })).toBeNull();
+    // dopo l'attesa della ricerca (180 ms) l'anagrafica non ha «sale» e il pannello offre
+    // di crearlo (S3): quel «Aggiungi «sale»» è il suo, e il vuoto non ne offre un secondo
+    await screen.findByRole("button", { name: "Aggiungi «sale»" });
+    expect(screen.getAllByRole("button", { name: "Aggiungi «sale»" })).toHaveLength(1);
   });
 
   it("un riepilogo che sparisce e poi torna, torna non premuto", async () => {
@@ -356,7 +397,8 @@ describe("PantryScreen", () => {
     stubRoutedFetch((path) => {
       if (path.includes("/shopping-list")) return [[], 200];
       calls += 1;
-      return calls === 1 ? [{ detail: "no" }, 500] : [ITEMS, 200];
+      // il guasto dura tre letture (la prima e i due tentativi dell'app): il «Riprova» trova la quarta
+      return calls <= 3 ? [{ detail: "no" }, 500] : [ITEMS, 200];
     });
     renderScreen();
     expect(await screen.findByText("Non sono riuscito a caricare la dispensa.")).toBeDefined();
@@ -400,9 +442,12 @@ describe("PantryScreen", () => {
     stubRoutedFetch((path) =>
       path.includes("/shopping-list") ? [{ detail: "giù" }, 500] : [ITEMS, 200]
     );
-    renderScreen();
+    const { client } = renderScreen();
 
     await screen.findByText("Total 0%"); // la dispensa è arrivata
+    // la lista è fallita davvero (3 tentativi), non è ancora in volo: solo allora
+    // la scheda ha ricevuto `failed` e la sua nota generica è quella da provare
+    await waitFor(() => expect(client.getQueryState(["shopping-list"])?.status).toBe("error"));
     const link = screen.getByRole("link", { name: /Sistema la spesa/ });
     expect(link.getAttribute("href")).toBe("/sistema");
     expect(link).not.toHaveClass("bg-low-tint");
@@ -547,6 +592,23 @@ describe("PantryScreen", () => {
     expect(await screen.findByText("Era già in lista.")).toBeDefined();
   });
 
+  it("«In lista» su una voce quasi finita la rimette in lista, e lo stato resta quello (Mattia, 2026-10-09)", async () => {
+    const low = [{ ...ITEMS[1], status: "low" }];
+    const fetchSpy = stubRoutedFetch((path) =>
+      path.includes("/restock") ? [{ added: true }, 200] : path.includes("/shopping-list") ? [[], 200] : [low, 200]
+    );
+    renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "In lista" }));
+    expect(await screen.findByText(`Rimesso in lista: ${ITEMS[1].ingredient_name}`)).toBeDefined();
+    expect(
+      fetchSpy.mock.calls.some(
+        ([url, init]) => String(url).includes(`/pantry/${ITEMS[1].id}/restock`) && init?.method === "POST"
+      )
+    ).toBe(true);
+    // il rientro scrive solo in lista: nessuno stato parte, la voce resta gialla
+    expect(fetchSpy.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
+
   it("una voce finita che ha già una voce aperta in lista non offre «In lista»", async () => {
     const finished = [{ ...ITEMS[2], status: "finished" }];
     const list = [{ id: "s1", raw_text: "mela", ingredient_id: "i2", ingredient_name: "mela",
@@ -624,5 +686,510 @@ describe("PantryScreen", () => {
     expect(await within(row).findByRole("alert")).toHaveTextContent(/non sono riuscito/i);
     const other = screen.getByText("Pesca").closest("li")!;
     expect(within(other).queryByRole("alert")).toBeNull();
+  });
+
+  it("«Scansiona» apre lo scanner sotto la barra, con le righe a video, e la ✕ lo chiude (S3)", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(screen.getByRole("button", { name: "Scansiona" }));
+    expect(screen.getByRole("heading", { name: "Codice a barre" })).toBeDefined();
+    expect(screen.getByText("Total 0%")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Chiudi l'aggiunta" }));
+    expect(screen.queryByRole("heading", { name: "Codice a barre" })).toBeNull();
+  });
+
+  it("«Annulla» nell'avviso toglie la voce appena entrata (S3)", async () => {
+    const created = { ...ITEMS[2], id: "p9" };
+    const spy = stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") return [created, 201];
+      if (init?.method === "PATCH") return [created, 200];
+      return [ITEMS, 200];
+    });
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    await vi.waitFor(() => {
+      const patch = spy.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(String(patch?.[0])).toContain("/pantry/p9");
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ archived: true });
+    });
+  });
+});
+
+describe("PantryScreen, «Tutto / Cibo / Casa» (S14)", () => {
+  it("con un mondo solo il selettore non c'è, e vale «Tutto» anche se la sessione ricordava «Casa»", async () => {
+    sessionStorage.setItem("spena.dispensa.mondo", "non_food");
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(screen.queryByRole("group", { name: "Cosa mostrare" })).toBeNull();
+    // «Casa» su una dispensa di solo cibo l'avrebbe svuotata: è tutto a video, e la
+    // sessione ora ricorda «Tutto»
+    expect(screen.getByText("Pesca")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    await waitFor(() => expect(sessionStorage.getItem("spena.dispensa.mondo")).toBe("all"));
+  });
+
+  it("con cibo e casa, «Tutto» è premuto, e «Casa» e «Cibo» mostrano un mondo solo", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [DUE_MONDI, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("true");
+    expect(mondo("Casa").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("link", { name: "Detersivo per i piatti" })).toBeDefined();
+
+    fireEvent.click(mondo("Casa"));
+    expect(mondo("Casa").getAttribute("aria-pressed")).toBe("true");
+    expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("link", { name: "Detersivo per i piatti" })).toBeDefined();
+    expect(screen.queryByText("Total 0%")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
+    // il reparto del cibo non è chiuso: non c'è
+    expect(screen.queryByRole("heading", { name: "Latticini" })).toBeNull();
+
+    fireEvent.click(mondo("Cibo"));
+    expect(screen.getByText("Total 0%")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Detersivo per i piatti" })).toBeNull();
+  });
+
+  it("la scelta si ricorda nella sessione: riaperta la Dispensa, è ancora lì", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [DUE_MONDI, 200]));
+    const { unmount } = renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Cibo"));
+    expect(sessionStorage.getItem("spena.dispensa.mondo")).toBe("food");
+    unmount();
+
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(mondo("Cibo").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("link", { name: "Detersivo per i piatti" })).toBeNull();
+  });
+
+  it("il riepilogo delle scadenze conta il mondo scelto", async () => {
+    const detersivoInScadenza = { ...DETERSIVO, expires_on: "2026-09-28", expiry: "soon" };
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list") ? [[], 200] : [[...ITEMS, detersivoInScadenza], 200]
+    );
+    renderScreen();
+    expect(await screen.findByRole("button", { name: "2 in scadenza questa settimana" })).toBeDefined();
+    fireEvent.click(mondo("Casa"));
+    expect(screen.getByRole("button", { name: "1 in scadenza questa settimana" })).toBeDefined();
+    fireEvent.click(mondo("Cibo"));
+    expect(screen.getByRole("button", { name: "1 in scadenza questa settimana" })).toBeDefined();
+  });
+
+  it("in un mondo senza scadenze il riepilogo non c'è, e il suo filtro premuto si spegne", async () => {
+    // in DUE_MONDI scade solo la mela
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [DUE_MONDI, 200]));
+    renderScreen();
+    const summary = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    fireEvent.click(summary);
+    expect(summary.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(mondo("Casa"));
+    expect(screen.queryByRole("button", { name: /in scadenza/ })).toBeNull();
+    // il detersivo, senza scadenza, è a video: il filtro se n'è andato col suo riepilogo
+    expect(screen.getByRole("link", { name: "Detersivo per i piatti" })).toBeDefined();
+
+    fireEvent.click(mondo("Tutto"));
+    expect(
+      screen.getByRole("button", { name: "1 in scadenza questa settimana" }).getAttribute("aria-pressed")
+    ).toBe("false");
+  });
+
+  it("una ricerca che nel mondo scelto non trova niente offre «Cerca in tutto», che tiene il testo", async () => {
+    stubRoutedFetch((path) =>
+      path.includes("/shopping-list") ? [[], 200] : path.includes("/ingredients") ? [[], 200] : [DUE_MONDI, 200]
+    );
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mela" } });
+
+    expect(screen.getByRole("heading", { name: "Niente in Casa per «mela»" })).toBeDefined();
+    // la mela c'è, sotto «Cibo»: «Niente in dispensa» sarebbe falso, e «Aggiungi» ne
+    // farebbe un doppione
+    expect(screen.queryByRole("heading", { name: /Niente in dispensa/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aggiungi «mela»" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cerca in tutto" }));
+    expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByLabelText("Cerca o aggiungi in dispensa")).toHaveProperty("value", "mela");
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+  });
+
+  it("togliere l'ultima cosa di casa mentre si guarda «Casa» torna a «Tutto», e il selettore se ne va", async () => {
+    let archived = false;
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (init?.method === "PATCH") {
+        archived = JSON.parse(String(init.body)).archived;
+        return [DETERSIVO, 200];
+      }
+      return [archived ? ITEMS : DUE_MONDI, 200];
+    });
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+    fireEvent.click(screen.getByRole("button", { name: "Togli detersivo per i piatti dalla dispensa" }));
+
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Cosa mostrare" })).toBeNull());
+    // non una dispensa vuota per un filtro che non si vede più: il cibo è tutto lì
+    expect(screen.getByText("Total 0%")).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Dispensa vuota" })).toBeNull();
+    expect(sessionStorage.getItem("spena.dispensa.mondo")).toBe("all");
+  });
+
+  it("una voce aggiunta dell'altro mondo porta il selettore a «Tutto», e va in vista", async () => {
+    const created = { ...ITEMS[2], id: "p9" };
+    let added = false;
+    // gesto dell'aggiunta: le risposte finte
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") {
+        added = true;
+        return [created, 201];
+      }
+      return [added ? [...DUE_MONDI, created] : DUE_MONDI, 200];
+    });
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+
+    // gesto dell'aggiunta: dal + della barra, una mela (cibo) mentre si guarda «Casa»
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    // la scheda di conferma (S3): un tocco in più
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+
+    await waitFor(() => expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1));
+    scrollSpy.mockRestore();
+  });
+
+  it("una voce aggiunta dello stesso mondo lascia il mondo com'è", async () => {
+    // deciso da Mattia il 2026-10-09 (piano S14, «Decisioni prese»): la bozza dice solo
+    // dell'altro mondo; qui il mondo resta, perché la riga nuova si vede già
+    const created = { ...ITEMS[2], id: "p9" };
+    let added = false;
+    // gesto dell'aggiunta: le risposte finte
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") {
+        added = true;
+        return [created, 201];
+      }
+      return [added ? [...DUE_MONDI, created] : DUE_MONDI, 200];
+    });
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Cibo"));
+
+    // gesto dell'aggiunta: dal + della barra, una mela (cibo) mentre si guarda «Cibo»
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    // la scheda di conferma (S3): un tocco in più
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1));
+    expect(mondo("Cibo").getAttribute("aria-pressed")).toBe("true");
+    scrollSpy.mockRestore();
+  });
+
+  it("un tocco sul selettore spegne la riga da portare in vista: il mondo non rimbalza a «Tutto»", async () => {
+    // il caso: su «Casa» si aggiunge una mela, e prima che la dispensa riletta la contenga si
+    // scrive «det» nella barra. Quando la mela arriva il mondo va a «Tutto» (settleWorld), ma
+    // la sua riga è filtrata via dalla ricerca e non monta: nessuno spegne `revealId`
+    const created = { ...ITEMS[2], id: "p9" };
+    let added = false;
+    let releaseRefetch: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseRefetch = resolve;
+    });
+    const respond = (body: unknown, status: number) =>
+      new Response(JSON.stringify(body), { status });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown, init?: RequestInit) => {
+        const path = String(url);
+        if (path.includes("/shopping-list")) return Promise.resolve(respond([], 200));
+        if (path.includes("/ingredients")) return Promise.resolve(respond([MELA], 200));
+        if (init?.method === "POST") {
+          added = true;
+          return Promise.resolve(respond(created, 201));
+        }
+        // la dispensa riletta dopo l'aggiunta aspetta che il test la liberi
+        if (added) return gate.then(() => respond([...DUE_MONDI, created], 200));
+        return Promise.resolve(respond(DUE_MONDI, 200));
+      })
+    );
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    renderScreen();
+    await screen.findByText("Total 0%");
+    fireEvent.click(mondo("Casa"));
+
+    // gesto dell'aggiunta: dal + della barra, una mela (cibo) mentre si guarda «Casa»
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+
+    // la dispensa riletta non è ancora arrivata: si scrive un testo che la mela non soddisfa
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "det" } });
+    await act(async () => {
+      releaseRefetch();
+    });
+
+    // la voce nuova è arrivata: il mondo va a «Tutto», come deve
+    await waitFor(() => expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("true"));
+    expect(screen.getByText("Detersivo per i piatti")).toBeDefined();
+
+    // un tocco su «Casa» è una scelta di chi guarda: deve restare lì
+    fireEvent.click(mondo("Casa"));
+    await waitFor(() => expect(mondo("Casa").getAttribute("aria-pressed")).toBe("true"));
+    expect(mondo("Tutto").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("Detersivo per i piatti")).toBeDefined();
+  });
+});
+
+// --- S15: i reparti che si aprono e si chiudono ---
+
+const CHIUSI = "spena.dispensa.reparti-chiusi";
+
+/** I reparti chiusi che la Dispensa ha salvato, in ordine. */
+function chiusiSalvati(): string[] {
+  return (JSON.parse(localStorage.getItem(CHIUSI) ?? "[]") as string[]).sort();
+}
+
+/** Il nome del titolo di un reparto, con gli spazi che il calcolo del nome accessibile
+ * mette o non mette fra un elemento e l'altro: «Latticini 2 · 1 finito». */
+function titolo(testo: string): RegExp {
+  return new RegExp(`^${testo.split(" ").join("\\s+")}$`);
+}
+
+/** Il pulsante del titolo di un reparto: il primo pulsante della sua regione, che si
+ * chiama col solo nome del reparto, aperta e chiusa. Non per nome del pulsante: «Casa»
+ * è anche un mondo di S14. */
+function reparto(nome: string): HTMLElement {
+  return within(screen.getByRole("region", { name: nome })).getAllByRole("button")[0];
+}
+
+describe("PantryScreen, i reparti che si chiudono (S15)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("toccare il titolo chiude il reparto e lo ricorda; chiuso dice quante voci ha e quali chiedono attenzione", async () => {
+    const rows = [
+      { ...ITEMS[0], status: "finished" },
+      { ...ITEMS[1], expires_on: "2026-09-29", expiry: "soon" },
+      ITEMS[2],
+    ];
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [rows, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    const latticini = reparto("Latticini");
+    expect(latticini).toHaveAttribute("aria-expanded", "true");
+    // aperto, il titolo dice il numero e basta: le righe sono lì sotto
+    expect(latticini).toHaveAccessibleName(titolo("Latticini 2"));
+
+    fireEvent.click(latticini);
+    expect(latticini).toHaveAttribute("aria-expanded", "false");
+    expect(latticini).toHaveAccessibleName(titolo("Latticini 2 · 1 finito · 1 in scadenza"));
+    // le righe chiuse escono dalla pagina accessibile, tacche e ✕ comprese
+    expect(screen.queryByRole("link", { name: "Yogurt greco" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Togli Total 0% dalla dispensa" })).toBeNull();
+    // gli altri reparti non si toccano
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    expect(chiusiSalvati()).toEqual(["latticini"]);
+
+    fireEvent.click(latticini);
+    expect(latticini).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByRole("link", { name: "Yogurt greco" })).toHaveLength(2);
+    expect(chiusiSalvati()).toEqual([]);
+  });
+
+  it("un reparto chiuso resta chiuso tornando in dispensa", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(reparto("Frutta")).toHaveAccessibleName(titolo("Frutta 1 · 1 in scadenza"));
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
+    expect(reparto("Latticini")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("una ricerca apre i reparti chiusi che hanno un risultato, senza cambiare quel che è salvato", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta", "latticini"]));
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByRole("region", { name: "Frutta" });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+
+    const barra = screen.getByLabelText("Cerca o aggiungi in dispensa");
+    fireEvent.change(barra, { target: { value: "mel" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    expect(chiusiSalvati()).toEqual(["frutta", "latticini"]);
+
+    // cancellata la ricerca, la dispensa torna com'era stata lasciata
+    fireEvent.change(barra, { target: { value: "" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(reparto("Latticini")).toHaveAttribute("aria-expanded", "false");
+    // chiuso, senza niente da segnalare: il titolo dice solo il numero (nessun « · » in coda)
+    expect(reparto("Latticini")).toHaveAccessibleName(titolo("Latticini 2"));
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
+  });
+
+  it("il riepilogo delle scadenze premuto apre i reparti con una scadenza, senza salvare", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    const riepilogo = await screen.findByRole("button", { name: "1 in scadenza questa settimana" });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(riepilogo);
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: "Mela" })).toBeDefined();
+    expect(chiusiSalvati()).toEqual(["frutta"]);
+
+    fireEvent.click(riepilogo);
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("durante una ricerca il titolo chiude e apre per davvero, e si salva", async () => {
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    const barra = screen.getByLabelText("Cerca o aggiungi in dispensa");
+
+    fireEvent.change(barra, { target: { value: "mel" } });
+    fireEvent.click(reparto("Frutta"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(chiusiSalvati()).toEqual(["frutta"]);
+    // la stessa ricerca, una lettera in più: quel che si è appena chiuso resta chiuso
+    // (decisione 1 di Mattia del 2026-10-09: si rispetta il gesto finché la ricerca non si cancella)
+    fireEvent.change(barra, { target: { value: "mela" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    // riaperto a mano durante la ricerca: aperto, e salvato aperto
+    fireEvent.click(reparto("Frutta"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(chiusiSalvati()).toEqual([]);
+    // cancellata la ricerca vale il salvato
+    fireEvent.change(barra, { target: { value: "" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+
+    // chiuso senza filtro, una ricerca nuova lo riapre come ogni reparto con un risultato
+    fireEvent.click(reparto("Frutta"));
+    fireEvent.change(barra, { target: { value: "mel" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    fireEvent.change(barra, { target: { value: "" } });
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("con lo spazio del sito bloccato i reparti partono aperti, e si chiudono lo stesso", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("bloccato");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("bloccato");
+    });
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [ITEMS, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(reparto("Frutta"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link", { name: "Mela" })).toBeNull();
+  });
+
+  it("la voce aggiunta in un reparto chiuso lo apre prima di portarla in vista, e lo salva aperto", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    const created = { ...ITEMS[2], id: "p9" };
+    let added = false;
+    stubRoutedFetch((path, init) => {
+      if (path.includes("/shopping-list")) return [[], 200];
+      if (path.includes("/ingredients")) return [[MELA], 200];
+      if (init?.method === "POST") {
+        added = true;
+        return [created, 201];
+      }
+      return [added ? [...ITEMS, created] : ITEMS, 200];
+    });
+    // per ogni chiamata, se la riga portata in vista stava dentro un contenuto chiuso:
+    // `this` è l'elemento. Uno spy e non un'assegnazione (vedi il test dell'aggiunta)
+    const dentroUnChiuso: boolean[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      dentroUnChiuso.push(this.closest("[hidden]") !== null);
+    });
+    renderScreen();
+    await screen.findByText("Total 0%");
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+
+    // --- l'aggiunta (il flusso di S3: il + della barra, la scelta, la scheda di conferma) ---
+    fireEvent.change(screen.getByLabelText("Cerca o aggiungi in dispensa"), { target: { value: "mel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aggiungi in dispensa" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mela" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    expect(await screen.findByText("In dispensa: Mela")).toBeDefined();
+    // --- fine dell'aggiunta ---
+
+    await waitFor(() => expect(dentroUnChiuso).toHaveLength(1));
+    // la riga era a video quando ci si è andati: il reparto si era già aperto
+    expect(dentroUnChiuso).toEqual([false]);
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "true");
+    expect(chiusiSalvati()).toEqual([]);
+  });
+
+  it("il mondo scelto (S14) non apre e non chiude i reparti: nasconde quelli dell'altro mondo", async () => {
+    localStorage.setItem(CHIUSI, JSON.stringify(["frutta"]));
+    const detersivo = {
+      ...ITEMS[2],
+      id: "p8",
+      ingredient_id: "i8",
+      ingredient_name: "detersivo per i piatti",
+      ingredient_category: "casa",
+      ingredient_kind: "non_food",
+      expires_on: null,
+      expiry: null,
+    };
+    const rows = [...ITEMS.map((row) => ({ ...row, ingredient_kind: "food" })), detersivo];
+    stubRoutedFetch((path) => (path.includes("/shopping-list") ? [[], 200] : [rows, 200]));
+    renderScreen();
+    await screen.findByText("Total 0%");
+
+    fireEvent.click(mondo("Casa"));
+    // un reparto del cibo sotto «Casa» non c'è, non è chiuso
+    expect(screen.queryByRole("region", { name: "Frutta" })).toBeNull();
+    expect(reparto("Casa")).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(mondo("Cibo"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(mondo("Tutto"));
+    expect(reparto("Frutta")).toHaveAttribute("aria-expanded", "false");
+    expect(chiusiSalvati()).toEqual(["frutta"]);
   });
 });

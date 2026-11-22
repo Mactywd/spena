@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert } from "../../components/ui/Alert";
+import { IngredientFigure } from "../../components/IngredientFigure";
 import { Button } from "../../components/ui/Button";
 import { StockGauge } from "../../components/ui/StockGauge";
-import { IconListCheck, IconShoppingCartPlus, IconX } from "../../components/ui/icons";
+import { IconX } from "../../components/ui/icons";
 import { EXPIRY_INPUT_MAX, expiryText } from "./expiryLabels";
 import { itemLabel } from "./pantryView";
+import { RestockLine } from "./RestockLine";
 import { ingredientPath, productPath } from "../registry/origin";
 import { revealAtTop } from "../../lib/revealAtTop";
 import { capitalizeFirst } from "../../lib/text";
@@ -25,8 +27,9 @@ const EXPIRY_TONE_TEXT = {
 } as const;
 
 /** Una riga della dispensa (spec T3 §4.1): l'ingrediente, sotto il prodotto, a
- * destra le tacche e la ✕; sotto ancora, su una riga sua, la scadenza. Il nome è l'ingrediente e non il prodotto
- * (dal giro): così un aggancio sbagliato, il parmigiano sotto «burro», si vede proprio
+ * destra le tacche e la ✕; sotto ancora, su una riga sua, la scadenza. Sotto ancora, per una
+ * voce gialla o rossa, il rientro in lista (`RestockLine`). Il nome è l'ingrediente e non il
+ * prodotto (dal giro): così un aggancio sbagliato, il parmigiano sotto «burro», si vede proprio
  * qui, dove si corregge (S9). */
 export function PantryRow({
   item,
@@ -110,17 +113,32 @@ export function PantryRow({
     // `scroll-mt-16`: l'intestazione fissa (h-12) più un respiro, come nel dettaglio ricetta
     <li ref={ref} className="scroll-mt-16">
       <div className="flex items-center gap-1">
+        {/* La figura (S12): l'emoji dell'ingrediente o l'icona del reparto, per
+            riconoscere la riga senza leggerla. 28 px più `mr-1` e il `gap-1` della
+            riga: il nome comincia 36 px più in là, e la scadenza sotto rientra
+            altrettanto */}
+        <IngredientFigure
+          emoji={item.ingredient_emoji}
+          category={item.ingredient_category}
+          className="mr-1"
+        />
         {/* Il prodotto sta su una riga sola, tagliato coi puntini: accanto alle tacche
-            restano 135px a 375px di larghezza, e i nomi veri («Deodorante per Ambienti
+            restano 99px a 375px di larghezza (135 prima della figura di S12), e i nomi veri («Deodorante per Ambienti
             Vaniglia e Gelsomino») andavano a capo fino a tre righe, con la scadenza
             spinta sotto e il «·» rimasto solo. Il nome intero è nella scheda del
             prodotto, dove porta il link. */}
         <div className="min-w-0 flex-1">
           {/* la maiuscola solo a video (spec T3 §4.7): i nomi accessibili dei controlli
-              della riga usano `label`, in mezzo a una frase, e restano com'è */}
+              della riga usano `label`, in mezzo a una frase, e restano com'è.
+              `wrap-anywhere` e non `break-words`: il Link è `flex`, il suo testo è un
+              elemento flex anonimo con `min-width: auto`, cioè la parola più lunga. Con
+              `overflow-wrap: break-word` quel minimo non scende, e una parola più larga
+              della colonna (99px a 375px dopo la figura: «Ammorbidente», «Bagnoschiuma»)
+              sbordava sulla prima tacca; con `anywhere` il minimo si abbassa e la parola
+              va a capo dove serve */}
           <Link
             to={registryPath(item)}
-            className="flex min-h-11 items-end pb-0.5 font-medium underline decoration-line underline-offset-4"
+            className="flex min-h-11 items-end pb-0.5 font-medium wrap-anywhere underline decoration-line underline-offset-4"
           >
             {capitalizeFirst(item.ingredient_name)}
           </Link>
@@ -136,8 +154,9 @@ export function PantryRow({
         />
       </div>
       {/* La scadenza ha la sua riga, larga quanto la voce: sempre allo stesso posto, e
-          il campo data ha lo spazio che accanto alle tacche non avrebbe. */}
-      <div className="flex min-h-11 items-start text-xs text-ink-faint">
+          il campo data ha lo spazio che accanto alle tacche non avrebbe. Rientra di 36 px
+          (pl-9) per cominciare sotto il nome e non sotto la figura (S12). */}
+      <div className="flex min-h-11 items-start pl-9 text-xs text-ink-faint">
         {editingExpiry ? (
           <span className="pt-0.5">
             <label htmlFor={`expiry-${item.id}`} className="sr-only">
@@ -174,6 +193,7 @@ export function PantryRow({
             // `aria-disabled` e non `disabled`, come le tacche: dopo un Invio il fuoco
             // torna qui mentre il salvataggio è in volo, e il browser toglie il fuoco a
             // un pulsante che diventa `disabled` — finiva sul `body`
+            // Spento non sbiadisce: scrive in `ink-faint`, anche sopra il viola di una scadenza
             aria-disabled={busy || undefined}
             onClick={() => {
               if (busy) return;
@@ -181,7 +201,7 @@ export function PantryRow({
               setEditingExpiry(true);
             }}
             aria-label={expiry ? `Scadenza di ${label}: ${expiry}` : `+ scadenza per ${label}`}
-            className={`flex min-h-11 items-start pt-0.5 text-left aria-disabled:opacity-40 ${
+            className={`flex min-h-11 items-start pt-0.5 text-left aria-disabled:text-ink-faint ${
               item.expiry ? EXPIRY_TONE_TEXT[item.expiry] : ""
             }`}
           >
@@ -189,23 +209,9 @@ export function PantryRow({
           </button>
         )}
       </div>
-      {item.status === "finished" && (
-        // «Lo rimetto in lista? Sì / No» aveva bersagli da 35px e non tornava più se
-        // ignorato: ora è un pulsante che resta finché serve, e ignorarlo è il «No»
-        <div className="flex items-center justify-between gap-2 pb-2">
-          <span className="text-sm font-medium text-finished">Finito</span>
-          {listed ? (
-            <span className="flex items-center gap-1 text-sm text-ink-soft">
-              <IconListCheck aria-hidden="true" className="size-4" stroke={1.8} />
-              Già in lista
-            </span>
-          ) : (
-            <Button icon={IconShoppingCartPlus} onClick={onRestock} busy={busy}>
-              In lista
-            </Button>
-          )}
-        </div>
-      )}
+      {/* sotto una voce gialla o rossa, «In lista» (Mattia, 2026-10-09: «anche quasi
+          finito, ovunque»); su una disponibile non c'è niente */}
+      <RestockLine status={item.status} listed={listed} busy={busy} onRestock={onRestock} />
       {failed && <Alert className="pb-2">Non sono riuscito a salvare la modifica. Riprova.</Alert>}
     </li>
   );

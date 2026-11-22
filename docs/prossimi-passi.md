@@ -532,7 +532,7 @@ zone non è ricopiata nel frontend — e i due stati sono scritti per esteso inv
 «diverso da disponibile», così un eventuale quarto stato dovrà essere deciso e non
 ereditato per caso.
 
-## S3. Ingresso diretto in dispensa, alla pari di «sistema la spesa» **[D]**
+## S3. Ingresso diretto in dispensa, alla pari di «sistema la spesa» **[FATTO 2026-10-18 — ramo night/s3-ingresso-diretto, non ancora in produzione]**
 Oggi i due schermi non offrono le stesse strade. L'ingresso diretto deve dare tutte
 quelle che dà l'altro: scegliere fra i prodotti già scansionati, scansionare un
 codice a barre, **scansionare uno scontrino**, o inserire a mano.
@@ -542,7 +542,7 @@ accetta già `expires_on`, quindi all'ingresso diretto resta solo da mostrarlo.
 
 ↳ la scansione dello scontrino è la fase 2 della spec madre e **non esiste ancora**:
 questa voce la tira dentro. Va deciso se la parità si fa subito senza scontrino e si
-completa dopo, o se aspetta.
+completa dopo, o se aspetta (deciso il 2026-10-07: vedi sotto).
 
 **Chiesto di nuovo da Mattia il 2026-09-27, e con un accento preciso: deve essere
 *veloce*.** Oggi per mettere in dispensa qualcosa con il suo codice a barre bisogna
@@ -553,13 +553,47 @@ non crea un ingrediente nuovo, e quando fallisce dice «scrivilo in lista e sist
 da lì». Servono dalla dispensa, senza passare per la lista: **scansione** e
 **inserimento a mano**, con la creazione di ingrediente e prodotto quando mancano. La
 richiesta fa pendere la domanda qui sopra verso la parità subito, senza scontrino;
-resta da confermare nella spec. Chi la scrive non deve copiare i pezzi di
+resta da confermare nella spec (deciso il 2026-10-07: vedi sotto). Chi la scrive non deve copiare i pezzi di
 `StockingScreen.tsx` (scanner, catalogo, `CustomProductForm`) in un secondo schermo:
 vanno estratti e usati da entrambi, altrimenti le guardie di uno (il controllo
 ingrediente/prodotto prima del 409, il codice che non sopravvive a una voce
 diversa) mancheranno nell'altro. È la prima lezione di `CLAUDE.md`.
 
-## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE 2026-09-24 — solo il livello prodotto]**
+**Fatto il 2026-10-18** (bozza `docs/superpowers/specs/2026-10-06-ingresso-diretto-bozza.md`,
+piano `docs/superpowers/plans/2026-10-08-s3-ingresso-diretto.md`), parità subito e senza
+scontrino, come deciso da Mattia il 2026-10-07. In Dispensa, accanto al +, **«Scansiona»**:
+un prodotto a catalogo entra con due tocchi — il codice e «Metti in dispensa» nella scheda
+di conferma, che ha già il fuoco —, e il pannello torna allo scanner per la confezione
+dopo (in serie; lo stesso prodotto riletto lo dice); un codice nuovo chiede di che
+ingrediente è, poi il modulo, con l'uscita sfusa e quella dal catalogo. Il **+** crea
+l'ingrediente che manca, e la scheda sfusa offre codice e catalogo. La scadenza si scrive
+nella scheda; l'avviso «In dispensa: …» ha «Annulla». In «Sistema la spesa»
+**«Articolo aggiuntivo»** (una voce di lista nata spuntata) e **«+ un'altra confezione»**
+dello stesso ingrediente, con la sua scelta, la sua data e il suo pannello: «Metti in
+dispensa N» conta le confezioni. Le guardie non si sono copiate: la regia dei pannelli è
+uscita da `StockingScreen` in `ProductResolver` (l'esito tardivo, il codice che segue di
+S8, la `key` del modulo), la scelta o creazione dell'ingrediente da `MatchPanel` in
+`IngredientChooser`, e nel backend `stock_one` è la sola copia di «voce, poi codice», per
+la sistemazione e per `POST /pantry` (che ora prende `expires_on` e `barcode`). Due
+confezioni della stessa voce con ingredienti diversi: 422.
+
+**Le scelte del piano che Mattia può voler rivedere:** «Scansiona» come quadrato di sola
+icona; «Cambia» nella scheda che torna indietro di un passo; nella scansione, «Annulla»
+che torna allo scanner e il campo dell'ingrediente che parte vuoto; la riga di una
+confezione in più (rientrata, «Confezione 2», con la sua ✕); «+ un'altra confezione» solo
+quando tutte le confezioni hanno la loro scelta; l'avviso che conta confezioni entrate e
+voci rimaste. E le tre decise da Mattia il 2026-10-09: A (un articolo aggiuntivo già da
+comprare in lista si spunta), B («Cerca a catalogo» anche dopo un codice nuovo nella
+scansione), C («Articolo aggiuntivo» solo con qualcosa da sistemare).
+
+**Da provare sul telefono:** la fotocamera vera in serie (l'attesa fra un codice e
+l'altro, perché `BarcodeScanner` si riaccende a ogni giro), la fotocamera negata, la
+tastiera numerica del codice a mano, la scheda col pollice; «+ un'altra confezione» e
+«Articolo aggiuntivo» in corsia; dopo «Annulla» nell'avviso, rileggere lo stesso codice
+dice ancora «L'hai appena messo in dispensa…»; togliendo una confezione in mezzo, le altre
+si rinumerano; nella serie, con tante righe in dispensa, ogni «Metti in dispensa» porta in vista la riga nuova e lo scanner esce dallo schermo (vedi la voce `tbd` in `next-steps.md`).
+
+## S4. Valori nutrizionali molto più ampi **[FATTO IN PARTE — il prodotto il 2026-09-24; l'ingrediente da CIQUAL e i nutrienti di una ricetta il 2026-10-18 sui rami night/s4-ciqual e night/s4-grammi, non ancora in produzione; il tasto «Stima» da pianificare]**
 Oggi `products.nutrients` è un JSONB popolato da Open Food Facts, quindi già libero
 nella forma ma povero nel contenuto. Spec:
 `docs/superpowers/specs/2026-09-24-nutrienti-ampi-design.md`. **Scopo deciso e
@@ -616,6 +650,45 @@ puntare una variante alla sua forma canonica proprio per questo — così il pes
 coppia ingrediente×unità che S4 dovrà riempire un giorno si scrive una volta sola per
 unità canonica, non una volta per ogni variante che il ricettario ha scritto
 diversamente. L'attacco c'è; riempirlo non chiederà una migrazione.
+
+**Fetta 1 fatta il 2026-10-18** sul ramo `night/s4-ciqual` (spec
+`docs/superpowers/specs/2026-10-13-s4-nutrienti-ingrediente-design.md`, piano
+`docs/superpowers/plans/2026-10-13-s4-ciqual.md`), con le decisioni di Mattia del
+2026-10-13: la fonte è **CIQUAL 2025** dell'Anses (licenza Etalab 2.0, citazione
+obbligatoria), non CREA; il modello è Gemma, dopo un pilota. Il file
+(`data/ciqual/ciqual-2025.xlsx`, lo mette Mattia) si legge senza dipendenze e si carica
+in `ciqual_foods` con `load_ciqual`, che riconosce le colonne dal nome e rifiuta un file
+con un'unità diversa da quella del vocabolario; 30 nutrienti dell'Allegato XIII su 35
+(fuori la vitamina A e i quattro che CIQUAL non ha). `ingredient_nutrition` (migrazione
+`0016`) lega un ingrediente al suo alimento, con tre stati e `decided_by`; i valori si
+leggono con una join. L'AI sceglie in due passi — parole di ricerca in francese, poi un
+codice fra i candidati che `pg_trgm` trova — con `decide_ciqual`, solo dove non c'è una
+scelta; «nessun alimento adatto» si scrive (deciso da Mattia il 2026-10-13). Il pilota
+(`s4_pilot`, 30 casi, soglia 90%) dice se Gemma basta. In Anagrafica, nella scheda di un
+alimento, «Valori nutrizionali»: la fonte, la tabella per 100 g, «Cambia alimento»,
+«Nessun alimento adatto», «Annulla la scelta». **In produzione servono passi a mano dopo
+il deploy**: il file, il caricamento, il pilota, l'abbinamento.
+
+**Le scelte del piano che Mattia può voler rivedere:** «< x» letto come x/2 e «traces»
+come 0; i 30 casi del pilota e le due soglie; la sezione in fondo alla scheda,
+dopo «Prodotti»; la ricerca in francese (la tabella non ha nomi italiani).
+
+**Fetta 2 fatta il 2026-10-18** sul ramo `night/s4-grammi` (piano
+`docs/superpowers/plans/2026-10-13-s4-grammi.md`). I grammi stanno per coppia ingrediente
+× unità canonica in `ingredient_unit_grams` (migrazione `0017`, `UNIQUE NULLS NOT
+DISTINCT`: il «pezzo» è l'unità NULL); massa e volume si pesano da sé (densità 1, salvo
+olio, miele, sciroppi, latte condensato). L'AI pesa le coppie che le ricette usano con
+`decide_grams` — grammi netti della parte che si mangia, o «nessun peso» — e si corregge in
+Anagrafica, «Pesi per unità». La funzione pura `recipe_nutrition`
+(`backend/app/domain/recipe_nutrition.py`) somma le righe con dose, alimento e peso, e
+dichiara le altre col perché (le «q.b.» fuori, decisione di Mattia del 2026-10-13); la
+rotta `GET /api/v1/recipes/{id}/nutrition` la dà a porzione, ed è ciò che P1 e P2
+leggeranno. A video, in fondo al dettaglio, «Valori nutrizionali», chiuso finché non si
+apre. **Resta la fetta 3**, il tasto «Stima» sul prodotto, decisa e rinviata (spec §8).
+
+**Le scelte del piano che Mattia può voler rivedere:** le quattro densità; i 20 pesi del
+pilota e la soglia dell'80%; il pannello chiuso in fondo al dettaglio; «Contate N righe su
+M» e la frase senza righe contate.
 
 ## S5. Non alimentari in lista e dispensa **[FATTO 2026-09-18]**
 Vedi D4: stessa lista, stessa dispensa, nessuna informazione nutrizionale — solo
@@ -1028,7 +1101,7 @@ quelli che contengono un risultato.
 - La domanda del TBD («un campo che fa due cose deve dire quale sta facendo») si è
   chiusa così: il campo filtra sempre, e aggiunge solo il +.
 
-## S12. Le righe della dispensa sono tutte uguali **[TBD — brainstorming]**
+## S12. Le righe della dispensa sono tutte uguali **[FATTO 2026-10-18 — sul ramo night/s12-righe-dispensa, non ancora in produzione]**
 Serve un modo di riconoscere una riga senza leggerla. Le strade proposte da Mattia
 sono una foto per tipo, un'icona o un'emoji per reparto o per ingrediente, un fondo,
 un SVG. Cosa c'è già e cosa costa:
@@ -1044,6 +1117,38 @@ un SVG. Cosa c'è già e cosa costa:
 Vincoli: un fondo colorato passa dal blocco `@theme`, con il contrasto sopra 4.5:1, e
 non deve confondersi con i colori che vogliono già dire qualcosa (le zone del cursore,
 il viola della scadenza). Da decidere insieme alla revisione di T3.
+
+**Fatto il 2026-10-18** sul ramo `night/s12-righe-dispensa` (piano
+`docs/superpowers/plans/2026-10-08-s12-righe-dispensa.md`), con le decisioni della bozza
+`docs/superpowers/specs/2026-10-06-righe-dispensa-bozza.md` §5, che superano quel che qui
+sopra si diceva dell'undo: l'emoji non lega niente a niente, e si corregge in Anagrafica.
+Ogni riga della Dispensa ha a sinistra del nome un quadratino da 28 px: l'emoji
+dell'ingrediente (`ingredients.emoji`, migrazione `0013`), o dove non c'è l'icona del
+reparto in `ink-faint`, monocroma. L'elenco è chiuso — 148 emoji fino a Emoji 14.0, in
+`backend/app/domain/emoji.py`, con la copia del frontend confrontata da un test — e la
+colonna ha tre stati: `NULL` non deciso, `""` «nessuna» decisa, un'emoji. La decide l'AI
+una volta, con `python -m app.cli.decide_emoji`, a lotti di cento nomi e solo dove è
+`NULL`; una risposta fuori elenco, o con un numero o un nome che non tornano, non si
+applica. Si corregge nella scheda dell'ingrediente in Anagrafica («Cambia figura»: la
+griglia dell'elenco e «Nessuna»), dal servizio unico `registry.py`; una scelta a mano non
+torna mai all'AI. Solo in Dispensa: Lista, Sistema la spesa e la cottura non la mostrano.
+**In produzione serve un passo a mano dopo il deploy**: il comando, una volta, finché
+non dice «nessun ingrediente in attesa». Se il numero degli «ingredienti restano da
+decidere» non scende fra due lanci, quelli restano col ripiego del reparto (o si sceglie
+la figura a mano in Anagrafica): non serve rilanciare ancora. Se la riga «figure non
+disponibili (…)» si ripete identica a ogni lancio dopo che i primi lotti erano passati, il
+perché è fra parentesi; i lotti decisi prima del guasto restano scritti, e a non scrivere
+niente è solo il lotto del guasto e quelli dopo.
+
+**Le scelte del piano che Mattia può voler rivedere:** l'AI che risponde «nessuna» scrive
+«nessuna» e non lascia la colonna da decidere (decisione 22); le 148 emoji
+dell'elenco e le loro famiglie; la figura in Anagrafica in una riga sua sotto le
+correzioni, con «Cambia figura», e non come quarta icona accanto al titolo; la griglia di
+riquadri da 44 px invece di un menu; «Nessuna» che si salva anche su un ingrediente che
+mostra già il ripiego, per fissarlo.
+
+**Da provare sul telefono:** le emoji del proprio telefono, a colpo d'occhio, in una
+dispensa vera di una trentina di voci; la griglia di «Cambia figura» col pollice.
 
 ## S13. Il cursore della dispensa si sposta mentre si scorre **[FATTO 2026-09-27 — provato sul telefono il 2026-09-28]**
 
@@ -1092,7 +1197,21 @@ La tastiera deve continuare a funzionare. Si prova **solo sul telefono vero**, c
 selettore data di S7: nessun test in jsdom e nessun `fill()` di Playwright riproduce un
 dito che scorre.
 
-## S14. Cibo e casa separati in dispensa **[D]**
+## S14. Cibo e casa separati in dispensa **[FATTO 2026-10-19 — night/s14-cibo-casa, non ancora in produzione]**
+
+> **Fatto** (piano `docs/superpowers/plans/2026-10-08-s14-cibo-casa.md`, bozza
+> `docs/superpowers/specs/2026-10-06-cibo-casa-bozza.md`): il server espone
+> `ingredient_kind` in `PantryItemOut`, letto da `ingredients.kind`, e il client lo
+> confronta senza ricavarlo dal reparto. Sotto la barra della Dispensa, solo quando ci
+> sono cibo e cose di casa, tre pulsanti «Tutto / Cibo / Casa» (`WorldSelector`); la
+> scelta si ricorda in `sessionStorage` e non in `localStorage` come diceva questa voce
+> (deciso da Mattia il 2026-10-07, come i filtri del ricettario). I filtri hanno un
+> ordine solo (`visibleItems` in `pantryView.ts`: mondo, ricerca, scadenze), il
+> riepilogo delle scadenze conta il mondo scelto, una ricerca vuota nel mondo offre
+> «Cerca in tutto», e `settleWorld` riporta a «Tutto» quando il selettore sparisce o
+> quando la voce appena aggiunta è dell'altro mondo. Deciso da Mattia il 2026-10-09: una voce
+> aggiunta dello stesso mondo lascia il mondo com'è.
+
 Oggi cibo e non alimentari stanno nella stessa dispensa. Serve un modo per vedere solo
 il cibo o solo le cose di casa, per esempio un selettore «Tutto / Cibo / Casa» in cima.
 `ingredients.kind` esiste già (D4), quindi il modello non cambia. Va però esposto:
@@ -1102,12 +1221,28 @@ server aggiunge `ingredient_kind`, oppure filtra lui. Il selettore
 ricordato fra una visita e l'altra è una comodità per dispositivo, quindi
 `localStorage` basta.
 
-## S15. Reparti della dispensa collassabili **[D]**
+## S15. Reparti della dispensa collassabili **[FATTO 2026-10-19 — sul ramo night/s15-reparti-collassabili, non ancora in produzione]**
 `PantryScreen.tsx` raggruppa per reparto (`groupByCategory`) con un titolo per gruppo.
 I titoli diventano apribili e chiudibili, così la dispensa si naviga per reparto.
 Anche qui lo stato ricordato è una comodità per dispositivo. Due cose da non
 sbagliare: una ricerca (S11) apre i reparti con un risultato, e un reparto chiuso deve
 dire quante voci contiene, altrimenti chiuso sembra vuoto.
+
+**Fatto** (spec `docs/superpowers/specs/2026-10-06-reparti-collassabili-bozza.md`, piano
+`docs/superpowers/plans/2026-10-08-s15-reparti-collassabili.md`): in Dispensa il titolo
+di ogni reparto — quadratino, nome, numero, chevron — è il pulsante che lo apre e lo
+chiude, dentro l'`h2` (`aria-expanded`, `aria-controls`); chiuso, il contenuto ha
+`hidden` e il titolo dice il numero e, se ci sono, «N finito/finiti» e «N in scadenza»
+(in scadenza e oltre), negli stessi colori delle righe. I reparti chiusi si ricordano nel
+`localStorage` (`spena.dispensa.reparti-chiusi`, l'elenco dei chiusi); una ricerca e il
+riepilogo delle scadenze aprono i reparti con un risultato senza salvare, e cancellati
+torna il salvato; toccare un titolo durante una ricerca chiude o apre per davvero, e si
+salva; la voce aggiunta dall'ingresso diretto apre il suo reparto prima di essere portata
+in vista, e lo salva aperto; il mondo di S14 non apre né chiude. `Section` senza
+`onToggle` è quella di prima: Lista e Sistema la spesa non cambiano. Tre scelte decise
+da Mattia il 2026-10-09: un reparto chiuso durante una ricerca resta chiuso finché la
+ricerca non si cancella; «in scadenza» conta anche le voci oltre la scadenza; un reparto
+chiuso che si svuota e torna, torna chiuso.
 
 ## S16. La lista scorre di lato quando una voce porta la nota del rientro **[FATTO 2026-09-27]**
 
@@ -1312,7 +1447,7 @@ componente solo, `RecipeImage` (`frontend/src/features/recipes/RecipeImage.tsx`)
 usato da entrambe le schermate: una seconda copia di quella logica si sarebbe
 scollata esattamente lì, dove nessuno guarda.
 
-## R2. Riporziona **[FATTO IN PARTE 2026-09-20: la metà per porzioni]** ↳ D1
+## R2. Riporziona **[FATTO 2026-10-18 — il secondo modo sul ramo `night/r2-riporziona-ingrediente`, non ancora in produzione; la metà per porzioni dal 2026-09-20]** ↳ D1
 Due modi, e il secondo è quello che manca a tutte le app: per **numero di porzioni**,
 e per **quantità assoluta di un ingrediente** — «la ricetta è per 400 g di pasta, io
 ne faccio 150 g», indipendentemente dalle porzioni.
@@ -1327,6 +1462,31 @@ non è una dose che non si riscala.
 **Resta il secondo modo**, ancorato a un ingrediente invece che alle porzioni, e
 implica scegliere quell'ingrediente prima di poter scalare. TBD, invariato dalla
 proposta originale: se anche questo riporziona è solo una vista o si può salvare.
+
+**Il TBD è deciso** (Mattia, 2026-10-09): **solo vista**, come lo stepper; si parte da un
+tocco sulla dose della riga; un modo alla volta, e con un ingrediente fissato lo stepper
+dice le porzioni equivalenti. Spec: `docs/superpowers/specs/2026-10-09-r2-riporziona-ingrediente-design.md`.
+
+**Il secondo modo è fatto il 2026-10-18**, sul ramo `night/r2-riporziona-ingrediente`
+(da revisionare): `GET /api/v1/recipes/{id}?anchor=<ingrediente>&amount=<dose>` riscala
+dalla dose scritta (la riga d'ancora la dice com'è scritta, le altre seguono, quelle senza
+dose strutturata si contano come nel primo modo); oltre 50 volte la ricetta, in su o in giù,
+un 422 dice fra quali dosi stare; un'ancora che la ricetta non ha più si ignora. Il calcolo è
+in `resolve_anchor` (`backend/app/services/rescale.py`), lo stesso per il dettaglio e per la
+cottura. A video la dose riscalabile è sottolineata a puntini e si tocca; sotto la riga
+«Quanto ne fai?», con l'unità accanto; lo stepper dice «≈ 1,5» e − / + tornano alle porzioni
+intere; «Riscalata da pasta: 150 g.» con «Torna alle dosi della ricetta», l'unica uscita sulle
+ricette senza porzioni. La cottura manda la dose e non le porzioni: `cooking_events.servings`
+resta null, e lo `snapshot` guadagna `anchor` (ingrediente, dose, unità, fattore, porzioni
+equivalenti), senza migrazione.
+
+**L'etichetta** è «Quanto ne fai?» con l'unità accanto alla casella, non «Quanti g ne
+fai?» (deciso da Mattia il 2026-10-13): il registro delle unità non sa il genere, e con
+«fette», «scatole», «coste» la domanda letterale sbaglia l'accordo.
+
+**Da provare sul telefono:** la tastiera dei numeri che si apre da sola col tocco sulla
+dose, la virgola della tastiera italiana, il tocco sulla dose sottolineata col pollice senza
+prendere la riga accanto, l'Invio («fatto») che riscala.
 
 ## R3. Filtra per ingrediente **[FATTO 2026-09-17, rifatto lo stesso giorno]**
 «Contiene questi ingredienti» — `GET /api/v1/recipes/search?ingredient_id=…&ingredient_id=…`.
@@ -1506,7 +1666,7 @@ pagine sono almeno tre ore di sole pause, e `--limit` vale 50 per lotto. Il
 crawler e lo dichiara nel suo `User-Agent` (`SpenaPersonalArchive/1.0`), decisione già
 presa in §3 della spec dell'import.
 
-## R5. Sostituisci ingrediente **[D, con TBD pesante]**
+## R5. Sostituisci ingrediente **[FATTO 2026-10-19 — sul ramo `night/r5-sostituti`, non ancora in produzione]**
 Dentro la ricetta, accanto a ogni ingrediente, un tasto «Sostituisci». Tre esiti, e
 sono tre cose diverse:
 1. **uno o più sostituti** (pollo → tacchino);
@@ -1524,13 +1684,45 @@ corregge una risposta sbagliata.
 ↳ R4 (serve l'anagrafica ampia) — **fatta il 2026-09-24**: l'anagrafica ha 935
 ingredienti, e R5 non aspetta più niente se non la sua spec.
 
-## R6. Filtra per ricette cucinabili **con sostituti** **[D]** ↳ R5
+**Il TBD è deciso** (Mattia, 2026-10-13): una risposta per **ingrediente × {dolce,
+salato}**, la doppia voce solo dove serve, più la correzione per singola ricetta; un
+sostituto è solo un ingrediente alimentare dell'anagrafica, e una risposta dell'AI che
+non si verifica si scarta; «si può omettere» soddisfa qualunque riga ai fini di R6; le
+risposte dell'AI si vedono subito, segnate, e si rivedono in Anagrafica; una correzione
+umana non si sovrascrive mai. Una correzione di ricetta si perde se l'import rifà la
+ricetta (deciso da Mattia il 2026-10-13). Spec:
+`docs/superpowers/specs/2026-10-13-r5-sostituti-design.md`.
+
+**Fatto il 2026-10-19**, sul ramo `night/r5-sostituti` (da revisionare). Il contesto
+viene dalla categoria della ricetta (`recipe_context`: dolce se la prima parola è
+«dolci»). Le risposte stanno in `ingredient_substitutions` e `substitution_options`
+(migrazione `0015`); le scrive l'AI con `python -m app.cli.decide_substitutes` (a lotti,
+dalle voci più usate, `--limit` e `--dry-run`) o sul momento al primo «Sostituisci»;
+una chiamata per voce con l'anagrafica alimentare nel prompt, ~0,0004 $, ~0,5 $ per
+tutto il ricettario. Nel dettaglio un'icona in fondo a ogni riga apre il pannello sotto
+la riga, coi sostituti, il pallino della dispensa e «ce l'hai»; «Non va bene qui» scrive
+la correzione della ricetta. In Anagrafica la sezione «Sostituti» con «Deciso dall'AI:
+da rivedere.», «Va bene così» e «Correggi». La fusione sposta tutto sul vincitore.
+
+**Da provare sul telefono:** l'icona in fondo alla riga col pollice, accanto alla dose;
+il pannello che si apre sotto la riga senza far saltare la pagina; il selettore del
+sostituto con la tastiera aperta.
+
+## R6. Filtra per ricette cucinabili **con sostituti** **[TOLTA 2026-11-21]** ↳ R5
+**Tolta da Mattia il 2026-11-21**, in fase giorno, prima di scriverne il piano: la voce non è più nel backlog. Quel che segue resta come memoria della regola, se un giorno tornasse.
+
 Oggi si filtra per «cucinabile». Serve anche «cucinabile usando quel che ho al posto
 di quel che manca».
 
 «Cucinabile» adesso è un gradino di una scala, non una casella: quando R6 arriverà,
 «cucinabile con sostituti» va pensata come una seconda scala o come un interruttore
 accanto a questa, non come una casella in più.
+
+**La regola è scritta** (spec R5 §8, 2026-10-13): una riga che manca conta se la
+risposta che vale per lei è «si può omettere» (qualunque ruolo; la ricetta dirà «senza
+X»), o se almeno un sostituto in dispensa soddisfa la stessa regola della riga (primary
+→ available, secondary → available o low); un passo solo; «insostituibile» o nessuna
+risposta resta mancante. R5 calcola già `satisfied` per ogni sostituto di una riga.
 
 ## R7. Cerca ricette con al massimo *n* ingredienti mancanti **[FATTO 2026-09-21]**
 Due usi in uno: «tanto devo andare a fare la spesa, ammetto 3 cose da comprare», e
@@ -1554,12 +1746,44 @@ del merge, ma l'immagine è stata ricostruita solo con il deploy di S7: fino ad 
 il browser riceveva il pacchetto di prima. Nessuna migrazione, quindi niente da
 applicare; la verifica a mano del 2026-09-23 vale anche per questa voce ed è passata.
 
-## R8. Modifica con AI **[D]**
+## R8. Modifica con AI **[FATTO 2026-10-19 — spec: `docs/superpowers/specs/2026-10-09-r8-modifica-con-ai-design.md`, sul ramo `night/r8-modifica-con-ai`, non ancora in produzione]**
 Dentro una ricetta aperta, un tasto «Modifica con AI» con un prompt libero
 («sostituisci lo zucchero con dolcificante», che obbliga a ribilanciare il resto).
 **Il salvataggio crea una ricetta nuova**, non tocca l'originale.
 
-TBD: se la nuova ricetta tiene un legame con quella da cui nasce, e se si vede.
+**Deciso da Mattia il 2026-10-09:** il legame si tiene e si vede — nella nuova, sotto il
+titolo, «Variante di «…»» che porta all'originale; nell'originale niente in più. La
+proposta dell'AI apre il modulo già compilato; se l'AI non risponde si resta
+sull'originale con un avviso ambra.
+
+**Fatto** il 2026-10-19, sul ramo `night/r8-modifica-con-ai`: nel dettaglio, fra
+«Modifica» ed «Elimina», l'icona «Modifica con AI» apre sotto il titolo un pannello con
+«Cosa vuoi cambiare?» e «Proponi la variante»; la proposta (`POST
+/recipes/{id}/ai-variant`, `draft_variant` in `services/ai_recipes.py`, il prompt della
+bozza esteso con le regole della variante, sezione `recipe_variant` in `llm_calls`) apre
+«Nuova variante» (`/ricette/:id/variante`) col modulo di sempre e la categoria
+dell'originale; «Salva la variante» crea una ricetta nuova con `derived_from_id`
+(colonna nuova, migrazione `0014`, `ON DELETE SET NULL`), e la variante mostra sotto il
+titolo «Variante di «…»», con «(eliminata)» se l'originale è eliminata (porta alla
+lapide). Le righe passano dall'imbuto: la proposta non aggancia e non propone un non
+alimentare. L'annullamento di una decisione dell'import, che rifà l'originale, tiene
+gli id delle varianti nel `payload` come le cotture (`variant_recipe_ids`). Un'originale
+sparita al salvataggio non ferma la variante: nasce senza legame.
+
+**Deciso da Mattia il 2026-10-13:** la variante parte con la foto e i tempi
+dell'originale («Sì, copiali»). Li copia il server al salvataggio (`variant_copy` in
+`app/repositories/recipes.py`), perché il modulo della ricetta non ha campi per la foto
+e per i tempi (R10 §7); `PUT` li lascia com'erano. Oggi nessuno schermo li corregge, per
+nessuna ricetta: è un'idea in `next-steps.md`.
+
+**Le scelte del piano che Mattia può voler rivedere:** il tasto fra le icone accanto al
+titolo; il prompt in un pannello dentro il dettaglio (e non in uno schermo suo); la
+categoria che parte da quella dell'originale; «(eliminata)» nel legame.
+
+**Da provare sul telefono:** il pannello con la tastiera aperta (il campo resta in
+vista?), una variante vera col modello vero — la notte ha provato solo coi finti, quindi
+la qualità del ribilanciamento («sostituisci lo zucchero con dolcificante») non è
+misurata — e il giro indietro: variante → originale → indietro.
 
 ## R9. Il costo della ricetta **[FATTO 2026-09-24, in produzione]**
 Ogni ricetta ha un costo da 1 a 5, disegnato come cinque `€` di cui i primi *n* neri
@@ -1698,7 +1922,17 @@ come 422 con la frase, accanto a «Salva», e la riga si toglie con la sua ✕.
 
 # Parte IV — Pasti (sezione primaria nuova) ↳ D1, D2, D3
 
-## P1. Creazione di un pasto **[D]**
+> **Sostituita il 2026-11-12** dalla spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`
+> (Pasti con Claude e Utensili, decisa con Mattia). P1, P2 e P3 qui sotto, M1 (Parte V) e
+> H3 (Parte VI) sono sostituiti (spec §11) e restano come archivio del ragionamento. Il
+> primo pezzo senza Claude — la settimana, i pasti a mano, le ricette fuori dal ricettario —
+> è sul ramo `night/pasti-settimana` (2026-11-13, da revisionare). Il secondo pezzo — Claude e
+> la chat del piatto — è sul ramo `night/pasti-claude` (2026-11-13, da revisionare). Il quarto e
+> ultimo pezzo — la pianificazione con Claude, la bozza e l'ufficializzazione, le schede dei cambi
+> e la scheda inversa — è sul ramo `night/pasti-pianificazione` (2026-11-13, da revisionare). La
+> skill `pasti` resta finché la sezione non è in produzione e provata.
+
+## P1. Creazione di un pasto **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]**
 Si sceglie il tipo — Colazione, Pranzo, Merenda, Cena, Spuntino — e l'app mostra
 ricette adatte **senza nascondere il resto**: a colazione la bistecca non sta fra i
 primi risultati, ma l'elenco completo resta raggiungibile. Si scelgono più ricette, o
@@ -1706,7 +1940,7 @@ se ne inserisce una nuova, o **si fotografa un piatto per la stima calorica**.
 
 TBD: la stima da foto è un pezzo suo, con la stessa domanda sul modello di S4.
 
-## P2. NutriScore **[D, con TBD]**
+## P2. NutriScore **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]**
 Per il periodo scelto — pasto, giorno, settimana — confronta quel che si doveva
 mangiare con quel che si è mangiato, e dà un punteggio.
 
@@ -1721,7 +1955,7 @@ mangiare con quel che si è mangiato, e dà un punteggio.
 
 ↳ P1 per i dati mangiati, S4 per i nutrienti, D1 per le quantità.
 
-## P3. Pianificare più giorni **[D in parte il 2026-09-24, con TBD]** ↳ P1, P2, M1, R9
+## P3. Pianificare più giorni **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]** ↳ P1, P2, M1, R9
 Nella sezione Pasti, oltre al pasto singolo, si pianifica un periodo — una settimana,
 o più.
 
@@ -1776,7 +2010,7 @@ senza nutrienti resta scritta qui come ripiego, non come piano.
 
 # Parte V — Motori
 
-## M1. Motore di suggerimento ricette **[TBD]** ↳ P2, S4
+## M1. Motore di suggerimento ricette **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]** ↳ P2, S4
 Chiamato ogni volta che l'app propone ricette. Tiene conto di:
 - tipo di pasto;
 - calorie e nutrienti già mangiati, **sia sull'ultimo giorno che sull'ultima
@@ -1792,7 +2026,7 @@ e i sostituti. Brainstorming suo, a valle di tutto.
 
 # Parte VI — Sezioni secondarie (hamburger)
 
-## H1. Expense Tracker **[TBD]** ↳ T2
+## H1. Expense Tracker **[FATTO 2026-10-18 — sul ramo `night/h1-spese-ai`, non ancora in produzione]** ↳ T2
 Spesa totale su OpenRouter nel periodo scelto, con una torta di come si divide.
 
 **Dipendenza sciolta il 2026-09-17:** T2 è fatto, quindi `llm_calls` sta già
@@ -1804,7 +2038,27 @@ sezione, per giorno, riusciti e falliti); `python -m app.cli.llm_prices` stampa 
 i prezzi di listino per provider, che è un'altra cosa e serve semmai a scegliere il
 modello.
 
-## H2. Connettore Samsung Health **[TBD]**
+**Il TBD è deciso** (Mattia, 2026-10-09): la schermata mostra sempre il totale del
+periodo, la divisione per sezione e l'andamento giorno per giorno; niente elenco delle
+chiamate, niente vista delle fallite. Periodi: «Questo mese» di partenza, «Ultimi 30
+giorni», «Da sempre»; i giorni contati a Roma come la scadenza. Niente torta: una barra
+per sezione, che regge sei sezioni su 375 px e si legge senza legenda. Spec:
+`docs/superpowers/specs/2026-10-09-h1-spese-ai-design.md`.
+
+**Fatto il 2026-10-18**, sul ramo `night/h1-spese-ai` (da revisionare):
+`GET /api/v1/llm-spending?period=month|30d|all` somma i costi dichiarati di `llm_calls`
+nel periodo, per sezione (col nome a video da `CALL_SITE_LABELS` in
+`backend/app/domain/spending.py`, il `call_site` grezzo per una sezione che non conosce) e
+per giorno di Roma, coi giorni senza spesa a zero. Le fallite hanno sempre il costo NULL:
+non entrano nel totale e si contano, con una riga sotto il totale. A video
+«Spese dell'AI», l'ultima voce del ☰: il totale grande, le barre per sezione, le colonne
+per giorno in SVG scritto a mano, nessuna dipendenza nuova.
+
+**Da provare sul telefono e coi dati veri:** i tre pulsanti del periodo col pollice;
+«Da sempre» che parte dal 17 settembre 2026; il totale confrontato con l'attività
+dell'app sul sito di OpenRouter.
+
+## H2. Connettore Samsung Health **[FATTO 2026-10-19 — sul ramo `night/h2-health-connect`, non ancora in produzione]**
 Serve a Pasti: l'attività fisica cambia il fabbisogno, e inserirla a mano non si fa.
 
 **TODO (sottoagente):** verificare se esiste una via praticabile. L'SDK ufficiale
@@ -1813,8 +2067,45 @@ davvero utilizzabili. **Finché non c'è una risposta, il fabbisogno calorico di
 può dipendere dall'attività**: va progettato per funzionare senza, e migliorare se
 arriva.
 
-## H3. Profilo **[D]** ↳ P2
+**Il TODO è risolto** (ricerca del 2026-10-13): Samsung Health scrive in Health Connect
+passi, allenamenti, peso e altro (non il riepilogo delle calorie attive), e **HC Webhook**,
+un'app Android libera, legge Health Connect e manda i dati a un indirizzo. Mattia ha deciso
+il 2026-10-13: HC Webhook subito, con la PWA (col wrapper Capacitor la lettura passerà
+dentro l'app, il backend resta); Spena legge passi, allenamenti e peso; il dispendio lo
+calcola Spena, ma è di P2 e H3. Spec:
+`docs/superpowers/specs/2026-10-13-h2-health-connect-design.md` (il §9 dice cosa resta a P2).
+
+**Fatto il 2026-10-19**, sul ramo `night/h2-health-connect` (da revisionare):
+`POST /api/v1/activity/hc-webhook` fuori dalla sessione, aperto da una chiave sua in
+`X-Spena-Token` (si vede una volta, si rigenera; nel database solo l'impronta), rifiuto
+silenzioso, 2 MB letti a pezzi, mai un 500 su un corpo inatteso. I passi solo nella forma
+«Giornaliero» di HC Webhook, l'unica in cui Health Connect toglie i doppioni fra telefono e
+orologio, e un totale per giorno di Roma che non si somma mai (`merge_steps_day` in
+`backend/app/domain/activity.py`); allenamenti e pesate unici per app e istante. Migrazione
+`0018`, cinque tabelle `activity_*`. A video «Attività» dal ☰ (l'ultima sincronizzazione,
+7 giorni di passi, allenamenti, pesate) e «Collega HC Webhook» coi dieci passi da fare sul
+telefono.
+
+**Ora P2 può contare l'attività**: la frase sopra («il fabbisogno calorico di P2 non può
+dipendere dall'attività») non vale più, ma resta vero che P2 deve funzionare anche senza:
+un giorno senza dati è un giorno senza dispendio calcolato, non uno zero.
+
+**Da provare sul telefono e coi dati veri:** la prova dei 10 minuti in Health Connect, il
+collegamento coi dieci passi, i passi di ieri uguali a quelli di Samsung Health, una
+settimana di sincronizzazioni senza buchi (l'ottimizzazione della batteria).
+
+## H3. Profilo **[SOSTITUITO 2026-11-12 — spec Pasti con Claude, §11]** ↳ P2
 Peso, altezza, e quel che serve ai fabbisogni. Nasce perché P2 lo richiede.
+
+## H4. Utensili **[FATTO 2026-11-13 — sul ramo `night/utensili`, non ancora in produzione]**
+Chiesto da Mattia il 2026-11-10: le ricette scritte dall'AI non devono dire di usare
+strumenti che in cucina non ci sono. Spec `docs/superpowers/specs/2026-11-12-pasti-claude-design.md`
+(§4.4, §5.4, §8), piano `docs/superpowers/plans/2026-11-12-utensili.md`. Dal ☰, accanto
+all'Anagrafica: nome e nota facoltativa («padella antiaderente», «da 24 cm»), senza
+legami con le righe delle ricette. L'elenco va in coda al prompt di sistema della bozza
+AI e della variante (R8), e nel piano 3 dei pasti in quello di Claude; vuoto, nessun
+vincolo. Le ricette importate non si controllano: segnalare quelle che chiedono uno
+strumento mancante resta un'idea.
 
 ---
 
@@ -1854,8 +2145,8 @@ Non è una stima: è la cifra addebitata, e la buttavamo via da mesi leggendo so
 un modello giù è spesa sprecata, ed è il giro che paga e non conclude che una torta
 delle spese esiste per scoprire.
 
-`call_site` è oggi `TERM_DECISION`, `TERM_COLLAPSE`, `RECIPE_DRAFT` e — dal 2026-09-20,
-con D1 — `UNIT_FORMS`. Ogni punto di
+`call_site` è oggi `TERM_DECISION`, `TERM_COLLAPSE`, `RECIPE_DRAFT`, `UNIT_FORMS` (dal
+2026-09-20, con D1) e `RECIPE_VARIANT` (dal 2026-10-19, con R8). Ogni punto di
 chiamata nuovo ne aggiunge uno: `complete_json` lo pretende come argomento
 obbligatorio, e `tests/test_llm_spend_is_recorded.py` legge i sorgenti e fallisce se un
 modulo chiama l'LLM senza registrare. Serve perché la dimenticanza qui non rompe
@@ -2245,6 +2536,30 @@ spenta (`--color-notch-off`, 3,39:1 e 3,45:1) contro il fondo `card`, in chiaro 
 scuro: ≥3:1 (WCAG 1.4.11, è un segno e non un testo, non la
 soglia 4,5:1 di un testo). Gli altri due — il pulsante primario spento, il velo del ☰ —
 restano aperti, e non toccano la Dispensa.
+
+**Il primo e il terzo si chiudono il 2026-10-18**, sul ramo `night/tema-scuro-spenti`,
+non ancora in produzione (bozza `docs/superpowers/specs/2026-10-06-tema-scuro-bozza.md`,
+decisa il 2026-10-07). Il pulsante spento non usa più `opacity`, che lo portava a 1,8:1 in
+chiaro e a un verde torbido in scuro: `primary` e `warn` spenti hanno un grigio pieno
+(`--color-disabled`, `#d8dfdb` / `#2a332d`) con la scritta `on-disabled` (5,33:1 e
+6,83:1); `secondary`, `ghost` e `danger` spenti scrivono in `ink-faint`. Vale per
+`disabled`, `busy` e `unavailableReason`, e per i `<button>` scritti a mano con
+`buttonClasses`. Il velo del ☰ è al 45% in chiaro e al 60% in scuro (`--scrim-alpha`), e il
+pannello ha un bordo sinistro `panel-edge` (`#5a645e` in scuro, invisibile in chiaro):
+pannello o bordo stanno sopra 3:1 contro la pagina e le schede velate, nei due temi
+(`theme.test.ts`). L'e2e misura ora anche la scritta dei pulsanti spenti, in ogni luogo;
+restano saltati i testi sotto un'opacità, cioè gli altri controlli spenti fuori da
+`Button` (voce a parte in `next-steps.md`).
+
+**Le scelte che Mattia può voler rivedere:** il grigio dello spento anche per il pulsante
+in volo (`busy`), per tutta la durata della richiesta; il bordo del ☰ solo in scuro; un
+`ghost` spento cambia solo il colore della scritta (`ink-soft` → `ink-faint`, 1,36:1 in
+chiaro e 1,45:1 in scuro fra i due), quindi in volo si distingue poco.
+
+**Da provare sul telefono:** il pulsante spento grigio al sole, accanto a un secondario
+acceso, nei due temi; un `ghost` in volo (il cestino della ricetta, la ✕ della riga della
+lista), che si capisca spento col solo cambio della scritta; il ☰ in scuro, che la pagina si
+spenga e il pannello si stacchi.
 
 Suite alla fine: 606 test in jsdom (50 file), typecheck, lint e build puliti; 29 e2e
 verdi, di cui 9 nuovi in `e2e/style.spec.ts`: fondo della pagina, contrasto di ogni testo
@@ -2796,6 +3111,11 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   preesistente `EMPTY_REASON` (`backend/app/services/recipe_import/materialize.py`).
   Una pagina `SKIPPED` non si ritenta da sola: chi vuole sapere perché deve
   aprire il database.
+  *(Fatto il 2026-10-18, sul ramo `night/scartate-in-coda`, non ancora in
+  produzione: `GET /api/v1/imports/pages/skipped` elenca le scartate col perché in un
+  codice — `explain_skip` in `materialize.py`, accanto a chi scrive i motivi — e la coda
+  d'import le mostra in «Scartate (N)» con le parole da persona. Spec
+  `docs/superpowers/specs/2026-10-09-scartate-in-coda-design.md`.)*
 - **Una pagina `SKIPPED` non torna mai in coda, nemmeno dopo aver corretto la causa.**
   Nessuna strada dell'app la rimette `pending`: `undo_decision` riprende solo le pagine
   `imported` con la loro ricetta, e né la coda né `fix_registry` né un comando toccano le
@@ -2809,6 +3129,14 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   che comparirà in pagine scaricate domani, non la ferma — rifiutare su qualunque
   termine deciso bloccherebbe quasi ogni ingrediente di base, e per ora si lascia così
   (deciso il 2026-09-28).
+  *(Fatto il 2026-10-18, sul ramo `night/scartate-in-coda`, non ancora in
+  produzione: «Rimetti in coda» nella sezione «Scartate (N)» della coda d'import
+  (`POST /api/v1/imports/pages/{id}/requeue`, `requeue_page` in
+  `services/recipe_import/requeue.py`) rimette la pagina `pending`, riallinea i termini,
+  la materializza subito e dice com'è finita: entrata (con le cotture del `payload`
+  rilegate), di nuovo scartata col motivo, o in attesa dei termini che nomina. Una pagina
+  illeggibile non si rimette: si mostra con «Apri la pagina». Piano
+  `docs/superpowers/plans/2026-10-09-scartate-in-coda.md`.)*
 - ~~**La guardia sugli argomenti sconosciuti di `app.cli.seed` stampa il rifiuto
   ma esce con codice 0.**~~ **Chiusa con R4, il 2026-09-24**: un flag sconosciuto o
   contraddittorio esce con codice 1.
@@ -2833,7 +3161,20 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   `imposta-password.sh`.
 - **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
   `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.
-- **Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
+- ~~**Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
+  «finito»**~~ **Chiusa il 2026-10-19, decisa da Mattia il 2026-10-09** (spec
+  `docs/superpowers/specs/2026-10-09-rimetti-in-lista-design.md`, piano
+  `docs/superpowers/plans/2026-10-09-rimetti-in-lista.md`, sul ramo
+  `night/rimetti-in-lista`, non ancora in produzione): «anche quasi finito, ovunque». In
+  Dispensa «In lista» / «Già in lista» c'è anche sulle righe gialle, con la parola «Quasi
+  finito»; nel foglio la casella c'è quando la confezione dopo la cottura è gialla (vuota)
+  o rossa (spuntata), **anche se era già gialla prima**: spuntata, parte come transizione
+  allo stesso stato, che `cook` non applica alla voce (né stato, né `fill_percent`, né
+  `status_changed_at`) e che rientra in lista col motivo `low_while_cooking`; `updated`
+  conta solo gli stati cambiati. Quali stati offrono il rientro lo dice una funzione sola, `offersRestock` in
+  `statusLabels.ts`, per le due sezioni. Il rientro dalla Dispensa resta `manual`. Il
+  testo di prima, per la storia:
+  **Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
   «finito»** (`frontend/src/features/cooking/CookSheet.tsx`), mentre in dispensa la
   domanda arriva anche nel giallo dal 2026-09-17. Non è un difetto: là la casella c'è
   sempre e visibile per ogni riga, quindi pre-spuntarla è un valore di partenza, non
@@ -2845,6 +3186,10 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   del rientro in lista («Lo rimetto in lista?», con la sua lapide e il suo esito) come
   componente a sé è il taglio naturale, quando qualcuno ci tornerà; la scadenza è il
   secondo candidato.
+  **Il primo taglio è fatto il 2026-10-19, con «Rimetti in lista»**: la riga del
+  rientro («Finito» o «Quasi finito», e «In lista» o «Già in lista») è
+  `features/pantry/RestockLine.tsx`. La lapide e l'esito non c'erano più dal ridisegno di
+  T3: l'avviso lo dà `PantryScreen`. Resta la scadenza.
 - ~~**Il bersaglio di «+ scadenza» sborda di 4px su quello del cursore** in dispensa.~~
   **Chiusa il 2026-09-27, e la premessa era sbagliata**: misurato in Chromium, il
   bordo alto del bersaglio cade esattamente sul bordo basso del cursore, 0px di
@@ -2951,6 +3296,18 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   singolare e plurale, non se sia un'unità. Il rimedio è quello della voce sopra:
   ripulire `quantity_text` all'ingresso, poi `reparse_quantities`. Chi lo fa tenga
   conto che le unità spurie restano in `units` finché qualcuno non le toglie.
+  **Fatte tutte e due il 2026-10-18**, sul ramo `night/pulizia-dosi` (da revisionare),
+  con le decisioni di Mattia del 2026-10-13 (spec
+  `docs/superpowers/specs/2026-10-13-pulizia-dosi-design.md`). Le misure del 2026-10-13
+  dicevano molto più di settanta e novanta: 9.767 righe con le parole davanti, 202 col
+  numero nel nome, ~1.042 frazioni e ~3.547 «+ q.b.» non lette. Le parole davanti passano
+  nella nota della riga, che l'import non aveva mai usato e che adesso il dettaglio mostra
+  sotto il nome; il parser legge ½ ¼ ¾ e «50 g + q.b.» (riscalata «100 g + q.b.»);
+  l'import pulisce dove il `payload` diventa ricetta; `python -m app.cli.clean_doses`
+  (prima `--dry-run`) pulisce le righe che ci sono, anche delle ricette adottate ma solo
+  dove resta la forma dell'import, le rilegge e toglie le unità rimaste senza righe. In
+  produzione lo lancia Mattia dopo il deploy, con il backup prima: i comandi sono nel
+  piano, «Dopo il deploy (solo Mattia)».
 - **Ogni test di schermata si costruisce il proprio client react-query con
   `retry: false`, mentre `frontend/src/App.tsx` usa
   `defaultQueryRetryPredicate`.** È esattamente la prima lezione di `CLAUDE.md` —

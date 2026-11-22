@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe import RecipeSource
 from app.domain.rules import COST_MAX, COST_MIN, Availability, IngredientRole
+from app.schemas.meal import MealRefOut
 
 
 class RecipeIngredientIn(BaseModel):
@@ -22,6 +23,16 @@ class RecipeIngredientIn(BaseModel):
     role: IngredientRole
     quantity_text: str | None = Field(default=None, max_length=100)
     note: str | None = Field(default=None, max_length=300)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _blank_note_is_none(cls, value: object) -> object:
+        # Una nota vuota o di soli spazi non dice niente: si salva `null`, ed è così che il
+        # modulo la toglie (piano 20). Gli spazi ai bordi non sono parte della nota. Prima
+        # del limite di 300, che conta la nota vera.
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
     @model_validator(mode="after")
     def _one_of_the_two(self) -> "RecipeIngredientIn":
@@ -53,6 +64,12 @@ class RecipeFields(BaseModel):
 class RecipeCreate(RecipeFields):
     source: RecipeSource
     source_ref: str | None = Field(default=None, max_length=500)
+    # R8: la ricetta da cui questa nasce, per una variante scritta con l'AI. Solo alla
+    # creazione: `RecipeReplace` non lo dichiara, quindi una modifica non lo cambia.
+    derived_from_id: uuid.UUID | None = None
+    # Il pasto per cui si scrive: la ricetta nasce fuori dal ricettario e si lega a lui
+    # nella stessa transazione (piano Pasti e settimana, Task 5)
+    meal_id: uuid.UUID | None = None
 
 
 class RecipeReplace(RecipeFields):
@@ -78,6 +95,9 @@ class RecipeUpdate(BaseModel):
 
     cost: int | None = Field(default=None, ge=COST_MIN, le=COST_MAX, strict=True)
     archived: bool | None = Field(default=None, strict=True)
+    # «Salva nel ricettario» (`true`) e «Togli dal ricettario» (`false`): solo per la
+    # ricetta di un pasto. Assente o `null` non tocca niente.
+    in_book: bool | None = Field(default=None, strict=True)
 
 
 class RecipeIngredientOut(BaseModel):
@@ -91,6 +111,32 @@ class RecipeIngredientOut(BaseModel):
     # quel che va mostrato: a 1× è quantity_text, riscritto solo quando si riporziona
     quantity_display: str | None
     quantity_scaled: bool
+    # R2, secondo modo: se da questa riga si può riscalare (una dose strutturata più
+    # grande di zero), e la parola dell'unità da scrivere accanto al campo («g»,
+    # «cucchiai»); `None` per un numero nudo o per una riga che non si riscala
+    anchorable: bool = False
+    anchor_unit: str | None = None
+
+
+class AnchorOut(BaseModel):
+    """La dose fissata da cui la risposta è riscalata (R2, secondo modo)."""
+
+    ingredient_id: uuid.UUID
+    # la dose come il server l'ha letta, col punto («112.5»): torna tale e quale alla
+    # cottura, per questo è una stringa e non un numero
+    amount: str
+    # le porzioni che quella dose fa, già arrotondate (`equivalent_servings` in
+    # app/domain/quantities.py); `None` se la ricetta non dice per quante porzioni è
+    equivalent_servings: float | None
+
+
+class RecipeOriginOut(BaseModel):
+    """L'originale di una variante (R8): «Variante di «…»» sotto il titolo. `archived`
+    vero: è eliminata, e il collegamento porta alla sua lapide (R10)."""
+
+    id: uuid.UUID
+    title: str
+    archived: bool
 
 
 class RecipeOut(BaseModel):
@@ -127,12 +173,21 @@ class RecipeOut(BaseModel):
     # manda il server perché è il server a saperlo — `len(ingredients)` conterebbe
     # anche le righe senza `quantity_text`, che non sono dosi mancate
     dose_lines: int = 0
+    # la dose fissata, se questa risposta è riscalata da un ingrediente (R2). `scaled_to`
+    # resta del modo per porzioni: in questo modo è `None`
+    anchor: AnchorOut | None = None
     # presente vuol dire eliminata (R10): il dettaglio risponde lo stesso, perché un
     # collegamento vecchio porti a «Ripristina» e non a un 404
     archived_at: datetime | None = None
     # vero finché una pagina dell'import la rifà: modificarla la rende tua, e lo schermo
     # di modifica lo dice prima del salvataggio (R10 §6.2)
     owned_by_import: bool = False
+    # R8: da quale ricetta nasce, se è una variante; il titolo è quello di oggi
+    derived_from: RecipeOriginOut | None = None
+    # falso per la ricetta di un pasto non salvata nel ricettario; `meal` è il pasto che
+    # la ha, se c'è. Default: un backend o un test che non li dice parla del ricettario
+    in_book: bool = True
+    meal: MealRefOut | None = None
 
 
 class RecipeSummaryOut(BaseModel):

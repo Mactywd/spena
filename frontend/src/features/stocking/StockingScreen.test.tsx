@@ -1,15 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { StockingScreen } from "./StockingScreen";
-import { UnauthorizedError } from "../../api/client";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 
 const CHECKED = [
@@ -54,12 +49,8 @@ const OTHER_INGREDIENT_PRODUCT = {
 
 // come in App.tsx: l'avviso unico sta sopra il router, e sopravvive al passaggio in
 // Dispensa che segue «Metti in dispensa» (T4)
-function renderScreen(client?: QueryClient) {
-  const queryClient =
-    client ??
-    new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
+function renderScreen(onUnauthorized?: () => void) {
+  const queryClient = createTestQueryClient(onUnauthorized);
   return render(
     <QueryClientProvider client={queryClient}>
       <NoticeProvider>
@@ -109,8 +100,8 @@ describe("StockingScreen", () => {
   it("elenca solo le voci spuntate", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(CHECKED)));
     renderScreen();
-    expect(await screen.findByText("yogurt greco")).toBeDefined();
-    expect(screen.getByText("mele")).toBeDefined();
+    expect(await screen.findByText("Yogurt greco")).toBeDefined();
+    expect(screen.getByText("Mele")).toBeDefined();
   });
 
   it("permette di confermare una voce come sfusa, senza prodotto", async () => {
@@ -366,31 +357,26 @@ describe("StockingScreen", () => {
   });
 
   it("un 401 sulla ricerca a catalogo arriva alla QueryCache, come ogni altra ricerca", async () => {
-    const onError = vi.fn();
+    // Il client è quello dell'app: la sua QueryCache chiama `onUnauthorized` solo per un
+    // `UnauthorizedError`, quindi la chiamata prova anche il tipo dell'errore.
+    const onUnauthorized = vi.fn();
     stubRoutedFetch((path) =>
       path.includes("/products/search") ? [{ detail: "fuori" }, 401] : [CHECKED]
     );
-    const client = new QueryClient({
-      queryCache: new QueryCache({ onError }),
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
 
-    renderScreen(client);
+    renderScreen(onUnauthorized);
     await userEvent.click(
       await screen.findByRole("button", { name: /Cerca a catalogo.*yogurt greco/i })
     );
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalled());
-    expect(
-      onError.mock.calls.some(([error]) => error instanceof UnauthorizedError)
-    ).toBe(true);
+    await vi.waitFor(() => expect(onUnauthorized).toHaveBeenCalled());
   });
 
   it("non manda in dispensa nulla se non hai confermato niente", async () => {
     const spy = vi.fn().mockResolvedValue(respond(CHECKED));
     vi.stubGlobal("fetch", spy);
     renderScreen();
-    await screen.findByText("mele");
+    await screen.findByText("Mele");
     // `aria-disabled` e non `disabled`: mentre la sistemazione è in volo il pulsante deve
     // tenere il fuoco. E spento dice perché (dal giro, da non riprogettare via)
     const stock = screen.getByRole("button", { name: "Metti in dispensa" });
@@ -451,21 +437,18 @@ describe("StockingScreen", () => {
 
   it("un 401 sul lookup passa dalla MutationCache, come ogni altra chiamata", async () => {
     // fuori da react-query, una sessione scaduta qui non riportava all'accesso
-    const onError = vi.fn();
-    const client = new QueryClient({
-      mutationCache: new MutationCache({ onError }),
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
+    // la MutationCache è quella dell'app, e chiama `onUnauthorized` solo per un
+    // `UnauthorizedError`
+    const onUnauthorized = vi.fn();
     stubRoutedFetch((path) =>
       path.includes("/products/barcode/") ? ["", 401] : [CHECKED]
     );
 
-    renderScreen(client);
+    renderScreen(onUnauthorized);
     await userEvent.click(await screen.findByRole("button", { name: /Codice.*yogurt greco/i }));
     await userEvent.type(screen.getByLabelText("Codice a barre"), "52010{Enter}");
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalled());
-    expect(onError.mock.calls[0][0]).toBeInstanceOf(UnauthorizedError);
+    await vi.waitFor(() => expect(onUnauthorized).toHaveBeenCalled());
   });
 
   it("il campo del codice non conserva il codice della voce precedente", async () => {
@@ -528,7 +511,7 @@ describe("StockingScreen", () => {
     });
 
     renderScreen();
-    await screen.findByText("cosa strana");
+    await screen.findByText("Cosa strana");
 
     // niente pulsanti di sistemazione finché la voce non ha un ingrediente:
     // comparirebbero comandi che alla conferma sparirebbero in silenzio
@@ -653,7 +636,7 @@ describe("StockingScreen", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(CHECKED)));
     renderScreen();
 
-    await screen.findByText("yogurt greco");
+    await screen.findByText("Yogurt greco");
     expect(screen.queryByLabelText(/scadenza/i)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "+ scadenza per yogurt greco" }));
@@ -673,11 +656,11 @@ describe("StockingScreen", () => {
     );
     renderScreen();
 
-    for (const testo of ["yogurt greco", "mele"]) {
+    for (const testo of ["Yogurt greco", "Mele"]) {
       const riga = (await screen.findByText(testo)).closest("li")!;
       await user.click(within(riga).getByRole("button", { name: /sfuso/i }));
     }
-    const rigaYogurt = screen.getByText("yogurt greco").closest("li")!;
+    const rigaYogurt = screen.getByText("Yogurt greco").closest("li")!;
     await user.click(within(rigaYogurt).getByRole("button", { name: /scadenza/i }));
     const campo = within(rigaYogurt).getByLabelText(/scadenza di yogurt greco/i);
     fireEvent.change(campo, { target: { value: "2026-10-02" } });
@@ -703,11 +686,11 @@ describe("StockingScreen", () => {
     renderScreen();
 
     // entrambe le voci hanno già un ingrediente: si confermano sfuse
-    for (const testo of ["yogurt greco", "mele"]) {
+    for (const testo of ["Yogurt greco", "Mele"]) {
       const riga = (await screen.findByText(testo)).closest("li")!;
       await user.click(within(riga).getByRole("button", { name: /sfuso/i }));
     }
-    const rigaYogurt = screen.getByText("yogurt greco").closest("li")!;
+    const rigaYogurt = screen.getByText("Yogurt greco").closest("li")!;
     await user.click(within(rigaYogurt).getByRole("button", { name: /scadenza/i }));
     fireEvent.change(within(rigaYogurt).getByLabelText(/scadenza di yogurt greco/i), {
       target: { value: "2026-10-02" },
@@ -862,7 +845,8 @@ describe("StockingScreen", () => {
       renderScreen();
       await readSpaghettiOnYogurt();
 
-      expect(await screen.findByRole("heading", { name: "È un «yogurt greco»?" })).toBeDefined();
+      // senza articolo: l'«un» della domanda di prima non si accordava con «zucchina» (giro del 2026-10-07)
+      expect(await screen.findByRole("heading", { name: "È «yogurt greco»?" })).toBeDefined();
       expect(
         screen.getByText("Su Open Food Facts è «Spaghetti n.5», di Barilla.")
       ).toBeDefined();
@@ -878,7 +862,7 @@ describe("StockingScreen", () => {
 
       await userEvent.click(await screen.findByRole("button", { name: "No, è un'altra cosa" }));
 
-      expect(screen.queryByRole("heading", { name: "È un «yogurt greco»?" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "È «yogurt greco»?" })).toBeNull();
       expect(screen.queryByRole("heading", { name: /Nuovo prodotto/ })).toBeNull();
       expect(screen.getByRole("button", { name: /Codice.*yogurt greco/i })).toBeDefined();
       expect(screen.getByRole("button", { name: /Sfuso.*yogurt greco/ })).toBeDefined();
@@ -924,7 +908,7 @@ describe("StockingScreen", () => {
       expect(await screen.findByText("Su Open Food Facts è senza nome.")).toBeDefined();
       await userEvent.click(screen.getByRole("button", { name: "Sì" }));
       expect(await screen.findByLabelText("Nome")).toHaveValue("");
-      expect(screen.getByRole("button", { name: "Salva prodotto" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Salva prodotto" })).toHaveAttribute("aria-disabled", "true");
     });
 
     it("un codice che Open Food Facts non conosce apre il modulo e lo dice", async () => {
@@ -1121,7 +1105,7 @@ describe("StockingScreen", () => {
       await userEvent.type(field, "strana");
       await userEvent.click(await screen.findByRole("option", { name: /Cosa Strana/i }));
       await userEvent.click(screen.getByRole("button", { name: "Cerca a catalogo per mele" }));
-      expect(screen.queryByText("cosa strana")).toBeNull();
+      expect(screen.queryByText("Cosa strana")).toBeNull();
 
       await act(async () =>
         answerPatch(respond({ ...UNMATCHED[0], ingredient_id: "i9" }))
@@ -1204,7 +1188,7 @@ describe("StockingScreen", () => {
     it("una sezione per reparto, nell'ordine della lista; le voci senza ingrediente in fondo", async () => {
       stubRoutedFetch(() => [[...UNMATCHED, ...CHECKED]]);
       renderScreen();
-      await screen.findByText("mele");
+      await screen.findByText("Mele");
       expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
         "Frutta",
         "Latticini",
@@ -1225,8 +1209,8 @@ describe("StockingScreen", () => {
         screen.getByRole("heading", { level: 2, name: "Cerca a catalogo per «mele»" })
       ).toBeDefined();
       // le altre voci, i reparti e «Metti in dispensa» non ci sono (decisione 1, Mattia)
-      expect(screen.queryByText("yogurt greco")).toBeNull();
-      expect(screen.queryByText("cosa strana")).toBeNull();
+      expect(screen.queryByText("Yogurt greco")).toBeNull();
+      expect(screen.queryByText("Cosa strana")).toBeNull();
       for (const reparto of ["Frutta", "Latticini", "Senza reparto"]) {
         expect(screen.queryByRole("heading", { name: reparto })).toBeNull();
       }
@@ -1238,9 +1222,9 @@ describe("StockingScreen", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
       // tutto com'era, e la scelta fatta prima resta
-      const yogurt = screen.getByText("yogurt greco").closest("li")!;
+      const yogurt = screen.getByText("Yogurt greco").closest("li")!;
       expect(within(yogurt).getByText("Sfuso")).toBeDefined();
-      expect(screen.getByText("cosa strana")).toBeDefined();
+      expect(screen.getByText("Cosa strana")).toBeDefined();
       expect(screen.getByRole("button", { name: "Metti in dispensa 1" })).toBeDefined();
       expect(document.activeElement).toBe(
         screen.getByRole("button", { name: "Cerca a catalogo per mele" })
@@ -1345,7 +1329,7 @@ describe("StockingScreen", () => {
       stubRoutedFetch(() => [CHECKED]);
       renderScreen();
       await userEvent.click(await screen.findByRole("button", { name: "Codice a barre per mele" }));
-      expect(targets.at(-1)).toBe(screen.getByText("mele").closest("li"));
+      expect(targets.at(-1)).toBe(screen.getByText("Mele").closest("li"));
       reveal.mockRestore();
     });
 
@@ -1396,6 +1380,192 @@ describe("StockingScreen", () => {
       await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 2" }));
       expect(await screen.findByText("2 in dispensa")).toBeDefined();
       expect(screen.queryByText(/in lista/)).toBeNull();
+    });
+  });
+
+  describe("più confezioni per una voce (S3 §10.2)", () => {
+    it("non c'è finché la voce non è risolta", async () => {
+      stubRoutedFetch(() => [CHECKED]);
+      renderScreen();
+      await screen.findByText("Mele");
+      expect(screen.queryByRole("button", { name: /un'altra confezione/ })).toBeNull();
+    });
+
+    it("su una voce risolta aggiunge una confezione con le sue tre strade, e il pulsante conta le confezioni", async () => {
+      const spy = stubRoutedFetch((path) =>
+        path.endsWith("/shopping-list/stock") ? [{ created: 2 }, 201] : [CHECKED]
+      );
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "+ un'altra confezione di mele" }));
+      const toolbar = screen.getByRole("toolbar", { name: "Come entra in dispensa: mele, confezione 2" });
+      // il fuoco va alla prima strada della confezione nuova
+      expect(document.activeElement).toBe(
+        within(toolbar).getByRole("button", { name: "Codice a barre per mele, confezione 2" })
+      );
+      await userEvent.click(
+        within(toolbar).getByRole("button", { name: "Sfuso, senza marca: mele, confezione 2" })
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 2" }));
+      await vi.waitFor(() =>
+        expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
+          { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null, barcode: null },
+          { shopping_item_id: "s2", ingredient_id: "i2", product_id: null, expires_on: null, barcode: null },
+        ])
+      );
+    });
+
+    it("ogni confezione ha la sua scelta e la sua scadenza", async () => {
+      const spy = stubRoutedFetch((path) => {
+        if (path.includes("/products/search")) return [[FAGE]];
+        if (path.endsWith("/shopping-list/stock")) return [{ created: 2 }, 201];
+        return [CHECKED];
+      });
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*yogurt greco/i }));
+      await userEvent.click(screen.getByRole("button", { name: "+ un'altra confezione di yogurt greco" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "Cerca a catalogo per yogurt greco, confezione 2" })
+      );
+      // il catalogo della confezione è quello della voce: lo stesso ingrediente
+      expect(screen.getByRole("heading", { name: "Cerca a catalogo per «yogurt greco»" })).toBeDefined();
+      await userEvent.click(await screen.findByRole("option", { name: /Total 0%/ }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "+ scadenza per yogurt greco, confezione 2" })
+      );
+      fireEvent.change(screen.getByLabelText("Scadenza di yogurt greco, confezione 2"), {
+        target: { value: "2026-10-20" },
+      });
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 2" }));
+      await vi.waitFor(() =>
+        expect(postBody(spy, "/shopping-list/stock").entries).toEqual([
+          { shopping_item_id: "s1", ingredient_id: "i1", product_id: null, expires_on: null, barcode: null },
+          { shopping_item_id: "s1", ingredient_id: "i1", product_id: "p1", expires_on: "2026-10-20",
+            barcode: null },
+        ])
+      );
+    });
+
+    it("la ✕ toglie la confezione e la sua scelta, e il fuoco torna alla voce", async () => {
+      stubRoutedFetch(() => [CHECKED]);
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "+ un'altra confezione di mele" }));
+      await userEvent.click(screen.getByRole("button", { name: "Sfuso, senza marca: mele, confezione 2" }));
+      expect(screen.getByRole("button", { name: "Metti in dispensa 2" })).toBeDefined();
+
+      await userEvent.click(screen.getByRole("button", { name: "Togli la confezione 2 di mele" }));
+      expect(screen.queryByText("Confezione 2")).toBeNull();
+      expect(screen.getByRole("button", { name: "Metti in dispensa 1" })).toBeDefined();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Cambia la scelta per mele" })
+      );
+    });
+
+    it("l'avviso in Dispensa conta le confezioni entrate e le voci rimaste", async () => {
+      stubRoutedFetch((path) =>
+        path.endsWith("/shopping-list/stock") ? [{ created: 2 }, 201] : [[...CHECKED, ...UNMATCHED]]
+      );
+      renderScreen();
+      await userEvent.click(await screen.findByRole("button", { name: /Sfuso.*mele/i }));
+      await userEvent.click(screen.getByRole("button", { name: "+ un'altra confezione di mele" }));
+      await userEvent.click(screen.getByRole("button", { name: "Sfuso, senza marca: mele, confezione 2" }));
+      await userEvent.click(screen.getByRole("button", { name: "Metti in dispensa 2" }));
+      expect(await screen.findByRole("heading", { name: "Dispensa" })).toBeDefined();
+      expect(screen.getByText("2 in dispensa · 2 restano in lista")).toBeDefined();
+    });
+  });
+
+  describe("«Articolo aggiuntivo» (S3 §10.1)", () => {
+    const PANE = { id: "i5", name: "pane", display_name: "Pane", category: "cereali", kind: "food" };
+    const PANE_IN_LISTA = {
+      id: "s9", raw_text: "Pane", ingredient_id: "i5", ingredient_name: "pane",
+      ingredient_category: "cereali", ingredient_kind: "food", status: "pending", reason: "manual",
+      created_at: "2026-10-08T10:00:00Z",
+    };
+
+    function writes(spy: ReturnType<typeof stubRoutedFetch>) {
+      return spy.mock.calls
+        .filter(([, init]) => ["POST", "PATCH"].includes(String((init as RequestInit)?.method)))
+        .map(([url, init]) => [
+          String(url),
+          (init as RequestInit).method,
+          JSON.parse(String((init as RequestInit).body)),
+        ]);
+    }
+
+    async function chooseExtra(term: string, option: string) {
+      await userEvent.click(await screen.findByRole("button", { name: "Articolo aggiuntivo" }));
+      await userEvent.type(screen.getByRole("textbox", { name: "Cosa hai comprato?" }), term);
+      await userEvent.click(await screen.findByRole("option", { name: option }));
+    }
+
+    it("mette in lista una voce già spuntata, che compare fra le altre col fuoco sulla sua prima icona", async () => {
+      let checked = false;
+      const spy = stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[PANE]];
+        if (path.endsWith("/shopping-list") && init?.method === "POST") {
+          return [{ ...PANE_IN_LISTA, added: true }, 201];
+        }
+        if (path.endsWith("/shopping-list/s9") && init?.method === "PATCH") {
+          checked = true;
+          return [{ ...PANE_IN_LISTA, status: "checked" }];
+        }
+        return [checked ? [...CHECKED, { ...PANE_IN_LISTA, status: "checked" }] : CHECKED];
+      });
+      renderScreen();
+      await chooseExtra("pan", "Pane");
+
+      await vi.waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("button", { name: "Codice a barre per Pane" })
+        )
+      );
+      expect(writes(spy)).toEqual([
+        ["/api/v1/shopping-list", "POST", { raw_text: "Pane", ingredient_id: "i5" }],
+        ["/api/v1/shopping-list/s9", "PATCH", { status: "checked" }],
+      ]);
+      expect(screen.queryByRole("textbox", { name: "Cosa hai comprato?" })).toBeNull();
+    });
+
+    it("un ingrediente già spuntato non si doppia e non si rispunta: la sua voce prende il fuoco", async () => {
+      const MELA = { id: "i2", name: "mela", display_name: "Mela", category: "frutta", kind: "food" };
+      const spy = stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[MELA]];
+        if (path.endsWith("/shopping-list") && init?.method === "POST") {
+          return [{ ...CHECKED[1], ingredient_kind: "food", added: false }];
+        }
+        return [CHECKED];
+      });
+      renderScreen();
+      await chooseExtra("mel", "Mela");
+      await vi.waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("button", { name: "Codice a barre per mele" })
+        )
+      );
+      expect(writes(spy).map(([, method]) => method)).toEqual(["POST"]);
+    });
+
+    it("se non riesce lo dice, e la scelta resta lì da rifare", async () => {
+      stubRoutedFetch((path, init) => {
+        if (path.includes("/ingredients/search")) return [[PANE]];
+        if (path.endsWith("/shopping-list") && init?.method === "POST") return [{ detail: "giù" }, 500];
+        return [CHECKED];
+      });
+      renderScreen();
+      await chooseExtra("pan", "Pane");
+      expect(
+        await screen.findByText("Non sono riuscito ad aggiungerlo alla spesa da sistemare. Riprova.")
+      ).toBeDefined();
+      expect(screen.getByRole("textbox", { name: "Cosa hai comprato?" })).toBeDefined();
+    });
+
+    it("a lista vuota non c'è: lo schermo vuoto porta alla Lista", async () => {
+      stubRoutedFetch(() => [[]]);
+      renderScreen();
+      await screen.findByRole("heading", { name: "Niente da sistemare" });
+      expect(screen.queryByRole("button", { name: "Articolo aggiuntivo" })).toBeNull();
     });
   });
 });

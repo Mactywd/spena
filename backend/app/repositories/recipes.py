@@ -1,11 +1,12 @@
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models.ingredient import Ingredient
-from app.db.models.recipe import Recipe, RecipeIngredient
+from app.db.models.recipe import Recipe, RecipeIngredient, in_the_book
 from app.domain.quantities import parse_quantity
 from app.domain.rules import IngredientKind
 from app.repositories.units import ensure_unit
@@ -106,16 +107,63 @@ async def create_recipe(
     embedding: list[float] | None,
     cost: int | None = None,
     category: str | None = None,
+    derived_from_id: uuid.UUID | None = None,
+    # R8: solo per una variante, copiati dall'originale (vedi `variant_copy`); una
+    # ricetta scritta da zero non li ha, come oggi
+    image_url: str | None = None,
+    prep_minutes: int | None = None,
+    cook_minutes: int | None = None,
+    # falso per la ricetta di un pasto: resta fuori dal ricettario finché non si salva
+    in_book: bool = True,
 ) -> Recipe:
     recipe = Recipe(
         title=title, description=description, instructions=instructions, servings=servings,
         source=source, source_ref=source_ref, embedding=embedding, cost=cost,
-        category=category,
+        category=category, derived_from_id=derived_from_id,
+        image_url=image_url, prep_minutes=prep_minutes, cook_minutes=cook_minutes,
+        in_book=in_book,
     )
     await write_recipe_ingredients(session, recipe, ingredients)
     session.add(recipe)
     await session.flush()
     return recipe
+
+
+async def copy_recipe(
+    session: AsyncSession, source: Recipe, *, in_book: bool = False
+) -> Recipe:
+    """Una ricetta nuova che porta quel che porta `source` (decisione 16 del piano dei pasti):
+    titolo, descrizione, procedimento, porzioni, categoria, costo, foto, tempi, righe con le
+    note e il vettore, copiato e non ricalcolato. Nasce `manual`, senza `source_ref` e senza
+    `derived_from_id`: non è una variante (R8), che a video direbbe «Variante di».
+
+    Le righe passano da `create_recipe`, quindi dall'imbuto: la ricetta di un pasto è una
+    ricetta vera.
+    """
+    full = await get_recipe(session, source.id)
+    assert full is not None
+    lines: list[IngredientLine] = [
+        (line.ingredient_id, line.role, line.quantity_text, line.note)
+        for line in full.ingredients
+    ]
+    return await create_recipe(
+        session,
+        title=full.title,
+        description=full.description,
+        instructions=full.instructions,
+        servings=full.servings,
+        source="manual",
+        source_ref=None,
+        ingredients=lines,
+        embedding=None if full.embedding is None else [float(x) for x in full.embedding],
+        cost=full.cost,
+        category=full.category,
+        derived_from_id=None,
+        image_url=full.image_url,
+        prep_minutes=full.prep_minutes,
+        cook_minutes=full.cook_minutes,
+        in_book=in_book,
+    )
 
 
 async def get_recipe(session: AsyncSession, recipe_id: uuid.UUID) -> Recipe | None:
@@ -127,6 +175,68 @@ async def get_recipe(session: AsyncSession, recipe_id: uuid.UUID) -> Recipe | No
     return (await session.execute(statement)).unique().scalar_one_or_none()
 
 
+@dataclass(frozen=True)
+class RecipeOrigin:
+    """La ricetta da cui una variante nasce (R8), come la si mostra: il titolo di oggi, e
+    se è eliminata — un'eliminata si apre dalla sua lapide (R10)."""
+
+    id: uuid.UUID
+    title: str
+    archived: bool
+
+
+async def recipe_origin(session: AsyncSession, recipe: Recipe) -> RecipeOrigin | None:
+    """L'originale di `recipe`, o `None` se non è una variante o l'originale non c'è più.
+
+    Due colonne e non `session.get`: l'originale porterebbe con sé le sue righe
+    (`selectin`), che qui non servono.
+    """
+    if recipe.derived_from_id is None:
+        return None
+    row = (
+        await session.execute(
+            select(Recipe.title, Recipe.archived_at).where(Recipe.id == recipe.derived_from_id)
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return RecipeOrigin(
+        id=recipe.derived_from_id, title=row.title, archived=row.archived_at is not None
+    )
+
+
+@dataclass(frozen=True)
+class VariantCopy:
+    """Quel che una variante prende dalla sua originale al salvataggio (R8; deciso da
+    Mattia il 2026-10-13: «Sì, copiali»). Vuoto per una ricetta che non è una variante."""
+
+    image_url: str | None = None
+    prep_minutes: int | None = None
+    cook_minutes: int | None = None
+
+
+async def variant_copy(session: AsyncSession, origin_id: uuid.UUID) -> VariantCopy | None:
+    """La foto e i tempi dell'originale `origin_id`, o `None` se non c'è più (eliminata
+    c'è ancora).
+
+    Li copia il server e non il modulo: `RecipeForm` non ha campi per la foto e per i
+    tempi (R10 §7), e il client non deve maneggiare valori che non mostra. Tre colonne e
+    non `session.get`, come `recipe_origin`: le righe dell'originale qui non servono.
+    """
+    row = (
+        await session.execute(
+            select(Recipe.image_url, Recipe.prep_minutes, Recipe.cook_minutes).where(
+                Recipe.id == origin_id
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return VariantCopy(
+        image_url=row.image_url, prep_minutes=row.prep_minutes, cook_minutes=row.cook_minutes
+    )
+
+
 async def recipe_categories(session: AsyncSession) -> list[str]:
     """Le categorie presenti nel ricettario, una volta ciascuna e in ordine.
 
@@ -134,12 +244,12 @@ async def recipe_categories(session: AsyncSession) -> list[str]:
     e il controllo sulla categoria scelta nel modulo (R10). Solo quelle che esistono
     davvero: un filtro che offre voci vuote porta a una schermata vuota.
 
-    Le ricette eliminate non contano: una categoria che resta solo su quelle
-    porterebbe a un filtro vuoto (R10).
+    Le ricette eliminate e quelle dei pasti non contano: una categoria che resta solo
+    su quelle porterebbe a un filtro vuoto (R10).
     """
     rows = await session.execute(
         select(Recipe.category)
-        .where(Recipe.category.is_not(None), Recipe.archived_at.is_(None))
+        .where(Recipe.category.is_not(None), in_the_book())
         .distinct()
         .order_by(Recipe.category)
     )

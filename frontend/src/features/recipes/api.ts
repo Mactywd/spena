@@ -101,12 +101,32 @@ export function fetchSearchMode() {
   return apiFetch<{ semantic: boolean }>("/recipes/search-mode");
 }
 
-export function fetchRecipe(id: string, servings?: number) {
-  const query = servings ? `?servings=${servings}` : "";
+/** Come si chiede la ricetta: per porzioni, o da una dose fissata su una riga (R2,
+ * secondo modo). Un modo alla volta: il server rifiuta i due insieme. `amount` va col
+ * punto. */
+export type RecipeScale = { servings: number } | { anchor: string; amount: string };
+
+export function fetchRecipe(id: string, scale?: RecipeScale) {
+  let query = "";
+  if (scale !== undefined && "servings" in scale) {
+    query = `?servings=${scale.servings}`;
+  } else if (scale !== undefined) {
+    query = `?anchor=${encodeURIComponent(scale.anchor)}&amount=${encodeURIComponent(scale.amount)}`;
+  }
   return apiFetch<RecipeDetail>(`/recipes/${id}${query}`);
 }
 
-export function createRecipe(body: RecipeBody & { source: RecipeSource; source_ref: string | null }) {
+/** Una ricetta nuova. `derived_from_id` solo per una variante (R8): la ricetta da cui
+ * nasce, che il salvataggio non tocca. */
+export function createRecipe(
+  body: RecipeBody & {
+    source: RecipeSource;
+    source_ref: string | null;
+    derived_from_id?: string;
+    /** La ricetta nasce fuori dal ricettario, legata a questo pasto. */
+    meal_id?: string;
+  }
+) {
   return apiFetch<RecipeDetail>("/recipes", { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -123,6 +143,14 @@ export function setRecipeArchived(id: string, archived: boolean) {
   });
 }
 
+/** Fa entrare (`true`) o uscire (`false`) dal ricettario la ricetta di un pasto. */
+export function setRecipeInBook(id: string, inBook: boolean) {
+  return apiFetch<RecipeDetail>(`/recipes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ in_book: inBook }),
+  });
+}
+
 // Propone una ricetta, non la salva: il salvataggio passa da createRecipe come
 // per ogni altra fonte, una volta che l'utente ha visto e corretto la bozza.
 export function draftRecipe(prompt: string) {
@@ -132,10 +160,22 @@ export function draftRecipe(prompt: string) {
   });
 }
 
+/** Propone una variante della ricetta `id` (R8): non salva, e non tocca l'originale. La
+ * variante si salva con `createRecipe` e `derived_from_id`, come ogni ricetta nuova. */
+export function draftVariant(id: string, prompt: string) {
+  return apiFetch<RecipeDraft>(`/recipes/${id}/ai-variant`, {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  });
+}
+
 export function cookRecipe(
   id: string,
   body: {
     servings?: number;
+    // R2, secondo modo: la dose fissata, al posto di `servings`
+    anchor?: string;
+    amount?: string;
     transitions: { pantry_item_id: string; to_status: string; restock: boolean }[];
   }
 ) {

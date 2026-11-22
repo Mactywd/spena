@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { IngredientScreen } from "./IngredientScreen";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
+import { INGREDIENT_EMOJI } from "../../domain/emoji";
 import type { Ingredient, IngredientDetail, MergeCounts } from "../../domain/types";
 
 const POMODORI: IngredientDetail = {
   id: "i-pomodori", name: "pomodori", display_name: "Pomodori", category: "verdura", kind: "food",
+  emoji: null,
   aliases: [
     { id: "a-pelati", alias: "pomodori pelati", source: "import", decided_in_queue: true, term_id: "t-pelati" },
     { id: "a-pomodorini", alias: "pomodorini", source: "manual", decided_in_queue: false, term_id: null },
@@ -20,7 +22,7 @@ const POMODORO: Ingredient = {
   id: "i-pomodoro", name: "pomodoro", display_name: "Pomodoro", category: "verdura", kind: "food",
 };
 const POMODORO_SCHEDA: IngredientDetail = {
-  ...POMODORO, aliases: [], products: [], usage: { recipes: 3, pantry: 1, shopping: 0 },
+  ...POMODORO, emoji: null, aliases: [], products: [], usage: { recipes: 3, pantry: 1, shopping: 0 },
 };
 const DETERSIVO: Ingredient = {
   id: "i-detersivo", name: "detersivo", display_name: "Detersivo", category: "casa", kind: "non_food",
@@ -59,7 +61,7 @@ function Where() {
 }
 
 function renderAt(path: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: defaultQueryRetryPredicate } } });
+  const client = createTestQueryClient();
   const utils = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
@@ -75,6 +77,8 @@ function renderAt(path: string) {
 
 /** Le risposte di sempre: la scheda di «pomodori», e la ricerca che trova «pomodoro». */
 function base(path: string): [unknown, number] | null {
+  // R5: la sezione dei sostituti chiede la sua parte; vuota, non cambia niente agli altri test
+  if (path.endsWith("/substitutes")) return [{ ingredient_id: "i-pomodori", contexts: [], recipe_overrides: 0 }, 200];
   if (path.includes("/ingredients/search")) return [[POMODORO], 200];
   if (path.endsWith("/ingredients/i-pomodori")) return [POMODORI, 200];
   return null;
@@ -310,6 +314,36 @@ describe("IngredientScreen", () => {
     expect(screen.getByText("(eliminata)")).toBeInTheDocument();
   });
 
+  it("una ricetta di un pasto nel rifiuto è segnata «(da un pasto)»", async () => {
+    stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH") {
+        return [{
+          code: "non_food_in_recipes",
+          detail:
+            "«Pomodori» è in 1 ricetta: non può diventare non alimentare finché una ricetta lo usa.",
+          recipe_count: 1,
+          recipes: [{ id: "r1", title: "Sugo semplice", archived: false, from_meal: true }],
+          pending_import_count: 0,
+          pending_terms: [],
+          pending_term_count: 0,
+        }, 409];
+      }
+      return base(path) ?? [{}, 404];
+    });
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia reparto" }));
+    await userEvent.selectOptions(screen.getByLabelText("Reparto"), "casa");
+    await userEvent.click(screen.getByRole("button", { name: "Salva il reparto" }));
+
+    // il link resta il titolo e basta: la segnatura gli sta accanto
+    expect(await screen.findByRole("link", { name: "Sugo semplice" })).toHaveAttribute(
+      "href", "/ricette/r1"
+    );
+    expect(screen.getByText("(da un pasto)")).toBeInTheDocument();
+    expect(screen.queryByText("(eliminata)")).toBeNull();
+  });
+
   it("il rifiuto per le ricette dell'import in attesa porta alla coda, dove la decisione si annulla", async () => {
     stubRoutedFetch((path, init) => {
       if (init?.method === "PATCH") {
@@ -502,6 +536,8 @@ describe("IngredientScreen", () => {
     // premuto «Unisci» da tastiera tiene il fuoco; e un tocco non fa niente
     const unisco = await screen.findByRole("button", { name: "Unisco…" });
     const cambia = screen.getByRole("button", { name: "Cambia" });
+    // un `Button` non sta dentro un `<p>`: il suo perché, se un giorno lo avrà, è un `<p>`
+    expect(cambia.closest("p")).toBeNull();
     const lascia = screen.getByRole("button", { name: "Lascia com'è" });
     for (const button of [unisco, cambia, lascia]) {
       expect(button).toHaveAttribute("aria-disabled", "true");
@@ -856,5 +892,157 @@ describe("IngredientScreen", () => {
     expect(screen.queryByLabelText("Sposta «pomodorini» sotto")).toBeNull();
 
     risolvi!(new Response(null, { status: 204 }));
+  });
+});
+
+describe("la figura in dispensa (S12)", () => {
+  const CON_POMODORO: IngredientDetail = { ...POMODORI, emoji: "🍅" };
+
+  /** La scheda di «pomodori» com'è in `detail`; la PATCH risponde con `patch`, o con la
+   * scheda e la figura mandata. */
+  function scheda(detail: IngredientDetail, patch?: () => [unknown, number]) {
+    return stubRoutedFetch((path, init) => {
+      if (init?.method === "PATCH" && path.endsWith("/ingredients/i-pomodori")) {
+        const body = JSON.parse(String(init.body)) as { emoji: string | null };
+        return patch ? patch() : [{ ...detail, emoji: body.emoji }, 200];
+      }
+      if (path.endsWith("/ingredients/i-pomodori")) return [detail, 200];
+      return base(path) ?? [{}, 404];
+    });
+  }
+
+  function corpoDellaPatch(spy: ReturnType<typeof stubRoutedFetch>) {
+    const [, init] = callsTo(spy, "PATCH", "/ingredients/i-pomodori")[0];
+    return JSON.parse(String((init as RequestInit).body));
+  }
+
+  it("la scheda dice la figura delle sue righe in dispensa: senza, l'icona del reparto", async () => {
+    scheda(POMODORI);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    expect(await screen.findByText("In dispensa: l'icona del reparto")).toBeInTheDocument();
+    const figura = document.querySelector("[data-figure]") as HTMLElement;
+    expect(figura.dataset.figure).toBe("reparto");
+    expect(figura.querySelector("svg.tabler-icon-carrot")).not.toBeNull();
+  });
+
+  it("con un'emoji, la scheda la mostra", async () => {
+    scheda(CON_POMODORO);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    expect(await screen.findByText("In dispensa")).toBeInTheDocument();
+    expect((document.querySelector("[data-figure]") as HTMLElement).textContent).toBe("🍅");
+  });
+
+  it("«Cambia figura» apre l'elenco chiuso con «Nessuna», e la scelta va al server", async () => {
+    const spy = scheda(POMODORI);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia figura" }));
+    const gruppo = screen.getByRole("group", { name: "Figura in dispensa" });
+    expect(within(gruppo).getAllByRole("radio")).toHaveLength(INGREDIENT_EMOJI.length + 1);
+    expect(within(gruppo).getByRole("radio", { name: "Nessuna: l'icona del reparto" })).toBeChecked();
+
+    await userEvent.click(within(gruppo).getByRole("radio", { name: "🍅" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salva la figura" }));
+
+    await waitFor(() => expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(1));
+    expect(corpoDellaPatch(spy)).toEqual({ emoji: "🍅" });
+    await waitFor(() =>
+      expect(screen.queryByRole("group", { name: "Figura in dispensa" })).toBeNull()
+    );
+  });
+
+  it("«Nessuna» manda null", async () => {
+    const spy = scheda(CON_POMODORO);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia figura" }));
+    const gruppo = screen.getByRole("group", { name: "Figura in dispensa" });
+    expect(within(gruppo).getByRole("radio", { name: "🍅" })).toBeChecked();
+    await userEvent.click(within(gruppo).getByRole("radio", { name: "Nessuna: l'icona del reparto" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salva la figura" }));
+
+    await waitFor(() => expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(1));
+    expect(corpoDellaPatch(spy)).toEqual({ emoji: null });
+  });
+
+  it("la figura che ha già non si salva di nuovo, e dice perché", async () => {
+    const spy = scheda(CON_POMODORO);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia figura" }));
+    const salva = screen.getByRole("button", { name: "Salva la figura" });
+    expect(salva).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText("È già la sua figura: scegline un'altra.")).toBeInTheDocument();
+
+    await userEvent.click(salva);
+    expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(0);
+  });
+
+  it("un rifiuto del server si legge col suo perché, e il pannello resta aperto", async () => {
+    const detail = "«🍅» non è fra le figure che l'app mostra: scegline una dell'elenco.";
+    scheda(POMODORI, () => [{ code: "unknown_emoji", detail }, 409]);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia figura" }));
+    await userEvent.click(screen.getByRole("radio", { name: "🍅" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salva la figura" }));
+
+    expect(await screen.findByText(detail)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Figura in dispensa" })).toBeInTheDocument();
+  });
+
+  it("un guasto lo dice, e il pannello resta aperto", async () => {
+    scheda(POMODORI, () => [{ detail: "guasto" }, 500]);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia figura" }));
+    await userEvent.click(screen.getByRole("radio", { name: "🍅" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salva la figura" }));
+
+    expect(
+      await screen.findByText("Non sono riuscito a cambiare la figura. Riprova.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Figura in dispensa" })).toBeInTheDocument();
+  });
+
+  it("«Lascia com'è» chiude senza scrivere", async () => {
+    const spy = scheda(POMODORI);
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cambia figura" }));
+    await userEvent.click(screen.getByRole("radio", { name: "🍅" }));
+    await userEvent.click(screen.getByRole("button", { name: "Lascia com'è" }));
+
+    expect(screen.queryByRole("group", { name: "Figura in dispensa" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cambia figura" })).toBeInTheDocument();
+    expect(callsTo(spy, "PATCH", "/ingredients/i-pomodori")).toHaveLength(0);
+  });
+});
+
+describe("IngredientScreen — Sostituti (R5)", () => {
+  it("in fondo alla scheda di un alimento, i suoi sostituti", async () => {
+    stubRoutedFetch((path) =>
+      path.endsWith("/ingredients/i-pomodori/substitutes")
+        ? [{ ingredient_id: "i-pomodori", recipe_overrides: 0, contexts: [
+            { context: "salato", recipes: 42, verdict: "omit", decided_by: "ai", substitutes: [] },
+          ] }, 200]
+        : base(path) ?? [{}, 404]
+    );
+    renderAt("/anagrafica/ingrediente/i-pomodori");
+    expect(await screen.findByRole("heading", { name: "Sostituti" })).toBeInTheDocument();
+    expect(await screen.findByText("Deciso dall'AI: da rivedere.")).toBeInTheDocument();
+  });
+
+  it("un non alimentare non ha la sezione", async () => {
+    stubRoutedFetch((path) =>
+      path.endsWith("/ingredients/i-detersivo")
+        ? [{ ...DETERSIVO, aliases: [], products: [], usage: { recipes: 0, pantry: 0, shopping: 0 } }, 200]
+        : [{}, 404]
+    );
+    renderAt("/anagrafica/ingrediente/i-detersivo");
+    expect(await screen.findByRole("heading", { name: "Detersivo" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Sostituti" })).toBeNull();
   });
 });

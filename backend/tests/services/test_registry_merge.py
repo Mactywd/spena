@@ -13,6 +13,7 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from app.core.db import Base
+from app.db.models.change_card import CardKind, ChangeCard, ChangeCardRow, RowKind
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
@@ -103,8 +104,15 @@ async def mondo(db_session):
         status=ShoppingStatus.PENDING, reason=ShoppingReason.MANUAL,
     ))
     db_session.add(Product(ingredient_id=voci["pomodori"].id, name="Pelati Cirio", source="custom"))
+    scheda = ChangeCard(kind=CardKind.FORWARD, title="Per «Pasta»", meal_ids=[])
+    db_session.add(scheda)
     await db_session.flush()
-    return {**voci, "scritta": scritta}
+    db_session.add(ChangeCardRow(
+        card_id=scheda.id, position=0, kind=RowKind.LIST, label="Pomodori",
+        ingredient_id=voci["pomodori"].id, checked=True, meal_ids=[],
+    ))
+    await db_session.flush()
+    return {**voci, "scritta": scritta, "scheda": scheda}
 
 
 def _voce_di_lista(ingredient: Ingredient, status: str, raw_text: str) -> ShoppingListItem:
@@ -178,6 +186,8 @@ async def test_unire_porta_tutto_sul_vincitore_e_lo_conta(db_session, mondo):
         )
     ).scalars().all()
     assert scritta == [vincitore]
+    riga_scheda = (await db_session.execute(select(ChangeCardRow))).scalar_one()
+    assert riga_scheda.ingredient_id == vincitore
 
 
 async def test_le_cotture_della_ricetta_rifatta_si_ri_legano(db_session, mondo, dal_database):
@@ -258,7 +268,7 @@ async def test_un_termine_dell_import_non_si_puo_ridecidere_su_un_non_alimentare
 TABELLE_TOCCATE = (
     "ingredients", "ingredient_aliases", "import_terms", "recipe_imports", "recipes",
     "recipe_ingredients", "units", "pantry_items", "shopping_list_items", "products",
-    "cooking_events",
+    "cooking_events", "change_cards", "change_card_rows",
 )
 NON_CONFRONTABILI = {"embedding", "search_tsv"}
 

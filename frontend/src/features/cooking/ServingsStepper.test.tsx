@@ -1,9 +1,16 @@
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ServingsStepper } from "./ServingsStepper";
 
 const MOTIVO = "Porzioni non indicate: si cambiano da «Modifica».";
+
+/** Lo stepper con le porzioni vere: ogni tocco le cambia, come nel dettaglio. */
+function Stepper({ start }: { start: number }) {
+  const [value, setValue] = useState(start);
+  return <ServingsStepper value={value} onChange={setValue} />;
+}
 
 describe("ServingsStepper", () => {
   it("con le porzioni, i due tasti cambiano il numero", async () => {
@@ -47,5 +54,70 @@ describe("ServingsStepper", () => {
       expect(tasto.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
       expect(tasto.className).toContain("size-11");
     }
+  });
+
+  // Il tasto arrivato al bordo si spegne con `disabled`, che toglie il fuoco: prima che
+  // succeda il fuoco passa all'altro tasto (T3 Consegna 5, pulizie del 2026-10-13)
+  it("arrivato a 1 dalla tastiera, il fuoco passa al «+»", async () => {
+    render(<Stepper start={2} />);
+    const meno = screen.getByRole("button", { name: "Una porzione in meno" });
+    meno.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(meno).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Una porzione in più" })).toHaveFocus();
+  });
+
+  it("arrivato a 50, il fuoco passa al «−»", async () => {
+    render(<Stepper start={49} />);
+    const piu = screen.getByRole("button", { name: "Una porzione in più" });
+    piu.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByText("50")).toBeInTheDocument();
+    expect(piu).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Una porzione in meno" })).toHaveFocus();
+  });
+
+  it("lontano dai bordi il fuoco resta sul tasto premuto", async () => {
+    render(<Stepper start={3} />);
+    const meno = screen.getByRole("button", { name: "Una porzione in meno" });
+    meno.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(meno).toHaveFocus();
+  });
+
+  it("con una dose fissata dice le porzioni che fa, e − e + vanno all'intero sotto e sopra", async () => {
+    const onChange = vi.fn();
+    render(<ServingsStepper value={2} approx={1.5} onChange={onChange} />);
+
+    expect(screen.getByText("≈ 1,5")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+    expect(onChange.mock.calls).toEqual([[2], [1]]);
+  });
+
+  it("su un numero intero di porzioni equivalenti, − e + vanno al precedente e al successivo", async () => {
+    const onChange = vi.fn();
+    render(<ServingsStepper value={4} approx={2} onChange={onChange} />);
+
+    expect(screen.getByText("≈ 2")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+    expect(onChange.mock.calls).toEqual([[3], [1]]);
+  });
+
+  it("sotto una porzione il − si spegne; sopra 50 il + si spegne e il − va a 50", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<ServingsStepper value={2} approx={0.75} onChange={onChange} />);
+
+    expect(screen.getByText("≈ 0,75")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Una porzione in meno" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+
+    rerender(<ServingsStepper value={4} approx={200} onChange={onChange} />);
+    expect(screen.getByRole("button", { name: "Una porzione in più" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in meno" }));
+    expect(onChange.mock.calls).toEqual([[1], [50]]);
   });
 });

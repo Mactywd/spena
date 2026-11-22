@@ -1,15 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { ScannerPanel } from "./ScannerPanel";
-import type { BarcodeLookup, Product, ShoppingItem } from "../../domain/types";
+import type { BarcodeLookup, Product } from "../../domain/types";
 
-const YOGURT: ShoppingItem = {
-  id: "s1", raw_text: "yogurt greco", ingredient_id: "i1", ingredient_name: "yogurt greco",
-  ingredient_category: "latticini", ingredient_kind: "food", status: "checked", reason: "manual",
-  created_at: "2026-09-29T10:00:00Z",
-};
 const FAGE: Product = {
   id: "p1", ingredient_id: "i1", ingredient_name: "yogurt greco", name: "Total 0%", brand: "Fage",
   barcode: "52010", source: "openfoodfacts", nutrients: null, image_url: null,
@@ -37,15 +33,19 @@ function stubLookup(answer: BarcodeLookup | "down") {
   return spy;
 }
 
-function renderPanel() {
+function renderPanel(over: { label?: string | null; ingredientId?: string | null } = {}) {
   const props = {
     onProduct: vi.fn(), onNewCode: vi.fn(), onUnlinkedCode: vi.fn(), onCreateByHand: vi.fn(),
     onCancel: vi.fn(),
   };
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const client = createTestQueryClient();
   render(
     <QueryClientProvider client={client}>
-      <ScannerPanel item={YOGURT} ingredientId="i1" {...props} />
+      <ScannerPanel
+        label={over.label === undefined ? "yogurt greco" : over.label}
+        ingredientId={over.ingredientId === undefined ? "i1" : over.ingredientId}
+        {...props}
+      />
     </QueryClientProvider>
   );
   return props;
@@ -179,5 +179,19 @@ describe("ScannerPanel", () => {
     expect(field.compareDocumentPosition(annulla) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await userEvent.click(annulla);
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("senza una voce il titolo dice solo «Codice a barre» (la scansione dalla Dispensa, S3)", () => {
+    stubLookup(lookup({}));
+    renderPanel({ label: null, ingredientId: null });
+    expect(screen.getByRole("heading", { name: "Codice a barre" })).toBeDefined();
+  });
+
+  it("senza un ingrediente atteso, il prodotto di qualunque ingrediente si aggancia: porta il suo (S3)", async () => {
+    stubLookup(lookup({ found: true, origin: "catalog", product: PARMIGIANO }));
+    const { onProduct } = renderPanel({ label: null, ingredientId: null });
+    await userEvent.type(screen.getByLabelText("Codice a barre"), "8009876543217{Enter}");
+    await waitFor(() => expect(onProduct).toHaveBeenCalledWith(PARMIGIANO));
+    expect(screen.queryByText(/di un altro ingrediente/)).toBeNull();
   });
 });

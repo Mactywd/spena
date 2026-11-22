@@ -21,13 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient
-from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
+from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, RecipeImport, TermDecision
 from app.domain.rules import IngredientKind
 from app.repositories.imports import (
     counts,
     decided_terms,
+    get_page,
     get_term,
     pending_terms,
+    skipped_pages,
     waiting_titles,
 )
 from app.schemas.recipe_import import (
@@ -35,6 +37,9 @@ from app.schemas.recipe_import import (
     DecideRequest,
     DecisionOut,
     ImportStatusOut,
+    RequeueOut,
+    SkippedPageOut,
+    SkippedPagesOut,
     SuggestionOut,
     TermDecisionIn,
     TermOut,
@@ -49,7 +54,12 @@ from app.services.recipe_import.manual import (
     Refusal,
     decide_by_hand,
 )
-from app.services.recipe_import.materialize import materialize_ready
+from app.services.recipe_import.materialize import (
+    COOKING_EVENTS_KEY,
+    explain_skip,
+    materialize_ready,
+)
+from app.services.recipe_import.requeue import NotRequeueable, requeue_page
 from app.services.recipe_import.undo import undo_decision
 
 router = APIRouter(
@@ -61,7 +71,7 @@ router = APIRouter(
 MAX_TERMS_PER_CALL = 40
 
 _REFUSAL_STATUS = {
-    Refusal.INVALID: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    Refusal.INVALID: status.HTTP_422_UNPROCESSABLE_CONTENT,
     Refusal.NOT_FOUND: status.HTTP_404_NOT_FOUND,
     Refusal.CONFLICT: status.HTTP_409_CONFLICT,
 }
@@ -292,3 +302,61 @@ async def undo(
         adopted_untouched=undone.adopted_untouched,
         ingredient_kept_for_adopted=undone.ingredient_kept_for_adopted,
     )
+
+
+def _page_title(page: RecipeImport) -> str | None:
+    return str(page.payload.get("title") or "").strip() or None
+
+
+@router.get("/pages/skipped", response_model=SkippedPagesOut)
+async def read_skipped_pages(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+) -> SkippedPagesOut:
+    """Le pagine scaricate che non sono diventate ricette, col perché in un codice.
+
+    `skipped_reason` fino a qui non affiorava da nessuna parte: chi voleva sapere perché
+    una ricetta mancava doveva aprire il database (Parte X). Il codice e non il motivo
+    scritto, che per una pagina illeggibile è una frase del lettore di HTML.
+    """
+    total, pages = await skipped_pages(session, GIALLOZAFFERANO, limit=limit, offset=offset)
+    out = []
+    for page in pages:
+        explained = explain_skip(page.payload, page.skipped_reason)
+        out.append(
+            SkippedPageOut(
+                id=page.id, url=page.url, title=_page_title(page),
+                cause=explained.cause.value, non_food_name=explained.non_food_name,
+                requeueable=explained.requeueable,
+                waiting_cooking_events=len(page.payload.get(COOKING_EVENTS_KEY) or []),
+            )
+        )
+    return SkippedPagesOut(total=total, pages=out)
+
+
+@router.post("/pages/{page_id:uuid}/requeue", response_model=RequeueOut)
+async def requeue_skipped(
+    page_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> RequeueOut:
+    """Rimette in coda una pagina scartata, la materializza subito, e dice com'è finita.
+
+    La risposta si costruisce prima del `commit`: dopo, la pagina potrebbe essere
+    scaduta nella sessione, e rileggerla in un contesto asincrono fallirebbe.
+    """
+    page = await get_page(session, page_id)
+    if page is None or page.source != GIALLOZAFFERANO:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "pagina inesistente")
+    try:
+        done = await requeue_page(session, page)
+    except NotRequeueable as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, exc.message) from exc
+    out = RequeueOut(
+        outcome=done.outcome, title=_page_title(page), url=page.url,
+        recipe_id=done.recipe_id, cooking_relinked=done.cooking_relinked,
+        cause=done.skip.cause.value if done.skip else None,
+        non_food_name=done.skip.non_food_name if done.skip else None,
+        waiting_terms=done.waiting_terms,
+    )
+    await session.commit()
+    return out

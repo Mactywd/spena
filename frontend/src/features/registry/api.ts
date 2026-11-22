@@ -12,8 +12,12 @@ export function fetchIngredientDetail(id: string) {
   return apiFetch<IngredientDetail>(`/ingredients/${id}`);
 }
 
-/** `name` rinomina (nome e nome a video insieme), `category` cambia reparto. */
-export function patchIngredient(id: string, body: { name?: string; category?: string }) {
+/** `name` rinomina (nome e nome a video insieme), `category` cambia reparto, `emoji`
+ * cambia la figura in Dispensa (S12): `null` è «Nessuna», l'icona del reparto. */
+export function patchIngredient(
+  id: string,
+  body: { name?: string; category?: string; emoji?: string | null }
+) {
   return apiFetch<IngredientDetail>(`/ingredients/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),

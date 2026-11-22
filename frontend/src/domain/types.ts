@@ -54,6 +54,9 @@ export interface PantryItem {
   product_id: string | null;
   ingredient_name: string;
   ingredient_category: string;
+  /** Il mondo della voce, deciso dal server (`ingredients.kind`): il selettore «Tutto /
+   * Cibo / Casa» della Dispensa (S14) lo confronta, non lo ricava dal reparto. */
+  ingredient_kind: "food" | "non_food";
   product_name: string | null;
   product_brand: string | null;
   status: PantryStatus;
@@ -67,6 +70,10 @@ export interface PantryItem {
   expires_on: string | null;
   /** Il verdetto, già preso dal server: la soglia dei sette giorni non vive qui. */
   expiry: ExpiryState | null;
+  /** La figura della riga (S12): l'emoji dell'ingrediente, `null` per il ripiego
+   * sull'icona del reparto. La decide il server (l'AI o una persona in Anagrafica): qui
+   * si mostra e basta. */
+  ingredient_emoji: string | null;
 }
 
 export interface ShoppingItem {
@@ -123,9 +130,35 @@ export interface RecipeIngredientLine {
   quantity_display: string | null;
   /** Se `quantity_display` è stato riscalato rispetto a `quantity_text`. */
   quantity_scaled: boolean;
+  /** Se da questa riga si può riscalare (R2, secondo modo): ha una dose strutturata più
+   * grande di zero. Lo decide il server; «q.b.» e le righe senza dose no. */
+  anchorable: boolean;
+  /** La parola dell'unità da scrivere accanto al campo «Quanto ne fai?»: il plurale
+   * deciso, o la parola com'è arrivata. `null` per un numero nudo, o se la riga non si
+   * riscala. */
+  anchor_unit: string | null;
   note: string | null;
   availability: Availability;
   satisfied: boolean;
+}
+
+/** La ricetta da cui una variante nasce (R8), come la manda il server: il titolo di oggi
+ * e se è stata eliminata. Il collegamento la apre comunque: eliminata, si apre dalla sua
+ * lapide con «Ripristina» (R10). */
+export interface RecipeOrigin {
+  id: string;
+  title: string;
+  archived: boolean;
+}
+
+/** La dose fissata da cui il server ha riscalato la ricetta (R2, secondo modo). */
+export interface RecipeAnchor {
+  ingredient_id: string;
+  /** La dose come il server l'ha letta, col punto («112.5»): torna così alla cottura. */
+  amount: string;
+  /** Le porzioni che quella dose fa, già arrotondate dal server; `null` se la ricetta
+   * non dice per quante porzioni è. */
+  equivalent_servings: number | null;
 }
 
 export interface RecipeDetail extends RecipeSummary {
@@ -141,9 +174,19 @@ export interface RecipeDetail extends RecipeSummary {
    * Arriva dal server e non si ricalcola qui — `ingredients.length` conterebbe anche
    * le righe senza dose, che non sono dosi mancate. */
   dose_lines: number;
+  /** La dose fissata, se la risposta è riscalata da un ingrediente; `null` altrimenti —
+   * anche quando il server ha ignorato un'ancora che la ricetta non ha più. */
+  anchor: RecipeAnchor | null;
   /** Vero finché una pagina dell'import rifà questa ricetta: salvare una modifica la
    * rende tua, e l'import non la riscrive più (R10 §4). Lo decide il server. */
   owned_by_import: boolean;
+  /** Da quale ricetta nasce, se è una variante scritta con l'AI (R8); `null` altrimenti.
+   * Lo dice il server: il client non cerca l'originale da sé. */
+  derived_from: RecipeOrigin | null;
+  /** Pasti (decisione 22): facoltativi, perché un backend vecchio in cache non li manda.
+   * Si legge `in_book ?? true`. */
+  in_book?: boolean;
+  meal?: MealRef | null;
 }
 
 /** Una riga come la si scrive: un ingrediente esistente, oppure nome e categoria con
@@ -189,6 +232,10 @@ export interface DraftIngredient {
   matched_name: string | null;
   confident: boolean;
   proposed_category: string | null;
+  /** La riga nomina con certezza un non alimentare: è staccata, e il modulo lo dice. Il
+   * server lo manda sempre; facoltativo qui perché le bozze scritte a mano (i test, la
+   * variante di R8) non lo portano, e senza vale «no». */
+  non_food?: boolean;
 }
 
 // La bozza di ricetta restituita da POST /recipes/ai-draft. Non salva nulla da
@@ -269,6 +316,44 @@ export interface UndoResult {
   ingredient_kept_for_adopted: boolean;
 }
 
+/** Perché una pagina dell'import è scartata, in un codice: le parole le scrive la
+ * schermata (`features/recipe-import/skippedWords.ts`). Spec 2026-10-09-scartate-in-coda
+ * §3.1. */
+export type SkipCause = "unreadable" | "all_ignored" | "non_food" | "other";
+
+export interface SkippedPage {
+  id: string;
+  url: string;
+  /** Il titolo della ricetta; `null` per una pagina illeggibile, che non ne ha. */
+  title: string | null;
+  cause: SkipCause;
+  /** La voce non alimentare, solo per `non_food` (e non sempre: un nome lunghissimo può
+   * essere stato tagliato via dal limite del motivo). */
+  non_food_name: string | null;
+  /** Se «Rimetti in coda» può cambiare qualcosa: falso per una pagina illeggibile. */
+  requeueable: boolean;
+  /** Le cotture registrate che aspettano la ricetta di questa pagina. */
+  waiting_cooking_events: number;
+}
+
+export interface SkippedPages {
+  total: number;
+  pages: SkippedPage[];
+}
+
+/** Com'è finita una pagina rimessa in coda. `recipe_id` solo se è entrata; `cause` e
+ * `non_food_name` solo se è di nuovo scartata; `waiting_terms` solo se aspetta. */
+export interface RequeueResult {
+  outcome: "imported" | "skipped" | "waiting";
+  title: string | null;
+  url: string;
+  recipe_id: string | null;
+  cooking_relinked: number;
+  cause: SkipCause | null;
+  non_food_name: string | null;
+  waiting_terms: string[];
+}
+
 // L'esito di un rientro in lista. `added` falso non è un errore: la voce era già da
 // comprare, e dirlo è diverso dal far credere di aver aggiunto qualcosa.
 export interface RestockResult {
@@ -300,6 +385,9 @@ export interface IngredientUsage {
 }
 
 export interface IngredientDetail extends Ingredient {
+  /** La figura delle sue righe in Dispensa (S12): un'emoji, o `null` per l'icona del
+   * reparto. Solo nella scheda: la ricerca non la porta. */
+  emoji: string | null;
   aliases: AliasEntry[];
   products: ProductBrief[];
   usage: IngredientUsage;
@@ -339,7 +427,7 @@ export type RegistryRefusal =
       recipe_count: number;
       /** Le ricette che lo usano, eliminate comprese (R10): una ricetta eliminata si
        * ripristina con le sue righe, quindi blocca come le altre, ma va segnata. */
-      recipes: { id: string; title: string; archived: boolean }[];
+      recipes: { id: string; title: string; archived: boolean; from_meal?: boolean }[];
       /** Le pagine dell'import in attesa che, materializzate, lo userebbero. */
       pending_import_count: number;
       /** I termini che le legano qui, al più dieci per nome; il conto dice il resto. */
@@ -358,7 +446,8 @@ export type RegistryRefusal =
         | "empty_name"
         | "unknown_category"
         | "still_used"
-        | "bad_checksum";
+        | "bad_checksum"
+        | "unknown_emoji";
       detail: string;
     };
 
@@ -373,4 +462,185 @@ export interface ProductDetail {
   ingredient: { id: string; name: string; display_name: string };
   /** Solo gli attivi: quelli che chi guarda la dispensa vede. */
   pantry_items: { id: string; status: PantryStatus; expires_on: string | null }[];
+}
+
+/** Uno strumento di cucina (spec 2026-11-12 §4.4). Il server pulisce nome e nota. */
+export interface Utensil {
+  id: string;
+  name: string;
+  note: string | null;
+}
+
+export interface UtensilInput {
+  name: string;
+  note: string | null;
+}
+
+export type MealSlot = "lunch" | "dinner";
+export type MealStatus = "draft" | "official";
+export interface MealRef {
+  id: string;
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  recipe_id: string | null;
+}
+export interface Meal {
+  id: string;
+  day: string;
+  slot: MealSlot;
+  week: string;
+  dish: string;
+  sides: string | null;
+  away: boolean;
+  status: MealStatus;
+  unrecorded: boolean;
+  recipe: { id: string; title: string; in_book: boolean } | null;
+  leftover_of: MealRef | null;
+  /** Se il pasto ha la chat con Claude: lo decide il backend (`MealOut.can_chat`). */
+  can_chat?: boolean;
+  /** La ricetta in preparazione o non arrivata: lo dice il backend (piano 6c). */
+  recipe_state?: "none" | "preparing" | "failed";
+  recipe_notice?: string | null;
+  can_ask_recipe?: boolean;
+  /** La scheda dei cambi ancora da applicare che riguarda questo pasto. */
+  open_card_id?: string | null;
+}
+export interface MealWeek {
+  monday: string;
+  sunday: string;
+  today: string;
+  previous: string;
+  next: string;
+  days: string[];
+  meals: Meal[];
+  /** Qualche pasto della settimana ha la ricetta in preparazione. */
+  preparing?: boolean;
+}
+export interface MealBody {
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  sides: string | null;
+  away: boolean;
+  leftover_of_id: string | null;
+  replace?: boolean;
+}
+export type MealPatch = Partial<Pick<MealBody, "day" | "slot" | "dish" | "sides" | "away">> & {
+  status?: "official";
+  replace?: boolean;
+};
+
+/** Una modifica della ricetta fatta da Claude, come la riga sotto la sua risposta
+ * (`RecipeChangeOut`). Se si può annullare lo dice il backend. */
+export interface RecipeChange {
+  id: string;
+  summary: string;
+  created_recipe: boolean;
+  undone: boolean;
+  undoable: boolean;
+}
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status: "pending" | "sent" | "failed";
+  notice: string | null;
+  created_at: string;
+  changes: RecipeChange[];
+  /** Le proposte e le schede del giro, sotto il messaggio (piano 6c). Facoltative: le
+   * risposte vecchie in cache non le hanno. */
+  proposals?: MealProposal[];
+  cards?: ChangeCard[];
+}
+/** Le parti della ricetta cambiate dall'ultimo giro, da evidenziare nel dettaglio. */
+export interface RecipeHighlight {
+  ingredient_ids: string[];
+  title: boolean;
+  servings: boolean;
+  instructions: boolean;
+  description: boolean;
+}
+export interface DishChat {
+  meal_id: string;
+  conversation_id: string | null;
+  messages: ChatMessage[];
+  replying: boolean;
+  highlight: RecipeHighlight | null;
+  claude_ready: boolean;
+  claude_notice: string | null;
+}
+/** Gli eventi dello streaming di una chat con Claude, già letti: `TChat` è la vista che
+ * `done` ed `error` portano, quella del piatto (`POST /meals/{id}/chat/messages`) o quella
+ * della pianificazione (`POST /planning/conversations/{id}/messages`). */
+export type ChatStreamEvent<TChat = DishChat> =
+  | { name: "start"; message: ChatMessage }
+  | { name: "delta"; text: string }
+  | { name: "change"; change: RecipeChange }
+  | { name: "proposal"; proposal: MealProposal }
+  | { name: "card"; card: ChangeCard }
+  | { name: "done"; chat: TChat }
+  // `chat` è null quando il server non ha potuto rileggerla (il pasto è sparito, o la
+  // rilettura dopo un crollo è fallita): allora la chat si rilegge.
+  | { name: "error"; code: string; notice: string; chat: TChat | null };
+
+/** Una riga della scheda dei cambi (`ChangeRowOut`): «Ora», le note e chi si può
+ * correggere li decide il backend. */
+export interface ChangeRow {
+  id: string;
+  kind: "pantry" | "list" | "unlist";
+  label: string;
+  from_status: PantryStatus | null;
+  to_status: PantryStatus | null;
+  listed: boolean;
+  checked: boolean;
+  editable: boolean;
+  note: string | null;
+  applied: boolean | null;
+}
+export interface ChangeCard {
+  id: string;
+  kind: "forward" | "inverse";
+  status: "proposed" | "applied" | "discarded";
+  list_only: boolean;
+  title: string;
+  meals: MealRef[];
+  rows: ChangeRow[];
+  created_at: string;
+  applied_at: string | null;
+}
+
+/** Una riga della proposta di pasti (`ProposalRowOut`). */
+export interface ProposalRow {
+  day: string;
+  slot: MealSlot;
+  dish: string;
+  sides: string | null;
+  effect: "new" | "officialize" | "replace";
+  occupant: MealRef | null;
+  meal_id: string | null;
+}
+export interface MealProposal {
+  id: string;
+  kind: "official" | "draft";
+  status: "open" | "placed" | "superseded";
+  rows: ProposalRow[];
+  created_at: string;
+}
+/** La chat di pianificazione (`PlanningChatOut`). */
+export interface PlanningChat {
+  conversation_id: string | null;
+  focus: { day: string; slot: MealSlot } | null;
+  messages: ChatMessage[];
+  replying: boolean;
+  concluded: boolean;
+  claude_ready: boolean;
+  claude_notice: string | null;
+}
+/** La risposta di «Metti nella settimana» (`PlaceOut`): `follow_up` è il messaggio che il
+ * telefono manda subito a Claude, scritto dal backend. */
+export interface PlaceResult {
+  chat: PlanningChat;
+  meals: Meal[];
+  follow_up: string;
 }

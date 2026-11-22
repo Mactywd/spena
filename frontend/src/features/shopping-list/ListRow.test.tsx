@@ -90,4 +90,24 @@ describe("ListRow", () => {
     renderRow({}, { failed: true });
     expect(screen.getByRole("alert").textContent).toContain("riprova");
   });
+
+  // era un quadratino da 20 px (T3 Consegna 6b): ora la casella di casa, col quadrato da
+  // 44 intorno — il bersaglio è la label intera, ma il disegno si vede da 24
+  it("la casella è quella di casa: il quadratino da 24 nel quadrato da 44", () => {
+    renderRow();
+    const casella = screen.getByRole("checkbox", { name: "yogurt greco" });
+    expect(casella.className).toContain("size-6");
+    expect(casella.parentElement!.className).toContain("size-11");
+  });
+
+  // la maiuscola solo a video, come Dispensa e ricette (spec T3 §4.7; Mattia, 2026-10-13):
+  // il testo salvato resta com'è scritto, e anche i nomi accessibili, che lo mettono in
+  // mezzo a una frase («Togli cosa verde dalla lista»)
+  it("il testo scritto in minuscolo si legge con la maiuscola; i nomi accessibili restano com'è scritto", () => {
+    renderRow({ ingredient_id: null, ingredient_name: null, raw_text: "cosa verde" });
+    expect(screen.getByText("Cosa verde")).toBeDefined();
+    expect(screen.queryByText("cosa verde")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "cosa verde" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Togli cosa verde dalla lista" })).toBeDefined();
+  });
 });

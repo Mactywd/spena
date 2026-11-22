@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { lowerBoundFrom, nextPageOffset, searchRecipes, totalFrom, type RecipePage } from "./api";
+import {
+  fetchRecipe,
+  lowerBoundFrom,
+  nextPageOffset,
+  searchRecipes,
+  totalFrom,
+  type RecipePage,
+  type RecipeScale,
+} from "./api";
 import type { RecipeSummary } from "../../domain/types";
 
 afterEach(() => {
@@ -95,5 +103,21 @@ describe("searchRecipes", () => {
       total: 12,
       totalIsLowerBound: true,
     });
+  });
+});
+
+describe("fetchRecipe", () => {
+  // il client chiede e basta: per porzioni, o da una dose fissata (R2). Il calcolo è
+  // del server, quindi qui c'è solo l'indirizzo
+  const casi: [string, RecipeScale | undefined, string][] = [
+    ["la ricetta com'è", undefined, "/api/v1/recipes/r1"],
+    ["per porzioni", { servings: 3 }, "/api/v1/recipes/r1?servings=3"],
+    ["da una dose", { anchor: "i1", amount: "112.5" }, "/api/v1/recipes/r1?anchor=i1&amount=112.5"],
+  ];
+  it.each(casi)("%s", async (_nome, scale, indirizzo) => {
+    const spy = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    vi.stubGlobal("fetch", spy);
+    await fetchRecipe("r1", scale);
+    expect(spy.mock.calls[0][0]).toBe(indirizzo);
   });
 });

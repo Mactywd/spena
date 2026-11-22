@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
+import { IngredientFigure } from "../../components/IngredientFigure";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -9,12 +10,20 @@ import { IconToolbar } from "../../components/ui/IconToolbar";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import { buttonClasses } from "../../components/ui/buttonClasses";
-import { IconArrowsJoin2, IconCategory, IconCursorText } from "../../components/ui/icons";
+import {
+  IconArrowsJoin2,
+  IconCategory,
+  IconCursorText,
+  IconMoodSmile,
+} from "../../components/ui/icons";
 import type { Ingredient, MergeCounts } from "../../domain/types";
 import { AliasRow } from "./AliasRow";
 import { CategoryForm } from "./CategoryForm";
+import { EmojiForm } from "./EmojiForm";
 import { MergePanel } from "./MergePanel";
+import { NutritionSection } from "./NutritionSection";
 import { RenameForm } from "./RenameForm";
+import { IngredientSubstitutes } from "../substitutes/IngredientSubstitutes";
 import { fetchIngredientDetail } from "./api";
 import { backFrom, originFrom, productPath } from "./origin";
 import { aliasVanishedText, mergeDoneText, usageText } from "./wording";
@@ -32,6 +41,7 @@ export function IngredientScreen() {
 type Panel =
   | { kind: "rename" }
   | { kind: "category" }
+  | { kind: "emoji" }
   | { kind: "merge"; winner: Ingredient | null };
 
 /** Prima dice cos'è e dove è usato — il peso di una correzione si vede prima di farla —
@@ -156,6 +166,24 @@ function IngredientCard({ id }: { id: string }) {
         />
       )}
 
+      {/* La figura delle sue righe in Dispensa (S12): si vede qui, e qui si corregge. Il
+          pannello prende il posto della riga — un pannello solo alla volta, come gli
+          altri — e non è una quarta icona accanto al titolo, che a 375 px lo
+          stringerebbe e non mostrerebbe la figura attuale senza aprire niente */}
+      {panel?.kind === "emoji" ? (
+        <EmojiForm ingredient={ingredient} onDone={() => setPanel(null)} />
+      ) : (
+        <Card className="mt-2 flex items-center gap-3">
+          <IngredientFigure emoji={ingredient.emoji} category={ingredient.category} />
+          <p className="min-w-0 flex-1 text-sm text-ink-soft">
+            {ingredient.emoji ? "In dispensa" : "In dispensa: l'icona del reparto"}
+          </p>
+          <Button variant="secondary" icon={IconMoodSmile} onClick={() => setPanel({ kind: "emoji" })}>
+            Cambia figura
+          </Button>
+        </Card>
+      )}
+
       <SectionHeading>Alias</SectionHeading>
       {vanishedAliasNote && (
         <p role="status" className="px-1 pb-1 text-sm text-low">
@@ -201,6 +229,15 @@ function IngredientCard({ id }: { id: string }) {
           </ul>
         </Card>
       )}
+
+      {/* R5: i sostituti, solo per il cibo — un non alimentare non sta in una ricetta */}
+      {ingredient.kind === "food" && (
+        <IngredientSubstitutes ingredientId={ingredient.id} ingredientName={ingredient.name} />
+      )}
+
+      {/* S4: i valori dell'alimento CIQUAL, in fondo e solo per un alimento. Una voce non
+          alimentare non ha valori nutrizionali, e non li chiede */}
+      {ingredient.kind === "food" && <NutritionSection ingredientId={ingredient.id} />}
     </Screen>
   );
 }

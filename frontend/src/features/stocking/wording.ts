@@ -6,6 +6,8 @@
  * si cerca una frase che vive in due strade.
  */
 
+import type { ProductSuggestion } from "./CustomProductForm";
+
 /** Il prodotto letto o cercato è di un altro ingrediente, e si dice quale (spec T3
  * §4.3): «è di un altro ingrediente» e basta lasciava a chi ha la confezione in mano il
  * compito di indovinare di quale. Non è un guasto: il tono lo sceglie chi la mostra, e
@@ -25,4 +27,28 @@ export function elsewhereNote(ingredientNames: string[]): string {
   }
   const whose = distinct.length === 1 ? "di un altro ingrediente" : "di altri ingredienti";
   return `Altri ${ingredientNames.length} prodotti corrispondono, ma sono ${whose}: ${names}.`;
+}
+
+/** Il nome di Open Food Facts in una frase sola: la dicono la domanda «È un …?» (S20) e
+ * il passo «Di che ingrediente è?» della Dispensa (S3). */
+export function describeSuggestion(suggestion: ProductSuggestion): string {
+  const what = suggestion.name ? `«${suggestion.name}»` : "senza nome";
+  const by = suggestion.brand ? `, di ${suggestion.brand}` : "";
+  return `Su Open Food Facts è ${what}${by}.`;
+}
+
+/** Che cosa si sa di un codice nuovo al catalogo, sopra la scelta dell'ingrediente
+ * nella scansione dalla Dispensa (S3): perché si sappia di cosa si sta parlando prima
+ * di dire di che ingrediente è. «Non trovato» solo quando qualcuno l'ha cercato. */
+export function newCodeNote(
+  barcode: string,
+  suggestion: ProductSuggestion | null,
+  lookedUp?: "not_found" | "failed"
+): string {
+  if (suggestion) return describeSuggestion(suggestion);
+  if (barcode === "") return "Nessun codice a barre: scegli l'ingrediente, poi scrivi il prodotto.";
+  if (lookedUp === "failed") {
+    return `Non ho potuto cercare il codice ${barcode}: scegli l'ingrediente, poi scrivi il prodotto.`;
+  }
+  return `Il codice ${barcode} non è in catalogo né su Open Food Facts.`;
 }

@@ -10,16 +10,7 @@ import { RecipeForm } from "../recipe-form/RecipeForm";
 import { EMPTY_FORM, applyDraft, type RecipeFormValues } from "../recipe-form/formModel";
 import { useNotice } from "../../components/ui/noticeContext";
 import type { RecipeDraft } from "../../domain/types";
-
-const SOURCE_REF_MAX = 500;
-
-/** `source_ref` sta in 500 caratteri, il prompt può arrivarne a 1000: la
- * provenienza si accorcia, il testo scritto no — quello resta nel suo campo.
- * Senza questo, un prompt lungo faceva rifiutare il salvataggio con un 422. */
-function sourceRef(prompt: string): string {
-  const ref = `prompt: ${prompt}`;
-  return ref.length <= SOURCE_REF_MAX ? ref : `${ref.slice(0, SOURCE_REF_MAX - 1)}…`;
-}
+import { sourceRef } from "./sourceRef";
 
 // Lo schermo che tiene insieme la dipendenza meno affidabile dell'app e la via
 // d'uscita da tutti i suoi guasti. L'AI può non rispondere, rispondere con qualcosa di

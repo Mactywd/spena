@@ -1,54 +1,43 @@
 import { useState } from "react";
-import {
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AiDraftScreen } from "./features/ai-draft/AiDraftScreen";
 import { LoginScreen } from "./features/auth/LoginScreen";
 import { RecipeDetailScreen } from "./features/cooking/RecipeDetailScreen";
 import { PantryScreen } from "./features/pantry/PantryScreen";
 import { ImportQueueScreen } from "./features/recipe-import/ImportQueueScreen";
+import { RecipeVariantScreen } from "./features/ai-variant/RecipeVariantScreen";
 import { RecipeEditScreen } from "./features/recipe-form/RecipeEditScreen";
 import { RecipeBookScreen } from "./features/recipes/RecipeBookScreen";
 import { NotFoundScreen } from "./features/not-found/NotFoundScreen";
 import { IngredientScreen } from "./features/registry/IngredientScreen";
 import { ProductScreen } from "./features/registry/ProductScreen";
 import { RegistryScreen } from "./features/registry/RegistryScreen";
+import { ChangeCardScreen } from "./features/change-cards/ChangeCardScreen";
+import { PlanningScreen } from "./features/planning/PlanningScreen";
+import { MealRecipeNewScreen } from "./features/meals/MealRecipeNewScreen";
+import { MealRecipePickScreen } from "./features/meals/MealRecipePickScreen";
+import { MealScreen } from "./features/meals/MealScreen";
+import { NewMealScreen } from "./features/meals/NewMealScreen";
+import { WeekScreen } from "./features/meals/WeekScreen";
+import { UtensilsScreen } from "./features/utensils/UtensilsScreen";
 import { ShoppingListScreen } from "./features/shopping-list/ShoppingListScreen";
 import { StockingScreen } from "./features/stocking/StockingScreen";
+import { ActivityScreen } from "./features/activity/ActivityScreen";
+import { ConnectScreen } from "./features/activity/ConnectScreen";
+import { SpendingScreen } from "./features/spending/SpendingScreen";
 import { AppHeader } from "./components/AppHeader";
 import { TabBar } from "./components/TabBar";
 import { NoticeProvider } from "./components/ui/NoticeProvider";
-import { UnauthorizedError } from "./api/client";
-import { defaultQueryRetryPredicate } from "./lib/queryRetry";
+import { createAppQueryClient } from "./lib/queryClient";
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(true);
 
-  // creato una volta sola: ricostruirlo a ogni render svuoterebbe la cache
-  const [queryClient] = useState(() => {
-    // un 401 da qualsiasi chiamata riporta all'accesso, senza schermate rotte.
-    // Servono entrambe le cache: le query leggono, ma spuntare una voce, cambiare
-    // uno stato in dispensa e cucinare una ricetta sono mutazioni, e una sessione
-    // scaduta a metà di una di quelle lascerebbe la schermata ferma su dati vecchi
-    // senza dire perché.
-    const bounceToLogin = (error: unknown) => {
-      if (error instanceof UnauthorizedError) setAuthenticated(false);
-    };
-
-    return new QueryClient({
-      queryCache: new QueryCache({ onError: bounceToLogin }),
-      mutationCache: new MutationCache({ onError: bounceToLogin }),
-      defaultOptions: {
-        queries: {
-          retry: defaultQueryRetryPredicate,
-        },
-      },
-    });
-  });
+  // creato una volta sola: ricostruirlo a ogni render svuoterebbe la cache. Com'è fatto
+  // (i 401 che riportano all'accesso, i tentativi) sta in lib/queryClient.ts, dove lo
+  // prendono anche i test
+  const [queryClient] = useState(() => createAppQueryClient(() => setAuthenticated(false)));
 
   if (!authenticated) return <LoginScreen onSuccess={() => setAuthenticated(true)} />;
 
@@ -78,9 +67,23 @@ export default function App() {
               <Route path="/ricette/importa" element={<ImportQueueScreen />} />
               <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
               <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
+              <Route path="/ricette/:id/variante" element={<RecipeVariantScreen />} />
+              <Route path="/pasti" element={<WeekScreen />} />
+              {/* dichiarata SOPRA /pasti/:id: "nuovo" non deve mai essere letto come un id */}
+              <Route path="/pasti/nuovo" element={<NewMealScreen />} />
+              {/* anche questa SOPRA /pasti/:id: "pianifica" non è un id */}
+              <Route path="/pasti/pianifica" element={<PlanningScreen />} />
+              <Route path="/pasti/cambi/:id" element={<ChangeCardScreen />} />
+              <Route path="/pasti/:id" element={<MealScreen />} />
+              <Route path="/pasti/:id/ricetta/nuova" element={<MealRecipeNewScreen />} />
+              <Route path="/pasti/:id/ricetta/scegli" element={<MealRecipePickScreen />} />
               <Route path="/anagrafica" element={<RegistryScreen />} />
               <Route path="/anagrafica/ingrediente/:id" element={<IngredientScreen />} />
               <Route path="/anagrafica/prodotto/:id" element={<ProductScreen />} />
+              <Route path="/utensili" element={<UtensilsScreen />} />
+              <Route path="/attivita" element={<ActivityScreen />} />
+              <Route path="/attivita/collega" element={<ConnectScreen />} />
+              <Route path="/spese-ai" element={<SpendingScreen />} />
               {/* in fondo: prende solo ciò che nessuna rotta sopra ha preso */}
               <Route path="*" element={<NotFoundScreen />} />
             </Routes>

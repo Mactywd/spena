@@ -10,13 +10,15 @@ sblocca.
 
 import uuid
 from dataclasses import dataclass
+from enum import StrEnum
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient
-from app.db.models.recipe import CookingEvent, RecipeSource
+from app.db.models.recipe import CookingEvent, Recipe, RecipeSource
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportState, RecipeImport, TermDecision
+from app.domain.quantities import clean_dose, merge_notes
 from app.domain.rules import IngredientRole, cost_in_scale, default_role
 from app.repositories.imports import pending_pages, terms_by_key
 from app.repositories.recipes import NonFoodInRecipe, create_recipe
@@ -33,9 +35,57 @@ EMPTY_REASON = (
     "e una ricetta senza ingredienti risulterebbe sempre cucinabile"
 )
 
+# L'inizio del motivo di una pagina scartata per una riga non alimentare. Lo scrive
+# `materialize_ready` e lo rilegge `explain_skip`: una costante sola, perché la stringa
+# scritta e quella letta non possano scollarsi.
+NON_FOOD_PREFIX = "riga non alimentare: "
+
+
+class SkipCause(StrEnum):
+    """Perché una pagina è scartata, in un codice. Le parole le scrive la schermata."""
+
+    # scartata allo scarico (`store_unparsable`): niente righe da materializzare
+    UNREADABLE = "unreadable"
+    # ogni riga ignorata: resterebbe una ricetta senza ingredienti (`EMPTY_REASON`)
+    ALL_IGNORED = "all_ignored"
+    # `create_recipe` ha rifiutato una riga non alimentare (`NON_FOOD_PREFIX`)
+    NON_FOOD = "non_food"
+    # un motivo che questa versione non scrive più: le righe ci sono, si può riprovare
+    OTHER = "other"
+
+
+@dataclass(frozen=True)
+class SkipExplained:
+    cause: SkipCause
+    # la voce non alimentare com'era scritta allo scarto; None per le altre cause, o se il
+    # taglio a 200 caratteri del motivo non ne ha lasciato niente
+    non_food_name: str | None
+    # se rimetterla in coda può cambiare qualcosa
+    requeueable: bool
+
+
+def explain_skip(payload: dict, reason: str | None) -> SkipExplained:
+    """Perché questa pagina è scartata, da quel che conserva (spec 2026-10-09 §3.1).
+
+    Le righe prima del motivo: una pagina illeggibile ha il `payload` vuoto qualunque
+    cosa dica il suo motivo, e rimessa in coda tornerebbe scartata subito — con
+    `EMPTY_REASON`, che per lei sarebbe falso. Per questo non si rimette.
+    """
+    if not payload.get("ingredients"):
+        return SkipExplained(SkipCause.UNREADABLE, None, requeueable=False)
+    if reason == EMPTY_REASON[:200]:
+        return SkipExplained(SkipCause.ALL_IGNORED, None, requeueable=True)
+    if reason is not None and reason.startswith(NON_FOOD_PREFIX):
+        name = reason[len(NON_FOOD_PREFIX):].strip().removeprefix("«").removesuffix("»").strip()
+        return SkipExplained(SkipCause.NON_FOOD, name or None, requeueable=True)
+    return SkipExplained(SkipCause.OTHER, None, requeueable=True)
+
+
 # La chiave del `payload` dove `undo_decision` lascia gli id delle cotture della ricetta
 # che ha cancellato. La ricetta rifatta da questa pagina le riprende (S9 §5.2).
 COOKING_EVENTS_KEY = "cooking_event_ids"
+# R8: le varianti di una ricetta cancellata per rifarla aspettano qui, come le cotture.
+VARIANTS_KEY = "variant_recipe_ids"
 
 
 @dataclass(frozen=True)
@@ -91,6 +141,30 @@ async def _relink_cooking_events(
     return result.rowcount or 0
 
 
+async def _relink_variants(
+    session: AsyncSession, page: RecipeImport, recipe_id: uuid.UUID
+) -> None:
+    """Rimette sulla ricetta rifatta il legame delle sue varianti (R8).
+
+    Stessa forma di `_relink_cooking_events`: `derived_from_id IS NULL` nella condizione,
+    perché una variante che nel frattempo qualcuno ha legato ad altro non si ruba; la
+    chiave si toglie riassegnando il dizionario, perché SQLAlchemy non vede le mutazioni
+    dentro un JSONB.
+    """
+    waiting = page.payload.get(VARIANTS_KEY)
+    if not waiting:
+        return
+    await session.execute(
+        update(Recipe)
+        .where(
+            Recipe.id.in_([uuid.UUID(str(value)) for value in waiting]),
+            Recipe.derived_from_id.is_(None),
+        )
+        .values(derived_from_id=recipe_id)
+    )
+    page.payload = {key: value for key, value in page.payload.items() if key != VARIANTS_KEY}
+
+
 async def materialize_ready(
     session: AsyncSession, source: str = GIALLOZAFFERANO
 ) -> Materialized:
@@ -113,24 +187,36 @@ async def materialize_ready(
             continue  # aspetta: è la decisione presa nello spec §2
 
         # collasso per ingrediente, nell'ordine di prima comparsa
-        collapsed: dict[uuid.UUID, tuple[IngredientRole, str | None]] = {}
+        collapsed: dict[uuid.UUID, tuple[IngredientRole, str | None, str | None]] = {}
         for line, term in zip(lines, decisions, strict=True):
             if term.decision == TermDecision.IGNORED:
                 continue
-            quantity = line.get("quantity_text")
+            arrived = line.get("quantity_text")
+            # Il ruolo si legge dal testo come è arrivato, come prima della pulizia: la
+            # pulizia non cambia ruoli (spec 2026-10-13, §3.10), così una ricetta rifatta
+            # da qui è uguale a quella che il comando `clean_doses` ha ripulito sul posto.
             role = IngredientRole(
                 term.role_override
-                or default_role(categories.get(term.ingredient_id, "altro"), quantity)
+                or default_role(categories.get(term.ingredient_id, "altro"), arrived)
             )
+            # La dose pulita all'ingresso: le parole davanti nella nota, gli spazi
+            # dell'HTML a uno (Mattia, 2026-10-13). Il `payload` resta com'è arrivato.
+            cleaned = clean_dose(arrived)
+            quantity, note = cleaned.quantity_text, cleaned.note
             key = term.ingredient_id
             if key in collapsed:
-                previous_role, previous_quantity = collapsed[key]
+                previous_role, previous_quantity, previous_note = collapsed[key]
                 collapsed[key] = (
                     stronger(previous_role, role),
                     merge_quantities(previous_quantity, quantity),
+                    merge_notes(previous_note, note),
                 )
             else:
-                collapsed[key] = (role, quantity[:MAX_QUANTITY_CHARS] if quantity else None)
+                collapsed[key] = (
+                    role,
+                    quantity[:MAX_QUANTITY_CHARS] if quantity else None,
+                    note,
+                )
 
         if not collapsed:
             page.state = ImportState.SKIPPED
@@ -157,8 +243,8 @@ async def materialize_ready(
                 source=RecipeSource.DATASET,
                 source_ref=page.url,
                 ingredients=[
-                    (ingredient_id, role, quantity, None)
-                    for ingredient_id, (role, quantity) in collapsed.items()
+                    (ingredient_id, role, quantity, note)
+                    for ingredient_id, (role, quantity, note) in collapsed.items()
                 ],
                 embedding=embedding,
             )
@@ -172,7 +258,7 @@ async def materialize_ready(
             # pagina resta visibile e recuperabile: SKIPPED col nome della voce
             # incriminata, non un buco silenzioso.
             page.state = ImportState.SKIPPED
-            page.skipped_reason = f"riga non alimentare: «{exc.display_name}»"[:200]
+            page.skipped_reason = f"{NON_FOOD_PREFIX}«{exc.display_name}»"[:200]
             skipped += 1
             continue
         recipe.category = (page.payload.get("category") or None) and str(page.payload["category"])[:60]
@@ -187,6 +273,7 @@ async def materialize_ready(
         page.recipe_id = recipe.id
         created += 1
         relinked += await _relink_cooking_events(session, page, recipe.id)
+        await _relink_variants(session, page, recipe.id)
 
     await session.flush()
     return Materialized(created=created, skipped=skipped, relinked=relinked)

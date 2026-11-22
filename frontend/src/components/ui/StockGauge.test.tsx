@@ -76,6 +76,27 @@ describe("StockGauge", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  // Spenta (una scrittura in volo) non sbiadisce: le tacche accese diventano grigie
+  // come un pulsante spento (`on-disabled`), le spente restano `notch-off`. La forma
+  // resta tre tacche, e il livello si legge ancora (theme.test.ts, 2:1).
+  it("spenta, le tacche accese sono grigie e le spente restano com'erano, senza opacità", () => {
+    render(<StockGauge status="low" onChange={() => {}} itemName="Latte" disabled />);
+    const gruppo = screen.getByRole("radiogroup");
+    const accese = [...gruppo.querySelectorAll("[data-lit=true] > span")];
+    const spente = [...gruppo.querySelectorAll("[data-lit=false] > span")];
+    expect(accese).toHaveLength(2);
+    expect(spente).toHaveLength(1);
+    for (const tacca of accese) expect(tacca.className).toContain("bg-on-disabled");
+    for (const tacca of spente) expect(tacca.className).toContain("bg-notch-off");
+    for (const radio of screen.getAllByRole("radio")) expect(radio.className).not.toMatch(/opacity/);
+  });
+
+  it("accesa, le tacche hanno il colore dello stato", () => {
+    render(<StockGauge status="low" onChange={() => {}} itemName="Latte" />);
+    const accese = [...screen.getByRole("radiogroup").querySelectorAll("[data-lit=true] > span")];
+    for (const tacca of accese) expect(tacca.className).toContain("bg-low");
+  });
+
   it("ogni tacca è un bersaglio da 44px", () => {
     render(<StockGauge status="low" onChange={() => {}} itemName="Latte" />);
     for (const radio of screen.getAllByRole("radio")) expect(radio.className).toContain("size-11");

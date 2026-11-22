@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
@@ -11,42 +12,42 @@ const DETAIL: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
   missing: 2, cookable: false, missing_names: ["Basilico", "Pomodoro"], image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, cost: null, archived_at: null, main_department: null, instructions: "Cuoci.",
-  servings: 2, source_ref: null, scaled_to: null, owned_by_import: false,
+  servings: 2, source_ref: null, scaled_to: null, owned_by_import: false, derived_from: null,
   // quattro righe su cinque portano una dose: «basilico» non ne ha nessuna, ed è la
   // riga che tiene onesto il denominatore — il conto delle dosi non è il conto degli
   // ingredienti, e il server manda il primo
-  unscalable_lines: 0, dose_lines: 4,
+  unscalable_lines: 0, dose_lines: 4, anchor: null,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
-      quantity_display: "180 g", quantity_scaled: false,
+      quantity_display: "180 g", quantity_scaled: false, anchorable: true, anchor_unit: "g",
       note: null, availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "pomodoro", role: "primary", quantity_text: "400 g",
-      quantity_display: "400 g", quantity_scaled: false,
+      quantity_display: "400 g", quantity_scaled: false, anchorable: true, anchor_unit: "g",
       note: null, availability: "low", satisfied: false },
     { ingredient_id: "i3", ingredient_name: "aglio", role: "secondary", quantity_text: "q.b.",
-      quantity_display: "q.b.", quantity_scaled: false,
+      quantity_display: "q.b.", quantity_scaled: false, anchorable: false, anchor_unit: null,
       note: null, availability: "low", satisfied: true },
     // senza una riga che manca, metà di statusNote non è coperta da niente
     { ingredient_id: "i4", ingredient_name: "basilico", role: "secondary", quantity_text: null,
-      quantity_display: null, quantity_scaled: false,
+      quantity_display: null, quantity_scaled: false, anchorable: false, anchor_unit: null,
       note: null, availability: "missing", satisfied: false },
     { ingredient_id: "i5", ingredient_name: "olio", role: "secondary", quantity_text: "q.b.",
-      quantity_display: "q.b.", quantity_scaled: false,
+      quantity_display: "q.b.", quantity_scaled: false, anchorable: false, anchor_unit: null,
       note: null, availability: "available", satisfied: true },
   ],
 };
 
 const PANTRY: PantryItem[] = [
   { id: "p1", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-    ingredient_category: "cereali", product_name: null, product_brand: null,
-    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null },
+    ingredient_category: "cereali", ingredient_kind: "food", product_name: null, product_brand: null,
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   { id: "p2", ingredient_id: "i2", product_id: "pr1", ingredient_name: "pomodoro",
-    ingredient_category: "conserve", product_name: "Pelati", product_brand: "Mutti",
-    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null },
+    ingredient_category: "conserve", ingredient_kind: "food", product_name: "Pelati", product_brand: "Mutti",
+    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
 ];
 
 function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   // senza `NoticeProvider` l'avviso unico (l'esito della cottura, «Metti in lista…»,
   // l'eliminazione) non avrebbe dove comparire
   return render(
@@ -55,6 +56,7 @@ function renderScreen() {
         <MemoryRouter initialEntries={["/ricette/r1"]}>
           <Routes>
             <Route path="/ricette/:id" element={<RecipeDetailScreen />} />
+            <Route path="/pasti/:id" element={<p>il pasto</p>} />
           </Routes>
         </MemoryRouter>
       </NoticeProvider>
@@ -95,6 +97,16 @@ function stubFetch(overrides: Partial<typeof DETAIL>) {
 }
 
 describe("RecipeDetailScreen", () => {
+  it("senza `highlight` nessuna riga ha `data-changed`", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(DETAIL), { status: 200 })
+    ));
+    const { container } = renderScreen();
+    await screen.findByText("Principali");
+    expect(container.querySelector("[data-changed]")).toBeNull();
+    expect(screen.queryByText("(cambiata)")).toBeNull();
+  });
+
   it("distingue ingredienti principali e secondari", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify(DETAIL), { status: 200 })
@@ -404,6 +416,22 @@ describe("RecipeDetailScreen", () => {
     await userEvent.click(piu);
     expect(spy.mock.calls.some(([url]) => String(url).includes("servings="))).toBe(false);
   });
+
+  it("la nota della riga sta sotto il nome, e la dose resta a destra", async () => {
+    // la nota nasce dalla pulizia delle dosi dell'import: «da grattugiare ⏎ 50 ⏎ g» è
+    // diventata la dose «50 g» e la nota «da grattugiare» (spec 2026-10-13)
+    stubFetch({
+      ingredients: DETAIL.ingredients.map((line) =>
+        line.ingredient_id === "i1" ? { ...line, note: "da grattugiare" } : line
+      ),
+    });
+    renderScreen();
+    const row = (await screen.findByText("Pasta")).closest("li")!;
+    expect(within(row).getByText("da grattugiare")).toBeInTheDocument();
+    expect(within(row).getByText("180 g")).toBeInTheDocument();
+    // le righe senza nota non mostrano niente in più
+    expect(screen.getAllByText("da grattugiare")).toHaveLength(1);
+  });
 });
 
 describe("il costo nel dettaglio si legge e basta (T3 Consegna 5)", () => {
@@ -594,6 +622,83 @@ describe("il foglio e l'esito si fanno vedere (T4)", () => {
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "Cucina" })).toHaveFocus());
   });
 
+  it("se dopo «Ho cucinato» la dispensa non si ricarica, il fuoco va su «Riprova» al posto di «Cucina»", async () => {
+    // «Cucina» lascia il posto all'avviso, e il fuoco cadeva sulla pagina (T3 Consegna 5)
+    let letture = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) => {
+        const path = String(url);
+        if (path.includes("/cook")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ event_id: "e1", updated: 1, restocked: 1 }), { status: 201 })
+          );
+        }
+        if (path.includes("/pantry")) {
+          letture += 1;
+          // la prima lettura apre il foglio; quella dopo la cottura fallisce
+          return Promise.resolve(
+            letture === 1
+              ? new Response(JSON.stringify(PANTRY), { status: 200 })
+              : new Response("", { status: 500 })
+          );
+        }
+        return Promise.resolve(new Response(JSON.stringify(DETAIL), { status: 200 }));
+      })
+    );
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
+    const row = (await screen.findByText("Pelati")).closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+
+    const riprova = await screen.findByRole("button", { name: "Riprova" });
+    await vi.waitFor(() => expect(riprova).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "Cucina" })).toBeNull();
+  });
+
+  it("se «Riprova» riesce, il fuoco torna su «Cucina»", async () => {
+    // riuscita la rilettura «Riprova» sparisce: senza questo il fuoco cadeva sulla pagina
+    let guasto = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) => {
+        const path = String(url);
+        if (path.includes("/cook")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ event_id: "e1", updated: 1, restocked: 1 }), { status: 201 })
+          );
+        }
+        if (path.includes("/pantry")) {
+          // la lettura che apre il foglio riesce; quella dopo la cottura fallisce, con tutti
+          // i tentativi del client dell'app; quella di «Riprova» riesce
+          return Promise.resolve(
+            guasto
+              ? new Response("", { status: 500 })
+              : new Response(JSON.stringify(PANTRY), { status: 200 })
+          );
+        }
+        return Promise.resolve(new Response(JSON.stringify(DETAIL), { status: 200 }));
+      })
+    );
+    renderScreen();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cucina" }));
+    const row = (await screen.findByText("Pelati")).closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    guasto = true;
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+
+    const riprova = await screen.findByRole("button", { name: "Riprova" });
+    await vi.waitFor(() => expect(riprova).toHaveFocus());
+    guasto = false;
+    await userEvent.keyboard("{Enter}");
+
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Cucina" })).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "Riprova" })).toBeNull();
+  });
+
   it("annullare il foglio non inventa un esito, e riporta il fuoco su «Cucina»", async () => {
     stubCookServer();
     renderScreen();
@@ -605,5 +710,376 @@ describe("il foglio e l'esito si fanno vedere (T4)", () => {
     await vi.waitFor(() => expect(cucina).toHaveFocus());
     // la regione dell'avviso c'è sempre, vuota finché nessuno parla
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+});
+
+describe("riporzionare da un ingrediente (R2, secondo modo)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // il server riscala, il client chiede e mostra: queste stringhe le detta il finto.
+  // 135 g dei 180 della ricetta per 2 sono 0,75: 300 g di pomodoro, «≈ 1,5»
+  const ANCORATA: RecipeDetail = {
+    ...DETAIL,
+    anchor: { ingredient_id: "i1", amount: "135", equivalent_servings: 1.5 },
+    unscalable_lines: 2,
+    ingredients: [
+      { ...DETAIL.ingredients[0], quantity_display: "135 g", quantity_scaled: true },
+      { ...DETAIL.ingredients[1], quantity_display: "300 g", quantity_scaled: true },
+      ...DETAIL.ingredients.slice(2),
+    ],
+  };
+  const FUORI_SCALA =
+    "Così la ricetta cambierebbe più di 50 volte: scrivi un numero fra 3,6 g e 9000 g.";
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status });
+
+  /** La dispensa per la dispensa, `anchored` per una ricetta chiesta da una dose, `base`
+   * per tutto il resto (la ricetta com'è e per porzioni). Torna gli indirizzi chiesti. */
+  function stubAnchored(
+    anchored: (url: string) => Response = () => json(ANCORATA),
+    base: RecipeDetail = DETAIL
+  ) {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) => {
+        const indirizzo = String(url);
+        urls.push(indirizzo);
+        if (indirizzo.includes("/pantry")) return Promise.resolve(json(PANTRY));
+        if (indirizzo.includes("anchor=")) return Promise.resolve(anchored(indirizzo));
+        return Promise.resolve(json(base));
+      })
+    );
+    return urls;
+  }
+
+  async function riscala(dose: string, nome: string, quanto: string) {
+    await userEvent.click(await screen.findByRole("button", { name: `${dose}: riscala da ${nome}` }));
+    const campo = screen.getByRole("textbox", { name: "Quanto ne fai?" });
+    await userEvent.clear(campo);
+    await userEvent.type(campo, quanto);
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+  }
+
+  it("una dose che si riscala si tocca; «q.b.» no", async () => {
+    stubAnchored();
+    renderScreen();
+    expect(await screen.findByRole("button", { name: "180 g: riscala da pasta" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "400 g: riscala da pomodoro" })).toBeInTheDocument();
+    const aglio = screen.getByText("Aglio").closest("li")!;
+    expect(within(aglio).getByText("q.b.")).toBeInTheDocument();
+    // dal merge di R5 la riga ha «Sostituisci»: la dose no, ed è il suo solo pulsante
+    const pulsanti = within(aglio).getAllByRole("button");
+    expect(pulsanti).toHaveLength(1);
+    expect(pulsanti[0]).toHaveAccessibleName("Sostituisci aglio");
+  });
+
+  it("il tocco apre «Quanto ne fai?» sotto la sua riga, col fuoco; un campo alla volta", async () => {
+    stubAnchored();
+    renderScreen();
+    const pasta = await screen.findByRole("button", { name: "180 g: riscala da pasta" });
+    expect(pasta).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.click(pasta);
+    expect(pasta).toHaveAttribute("aria-expanded", "true");
+    const riga = pasta.closest("li")!;
+    const campo = within(riga).getByRole("textbox", { name: "Quanto ne fai?" });
+    expect(campo).toHaveFocus();
+    expect(campo).toHaveAccessibleDescription("g");
+
+    await userEvent.click(screen.getByRole("button", { name: "400 g: riscala da pomodoro" }));
+    expect(within(riga).queryByRole("textbox")).toBeNull();
+    expect(screen.getAllByRole("textbox", { name: "Quanto ne fai?" })).toHaveLength(1);
+    expect(
+      within(screen.getByText("Pomodoro").closest("li")!).getByRole("textbox")
+    ).toHaveFocus();
+  });
+
+  it("«Riscala» chiede la ricetta da quella dose, e mostra quel che dice il server", async () => {
+    const urls = stubAnchored();
+    renderScreen();
+    await riscala("180 g", "pasta", "135");
+
+    expect(await screen.findByText("300 g")).toBeInTheDocument();
+    expect(urls.some((url) => url.endsWith("/recipes/r1?anchor=i1&amount=135"))).toBe(true);
+    expect(screen.getByText("≈ 1,5")).toBeInTheDocument();
+    expect(screen.getByText("Riscalata da pasta: 135 g.")).toBeInTheDocument();
+    expect(screen.getByText(/2 dosi su 4 non si riscalano/)).toBeInTheDocument();
+    // il campo si chiude, e il fuoco torna sulla dose, che dice quella scritta
+    expect(screen.queryByRole("textbox", { name: "Quanto ne fai?" })).toBeNull();
+    expect(screen.getByRole("button", { name: "135 g: riscala da pasta" })).toHaveFocus();
+  });
+
+  it("con una dose fissata, + torna alle porzioni intere", async () => {
+    const urls = stubAnchored();
+    renderScreen();
+    await riscala("180 g", "pasta", "135");
+    await screen.findByText("≈ 1,5");
+
+    // da ≈ 1,5 il + va a 2: le porzioni della ricetta, cioè la ricetta com'è
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+    expect(await screen.findByText("180 g")).toBeInTheDocument();
+    expect(urls.some((url) => url.endsWith("/recipes/r1?servings=2"))).toBe(true);
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.queryByText("≈ 1,5")).toBeNull();
+  });
+
+  it("«Torna alle dosi della ricetta» toglie la dose fissata", async () => {
+    stubAnchored();
+    renderScreen();
+    await riscala("180 g", "pasta", "135");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Torna alle dosi della ricetta" }));
+    expect(await screen.findByText("180 g")).toBeInTheDocument();
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.queryByText("≈ 1,5")).toBeNull();
+  });
+
+  it("oltre le 50 volte la frase del server resta sotto il campo, e la ricetta com'era", async () => {
+    stubAnchored(() => json({ detail: FUORI_SCALA }, 422));
+    renderScreen();
+    await riscala("180 g", "pasta", "99999");
+
+    const riga = screen.getByRole("button", { name: "180 g: riscala da pasta" }).closest("li")!;
+    expect(await within(riga).findByRole("alert")).toHaveTextContent(FUORI_SCALA);
+    expect(within(riga).getByRole("textbox", { name: "Quanto ne fai?" })).toHaveValue("99999");
+    expect(screen.getByText("400 g")).toBeInTheDocument();
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+  });
+
+  it("se il server non risponde, il campo resta e lo dice", async () => {
+    stubAnchored(() => json({ detail: "guasto" }, 500));
+    renderScreen();
+    await riscala("180 g", "pasta", "135");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Non sono riuscito a riscalare. Riprova.");
+    expect(screen.getByRole("textbox", { name: "Quanto ne fai?" })).toHaveValue("135");
+    expect(screen.getByText("400 g")).toBeInTheDocument();
+  });
+
+  it("senza porzioni dichiarate si riscala lo stesso, e lo stepper resta fermo col suo perché", async () => {
+    stubAnchored(
+      () => json({ ...ANCORATA, servings: null, anchor: { ...ANCORATA.anchor!, equivalent_servings: null } }),
+      { ...DETAIL, servings: null }
+    );
+    renderScreen();
+    await riscala("180 g", "pasta", "135");
+
+    expect(await screen.findByText("Riscalata da pasta: 135 g.")).toBeInTheDocument();
+    const piu = screen.getByRole("button", { name: "Una porzione in più" });
+    expect(piu).toHaveAttribute("aria-disabled", "true");
+    expect(piu).toHaveAccessibleDescription("Porzioni non indicate: si cambiano da «Modifica».");
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText(/≈/)).toBeNull();
+    // l'uscita c'è anche qui, dove − e + sono spenti
+    expect(screen.getByRole("button", { name: "Torna alle dosi della ricetta" })).toBeInTheDocument();
+  });
+
+  it("«Annulla» chiude il campo e ridà il fuoco alla dose", async () => {
+    stubAnchored();
+    renderScreen();
+    const pasta = await screen.findByRole("button", { name: "180 g: riscala da pasta" });
+    await userEvent.click(pasta);
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+
+    expect(screen.queryByRole("textbox", { name: "Quanto ne fai?" })).toBeNull();
+    expect(pasta).toHaveFocus();
+  });
+
+  it("una vista riscalata che il server smette di dare porta alle dosi della ricetta, non a «Riprova»", async () => {
+    // la prima risposta accetta la dose; la rilettura (la ricetta è stata modificata in
+    // un'altra scheda) la rifiuta. «Riprova» rifarebbe la stessa domanda
+    let volte = 0;
+    stubAnchored(() => (++volte === 1 ? json(ANCORATA) : json({ detail: FUORI_SCALA }, 422)));
+    renderScreen();
+    await riscala("180 g", "pasta", "135");
+
+    expect(
+      await screen.findByText("Non riesco più a riscalare da quella dose: la ricetta è cambiata.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Riprova" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Torna alle dosi della ricetta" }));
+    expect(await screen.findByText("180 g")).toBeInTheDocument();
+  });
+
+  /** Come `stubAnchored`, ma la risposta alla dose la dà il test, quando vuole. */
+  function stubDeferred() {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        const indirizzo = String(url);
+        if (indirizzo.includes("/pantry")) return json(PANTRY);
+        if (indirizzo.includes("anchor=")) {
+          await gate;
+          return json(ANCORATA);
+        }
+        return json(DETAIL);
+      })
+    );
+    return release;
+  }
+
+  it("una riscala annullata mentre la risposta è in volo non cambia la vista", async () => {
+    const release = stubDeferred();
+    renderScreen();
+    const pasta = await screen.findByRole("button", { name: "180 g: riscala da pasta" });
+    await userEvent.click(pasta);
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "135");
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(pasta).toHaveFocus();
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(screen.getByText("180 g")).toBeInTheDocument();
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.queryByText("≈ 1,5")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(pasta).toHaveFocus();
+  });
+
+  it("una riscala superata dall'apertura di un'altra riga lascia quel campo com'è, col suo testo", async () => {
+    const release = stubDeferred();
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "180 g: riscala da pasta" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "135");
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "400 g: riscala da pomodoro" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "250");
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const campo = screen.getByRole("textbox", { name: "Quanto ne fai?" });
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(campo).toHaveValue("250");
+    expect(campo).toHaveFocus();
+    expect(within(screen.getByText("Pomodoro").closest("li")!).getByRole("textbox")).toBe(campo);
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.getByText("180 g")).toBeInTheDocument();
+  });
+
+  it("una riscala superata dallo stepper non ne disfa la scelta", async () => {
+    const release = stubDeferred();
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "180 g: riscala da pasta" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "135");
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+    await userEvent.click(screen.getByRole("button", { name: "Una porzione in più" }));
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.queryByText("≈ 1,5")).toBeNull();
+  });
+
+  it("«Cucina» chiude il campo e lascia cadere la riscala in volo: chiuso il foglio, la vista è quella di prima", async () => {
+    const release = stubDeferred();
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "180 g: riscala da pasta" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Quanto ne fai?" }), "135");
+    await userEvent.click(screen.getByRole("button", { name: "Riscala" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cucina" }));
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    // la risposta è arrivata sotto il foglio: non ha cambiato la vista che il foglio copre
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+
+    const cucina = await screen.findByRole("button", { name: "Cucina" });
+    await vi.waitFor(() => expect(cucina).toHaveFocus());
+    expect(screen.queryByText(/Riscalata da/)).toBeNull();
+    expect(screen.queryByText("≈ 1,5")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByText("180 g")).toBeInTheDocument();
+  });
+
+  it("«Cucina» con il campo aperto: chiuso il foglio, il campo non c'è più", async () => {
+    stubAnchored(() => json(ANCORATA));
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "180 g: riscala da pasta" }));
+    expect(screen.getByRole("textbox", { name: "Quanto ne fai?" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cucina" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+
+    const cucina = await screen.findByRole("button", { name: "Cucina" });
+    await vi.waitFor(() => expect(cucina).toHaveFocus());
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});
+
+describe("RecipeDetailScreen — Sostituisci (R5)", () => {
+  it("ogni riga d'ingrediente ha «Sostituisci», chiuso", async () => {
+    stubFetch({});
+    renderScreen();
+    for (const nome of ["pasta", "pomodoro", "aglio", "basilico", "olio"]) {
+      expect(await screen.findByRole("button", { name: `Sostituisci ${nome}` })).toHaveAttribute(
+        "aria-expanded", "false"
+      );
+    }
+  });
+
+  it("il tocco apre sotto la riga cosa usare al suo posto, un secondo tocco lo chiude", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: unknown) => {
+        const path = String(url);
+        const corpo = path.includes("/substitutes/i4")
+          ? { ingredient_id: "i4", ingredient_name: "basilico", context: "salato", scope: "general",
+              verdict: "omit", decided_by: "ai", ai_failed: false, substitutes: [] }
+          : path.includes("/pantry")
+            ? PANTRY
+            : DETAIL;
+        return Promise.resolve(new Response(JSON.stringify(corpo), { status: 200 }));
+      })
+    );
+    renderScreen();
+    const apri = await screen.findByRole("button", { name: "Sostituisci basilico" });
+    await userEvent.click(apri);
+    const riga = apri.closest("li")!;
+    expect(
+      await within(riga).findByText("Si può omettere: il piatto riesce anche senza basilico.")
+    ).toBeInTheDocument();
+    expect(apri).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(apri);
+    expect(within(riga).queryByText("Si può omettere: il piatto riesce anche senza basilico.")).toBeNull();
+    expect(apri).toHaveFocus();
+  });
+});
+
+describe("RecipeDetailScreen — la ricetta di un pasto", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const meal = { id: "m1", day: "2026-11-10", slot: "dinner" as const, dish: "Pollo", recipe_id: "r1" };
+
+  it("fuori dal ricettario porta al suo pasto", async () => {
+    stubFetch({ in_book: false, meal });
+    renderScreen();
+    expect(await screen.findByText("il pasto")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cucina" })).toBeNull();
+  });
+
+  it("nel ricettario, anche con un pasto, mostra «Cucina»", async () => {
+    stubFetch({ in_book: true, meal });
+    renderScreen();
+    expect(await screen.findByRole("button", { name: "Cucina" })).toBeInTheDocument();
   });
 });

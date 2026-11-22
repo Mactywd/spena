@@ -23,6 +23,7 @@ from enum import StrEnum
 from sqlalchemy import delete, func, inspect, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.change_card import ChangeCardRow
 from app.db.models.ingredient import Ingredient, IngredientAlias, IngredientCategory
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
@@ -36,6 +37,8 @@ from app.db.models.recipe_import import (
 )
 from app.db.models.shopping import ShoppingListItem, ShoppingStatus
 from app.domain.barcodes import has_valid_check_digit
+from app.domain.emoji import NO_EMOJI, canonical_emoji
+from app.domain.quantities import merge_notes
 from app.domain.rules import IngredientKind, IngredientRole, kind_for_category
 from app.repositories.ingredients import (
     canonical_name,
@@ -44,6 +47,7 @@ from app.repositories.ingredients import (
     remember_alias,
 )
 from app.repositories.products import find_by_barcode
+from app.repositories.substitutions import move_substitutions
 from app.services.recipe_import.manual import DecisionRefused, ManualDecision, decide_by_hand
 from app.services.recipe_import.materialize import (
     materialize_ready,
@@ -76,6 +80,7 @@ class RefusalCode(StrEnum):
     STILL_USED = "still_used"
     BARCODE_TAKEN = "barcode_taken"
     BAD_CHECKSUM = "bad_checksum"
+    UNKNOWN_EMOJI = "unknown_emoji"
 
 
 class RegistryRefusal(Exception):
@@ -97,6 +102,9 @@ class RecipeRef:
     # eliminata (R10): conta ancora — ripristinata tornerebbe con la sua riga — e lo
     # schermo la segna, perché nel ricettario non si vede più
     archived: bool = False
+    # fuori dal ricettario: la ricetta di un pasto (spec §4.2); conta per lo stesso
+    # motivo delle eliminate
+    from_meal: bool = False
 
 
 @dataclass(frozen=True)
@@ -163,7 +171,7 @@ async def recipes_using(session: AsyncSession, ingredient_id: uuid.UUID) -> Reci
         )
     ).scalar_one()
     rows = await session.execute(
-        select(Recipe.id, Recipe.title, Recipe.archived_at)
+        select(Recipe.id, Recipe.title, Recipe.archived_at, Recipe.in_book)
         .join(RecipeIngredient, RecipeIngredient.recipe_id == Recipe.id)
         .where(RecipeIngredient.ingredient_id == ingredient_id)
         .order_by(Recipe.title, Recipe.id)
@@ -172,7 +180,12 @@ async def recipes_using(session: AsyncSession, ingredient_id: uuid.UUID) -> Reci
     return RecipesInUse(
         count=count,
         recipes=tuple(
-            RecipeRef(id=row.id, title=row.title, archived=row.archived_at is not None)
+            RecipeRef(
+                id=row.id,
+                title=row.title,
+                archived=row.archived_at is not None,
+                from_meal=not row.in_book,
+            )
             for row in rows
         ),
     )
@@ -350,6 +363,33 @@ async def recategorize_ingredient(
                 ),
             )
     ingredient.category = str(category)
+    await session.flush()
+    return ingredient
+
+
+async def set_ingredient_emoji(
+    session: AsyncSession, ingredient_id: uuid.UUID, emoji: str | None
+) -> Ingredient:
+    """La figura delle righe di questo ingrediente in Dispensa (S12), scelta a mano.
+
+    `None` è «Nessuna»: si scrive `NO_EMOJI` e non `NULL`, perché `NULL` vuol dire «non
+    ancora deciso» e il comando dell'AI lo deciderebbe al giro dopo, riscrivendo una
+    scelta fatta a mano (bozza S12 §3.A). Un'emoji fuori dall'elenco chiuso è un rifiuto,
+    e la colonna resta com'era: la verifica è la stessa che fa il comando dell'AI
+    (`canonical_emoji`), perché la colonna ha due scrittori e una regola sola.
+    """
+    ingredient = await _ingredient(session, ingredient_id)
+    if emoji is None:
+        ingredient.emoji = NO_EMOJI
+    else:
+        canonical = canonical_emoji(emoji)
+        if canonical is None:
+            raise RegistryRefusal(
+                RefusalCode.UNKNOWN_EMOJI,
+                f"«{emoji.strip()}» non è fra le figure che l'app mostra: scegline una "
+                "dell'elenco.",
+            )
+        ingredient.emoji = canonical
     await session.flush()
     return ingredient
 
@@ -621,6 +661,9 @@ async def merge_ingredients(
 
     pantry_items = await _repoint(session, PantryItem, loser_id, winner.id)
     shopping_items, shopping_dropped = await _repoint_shopping(session, loser_id, winner.id)
+    # le righe delle schede dei cambi (piano 6c): l'ingrediente è una chiave debole
+    # (SET NULL), ma una riga che ha perso il suo ingrediente non si aggancia più a niente
+    await _repoint(session, ChangeCardRow, loser_id, winner.id)
     products = await _repoint(session, Product, loser_id, winner.id)
 
     # Le righe rimaste sono di ricette che non vengono dall'import (scritte a mano o
@@ -647,6 +690,9 @@ async def merge_ingredients(
             continue
         twin.role = stronger(IngredientRole(twin.role), IngredientRole(line.role))
         twin.quantity_text = merge_quantities(twin.quantity_text, line.quantity_text)
+        # le note delle due righe, come le dosi: da quando l'import le scrive («da
+        # grattugiare», «36 mesi») perderne una vuol dire perdere com'è l'ingrediente
+        twin.note = merge_notes(twin.note, line.note)
         # «500 g + 50 g» non è una dose che il riporziona sappia leggere: la riga
         # smette di scalare, che è onesto, invece di scalare solo metà.
         twin.quantity_value = None
@@ -654,6 +700,10 @@ async def merge_ingredients(
         await session.delete(line)
     await session.flush()
 
+    # I sostituti (R5): le voci, le correzioni di ricetta e i posti da sostituto del
+    # perdente passano al vincitore — prima che il perdente sparisca, e le sue righe
+    # (CASCADE) con lui. Dopo le righe di ricetta: una correzione segue la sua riga.
+    await move_substitutions(session, loser_id, winner.id)
     await session.execute(delete(IngredientAlias).where(IngredientAlias.ingredient_id == loser_id))
     await session.flush()
     survivor = await session.get(Ingredient, loser_id)

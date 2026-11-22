@@ -28,4 +28,17 @@ describe("Checkbox", () => {
     expect(casella).toBeChecked();
     expect(casella).toHaveAttribute("aria-disabled", "true");
   });
+
+  // spenta non sbiadisce (pulizie del 2026-10-13, la regola del tema scuro): la spunta
+  // prende il grigio. Che il grigio arrivi a video lo misura e2e/style.spec.ts
+  it("spenta non si sbiadisce: la spunta prende il grigio", () => {
+    render(
+      <label>
+        <Checkbox aria-label="Spenta" defaultChecked aria-disabled="true" />
+      </label>
+    );
+    const casella = screen.getByRole("checkbox", { name: "Spenta" });
+    expect(casella.className).toContain("aria-disabled:accent-ink-faint");
+    expect(casella.className).not.toMatch(/opacity/);
+  });
 });

@@ -5,7 +5,7 @@ import type { RecipeIngredientLine } from "../../domain/types";
 function riga(id: string, nome: string): RecipeIngredientLine {
   return {
     ingredient_id: id, ingredient_name: nome, role: "primary", quantity_text: null,
-    quantity_display: null, quantity_scaled: false, note: null,
+    quantity_display: null, quantity_scaled: false, anchorable: false, anchor_unit: null, note: null,
     availability: "missing", satisfied: false,
   };
 }

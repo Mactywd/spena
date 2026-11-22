@@ -10,7 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
 from app.db.models.recipe import Recipe
-from app.domain.quantities import UnitForms, render_quantity, scale_quantity
+from app.domain.meals import MealSlot
+from app.domain.quantities import (
+    ANCHOR_AMOUNT_CEILING,
+    decimal_text,
+    render_quantity,
+    scale_quantity,
+    with_qb_tail,
+)
 from app.domain.rules import (
     Availability,
     IngredientRole,
@@ -19,48 +26,70 @@ from app.domain.rules import (
     main_department,
     missing_count,
 )
-from app.repositories.ingredients import create_ingredient
+from app.api.refusals import meal_refusal_response
+from app.repositories.meals import get_meal, meal_of_recipe
 from app.repositories.pantry import availability_map
 from app.repositories.imports import adopt_import_page, owned_by_import
 from app.repositories.recipes import (
-    IngredientLine,
     NonFoodInRecipe,
+    VariantCopy,
     create_recipe,
     get_recipe,
     recipe_categories,
+    recipe_origin,
+    variant_copy,
     write_recipe_ingredients,
 )
 from app.schemas.ai import DraftIngredientOut, DraftOut, DraftRequest
 from app.schemas.recipe import (
+    AnchorOut,
     RecipeCreate,
-    RecipeIngredientIn,
     RecipeIngredientOut,
+    RecipeOriginOut,
     RecipeOut,
     RecipeReplace,
     RecipeSummaryOut,
     RecipeUpdate,
     SearchModeOut,
 )
-from app.services.ai_recipes import draft_recipe
-from app.services.embeddings import (
-    EmbeddingUnavailable,
-    get_embedding_provider,
-    log_degradation_once,
-    recipe_document,
-)
-from app.services.ingredient_match import match_name
+from app.schemas.meal import MealRefOut
+from app.services.ai_recipes import RecipeDraft, draft_recipe, draft_variant
+from app.services.embeddings import get_embedding_provider
 from app.services.llm import LlmUnavailable
+from app.services.meals import MealRefusal, check_can_take_recipe, link_recipe
+from app.services.recipe_writing import RepeatedIngredient, embedding_for, resolve_lines
 from app.services.recipe_search import search_recipes, semantic_search_usable
+from app.services.rescale import (
+    AnchorRefused,
+    anchor_unit,
+    is_anchorable,
+    resolve_anchor,
+    unit_forms,
+)
 
 router = APIRouter(
     prefix="/api/v1/recipes", tags=["recipes"], dependencies=[Depends(require_session)]
 )
 
 RECIPE_ARCHIVED = "Questa ricetta è stata eliminata: ripristinala prima di modificarla."
+NOT_A_MEAL_RECIPE = (
+    "Questa ricetta non è di un pasto: per toglierla dal ricettario eliminala."
+)
+
+# R2: le due regole dei parametri del dettaglio. Il frontend non le viola mai, quindi
+# non sono frasi a video: dicono il contratto a chi chiama la rotta a mano
+ANCHOR_NEEDS_AMOUNT = "La dose di un ingrediente vuole `anchor` e `amount` insieme."
+ONE_SCALE_AT_A_TIME = (
+    "Un modo alla volta: le porzioni (`servings`) oppure la dose di un ingrediente "
+    "(`anchor` con `amount`)."
+)
 
 
 async def _to_out(
-    session: AsyncSession, recipe: Recipe, servings: int | None = None
+    session: AsyncSession,
+    recipe: Recipe,
+    servings: int | None = None,
+    anchor: tuple[uuid.UUID, Decimal] | None = None,
 ) -> RecipeOut:
     ingredient_ids = [ri.ingredient_id for ri in recipe.ingredients]
     availability = await availability_map(session, ingredient_ids)
@@ -70,13 +99,19 @@ async def _to_out(
     # Capacitor. In TypeScript vorrebbe dire spedire il registro delle unità al
     # client e tenere le stesse regole in due lingue.
     factor: Decimal | None = None
+    # R2, secondo modo: una dose fissata su una riga. `resolve_anchor` solleva
+    # `AnchorRefused` oltre le 50 volte (la rotta ne fa un 422 con la frase); un'ancora
+    # che la ricetta non ha più si ignora, come `servings` su una ricetta senza porzioni
+    resolved = resolve_anchor(recipe, *anchor) if anchor is not None else None
+    if resolved is not None:
+        factor = resolved.factor
     # `is not None` e non la verità: che `servings=0` non arrivi mai qui lo garantisce
     # `Query(ge=1)` in fondo a questo file, e una condizione che dipende da un
     # validatore scritto altrove smette di valere il giorno in cui quello cambia
-    if servings is not None and recipe.servings is not None:
+    elif servings is not None and recipe.servings is not None:
         factor = Decimal(servings) / Decimal(recipe.servings)
-        if factor == 1:
-            factor = None  # chiedere le porzioni che ha già è come non chiedere niente
+    if factor == 1:
+        factor = None  # chiedere quel che la ricetta dice già è come non chiedere niente
 
     lines: list[RecipeIngredientOut] = []
     requirements: list[tuple[IngredientRole, Availability]] = []
@@ -99,12 +134,16 @@ async def _to_out(
         if ri.quantity_text is not None:
             dose_lines += 1
         if factor is not None and ri.quantity_value is not None:
-            forms = (
-                UnitForms(ri.unit.key, ri.unit.singular, ri.unit.plural)
-                if ri.unit
-                else None
+            # la riga dell'ancora dice la dose scritta, non il suo ricalcolo: chi
+            # ha scritto 150 deve leggere 150, anche quando 150 / 400 × 400 non torna esatto
+            value = (
+                resolved.amount
+                if resolved is not None and ri is resolved.line
+                else scale_quantity(ri.quantity_value, factor)
             )
-            display = render_quantity(scale_quantity(ri.quantity_value, factor), forms)
+            # «50 g + q.b.» riscalata è «100 g + q.b.»: il q.b. resta scritto accanto,
+            # anche sulla riga dell'ancora
+            display = with_qb_tail(render_quantity(value, unit_forms(ri)), ri.quantity_text)
             scaled = True
         else:
             display = ri.quantity_text
@@ -122,11 +161,15 @@ async def _to_out(
                 satisfied=is_satisfied(role, have),
                 quantity_display=display,
                 quantity_scaled=scaled,
+                anchorable=is_anchorable(ri),
+                anchor_unit=anchor_unit(ri) if is_anchorable(ri) else None,
             )
         )
     # il conteggio e il verdetto arrivano da app/domain/rules.py, non da un `sum`
     # qui: ricalcolarli in linea fa sì che il test a tabella difenda una copia che
     # non gira, ed è la metà aggregata della regola del capitolo 7 della spec
+    origin = await recipe_origin(session, recipe)
+    meal = await meal_of_recipe(session, recipe.id)
     return RecipeOut(
         id=recipe.id, title=recipe.title, description=recipe.description,
         instructions=recipe.instructions, servings=recipe.servings, source=recipe.source,
@@ -138,10 +181,37 @@ async def _to_out(
         ),
         image_url=recipe.image_url, prep_minutes=recipe.prep_minutes,
         cook_minutes=recipe.cook_minutes, category=recipe.category, cost=recipe.cost,
-        scaled_to=servings if factor is not None else None,
+        scaled_to=servings if factor is not None and resolved is None else None,
         unscalable_lines=unscalable, dose_lines=dose_lines,
+        anchor=(
+            AnchorOut(
+                ingredient_id=resolved.line.ingredient_id,
+                amount=decimal_text(resolved.amount),
+                equivalent_servings=(
+                    float(resolved.equivalent_servings)
+                    if resolved.equivalent_servings is not None
+                    else None
+                ),
+            )
+            if resolved is not None
+            else None
+        ),
         archived_at=recipe.archived_at,
         owned_by_import=await owned_by_import(session, recipe.id),
+        derived_from=(
+            RecipeOriginOut(id=origin.id, title=origin.title, archived=origin.archived)
+            if origin is not None
+            else None
+        ),
+        in_book=recipe.in_book,
+        meal=(
+            None
+            if meal is None
+            else MealRefOut(
+                id=meal.id, day=meal.day, slot=MealSlot(meal.slot), dish=meal.dish,
+                recipe_id=meal.recipe_id,
+            )
+        ),
     )
 
 
@@ -230,12 +300,30 @@ async def categories(session: AsyncSession = Depends(get_session)) -> list[str]:
 async def detail(
     recipe_id: uuid.UUID,
     servings: int | None = Query(default=None, ge=1, le=50),
+    # R2, secondo modo: la riga (per ingrediente) e la dose scritta, col punto. Tre
+    # decimali come la colonna `quantity_value`
+    anchor: uuid.UUID | None = Query(default=None),
+    amount: Decimal | None = Query(
+        default=None, gt=0, lt=ANCHOR_AMOUNT_CEILING, decimal_places=3
+    ),
     session: AsyncSession = Depends(get_session),
 ) -> RecipeOut:
+    if (anchor is None) != (amount is None):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, ANCHOR_NEEDS_AMOUNT)
+    if anchor is not None and servings is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, ONE_SCALE_AT_A_TIME)
     recipe = await get_recipe(session, recipe_id)
     if recipe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
-    return await _to_out(session, recipe, servings=servings)
+    try:
+        return await _to_out(
+            session,
+            recipe,
+            servings=servings,
+            anchor=(anchor, amount) if anchor is not None and amount is not None else None,
+        )
+    except AnchorRefused as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.sentence) from exc
 
 
 @router.patch("/{recipe_id}", response_model=RecipeOut)
@@ -257,13 +345,30 @@ async def update(
     )
     if "cost" in payload.model_fields_set and archived_after:
         raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+    # «Salva» e «Togli dal ricettario» si decidono prima di scrivere qualunque cosa
+    in_book_change = payload.in_book
+    if in_book_change is not None:
+        if archived_after:
+            raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+        if not in_book_change and await meal_of_recipe(session, recipe.id) is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, NOT_A_MEAL_RECIPE)
     if payload.archived is True:
         # la prima data resta: eliminare due volte non sposta l'eliminazione
         if recipe.archived_at is None:
             recipe.archived_at = datetime.now(UTC)
         await adopt_import_page(session, recipe.id)
     elif payload.archived is False:
+        # decisione 18: una ricetta viva fuori dal ricettario ha sempre un pasto; se il
+        # pasto non c'è più (eliminato), ripristinarla la rimette nel ricettario
+        if (
+            recipe.archived_at is not None
+            and not recipe.in_book
+            and await meal_of_recipe(session, recipe.id) is None
+        ):
+            recipe.in_book = True
         recipe.archived_at = None
+    if in_book_change is not None:
+        recipe.in_book = in_book_change
     if "cost" in payload.model_fields_set:
         recipe.cost = payload.cost
     await session.commit()
@@ -277,7 +382,7 @@ async def replace(
     """La ricetta intera, righe comprese (R10 §5).
 
     Le righe passano dalla stessa strada della creazione: stessi nomi risolti
-    (`_resolve_lines`), stesso imbuto e stesse quantità (`write_recipe_ingredients`),
+    (`resolve_lines`), stesso imbuto e stesse quantità (`write_recipe_ingredients`),
     stessi errori (`_writing_recipe`). Se la ricetta viene dall'import e la sua pagina è
     ancora `imported`, passa ad `adopted` in questa transazione: da qui l'import non la
     rifà più.
@@ -291,10 +396,12 @@ async def replace(
     # il vettore nasce da titolo e descrizione: solo se cambiano va rifatto, e senza
     # modello va a NULL — un vettore del testo vecchio mentirebbe sulla ricetta nuova
     new_text = (payload.title, payload.description) != (recipe.title, recipe.description)
-    embedding = await _embedding_for(payload.title, payload.description) if new_text else None
+    embedding = await embedding_for(
+        payload.title, payload.description, provider=get_embedding_provider()
+    ) if new_text else None
     async with _writing_recipe(session):
         await write_recipe_ingredients(
-            session, recipe, await _resolve_lines(session, payload.ingredients)
+            session, recipe, await resolve_lines(session, payload.ingredients)
         )
         recipe.title = payload.title
         recipe.description = payload.description
@@ -314,38 +421,6 @@ async def replace(
     return await _to_out(session, stored)
 
 
-async def _resolve_lines(
-    session: AsyncSession, lines: list[RecipeIngredientIn]
-) -> list[IngredientLine]:
-    """Da righe del modulo a righe da scrivere: la stessa strada per creare e modificare.
-
-    Le righe che nominano un ingrediente non ancora in anagrafica lo creano qui,
-    dentro la stessa transazione della ricetta: se il salvataggio fallisce non resta
-    nessun ingrediente orfano. In sequenza e non in parallelo, per lo stesso motivo del
-    fan-in dell'import: due righe con lo stesso nome nuovo devono diventare un
-    ingrediente, non un doppione.
-    """
-    resolved: list[IngredientLine] = []
-    for line in lines:
-        ingredient_id = line.ingredient_id
-        if ingredient_id is None:
-            # `match_name` e non una ricerca sul solo nome canonico: se la bozza dice
-            # «pomodori» e l'anagrafica ha «pomodoro» con quell'alias, collegarsi è
-            # giusto e creare sarebbe un duplicato travestito
-            match = await match_name(session, line.name or "")
-            if match.certain and match.ingredient_id is not None:
-                ingredient_id = match.ingredient_id
-            else:
-                created = await create_ingredient(
-                    session, name=line.name or "",
-                    display_name=(line.name or "").capitalize(),
-                    category=line.category or "altro",
-                )
-                ingredient_id = created.id
-        resolved.append((ingredient_id, line.role, line.quantity_text, line.note))
-    return resolved
-
-
 async def _check_category(
     session: AsyncSession, category: str | None, *, current: str | None = None
 ) -> None:
@@ -357,20 +432,10 @@ async def _check_category(
         return
     if category not in await recipe_categories(session):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"«{category}» non è una categoria del ricettario: scegline una dall'elenco, "
             "o nessuna.",
         )
-
-
-async def _embedding_for(title: str, description: str | None) -> list[float] | None:
-    """L'embedding è un ornamento: se il modello non c'è, la ricetta si salva comunque,
-    con il vettore a `NULL`, e `app.cli.reindex` lo ritrova (riempie solo i `NULL`)."""
-    try:
-        return (await get_embedding_provider().embed_passages([recipe_document(title, description)]))[0]
-    except EmbeddingUnavailable as exc:
-        log_degradation_once(exc)
-        return None
 
 
 @asynccontextmanager
@@ -381,9 +446,17 @@ async def _writing_recipe(session: AsyncSession):
     except NonFoodInRecipe as exc:
         await session.rollback()
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"«{exc.display_name}» non è un alimento: una ricetta non può averlo fra "
             "gli ingredienti. Toglilo dalla riga, poi salva.",
+        ) from exc
+    except RepeatedIngredient as exc:
+        # un ingrediente creato da una riga precedente se ne va con la ricetta
+        await session.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Due righe puntano allo stesso ingrediente, «{exc.display_name}»: "
+            "togline una, poi salva.",
         ) from exc
     except IntegrityError as exc:
         await session.rollback()
@@ -409,21 +482,61 @@ async def _writing_recipe(session: AsyncSession):
 async def create(
     payload: RecipeCreate, session: AsyncSession = Depends(get_session)
 ) -> RecipeOut:
+    # il pasto si cerca e si controlla prima di scrivere: un rifiuto non lascia ricette
+    meal = None
+    if payload.meal_id is not None:
+        meal = await get_meal(session, payload.meal_id)
+        if meal is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "pasto inesistente")
+        try:
+            check_can_take_recipe(meal)
+        except MealRefusal as exc:
+            return meal_refusal_response(exc)
     await _check_category(session, payload.category)
-    embedding = await _embedding_for(payload.title, payload.description)
+    embedding = await embedding_for(
+        payload.title, payload.description, provider=get_embedding_provider()
+    )
+    # R8: un'originale che nel frattempo non c'è più (l'import l'ha rifatta mentre si
+    # correggeva la variante) non ferma il salvataggio: la variante nasce senza legame.
+    # Rifiutarla butterebbe il lavoro, e dal modulo il legame non si toglie — sarebbe un
+    # vicolo cieco. Un'originale eliminata c'è ancora, e tiene il legame.
+    # E la variante parte con la foto e i tempi dell'originale (deciso da Mattia il
+    # 2026-10-13: «Sì, copiali»): li copia qui il server, perché il modulo non li ha.
+    derived_from_id, copied = None, VariantCopy()
+    if payload.derived_from_id is not None:
+        found = await variant_copy(session, payload.derived_from_id)
+        if found is not None:
+            derived_from_id, copied = payload.derived_from_id, found
     async with _writing_recipe(session):
         recipe = await create_recipe(
             session, title=payload.title, description=payload.description,
             instructions=payload.instructions, servings=payload.servings,
             source=payload.source, source_ref=payload.source_ref,
-            ingredients=await _resolve_lines(session, payload.ingredients),
+            ingredients=await resolve_lines(session, payload.ingredients),
             embedding=embedding,
             cost=payload.cost,
             category=payload.category,
+            derived_from_id=derived_from_id,
+            image_url=copied.image_url,
+            prep_minutes=copied.prep_minutes,
+            cook_minutes=copied.cook_minutes,
+            in_book=meal is None,
         )
+        if meal is not None:
+            await link_recipe(session, meal, recipe)
         await session.commit()
     stored = await get_recipe(session, recipe.id)
     return await _to_out(session, stored)
+
+
+def _draft_out(draft: RecipeDraft) -> DraftOut:
+    """La bozza come la legge il modulo: la stessa forma per la stesura e per la variante."""
+    return DraftOut(
+        title=draft.title, description=draft.description, instructions=draft.instructions,
+        servings=draft.servings,
+        ingredients=[DraftIngredientOut(**vars(i)) for i in draft.ingredients],
+        cost=draft.cost,
+    )
 
 
 @router.post("/ai-draft", response_model=DraftOut)
@@ -437,9 +550,28 @@ async def ai_draft(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, f"stesura AI non disponibile: {exc}"
         ) from exc
-    return DraftOut(
-        title=draft.title, description=draft.description, instructions=draft.instructions,
-        servings=draft.servings,
-        ingredients=[DraftIngredientOut(**vars(i)) for i in draft.ingredients],
-        cost=draft.cost,
-    )
+    return _draft_out(draft)
+
+
+@router.post("/{recipe_id}/ai-variant", response_model=DraftOut)
+async def ai_variant(
+    recipe_id: uuid.UUID, payload: DraftRequest, session: AsyncSession = Depends(get_session)
+) -> DraftOut:
+    """Propone una variante della ricetta, e non salva niente (R8).
+
+    La variante si salva con `POST /recipes` e `derived_from_id`: una ricetta nuova,
+    mentre questa resta com'è. Un'eliminata risponde come alla modifica (R10): prima
+    si ripristina.
+    """
+    recipe = await get_recipe(session, recipe_id)
+    if recipe is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
+    if recipe.archived_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+    try:
+        draft = await draft_variant(session, recipe, payload.prompt)
+    except LlmUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, f"variante AI non disponibile: {exc}"
+        ) from exc
+    return _draft_out(draft)

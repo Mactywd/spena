@@ -5,14 +5,26 @@ export function fetchPantry() {
   return apiFetch<PantryItem[]>("/pantry");
 }
 
-/** L'ingresso diretto in dispensa della spec §8.3: qualcosa che non era in lista
- * e che quindi non passa da «Sistema la spesa». Entra `available` e senza
- * prodotto — sfusa — perché la marca si aggancia con un codice a barre o dal
- * catalogo, e qui non c'è niente da scansionare. */
-export function addPantryItem(ingredientId: string) {
+/** L'ingresso diretto in dispensa (S3): una confezione che non passa dalla lista. Entra
+ * `available`; prodotto, scadenza e codice letto sono facoltativi, e si mandano sempre
+ * (`null` quando non ci sono). Se il codice va al prodotto lo decide il backend
+ * (`stock_one`, la stessa funzione della sistemazione): mai a un prodotto che ne ha già
+ * uno, mai togliendolo a un altro. */
+export function addPantryItem(entry: {
+  ingredientId: string;
+  productId: string | null;
+  expiresOn: string | null;
+  barcode: string | null;
+}) {
   return apiFetch<PantryItem>("/pantry", {
     method: "POST",
-    body: JSON.stringify({ ingredient_id: ingredientId, status: "available" }),
+    body: JSON.stringify({
+      ingredient_id: entry.ingredientId,
+      product_id: entry.productId,
+      status: "available",
+      expires_on: entry.expiresOn,
+      barcode: entry.barcode,
+    }),
   });
 }
 

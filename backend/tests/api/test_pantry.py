@@ -493,3 +493,187 @@ async def test_le_voci_della_stessa_spesa_restano_nello_stesso_ordine(
     for _ in range(3):
         risposta = await logged_client.get("/api/v1/pantry")
         assert [v["id"] for v in risposta.json()] == atteso
+
+
+# S3: l'ingresso diretto porta la scadenza e il codice letto, come la sistemazione, e
+# passa dalla stessa funzione (`stock_one`): l'ordine «voce, poi codice» è la guardia
+# di S8, e una seconda copia resterebbe indietro al primo difetto corretto.
+
+
+async def test_l_ingresso_diretto_porta_la_scadenza(logged_client, dispensa):
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["pomodoro"].id), "expires_on": "2026-10-20",
+    })
+    assert response.status_code == 201
+    assert response.json()["expires_on"] == "2026-10-20"
+
+
+async def test_l_ingresso_diretto_da_il_codice_al_prodotto_che_non_ne_ha(
+    logged_client, db_session, dispensa
+):
+    """Scelto a catalogo dopo un codice ignoto (S8): la prossima scansione lo trova."""
+    product = Product(ingredient_id=dispensa["yogurt"].id, name="Total 0%", brand="Fage",
+                      source="custom")
+    db_session.add(product)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(product.id),
+        "barcode": "8001234567890",
+    })
+    assert response.status_code == 201
+    await db_session.refresh(product)
+    assert product.barcode == "8001234567890"
+
+
+async def test_l_ingresso_diretto_non_riscrive_il_codice_di_un_prodotto(
+    logged_client, db_session, dispensa
+):
+    product = Product(ingredient_id=dispensa["yogurt"].id, name="Total 0%", brand="Fage",
+                      barcode="52010", source="custom")
+    db_session.add(product)
+    await db_session.flush()
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(product.id),
+        "barcode": "8001234567890",
+    })
+    assert response.status_code == 201
+    await db_session.refresh(product)
+    assert product.barcode == "52010"
+
+
+async def test_un_codice_senza_prodotto_non_si_lega_a_niente(logged_client, db_session, dispensa):
+    """Lo sfuso non ha un prodotto a cui darlo: la voce entra, il codice resta di nessuno."""
+    from sqlalchemy import select
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["pomodoro"].id), "barcode": "8001234567890",
+    })
+    assert response.status_code == 201
+    assert response.json()["product_id"] is None
+    legato = await db_session.scalar(select(Product).where(Product.barcode == "8001234567890"))
+    assert legato is None
+
+
+async def test_il_prodotto_di_un_altro_ingrediente_resta_409_e_non_prende_il_codice(
+    logged_client, db_session, dispensa
+):
+    product = Product(ingredient_id=dispensa["pomodoro"].id, name="Pomodori pelati",
+                      source="custom")
+    db_session.add(product)
+    # commit e non flush: la rotta, sul 409, fa rollback, e nella sessione di test il
+    # rollback porterebbe via anche il prodotto non ancora confermato
+    await db_session.commit()
+
+    response = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["yogurt"].id), "product_id": str(product.id),
+        "barcode": "8001234567890",
+    })
+    assert response.status_code == 409
+    await db_session.refresh(product)
+    assert product.barcode is None
+
+
+# --- S12: la figura dell'ingrediente, nella risposta della dispensa ---
+
+
+async def test_la_dispensa_manda_la_figura_dell_ingrediente(logged_client, db_session, dispensa):
+    """L'emoji o `null`: «non ancora deciso» e «nessuna» sono lo stesso ripiego per il
+    client, e la stringa vuota della colonna non esce dal backend."""
+    from app.domain.emoji import NO_EMOJI
+
+    dispensa["yogurt"].emoji = "🥛"
+    dispensa["pomodoro"].emoji = NO_EMOJI
+    db_session.add_all([
+        PantryItem(ingredient_id=dispensa[chiave].id, status=PantryStatus.AVAILABLE)
+        for chiave in ("yogurt", "pomodoro", "aglio")
+    ])
+    await db_session.flush()
+
+    body = (await logged_client.get("/api/v1/pantry")).json()
+
+    assert {e["ingredient_name"]: e["ingredient_emoji"] for e in body} == {
+        "yogurt greco": "🥛", "pomodoro": None, "aglio": None,
+    }
+
+
+async def test_una_voce_appena_entrata_porta_la_figura(logged_client, db_session, dispensa):
+    dispensa["pomodoro"].emoji = "🍅"
+    await db_session.flush()
+
+    risposta = await logged_client.post("/api/v1/pantry", json={
+        "ingredient_id": str(dispensa["pomodoro"].id), "status": "available",
+    })
+
+    assert risposta.status_code == 201
+    assert risposta.json()["ingredient_emoji"] == "🍅"
+
+
+# S14: «Tutto / Cibo / Casa» in dispensa. Il selettore filtra nel client su un verdetto
+# del server, come la Lista con `ShoppingItemOut.ingredient_kind`.
+
+
+async def test_ogni_voce_dice_se_e_cibo_o_casa(logged_client, db_session, dispensa):
+    """Il client non ricava il mondo dal reparto: sarebbe una seconda copia di
+    `kind_for_category`, che il giorno in cui un reparto cambia mondo resterebbe indietro
+    (bozza S14 §1). La voce appena creata lo porta già: la Dispensa la deve poter
+    mostrare nel mondo giusto senza un secondo giro."""
+    candeggina = Ingredient(name="candeggina", display_name="Candeggina",
+                            category=IngredientCategory.CASA)
+    db_session.add(candeggina)
+    db_session.add(PantryItem(ingredient_id=dispensa["yogurt"].id, status=PantryStatus.AVAILABLE))
+    await db_session.flush()
+
+    creata = await logged_client.post(
+        "/api/v1/pantry", json={"ingredient_id": str(candeggina.id)}
+    )
+    assert creata.status_code == 201
+    assert creata.json()["ingredient_kind"] == "non_food"
+
+    per_nome = {v["ingredient_name"]: v for v in (await logged_client.get("/api/v1/pantry")).json()}
+    assert per_nome["yogurt greco"]["ingredient_kind"] == "food"
+    assert per_nome["candeggina"]["ingredient_kind"] == "non_food"
+
+
+async def test_il_mondo_e_quello_scritto_sull_ingrediente(logged_client, db_session, dispensa):
+    """Il verdetto è la colonna `ingredients.kind`, letta, e non un secondo calcolo dal
+    reparto dentro la rotta. Una riga scollata a mano lo dimostra: l'UPDATE salta
+    `_deduce_kind` (che scatta solo assegnando `category`), e la rotta deve riportare
+    quel che c'è scritto. Se un giorno `_to_out` chiamasse `kind_for_category`, questo
+    test diventerebbe rosso."""
+    from sqlalchemy import update
+
+    db_session.add(PantryItem(ingredient_id=dispensa["aglio"].id, status=PantryStatus.AVAILABLE))
+    await db_session.flush()
+    await db_session.execute(
+        update(Ingredient).where(Ingredient.id == dispensa["aglio"].id).values(kind="non_food")
+    )
+    await db_session.flush()
+
+    per_nome = {v["ingredient_name"]: v for v in (await logged_client.get("/api/v1/pantry")).json()}
+    assert per_nome["aglio"]["ingredient_kind"] == "non_food"
+
+
+async def test_la_rotta_di_rientro_vale_anche_per_una_voce_quasi_finita(
+    logged_client, db_session, dispensa
+):
+    """Dal 2026-10-09 la Dispensa offre «In lista» anche sul giallo (decisione di Mattia).
+
+    La rotta lo accettava già: questa prova fissa il contratto che la riga gialla usa —
+    scrive in lista con il motivo di una richiesta a mano, come per una finita, e non
+    tocca lo stato della voce.
+    """
+    item = PantryItem(ingredient_id=dispensa["pomodoro"].id, status=PantryStatus.LOW)
+    db_session.add(item)
+    await db_session.flush()
+
+    risposta = await logged_client.post(f"/api/v1/pantry/{item.id}/restock")
+    assert risposta.status_code == 200
+    assert risposta.json() == {"added": True}
+
+    lista = (await logged_client.get("/api/v1/shopping-list")).json()
+    assert [(voce["raw_text"], voce["reason"]) for voce in lista] == [("pomodoro", "manual")]
+
+    await db_session.refresh(item)
+    assert item.status == "low"

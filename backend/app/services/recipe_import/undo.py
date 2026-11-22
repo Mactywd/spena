@@ -19,6 +19,9 @@ scrive gli id delle cotture alla chiave `cooking_event_ids` (`COOKING_EVENTS_KEY
 `materialize_ready` li rimette sulla ricetta rifatta. Una pagina che resta in coda
 tiene gli id finché non torna ricetta: la cottura è senza ricetta per quel tempo, e la
 ritrova dopo.
+Da R8 ce n'è una terza, il legame delle varianti (`recipes.derived_from_id`, anche lui ON
+DELETE SET NULL): gli id delle varianti aspettano alla chiave `variant_recipe_ids`
+(`VARIANTS_KEY`), e tornano allo stesso modo.
 
 Ripensato con R10, quando le ricette importate sono diventate modificabili. Una ricetta
 che l'utente modifica o elimina non è più dell'import: la sua pagina passa ad `adopted`
@@ -42,10 +45,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.recipe import CookingEvent, Recipe, RecipeIngredient
 from app.db.models.recipe_import import ImportState, ImportTerm, RecipeImport, TermDecision
 from app.domain.rules import cost_in_scale
-from app.repositories.imports import pending_pages
+from app.repositories.imports import count_pending_recipes_with_key
 from app.repositories.ingredients import delete_ingredient_if_unused, forget_alias
-from app.services.recipe_import.materialize import COOKING_EVENTS_KEY
-from app.services.recipe_import.terms import count_pending_keys
+from app.services.recipe_import.materialize import COOKING_EVENTS_KEY, VARIANTS_KEY
 
 
 @dataclass(frozen=True)
@@ -160,6 +162,19 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
                 payload[COOKING_EVENTS_KEY] = sorted(
                     {*payload.get(COOKING_EVENTS_KEY, []), *cooked}
                 )
+            # R8: `recipes.derived_from_id` è ON DELETE SET NULL come le cotture, e per lo
+            # stesso motivo le varianti di questa ricetta aspettano nel `payload`:
+            # `materialize_ready` rimette il legame sulla ricetta rifatta
+            variants = [
+                str(variant_id)
+                for variant_id in (
+                    await session.execute(
+                        select(Recipe.id).where(Recipe.derived_from_id == recipe.id)
+                    )
+                ).scalars()
+            ]
+            if variants:
+                payload[VARIANTS_KEY] = sorted({*payload.get(VARIANTS_KEY, []), *variants})
             # Riassegnato e non mutato: SQLAlchemy non vede le mutazioni in un JSONB.
             if payload != page.payload:
                 page.payload = payload
@@ -186,11 +201,11 @@ async def undo_decision(session: AsyncSession, term: ImportTerm) -> Undone:
     # `occurrences` si ricalcolava solo a ogni scarico (`sync_terms`): le pagine appena
     # rimesse in coda restavano fuori dal conto, e la coda diceva «1 ricetta in attesa»
     # sopra due titoli (T3, esito del giro). Si riconta il termine annullato, e solo
-    # lui, con la funzione di `sync_terms`, dopo il `flush` che ha scritto le pagine
-    # tornate `pending`. Gli altri termini di quelle pagine si riallineano al prossimo
-    # scarico, come prima.
-    counted = count_pending_keys(await pending_pages(session, term.source))
-    term.occurrences = counted.occurrences.get(term.term_key, 0)
+    # lui, con lo stesso conto di `sync_terms` fatto dal database
+    # (`count_pending_recipes_with_key`: prima si leggevano tutte le pagine in attesa per
+    # una chiave sola), dopo il `flush` che ha scritto le pagine tornate `pending`. Gli
+    # altri termini di quelle pagine si riallineano al prossimo scarico, come prima.
+    term.occurrences = await count_pending_recipes_with_key(session, term.source, term.term_key)
 
     if ingredient_id is not None:
         alias_forgotten = await forget_alias(session, ingredient_id, term.display_name)

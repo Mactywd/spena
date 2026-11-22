@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { cookRecipe } from "../recipes/api";
-import { STATUS_LABELS } from "../pantry/statusLabels";
+import { STATUS_LABELS, offersRestock } from "../pantry/statusLabels";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import { Checkbox } from "../../components/ui/Checkbox";
 import { StockGauge } from "../../components/ui/StockGauge";
 import { IconCircleCheck } from "../../components/ui/icons";
+import { capitalizeFirst } from "../../lib/text";
 import type { CookResult, PantryItem, PantryStatus, RecipeDetail } from "../../domain/types";
 
 type Choice = { status: PantryStatus | "unchanged"; restock: boolean };
@@ -14,6 +16,14 @@ type Choice = { status: PantryStatus | "unchanged"; restock: boolean };
 // Una voce non toccata non è una transizione: è il valore di partenza di ogni riga
 // e la risposta alla domanda che il foglio non fa.
 const UNCHANGED: Choice = { status: "unchanged", restock: false };
+
+// Com'è la confezione dopo la cottura: quel che si è scelto, o com'era se non si è
+// toccato niente. È lo stato che le tacche mostrano, e quello a cui si risponde «la
+// rimetto in lista?» — anche quando non è cambiato (Mattia, 2026-10-09): una confezione
+// già quasi finita prima di cucinare si può rimettere in lista da qui.
+function afterCooking(item: PantryItem, choice: Choice): PantryStatus {
+  return choice.status === "unchanged" ? item.status : choice.status;
+}
 
 function addedOn(item: PantryItem): string {
   return new Date(item.added_at).toLocaleDateString("it-IT");
@@ -77,18 +87,33 @@ export function CookSheet({
         // proprio perché la fase 3 ci trovi una storia vera su cui appoggiarsi.
         // Scrivere 2 dopo aver cucinato per 6 sarebbe invisibile oggi e sbagliato
         // per sempre.
-        servings: recipe.scaled_to ?? recipe.servings ?? undefined,
+        // Riscalata da una dose (R2, secondo modo): si manda la dose, non le porzioni.
+        // «≈ 1,5» non è un numero di porzioni che qualcuno ha scelto, e scriverlo
+        // arrotondato sarebbe lo stesso errore di un 2 al posto di un 6; il server
+        // registra la dose nello storico e ne ricalcola il fattore.
+        ...(recipe.anchor
+          ? { anchor: recipe.anchor.ingredient_id, amount: recipe.anchor.amount }
+          : { servings: recipe.scaled_to ?? recipe.servings ?? undefined }),
         // si parte da ciò che è in elenco, non da ciò che è stato toccato: una voce
         // sparita dalla dispensa mentre il foglio era aperto farebbe fallire tutta
         // la cottura per un id che l'utente non ha più davanti e non può togliere.
-        // E invariato non è una transizione: non si manda.
+        // E invariato non è una transizione: non si manda — salvo che la si rimetta in
+        // lista. Allora parte come transizione allo stesso stato, che il backend
+        // riconosce e non applica alla voce: la rimette solo in lista, col motivo dello
+        // stato (Mattia, 2026-10-09). La spunta vale solo se la casella è a video: una
+        // confezione cambiata altrove a foglio aperto, e non più gialla né rossa, non
+        // rientra in lista di nascosto.
         transitions: used
-          .map((item) => ({ item, choice: choices[item.id] ?? UNCHANGED }))
-          .filter(({ choice }) => choice.status !== "unchanged")
-          .map(({ item, choice }) => ({
+          .map((item) => {
+            const choice = choices[item.id] ?? UNCHANGED;
+            const status = afterCooking(item, choice);
+            return { item, choice, status, restock: choice.restock && offersRestock(status) };
+          })
+          .filter(({ choice, restock }) => choice.status !== "unchanged" || restock)
+          .map(({ item, status, restock }) => ({
             pantry_item_id: item.id,
-            to_status: choice.status as PantryStatus,
-            restock: choice.restock,
+            to_status: status,
+            restock,
           })),
       }),
     onSuccess: (result) => {
@@ -115,7 +140,9 @@ export function CookSheet({
   // toccare lo stato di partenza vuol dire «come prima», cioè invariato, e annulla una
   // scelta fatta. «Disponibile» si può scegliere — una confezione data per quasi finita
   // che si scopre piena — e il backend lo accetta. Finito propone il riacquisto già
-  // spuntato, quasi finito no (la regola di prima).
+  // spuntato, quasi finito no (la regola di prima, confermata da Mattia il 2026-10-09).
+  // Tornare allo stato di partenza annulla anche la spunta: se la confezione è gialla la
+  // casella resta, vuota.
   function choose(item: PantryItem, status: PantryStatus) {
     setChoices((current) => ({
       ...current,
@@ -147,13 +174,19 @@ export function CookSheet({
           {used.map((item) => {
             const choice = choices[item.id] ?? UNCHANGED;
             const label = itemLabel(item);
+            const status = afterCooking(item, choice);
             return (
               <Card as="li" key={item.id} className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     {/* la marca che hai comprato è più utile del nome generico */}
                     <p>
-                      <span className="font-medium">{item.product_name ?? item.ingredient_name}</span>
+                      {/* la maiuscola solo a video, dove il nome dell'ingrediente apre la
+                          riga (spec T3 §4.7); il nome di un prodotto resta com'è scritto, e
+                          `itemLabel` — il nome dei controlli — resta in minuscolo */}
+                      <span className="font-medium">
+                        {item.product_name ?? capitalizeFirst(item.ingredient_name)}
+                      </span>
                       {item.product_brand && (
                         <span className="ml-2 text-sm text-ink-faint">{item.product_brand}</span>
                       )}
@@ -169,20 +202,20 @@ export function CookSheet({
                       controllo solo (dal giro di T3). Il nome del gruppo porta tutto
                       ciò che distingue la confezione */}
                   <StockGauge
-                    status={choice.status === "unchanged" ? item.status : choice.status}
+                    status={status}
                     onChange={(next) => choose(item, next)}
                     itemName={label}
                     disabled={cook.isPending}
                   />
                 </div>
-                {(choice.status === "low" || choice.status === "finished") && (
-                  <label className="flex min-h-11 items-center gap-2.5 text-sm text-ink-soft">
-                    <input
-                      type="checkbox"
+                {/* la casella c'è quando la confezione, dopo la cottura, è gialla o
+                    rossa — anche se lo era già prima (Mattia, 2026-10-09) */}
+                {offersRestock(status) && (
+                  <label className="flex min-h-11 items-center gap-1 text-sm text-ink-soft">
+                    <Checkbox
                       aria-label={`Rimetti in lista ${label}`}
                       checked={choice.restock}
                       onChange={(e) => setRestock(item.id, e.target.checked)}
-                      className="size-5"
                     />
                     Rimetti in lista della spesa
                   </label>

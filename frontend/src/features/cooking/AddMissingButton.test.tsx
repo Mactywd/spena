@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { AddMissingButton } from "./AddMissingButton";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { RecipeIngredientLine } from "../../domain/types";
@@ -11,7 +12,7 @@ const NOME = "Metti in lista ciò che manca";
 function riga(id: string, nome: string): RecipeIngredientLine {
   return {
     ingredient_id: id, ingredient_name: nome, role: "primary", quantity_text: null,
-    quantity_display: null, quantity_scaled: false, note: null,
+    quantity_display: null, quantity_scaled: false, anchorable: false, anchor_unit: null, note: null,
     availability: "missing", satisfied: false,
   };
 }
@@ -22,7 +23,7 @@ const POMODORO = riga("i2", "pomodoro");
 // senza `NoticeProvider` l'avviso non avrebbe dove comparire
 function renderButton(
   lines: RecipeIngredientLine[],
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = createTestQueryClient()
 ) {
   render(
     <QueryClientProvider client={client}>
@@ -110,7 +111,7 @@ describe("AddMissingButton", () => {
 
   it("dopo, la lista della spesa si rilegge", async () => {
     stubLista({ i1: [201] });
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createTestQueryClient();
     client.setQueryData(["shopping-list"], []);
     renderButton([BASILICO], client);
 

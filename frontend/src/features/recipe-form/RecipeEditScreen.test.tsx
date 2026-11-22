@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { RecipeEditScreen } from "./RecipeEditScreen";
 import { RecipeDetailScreen } from "../cooking/RecipeDetailScreen";
 import { NoticeProvider } from "../../components/ui/NoticeProvider";
-import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import type { RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
@@ -14,13 +14,13 @@ const DETAIL: RecipeDetail = {
   missing: 1, cookable: false, missing_names: ["Basilico"], image_url: null,
   prep_minutes: null, cook_minutes: null, category: null, cost: null, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 2, source_ref: null, scaled_to: null,
-  unscalable_lines: 0, dose_lines: 1, owned_by_import: false,
+  unscalable_lines: 0, dose_lines: 1, anchor: null, owned_by_import: false, derived_from: null,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
-      quantity_display: "180 g", quantity_scaled: false, note: null,
+      quantity_display: "180 g", quantity_scaled: false, anchorable: true, anchor_unit: "g", note: null,
       availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "basilico", role: "primary", quantity_text: null,
-      quantity_display: null, quantity_scaled: false, note: null,
+      quantity_display: null, quantity_scaled: false, anchorable: false, anchor_unit: null, note: null,
       availability: "missing", satisfied: false },
   ],
 };
@@ -39,9 +39,7 @@ function stubFetch(route: Rotta = () => undefined) {
 }
 
 function renderEdit(start = "/ricette/r1/modifica", prime?: (client: QueryClient) => void) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-  });
+  const client = createTestQueryClient();
   prime?.(client);
   return render(
     <QueryClientProvider client={client}>
@@ -121,9 +119,7 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
 
   it("dopo il salvataggio, «indietro» non riporta al modulo", async () => {
     stubFetch();
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: defaultQueryRetryPredicate } },
-    });
+    const client = createTestQueryClient();
     render(
       <QueryClientProvider client={client}>
         <NoticeProvider>
@@ -146,6 +142,26 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
 
     expect(screen.getByTestId("posizione")).toHaveTextContent(/^\/ricette\/r1$/);
     expect(screen.queryByRole("button", { name: "Salva le modifiche" })).toBeNull();
+  });
+
+  it("da un pasto il ritorno e il salvataggio portano al pasto", async () => {
+    stubFetch((_path, init) => (init?.method === "PUT" ? [DETAIL, 200] : undefined));
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <NoticeProvider>
+          <MemoryRouter initialEntries={["/ricette/r1/modifica?pasto=m1"]}>
+            <Routes>
+              <Route path="/ricette/:id/modifica" element={<RecipeEditScreen />} />
+              <Route path="/pasti/:id" element={<p>il pasto</p>} />
+            </Routes>
+          </MemoryRouter>
+        </NoticeProvider>
+      </QueryClientProvider>
+    );
+    await screen.findByDisplayValue("Pasta al pomodoro");
+    expect(screen.getByRole("link", { name: /Pasto/ })).toHaveAttribute("href", "/pasti/m1");
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+    expect(await screen.findByText("il pasto")).toBeInTheDocument();
   });
 
   it("«Salvata» sta sopra la ricetta salvata, anche mentre il dettaglio rilegge", async () => {
@@ -179,7 +195,7 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
   });
 
   it("dopo porzioni cambiate nel dettaglio e un costo cambiato sul server, il modulo parte dal costo salvato", async () => {
-    // Il dettaglio a 3 porzioni ha la chiave ["recipe", id, 3], e la copia a 1× in cache
+    // Il dettaglio a 3 porzioni ha la chiave ["recipe", id, { servings: 3 }], e la copia a 1× in cache
     // è quella letta all'apertura. Se nel frattempo il costo cambia sul server (da un
     // altro telefono), la PUT rimpiazza la ricetta intera: un modulo costruito sulla
     // copia vecchia rimanderebbe il costo di prima, zitto. Il costo dal dettaglio non si

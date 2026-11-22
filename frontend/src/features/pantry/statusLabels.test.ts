@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STATUS_LABELS, STATUS_TONE } from "./statusLabels";
+import { STATUS_LABELS, STATUS_TONE, offersRestock } from "./statusLabels";
 import type { PantryStatus } from "../../domain/types";
 
 const STATUSES: PantryStatus[] = ["available", "low", "finished"];
@@ -30,5 +30,12 @@ describe("il modo in cui il sistema presenta uno stato", () => {
   it("distingue tutti e tre gli stati tra loro", () => {
     const fills = STATUSES.map((status) => STATUS_TONE[status].fill);
     expect(new Set(fills).size).toBe(STATUSES.length);
+  });
+
+  // Una regola sola per le due sezioni (decisione di Mattia del 2026-10-09, «anche quasi
+  // finito, ovunque»): prima la Dispensa faceva la domanda solo sul rosso e il foglio
+  // della cottura anche sul giallo
+  it("offre il rientro in lista sul giallo e sul rosso, non sul verde", () => {
+    expect(STATUSES.filter(offersRestock)).toEqual(["low", "finished"]);
   });
 });

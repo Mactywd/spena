@@ -2067,10 +2067,24 @@ La notte non tocca la produzione. Quando Mattia avrà rivisto, unito e messo in 
    - `Righe lette:` circa **83.343**; `Ripulite:` circa **61.137** (tutte le righe con a capo o tabulazioni);
    - `parole davanti alla dose, ora nella nota:` circa **9.800–10.500** (le 9.767 della misura, più quelle con un numero fra parentesi come «(circa 2 medie)» e quelle con una frazione dopo le parole);
    - `numero nel nome, ora nella nota:` **al massimo 202**; `nota e q.b.:` **qualche centinaio**; `solo a capo e tabulazioni:` il resto, circa **50.000–51.000**;
-   - `Dosi lette:` **51.276 prima** (83.343 − 32.067), **circa 62.000–65.000 dopo** (le parole davanti, le frazioni, buona parte dei «+ q.b.»); restano non lette circa 18.000–21.000, quasi tutte `q.b.`; `lette diverse da prima:` circa **200–300** (il numero nel nome);
-   - `Unità tolte:` una decina o qualche decina di parole che unità non sono — `mesi`, `da`, `per`, `già`, `di`, `w`, `grande`, `intere`, `lunghi`, `sodi`…; `Unità già senza righe prima, lasciate:` **5** nomi.
+   - `Dosi lette:` **51.276 prima** (83.343 − 32.067), **circa 62.000–65.000 dopo** (le parole davanti, le frazioni, buona parte dei «+ q.b.»); restano non lette circa 18.000–21.000, quasi tutte `q.b.`; `lette diverse da prima:` circa quante sono le righe «numero nel nome» (al massimo 202) **più** quelle che prima erano lette su un'unità `½`, `¼` o `¾` (un numero misto come «1 ½ cucchiai» il vecchio parser lo leggeva come 1 con unità «½»; ora lo legge 1,5 con l'unità vera). *(Corretto la notte del 2026-10-18, dopo la revisione finale: prima diceva «200–300».)* Quindi può superare i 300 senza che sia un difetto;
+   - `Unità tolte:` una decina o qualche decina di parole che unità non sono — `mesi`, `da`, `per`, `già`, `di`, `w`, `grande`, `intere`, `lunghi`, `sodi`…; se compaiono `½`, `¼`, `¾` è **atteso** (erano numeri letti come unità, vedi sopra). `Unità già senza righe prima, lasciate:` **5** nomi.
 
    **Non andare avanti** se `Dosi lette` dopo è **meno** di prima, se `Ripulite` è lontano da 61.000, se fra le unità tolte c'è un'unità vera (`g`, `ml`, `kg`, `cucchiaio`, `cucchiai`, `cucchiaino`, `spicchio`, `fette`…), o se il campione mostra una dose finita nella nota: è un difetto, e si torna di giorno con l'output.
+
+   **Il caso rischioso** *(aggiunto la notte del 2026-10-18, dopo la revisione finale)*: il comando fa cominciare la dose all'**ultima** riga che comincia con una cifra. Se GialloZafferano ha scritto un secondo numero *dopo* la dose vera («1 ⏎ bustina ⏎ 7 g», «100 ⏎ g ⏎ 2 confezioni»), la dose vera finisce nella nota e quella letta è l'altra («7 g» con nota «1 bustina»; «2 confezioni» con nota «100 g»). Quelle righe cadono in «numero nel nome» (la nota comincia con una cifra) e in «lette diverse da prima», e i 5 esempi per forma non le mostrano tutte. Perciò, **oltre** alle regole sopra:
+   - guarda i 5 esempi di «numero nel nome» cercando una **dose finita nella nota** («1 bustina», «100 g»: una quantità con la sua unità, non un nome come «36 mesi»);
+   - **fermati**, senza scrivere, se «numero nel nome» è molto sopra 202 (diciamo oltre 220), o se «lette diverse da prima» è molto sopra la somma di cui sopra: significa che un secondo numero dopo la dose sposta la dose nella nota. Si torna di giorno con l'output.
+
+   **Due letture, facoltative e senza scrivere**, per misurare due casi rari che il comando non gestisce; i risultati vanno nella revisione di giorno, non nel comando. Sono due `SELECT`, non cambiano niente:
+   ```bash
+   ssh hetznerserver "cd ~/sites/spena && docker compose -f docker-compose.prod.yml exec -T db sh -c 'psql -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"'" <<'SQL'
+   SELECT count(*) AS piu_nella_nota FROM recipe_ingredients WHERE quantity_text ~ '\([^)]*\+';
+   SELECT count(*) AS percentuale_davanti FROM recipe_ingredients WHERE quantity_text ~ '^\s*[0-9]+\s*%';
+   SQL
+   ```
+   - `piu_nella_nota`: righe con un «+» dentro la nota dell'import. Il testo viene spezzato sul «+» e la nota esce rovinata; il valore resta vuoto, quindi niente si riscala male.
+   - `percentuale_davanti`: dosi che cominciano con una percentuale prima del numero («70% ⏎ 200 ⏎ g»). Sono lette come 70 senza unità, com'era prima di questo ramo: non peggiora, ma resta da correggere.
 2. **Il backup**, come nel runbook (`docs/import-gz-runbook.md`, §3):
    ```bash
    ssh hetznerserver "cd ~/sites/spena && docker compose -f docker-compose.prod.yml exec -T db sh -c 'pg_dump -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"' | gzip > ~/spena-prima-della-pulizia-dosi-\$(date +%F).sql.gz && ls -lh ~/spena-prima-della-pulizia-dosi-*"
@@ -2087,6 +2101,7 @@ La notte non tocca la produzione. Quando Mattia avrà rivisto, unito e messo in 
    ```
    rilanciato finché non dice che non ce ne sono più in attesa.
 5. **A video**: una ricetta con un formaggio stagionato («36 mesi» sotto il nome, «50 g» a destra) e una con «+ q.b.», riscalate con lo stepper.
-6. **Le unità già senza righe prima della pulizia** (deciso da Mattia il 2026-10-13): la prova del punto 1 le elenca per nome nella riga «Unità già senza righe prima, lasciate: …», e il comando non le toglie. Lì Mattia decide se toglierle; se sì, è lavoro a parte, non di questo comando. La nota nel modulo la fa il piano 20 (`modulo-nota-nome`).
+6. **Le unità già senza righe prima della pulizia** (deciso da Mattia il 2026-10-13): la prova del punto 1 le elenca per nome nella riga «Unità già senza righe prima, lasciate: …», e il comando non le toglie. Lì Mattia decide se toglierle; se sì, è lavoro a parte, non di questo comando. *(Aggiunto la notte del 2026-10-18:)* prima di togliere a mano un'unità inattiva, controlla che nessun'altra unità la usi come `canonical_id` (la FK è RESTRICT, e S4 si appoggia ai singolari canonici): un'unità inattiva può essere il singolare di un'altra. La nota nel modulo la fa il piano 20 (`modulo-nota-nome`).
+7. **L'ordine con S4** *(aggiunto la notte del 2026-10-18)*: se in produzione va anche S4 «fetta 2» (piano 18, che aggiunge `ingredient_unit_grams.unit_id` con ON DELETE CASCADE su `units.id`), lancia `clean_doses` **prima** di `decide_grams`. Al contrario, togliere un'unità spuria si porterebbe via anche le sue decisioni sui grammi.
 
 Se dopo la scrittura qualcosa non torna, il backup del punto 2 è la via indietro: va ripristinato a backend fermo, e non c'è ancora un runbook che lo descriva — si scrive di giorno, col dump davanti.

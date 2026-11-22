@@ -9,11 +9,13 @@ import type {
   RecipeIngredientLine,
 } from "../../domain/types";
 
-// I limiti che `RecipeFields` applica nel backend. Stanno qui per far correggere un
+// I limiti che `RecipeFields` e `RecipeIngredientIn` applicano nel backend. Stanno qui per far correggere un
 // campo *prima* della chiamata, non per decidere qualcosa: l'autorità resta il
 // backend, e un 422 che arriva comunque viene detto per quello che è.
 export const TITLE_MAX = 200;
 export const QUANTITY_MAX = 100;
+// la colonna `recipe_ingredients.note` è un varchar(300)
+export const NOTE_MAX = 300;
 const SERVINGS_MIN = 1;
 const SERVINGS_MAX = 50;
 
@@ -40,8 +42,12 @@ export interface FormLine {
   // utilizzabile. Valorizzato è la ragione per cui una riga senza aggancio può
   // comunque salvarsi: il modello ha detto cos'è e in che reparto.
   proposedCategory: string | null;
-  /** La nota della riga salvata, portata com'è: il modulo non la mostra e non la
-   * cambia, ma una modifica non deve perderla. */
+  /** Vero solo per una riga della bozza che il server dice non alimentare (`non_food`):
+   * non è agganciata e non si salva, e la nota lo dice invece di «non in anagrafica». */
+  nonFood: boolean;
+  /** La nota della riga («da grattugiare»), che il modulo mostra e fa correggere (piano
+   * 20). `null`: la riga non ne ha, e al posto del campo c'è «Aggiungi una nota»; `""`:
+   * il campo è aperto e vuoto. Vuota, salvando non si manda, e il server la tiene `null`. */
   note: string | null;
 }
 
@@ -89,6 +95,7 @@ export function lineFromDraft(line: DraftIngredient, index: number): FormLine {
     // avvelena la disponibilità di ogni ricetta che lo usa.
     included: !uncertain,
     proposedCategory: attached ? null : line.proposed_category ?? null,
+    nonFood: !attached && line.non_food === true,
     note: null,
   };
 }
@@ -108,13 +115,14 @@ export function lineFromIngredient(ingredient: Ingredient): FormLine {
     quantityText: "",
     included: true,
     proposedCategory: null,
+    nonFood: false,
     note: null,
   };
 }
 
 /** R12: una riga per un ingrediente che l'anagrafica non ha, scritta a mano. È fatta
- * come le righe dell'AI non agganciate — nome e reparto, «lo creo io salvando» — e
- * l'ingrediente nasce al salvataggio, dentro la transazione della ricetta
+ * come le righe dell'AI non agganciate — nome e reparto, con la nota «Salvando lo cerco
+ * in anagrafica…» — e l'ingrediente nasce al salvataggio, dentro la transazione della ricetta
  * (`_resolve_lines` nel backend, per la creazione e per la modifica). `manual`: una
  * bozza nuova dell'AI non la porta via. */
 export function lineFromNewName(name: string, category: string): FormLine {
@@ -130,6 +138,7 @@ export function lineFromNewName(name: string, category: string): FormLine {
     quantityText: "",
     included: true,
     proposedCategory: category,
+    nonFood: false,
     note: null,
   };
 }
@@ -172,6 +181,43 @@ export function addNewLine(
   return { lines: [...lines, line], key: line.key };
 }
 
+/** Aggancia l'ingrediente scelto dal selettore del modulo. Due righe sullo stesso
+ * ingrediente sono un 409 del backend, e non vorrebbero dire niente:
+ * - se una riga lo indica già, la si include e basta — che è anche il modo di confermare
+ *   un aggancio incerto scegliendolo di persona;
+ * - se una riga senza aggancio porta lo stesso nome (una riga nuova di «Aggiungi «…»», o
+ *   una dell'AI «non in anagrafica»), si aggancia quella: è la stessa cosa, e salvando il
+ *   server l'avrebbe collegata a lui comunque. Tiene dose e ruolo, perde il reparto
+ *   proposto. Il confronto dei nomi è quello di `addNewLine` (T3 Consegna 6b);
+ * - altrimenti, una riga nuova. */
+export function attachIngredient(lines: FormLine[], ingredient: Ingredient): FormLine[] {
+  if (lines.some((line) => line.ingredientId === ingredient.id))
+    return lines.map((line) =>
+      line.ingredientId === ingredient.id ? { ...line, included: true } : line
+    );
+  const names = new Set(
+    [ingredient.name, ingredient.display_name].map((name) => name.trim().toLowerCase())
+  );
+  const sameName = lines.find(
+    (line) => line.ingredientId === null && names.has(comparableName(line))
+  );
+  if (sameName)
+    return lines.map((line) =>
+      line.key === sameName.key
+        ? {
+            ...line,
+            ingredientId: ingredient.id,
+            matchedName: ingredient.name,
+            uncertain: false,
+            included: true,
+            proposedCategory: null,
+            nonFood: false,
+          }
+        : line
+    );
+  return [...lines, lineFromIngredient(ingredient)];
+}
+
 export function lineFromRecipe(line: RecipeIngredientLine): FormLine {
   return {
     key: `recipe:${line.ingredient_id}`,
@@ -185,6 +231,7 @@ export function lineFromRecipe(line: RecipeIngredientLine): FormLine {
     quantityText: line.quantity_text ?? "",
     included: true,
     proposedCategory: null,
+    nonFood: false,
     note: line.note,
   };
 }
@@ -227,6 +274,9 @@ export function matchNote(line: FormLine): string {
     // il nome sta già sulla riga, sopra la nota: ripeterlo è quel che a 375px allargava
     // la pagina a 562px con un nome di 60 caratteri (e2e/ai-draft.spec.ts)
     if (line.proposedCategory !== null) return "da creare salvando";
+    // un non alimentare in anagrafica c'è: «non in anagrafica» sarebbe falso (Parte X).
+    // Le parole del 422 del salvataggio, «non è un alimento»
+    if (line.nonFood) return `${line.label} non è un alimento, sarà escluso`;
     return `${line.label} non in anagrafica, sarà escluso`;
   }
   if (line.uncertain) return `${line.matchedName}, da confermare`;
@@ -261,6 +311,12 @@ export function validationProblem(values: RecipeFormValues): string | null {
   if (tooLong)
     return `La quantità di «${tooLong.label}» è troppo lunga: massimo ${QUANTITY_MAX} caratteri.`;
 
+  const noteTooLong = savableLines(values.lines).find(
+    (line) => (line.note ?? "").trim().length > NOTE_MAX
+  );
+  if (noteTooLong)
+    return `La nota di «${noteTooLong.label}» è troppo lunga: massimo ${NOTE_MAX} caratteri.`;
+
   return null;
 }
 
@@ -269,8 +325,10 @@ function lineBody(line: FormLine): RecipeIngredientBody {
   // vuoto resta vuoto invece di diventare ""
   const quantity_text = line.quantityText.trim() === "" ? null : line.quantityText;
   // la nota solo se c'è: una chiave `note: null` in più cambierebbe il corpo che
-  // «Scrivi una ricetta» ha sempre mandato
-  const note = line.note ? { note: line.note } : {};
+  // «Scrivi una ricetta» ha sempre mandato. Senza spazi ai bordi; vuota non c'è, e il
+  // server la salva `null` — è così che il modulo la toglie (piano 20)
+  const noteText = line.note?.trim() ?? "";
+  const note = noteText === "" ? {} : { note: noteText };
   return line.ingredientId !== null
     ? { ingredient_id: line.ingredientId, role: line.role, quantity_text, ...note }
     : {

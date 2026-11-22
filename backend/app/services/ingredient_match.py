@@ -120,3 +120,21 @@ async def match_name(session: AsyncSession, raw_name: str) -> NameMatch:
     # invece di lasciarla vera per caso quando l'ingrediente è ancora nella identity
     # map di chi lo ha creato.
     return NameMatch(best.id, best.name, False, IngredientKind(best.kind))
+
+
+async def ingredient_for_new_name(session: AsyncSession, raw_name: str) -> Ingredient | None:
+    """L'ingrediente a cui un nome nuovo del modulo si collega salvando, o `None`.
+
+    `None` vuol dire che salvando l'ingrediente nasce (`resolve_lines` in
+    `app/services/recipe_writing.py`). La regola è una sola e sta qui: la usa il salvataggio, e il
+    passo del nome del modulo la chiede in anticipo (`GET /ingredients/match`), che così
+    dice la stessa cosa che il salvataggio farà — per esempio che quel nome porta a un
+    non alimentare, che l'imbuto `write_recipe_ingredients` rifiuterebbe. Solo la
+    coincidenza certa di `match_name`: una somiglianza non collega, e salvando nasce un
+    ingrediente nuovo.
+    """
+    match = await match_name(session, raw_name)
+    if not match.certain or match.ingredient_id is None:
+        return None
+    # `match_name` l'ha appena letto: lo dà la identity map della sessione, senza query
+    return await session.get(Ingredient, match.ingredient_id)

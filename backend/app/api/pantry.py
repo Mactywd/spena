@@ -7,15 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session, is_missing_reference
 from app.core.security import require_session
 from app.db.models.pantry import PantryItem
+from app.domain.emoji import shown_emoji
 from app.domain.rules import Availability, expiry_state, today_in_pantry
 from app.repositories.pantry import (
     ProductIngredientMismatch,
-    add_pantry_item,
     archive_item,
     availability_map,
     list_pantry,
     set_expiry,
     set_status,
+    stock_one,
     unarchive_item,
 )
 from app.schemas.pantry import PantryItemCreate, PantryItemOut, PantryItemPatch, RestockOut
@@ -33,6 +34,8 @@ def _to_out(item: PantryItem) -> PantryItemOut:
         product_id=item.product_id,
         ingredient_name=item.ingredient.name,
         ingredient_category=item.ingredient.category,
+        ingredient_kind=item.ingredient.kind,
+        ingredient_emoji=shown_emoji(item.ingredient.emoji),
         product_name=item.product.name if item.product else None,
         product_brand=item.product.brand if item.product else None,
         status=item.status,
@@ -61,9 +64,10 @@ async def create(
     payload: PantryItemCreate, session: AsyncSession = Depends(get_session)
 ) -> PantryItemOut:
     try:
-        item = await add_pantry_item(
+        item = await stock_one(
             session, ingredient_id=payload.ingredient_id, product_id=payload.product_id,
-            status=payload.status, note=payload.note,
+            status=payload.status, note=payload.note, expires_on=payload.expires_on,
+            barcode=payload.barcode,
         )
         await session.commit()
     except ProductIngredientMismatch as exc:
@@ -123,7 +127,7 @@ async def patch(
 async def restock_item(
     item_id: uuid.UUID, session: AsyncSession = Depends(get_session)
 ) -> RestockOut:
-    """Rimette in lista quel che è finito, se non c'è già.
+    """Rimette in lista quel che è finito o quasi finito, se non c'è già.
 
     Una rotta sua e non un campo della PATCH: spostare un cursore e comprare una
     cosa sono due gesti, e l'utente ne compie il secondo rispondendo a una domanda.

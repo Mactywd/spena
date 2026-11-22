@@ -22,6 +22,7 @@ from app.db.models.recipe_import import (
     RecipeImport,
     TermDecision,
 )
+from app.domain.emoji import NO_EMOJI
 from app.domain.rules import IngredientKind, PantryStatus
 from app.repositories.ingredients import add_alias, remember_alias
 from app.repositories.recipes import create_recipe
@@ -37,6 +38,7 @@ from app.services.registry import (
     recategorize_ingredient,
     rename_ingredient,
     set_barcode,
+    set_ingredient_emoji,
     update_product,
 )
 
@@ -463,3 +465,47 @@ async def test_eliminare_un_prodotto_lascia_la_dispensa_sfusa(db_session, anagra
         await db_session.refresh(voce)
         assert voce.product_id is None
         assert voce.ingredient_id == anagrafica["burro"].id
+
+
+# --- S12: la figura dell'ingrediente in Dispensa ---
+
+
+async def _figura_salvata(db_session, ingrediente: Ingredient) -> str | None:
+    """Dal database e non dall'oggetto in memoria: è la colonna che il comando dell'AI
+    legge per sapere chi è ancora da decidere."""
+    return (
+        await db_session.execute(select(Ingredient.emoji).where(Ingredient.id == ingrediente.id))
+    ).scalar_one()
+
+
+async def test_una_figura_dell_elenco_si_scrive(db_session, anagrafica):
+    salvia = await set_ingredient_emoji(db_session, anagrafica["salvia"].id, "🌿")
+    assert salvia.emoji == "🌿"
+    assert await _figura_salvata(db_session, anagrafica["salvia"]) == "🌿"
+
+
+async def test_senza_selettore_di_variante_si_scrive_la_forma_dell_elenco(db_session, anagrafica):
+    await set_ingredient_emoji(db_session, anagrafica["salvia"].id, "\U0001F336")
+    assert await _figura_salvata(db_session, anagrafica["salvia"]) == "\U0001F336️"
+
+
+async def test_nessuna_si_scrive_come_decisa_e_non_come_vuota(db_session, anagrafica):
+    """`None` non torna `NULL`: `NULL` vuol dire «non ancora deciso», e il comando
+    dell'AI lo deciderebbe al giro dopo, riscrivendo una scelta fatta a mano."""
+    await set_ingredient_emoji(db_session, anagrafica["salvia"].id, "🌿")
+    await set_ingredient_emoji(db_session, anagrafica["salvia"].id, None)
+    assert await _figura_salvata(db_session, anagrafica["salvia"]) == NO_EMOJI
+
+
+async def test_una_figura_fuori_elenco_rifiuta_e_non_scrive(db_session, anagrafica):
+    await set_ingredient_emoji(db_session, anagrafica["salvia"].id, "🌿")
+    with pytest.raises(RegistryRefusal) as rifiuto:
+        await set_ingredient_emoji(db_session, anagrafica["salvia"].id, "🚗")
+    assert rifiuto.value.code == RefusalCode.UNKNOWN_EMOJI
+    assert "🚗" in rifiuto.value.message
+    assert await _figura_salvata(db_session, anagrafica["salvia"]) == "🌿"
+
+
+async def test_la_figura_di_un_ingrediente_che_non_c_e(db_session):
+    with pytest.raises(LookupError):
+        await set_ingredient_emoji(db_session, uuid.uuid4(), "🌿")

@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 import pytest_asyncio
 from sqlalchemy import select
@@ -214,3 +215,104 @@ async def test_restocking_an_available_item_uses_manual_reason(
     )
     items = list((await db_session.execute(select(ShoppingListItem))).scalars())
     assert items[0].reason == "manual"
+
+
+# --- «Rimetti in lista» anche per quasi finito (decisione di Mattia del 2026-10-09) ---
+
+# una data qualsiasi nel passato: se la cottura la riscrive, se ne accorge il confronto
+PRIMA = datetime(2026, 9, 1, 8, 0, tzinfo=UTC)
+
+
+async def test_a_same_status_transition_restocks_without_touching_the_item(
+    logged_client, db_session, scenario
+):
+    """Una confezione già quasi finita si rimette in lista dal foglio senza toccarla.
+
+    Nel foglio la casella c'è anche se lo stato non cambia, e il foglio la manda come
+    transizione allo stesso stato. La voce resta com'è — stato, posizione del cursore,
+    data del cambio — e il motivo del rientro è quello del giallo.
+    """
+    pasta_item = scenario["pasta_item"]
+    pasta_item.status = PantryStatus.LOW
+    pasta_item.fill_percent = 40
+    pasta_item.status_changed_at = PRIMA
+    await db_session.flush()
+
+    response = await logged_client.post(
+        f"/api/v1/recipes/{scenario['recipe'].id}/cook",
+        json={"transitions": [
+            {"pantry_item_id": str(pasta_item.id), "to_status": "low", "restock": True},
+        ]},
+    )
+    assert response.status_code == 201
+    assert response.json()["updated"] == 0
+    assert response.json()["restocked"] == 1
+
+    await db_session.refresh(pasta_item)
+    assert pasta_item.status == "low"
+    assert pasta_item.fill_percent == 40
+    assert pasta_item.status_changed_at == PRIMA
+
+    items = list((await db_session.execute(select(ShoppingListItem))).scalars())
+    assert [(item.raw_text, item.reason) for item in items] == [("pasta", "low_while_cooking")]
+
+    # la storia di quella sera: la confezione c'era, non è cambiata, è rientrata in lista
+    event = (await db_session.execute(select(CookingEvent))).scalar_one()
+    assert event.snapshot["transitions"] == [{
+        "pantry_item_id": str(pasta_item.id),
+        "ingredient_id": str(scenario["pasta"].id),
+        "from": "low",
+        "to": "low",
+        "restocked": True,
+    }]
+
+
+async def test_a_same_status_transition_without_restock_leaves_no_trace_on_the_item(
+    logged_client, db_session, scenario
+):
+    """Senza rientro, una transizione allo stesso stato non cambia niente della voce."""
+    pasta_item = scenario["pasta_item"]
+    pasta_item.status_changed_at = PRIMA
+    await db_session.flush()
+
+    response = await logged_client.post(
+        f"/api/v1/recipes/{scenario['recipe'].id}/cook",
+        json={"transitions": [
+            {"pantry_item_id": str(pasta_item.id), "to_status": "available", "restock": False},
+        ]},
+    )
+    assert response.status_code == 201
+    assert response.json()["updated"] == 0
+    assert response.json()["restocked"] == 0
+
+    await db_session.refresh(pasta_item)
+    assert pasta_item.status == "available"
+    assert pasta_item.status_changed_at == PRIMA
+    assert list((await db_session.execute(select(ShoppingListItem))).scalars()) == []
+
+
+async def test_updated_counts_only_the_items_whose_state_changed(
+    logged_client, db_session, scenario
+):
+    """`updated` dice quante confezioni hanno cambiato stato: un rientro senza cambio lo
+    conta `restocked`, non `updated`."""
+    scenario["pasta_item"].status = PantryStatus.LOW
+    await db_session.flush()
+
+    response = await logged_client.post(
+        f"/api/v1/recipes/{scenario['recipe'].id}/cook",
+        json={"transitions": [
+            {"pantry_item_id": str(scenario["pomodoro_item"].id), "to_status": "finished",
+             "restock": True},
+            {"pantry_item_id": str(scenario["pasta_item"].id), "to_status": "low",
+             "restock": True},
+        ]},
+    )
+    assert response.json()["updated"] == 1
+    assert response.json()["restocked"] == 2
+
+    items = list((await db_session.execute(select(ShoppingListItem))).scalars())
+    assert sorted((item.raw_text, item.reason) for item in items) == [
+        ("pasta", "low_while_cooking"),
+        ("pomodoro", "finished_while_cooking"),
+    ]

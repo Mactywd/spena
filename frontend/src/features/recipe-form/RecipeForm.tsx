@@ -7,16 +7,20 @@ import { IngredientPicker } from "../../components/IngredientPicker";
 import { Button } from "../../components/ui/Button";
 import { Checkbox } from "../../components/ui/Checkbox";
 import { CostPicker } from "../../components/ui/CostPicker";
+import { IconPlus, IconX } from "../../components/ui/icons";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 import type { Ingredient, IngredientRole, RecipeBody, RecipeDetail } from "../../domain/types";
 import { capitalizeFirst } from "../../lib/text";
 import { CategoryField } from "./CategoryField";
+import { NonFoodNameNotice } from "./NonFoodNameNotice";
+import { NON_FOOD_NAME_PROBLEM, useNonFoodName } from "./useNonFoodName";
 import { NewIngredientFields } from "../stocking/NewIngredientFields";
 import {
   addNewLine,
+  attachIngredient,
   QUANTITY_MAX,
+  NOTE_MAX,
   TITLE_MAX,
-  lineFromIngredient,
   matchNote,
   recipeBody,
   savableLines,
@@ -61,6 +65,9 @@ function LineRow({
   // la stessa condizione di `savableLines`: una riga entra nel salvataggio se è
   // agganciata o se porta nome e categoria con cui crearla, ed è lì che ha dose e ruolo
   const savableShape = line.ingredientId !== null || line.proposedCategory !== null;
+  // vero dopo «Aggiungi una nota»: il campo nasce col fuoco, perché è lì che si scrive.
+  // Una nota che c'era già si apre senza rubare il fuoco a nessuno
+  const [focusNote, setFocusNote] = useState(false);
   return (
     <li className="flex flex-col gap-2 py-2 text-sm">
       {/* Prima riga: [la casella, solo se l'aggancio è incerto] + il nome + la ✕. Il nome
@@ -86,26 +93,9 @@ function LineRow({
               («Togli pasta», «Quantità per pasta»), dove resta com'è */}
           <span className="min-w-0 flex-1 break-words">{capitalizeFirst(line.label)}</span>
         </label>
-        {/* la stessa X delle pastiglie del filtro, e per la stessa ragione il nome
-            accessibile nomina la riga: su dodici righe «Togli» da solo non dice quale */}
-        <button
-          type="button"
-          aria-label={`Togli ${line.label}`}
-          onClick={onRemove}
-          className="flex size-11 shrink-0 items-center justify-center rounded-full text-ink-soft"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            className="size-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        {/* la ✕ di casa (`Button` di sola icona, 44 px), come in Lista e in Dispensa; il
+            nome accessibile nomina la riga: su dodici righe «Togli» da solo non dice quale */}
+        <Button variant="ghost" icon={IconX} label={`Togli ${line.label}`} onClick={onRemove} />
       </div>
 
       {showsMatch(line) && (
@@ -129,7 +119,13 @@ function LineRow({
 
       {line.ingredientId === null && line.proposedCategory !== null && (
         <div className="flex flex-col gap-1">
-          <p className="text-xs text-ink-soft">Non è in anagrafica: lo creo io salvando.</p>
+          {/* Quel che il server fa davvero (`_resolve_lines`): cerca il nome in anagrafica, e
+              se lo trova collega quello — il reparto scelto qui allora non conta —; se no lo
+              crea in questo reparto. «Non è in anagrafica: lo creo io» era falso per un nome
+              che c'era già, offerto da «Aggiungi «…»» anche accanto ai suggerimenti */}
+          <p className="text-xs text-ink-soft">
+            Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.
+          </p>
           {/* solo i reparti del cibo: una ricetta non può nominare un non alimentare, e
               `write_recipe_ingredients` rifiuterebbe il salvataggio */}
           <CategorySelect
@@ -142,7 +138,7 @@ function LineRow({
       )}
 
       {savableShape && (
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="flex-1 text-xs text-ink-soft">
             Quantità
             <input
@@ -159,25 +155,57 @@ function LineRow({
               la ricetta è cucinabile (giro di T3) */}
           <div className="flex gap-1" role="group" aria-label={`Ruolo di ${line.label}`}>
             {(["primary", "secondary"] as IngredientRole[]).map((role) => (
-              <button
+              // `Button` con `aria-pressed`: quello scelto è il primario, l'altro il
+              // secondario col suo anello — un `bg-page` sul fondo della pagina era
+              // un'etichetta, non un bottone da toccare (dal giro)
+              <Button
                 key={role}
-                type="button"
-                onClick={() => onUpdate({ role })}
+                variant={line.role === role ? "primary" : "secondary"}
                 aria-pressed={line.role === role}
-                // quello non scelto porta fondo e contorno suoi: un `bg-page` sul fondo
-                // della pagina era un'etichetta, non un bottone da toccare
-                className={`min-h-11 rounded-full px-3 py-2 text-xs font-medium ${
-                  line.role === role
-                    ? "bg-brand text-on-brand"
-                    : "bg-card text-ink-soft ring-1 ring-line ring-inset"
-                }`}
+                onClick={() => onUpdate({ role })}
               >
                 {ROLE_LABELS[role]}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
       )}
+
+      {/* La nota della riga (piano 20): «da grattugiare», «a temperatura ambiente». Si
+          corregge qui, e si toglie svuotando il campo (vuota si salva `null`). Il campo
+          c'è solo dove la nota c'è: dodici campi vuoti su dodici righe allungherebbero il
+          modulo di un telefono intero, e una nota è l'eccezione — le altre righe hanno
+          «Aggiungi una nota», che apre il campo col fuoco. Svuotato resta aperto fino al
+          salvataggio: chiuderlo mentre lo si cancella porterebbe via il fuoco. Solo dove la
+          riga parte salvando, come la dose */}
+      {savableShape &&
+        (line.note === null ? (
+          <Button
+            variant="ghost"
+            icon={IconPlus}
+            accessibleName={`Aggiungi una nota: ${line.label}`}
+            onClick={() => {
+              setFocusNote(true);
+              onUpdate({ note: "" });
+            }}
+            className="self-start"
+          >
+            Aggiungi una nota
+          </Button>
+        ) : (
+          <label className="text-xs text-ink-soft">
+            Nota
+            <input
+              aria-label={`Nota per ${line.label}`}
+              value={line.note}
+              onChange={(e) => onUpdate({ note: e.target.value })}
+              maxLength={NOTE_MAX}
+              autoFocus={focusNote}
+              placeholder="«da grattugiare», «a temperatura ambiente»"
+              className="mt-1.5 text-ink"
+            />
+          </label>
+        ))}
     </li>
   );
 }
@@ -208,6 +236,10 @@ export function RecipeForm({
   // R12: il nome che il selettore ha consegnato con «Aggiungi «…»», mentre il passo
   // «Come si chiama in generale?» è aperto; `null` a passo chiuso
   const [creating, setCreating] = useState<string | null>(null);
+  // il nome che si sta scrivendo nel passo di R12, e se salvando porterebbe a un non
+  // alimentare dell'anagrafica: lo dice il server, con la regola del salvataggio (piano 20)
+  const [newName, setNewName] = useState("");
+  const nonFoodName = useNonFoodName(creating === null ? null : newName);
   const pickerRef = useRef<HTMLDivElement>(null);
   const linesRef = useRef<HTMLUListElement>(null);
   const submit = useMutation({
@@ -237,20 +269,10 @@ export function RecipeForm({
     onChange((prev) => ({ ...prev, lines: prev.lines.filter((line) => line.key !== key) }));
   }
 
+  // la regola delle righe doppie sta in `attachIngredient` (formModel.ts): una riga che
+  // c'è già si include, una senza aggancio con lo stesso nome si aggancia
   function attach(ingredient: Ingredient) {
-    onChange((prev) => {
-      // due righe sullo stesso ingrediente sono un 409 del backend, e non vorrebbero
-      // dire niente: se c'è già, la si include e basta — che è anche il modo di
-      // confermare un aggancio incerto scegliendolo di persona
-      if (prev.lines.some((line) => line.ingredientId === ingredient.id))
-        return {
-          ...prev,
-          lines: prev.lines.map((line) =>
-            line.ingredientId === ingredient.id ? { ...line, included: true } : line
-          ),
-        };
-      return { ...prev, lines: [...prev.lines, lineFromIngredient(ingredient)] };
-    });
+    onChange((prev) => ({ ...prev, lines: attachIngredient(prev.lines, ingredient) }));
   }
 
   function addNew(fields: { name: string; category: string }) {
@@ -266,6 +288,12 @@ export function RecipeForm({
       .forEach((input) => {
         if (input.dataset.lineKey === added.key) input.focus();
       });
+  }
+
+  function startNew(name: string) {
+    setCreating(name);
+    // il passo parte col nome dato da «Aggiungi «…»»: la domanda parte da lì
+    setNewName(name);
   }
 
   function cancelNew() {
@@ -344,14 +372,15 @@ export function RecipeForm({
             // la scelta di «Sistema la spesa» (S6): «zucch» pesca «Zucchero», e la porta
             // per «zucchine» non deve sparire dietro di lui
             createWhen="always"
-            onCreate={setCreating}
+            onCreate={startNew}
           />
         </div>
 
         {/* Il passo di R12: il nome generico e il reparto, solo del cibo. L'ingrediente
             non nasce qui: nasce salvando la ricetta (`_resolve_lines`), per questo il
             pulsante dice «Aggiungi alla ricetta» e non «Crea l'ingrediente». `key`: un
-            secondo «Aggiungi «…»» riparte dal suo nome */}
+            secondo «Aggiungi «…»» riparte dal suo nome. Un nome che salvando porterebbe a un non
+            alimentare lo dice qui, mentre lo si scrive (piano 20), invece del 422 al salvataggio. */}
         {creating !== null && (
           <div className="mt-2 rounded-card bg-card p-3 ring-1 ring-line ring-inset">
             <NewIngredientFields
@@ -362,6 +391,9 @@ export function RecipeForm({
               submitLabel="Aggiungi alla ricetta"
               onSubmit={addNew}
               onCancel={cancelNew}
+              onNameChange={setNewName}
+              nameNotice={nonFoodName && <NonFoodNameNotice ingredient={nonFoodName} />}
+              nameProblem={nonFoodName ? NON_FOOD_NAME_PROBLEM : undefined}
             />
           </div>
         )}

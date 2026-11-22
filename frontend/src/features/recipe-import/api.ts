@@ -3,6 +3,8 @@ import type {
   DecideResult,
   ImportStatus,
   ImportTerm,
+  RequeueResult,
+  SkippedPages,
   TermDecisionResult,
   UndoResult,
 } from "../../domain/types";
@@ -62,5 +64,29 @@ export function decideTerm(
   return apiFetch<TermDecisionResult>(`/imports/terms/${termId}/decision`, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+/** Quante pagine scartate per volta: il default della rotta. */
+export const SKIPPED_PAGE_SIZE = 50;
+
+/** La chiave dell'elenco delle scartate. Sotto `import-status` di proposito: decidere un
+ * termine, chiedere all'AI e annullare possono scartare una pagina, e tutte e tre le
+ * mutazioni della coda invalidano già `["import-status"]` — così rileggono anche questo
+ * elenco senza che il loro codice lo sappia. */
+export const SKIPPED_PAGES_KEY = ["import-status", "skipped-pages"] as const;
+
+/** Le pagine scaricate che non sono diventate ricette, col perché, a partire da `offset`. */
+export function fetchSkippedPages(offset: number) {
+  return apiFetch<SkippedPages>(
+    `/imports/pages/skipped?limit=${SKIPPED_PAGE_SIZE}&offset=${offset}`
+  );
+}
+
+/** Rimette in coda una pagina scartata. Il backend la materializza subito e risponde com'è
+ * finita: entrata, di nuovo scartata, o in attesa di termini da decidere. */
+export function requeuePage(pageId: string) {
+  return apiFetch<RequeueResult>(`/imports/pages/${encodeURIComponent(pageId)}/requeue`, {
+    method: "POST",
   });
 }

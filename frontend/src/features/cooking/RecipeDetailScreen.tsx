@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
-import { fetchRecipe, setRecipeArchived } from "../recipes/api";
+import { Link, Navigate, useParams } from "react-router-dom";
+import { fetchRecipe, setRecipeArchived, setRecipeInBook, type RecipeScale } from "../recipes/api";
 import { fetchPantry } from "../pantry/api";
 import { ApiError } from "../../api/client";
 import { AddMissingButton } from "./AddMissingButton";
+import { AnchorField } from "./AnchorField";
 import { CookSheet } from "./CookSheet";
+import { RecipeNutritionPanel } from "./RecipeNutritionPanel";
 import { ServingsStepper } from "./ServingsStepper";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
@@ -16,20 +18,28 @@ import { SectionHeading } from "../../components/ui/SectionHeading";
 import { StatusDot } from "../../components/ui/StatusDot";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import {
+  IconArrowsExchange,
+  IconBookmarkOff,
+  IconBookmarkPlus,
   IconChefHat,
   IconChevronLeft,
   IconExternalLink,
   IconPencil,
   IconRestore,
+  IconSparkles,
   IconTrash,
 } from "../../components/ui/icons";
 import { useNotice } from "../../components/ui/noticeContext";
 import { BackLink } from "../../components/BackLink";
+import { OriginLink } from "../ai-variant/OriginLink";
+import { VariantPrompt } from "../ai-variant/VariantPrompt";
+import { VARIANT_PANEL_ID } from "../ai-variant/variantState";
 import { RecipeImage } from "../recipes/RecipeImage";
 import { useArchiveRecipe } from "../recipes/useArchiveRecipe";
 import { revealAtTop } from "../../lib/revealAtTop";
 import { capitalizeFirst } from "../../lib/text";
-import type { CookResult, RecipeDetail, RecipeIngredientLine } from "../../domain/types";
+import { SubstitutePanel } from "../substitutes/SubstitutePanel";
+import type { CookResult, RecipeDetail, RecipeHighlight, RecipeIngredientLine } from "../../domain/types";
 
 // Il numero viene dal backend, non da un conteggio fatto qui: quante voci sono
 // tornate in lista lo sa solo chi ha applicato le transizioni (una lista può già
@@ -50,7 +60,18 @@ function cookNote(result: CookResult): string {
  * l'intestazione fissa. Il fondo è pieno (`bg-card`): sopra una foto un testo senza
  * fondo avrebbe il contrasto della foto, cioè nessuno garantito. «Ricette» e non
  * `navigate(-1)`, per il motivo scritto in `BackLink`. */
-function RecipeHero({ recipe }: { recipe: RecipeDetail }) {
+function RecipeHero({ recipe, inMeal }: { recipe: RecipeDetail; inMeal: boolean }) {
+  // nel piatto il ritorno è quello del piatto: resta solo la foto, senza il margine
+  // negativo che la metteva sotto il tasto
+  if (inMeal) {
+    return (
+      <RecipeImage
+        url={recipe.image_url}
+        alt={recipe.title}
+        className="mt-2 block aspect-[3/2] w-full rounded-card object-cover"
+      />
+    );
+  }
   return (
     <div>
       <Link
@@ -69,6 +90,24 @@ function RecipeHero({ recipe }: { recipe: RecipeDetail }) {
   );
 }
 
+/** Com'è finita una richiesta di riscalare da una dose (R2): la vista è cambiata, il
+ * server l'ha rifiutata (e dice perché), oppure nel frattempo chi la chiedeva ha fatto
+ * altro e la risposta non conta più. */
+type AnchorOutcome =
+  | { kind: "applied" }
+  | { kind: "refused"; problem: string }
+  | { kind: "dropped" };
+
+/** Il segno di «Claude l'ha appena cambiato»: un attributo per i test e per chi cerca, il
+ * fondo `brand-tint` (testo `ink`) per chi guarda. Il «(cambiata)» per chi ascolta sta nel
+ * pezzo stesso (`ChangedNote`). Senza `on` non aggiunge niente. */
+function changedMark(on: boolean): { className: string; "data-changed"?: "" } {
+  return on ? { className: "bg-brand-tint text-ink", "data-changed": "" } : { className: "" };
+}
+function ChangedNote({ on }: { on: boolean }) {
+  return on ? <span className="sr-only"> (cambiata)</span> : null;
+}
+
 /** Una riga d'ingrediente: il pallino dello stato, il nome, la dose.
  *
  * Il verdetto non si calcola qui: `availability` e `satisfied` arrivano dal server, che
@@ -76,33 +115,189 @@ function RecipeHero({ recipe }: { recipe: RecipeDetail }) {
  * solo caso in cui il colore non dice abbastanza — un principale quasi finito è giallo
  * come un secondario quasi finito, ma a questa ricetta non basta — e sta scritto,
  * piccolo, accanto al nome (Mattia). Il nome del pallino resta quello del vocabolario
- * (`STATUS_LABELS`); «non basta» lo sente anche chi ascolta, perché è testo. */
-function IngredientRow({ line }: { line: RecipeIngredientLine }) {
+ * (`STATUS_LABELS`); «non basta» lo sente anche chi ascolta, perché è testo.
+ * In fondo, «Sostituisci» (R5): apre sotto la riga cosa usare al suo posto. */
+function IngredientRow({
+  line,
+  recipeId,
+  changed,
+  anchoredAmount,
+  open,
+  onOpen,
+  onClose,
+  onAnchor,
+}: {
+  line: RecipeIngredientLine;
+  recipeId: string;
+  /** Claude ha appena cambiato questa riga (`highlight` della chat del piatto). */
+  changed: boolean;
+  /** La dose fissata su questa riga, se è lei l'ancora (R2), come la manda il server. */
+  anchoredAmount: string | null;
+  /** Se il campo «Quanto ne fai?» di questa riga è aperto: uno alla volta. */
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  /** Riscala da questa riga: se è fatto, se il server ha rifiutato (col perché), o se
+   * nel frattempo il campo è stato chiuso o superato e la risposta non conta più. */
+  onAnchor: (amount: string) => Promise<AnchorOutcome>;
+}) {
+  // la dose toccabile riprende il fuoco quando il campo si chiude, da «Annulla» o da una
+  // riscala riuscita: il campo che lo aveva si smonta, e il fuoco cadrebbe sul `body`
+  const doseRef = useRef<HTMLButtonElement>(null);
+  // R5: lo stato del pannello è della riga. Due pannelli aperti insieme non si danno
+  // fastidio, e uscire dalla ricetta li chiude tutti
+  const [substituting, setSubstituting] = useState(false);
+  // La tinta di una riga cambiata sta sulla sua prima linea, non sul `<li>`: il campo della
+  // dose e il pannello «Sostituisci» restano sul fondo della scheda, dove i loro testi
+  // (`text-low` di «non basta», per primo) hanno il contrasto misurato. La linea tinta
+  // riprende da sé il padding della riga (`-mx-3 px-3 py-2.5`), così l'altezza non cambia.
+  const below = open || substituting;
   return (
-    <li className="flex items-center gap-2.5 px-3 py-2.5">
-      <StatusDot availability={line.availability} />
-      <span className="min-w-0 flex-1">
-        {/* la maiuscola solo a video (spec T3 §4.7): apre la riga, non è dentro una
-            frase né in un nome accessibile */}
-        <span>{capitalizeFirst(line.ingredient_name)}</span>
-        {line.availability === "low" && !line.satisfied && (
-          <span className="ml-2 text-xs font-medium text-low">non basta</span>
-        )}
-      </span>
-      {line.quantity_display && (
-        <span className="shrink-0 text-sm text-ink-faint">{line.quantity_display}</span>
+    <li
+      className={changed ? `px-3${below ? " pb-2.5" : ""}` : "px-3 py-2.5"}
+      {...(changed ? { "data-changed": "" } : {})}
+    >
+      <div
+        className={
+          changed
+            ? "-mx-3 flex items-center gap-2.5 bg-brand-tint px-3 py-2.5 text-ink"
+            : "flex items-center gap-2.5"
+        }
+      >
+        <StatusDot availability={line.availability} />
+        <span className="min-w-0 flex-1">
+          {/* la maiuscola solo a video (spec T3 §4.7): apre la riga, non è dentro una
+              frase né in un nome accessibile */}
+          <span>{capitalizeFirst(line.ingredient_name)}</span>
+          {changed && <span className="sr-only"> (cambiata)</span>}
+          {line.availability === "low" && !line.satisfied && (
+            <span className={`ml-2 text-xs font-medium ${changed ? "text-ink" : "text-low"}`}>
+              non basta
+            </span>
+          )}
+          {/* la nota della riga: le parole che l'import scriveva davanti alla dose («da
+              grattugiare», «36 mesi»), o quella scritta a mano. Sotto il nome e piccola:
+              dice com'è l'ingrediente, non quanto — la dose resta a destra */}
+          {line.note && (
+            <span className="block break-words text-xs text-ink-soft">{line.note}</span>
+          )}
+        </span>
+        {line.quantity_display &&
+          (line.anchorable ? (
+            // R2, secondo modo: una dose che si riscala si tocca. Un pulsante leggero,
+            // sottolineato a puntini (il segno che si tocca), alto 44 px senza alzare la
+            // riga (`-my-2.5` restituisce il `py-2.5` della riga); `-mr-3` riporta il testo
+            // verso il bordo, dove stanno le dosi che non si toccano. La dose fissata in
+            // grassetto dentro un `<strong>`: una seconda classe di colore o di peso sul
+            // pulsante litigherebbe con quella di `ghost` nel CSS compilato
+            <Button
+              ref={doseRef}
+              variant="ghost"
+              accessibleName={`${line.quantity_display}: riscala da ${line.ingredient_name}`}
+              aria-expanded={open}
+              onClick={open ? onClose : onOpen}
+              className="-my-2.5 -mr-3 shrink-0 underline decoration-dotted underline-offset-4"
+            >
+              {anchoredAmount !== null ? (
+                <strong className="font-semibold text-ink">{line.quantity_display}</strong>
+              ) : (
+                line.quantity_display
+              )}
+            </Button>
+          ) : (
+            <span className="shrink-0 text-sm text-ink-faint">{line.quantity_display}</span>
+          ))}
+        {/* Un'icona sola (spec T3 §2: più pulsanti uguali in fila → solo icone), col nome
+            per chi ascolta. `-my-2.5` restituisce il `py-2.5` della riga: il bersaglio è
+            44 px senza alzarla; `-mr-2` lo avvicina al bordo. Il fuoco resta qui quando si
+            chiude, perché il pulsante non si smonta. */}
+        <Button
+          variant="ghost"
+          icon={IconArrowsExchange}
+          label={`Sostituisci ${line.ingredient_name}`}
+          aria-expanded={substituting}
+          onClick={() => setSubstituting((shown) => !shown)}
+          className="-my-2.5 -mr-2 shrink-0"
+        />
+      </div>
+      {open && (
+        <AnchorField
+          unit={line.anchor_unit}
+          initial={anchoredAmount?.replace(".", ",") ?? ""}
+          onSubmit={async (amount) => {
+            const outcome = await onAnchor(amount);
+            // il fuoco torna alla dose solo se la vista è davvero cambiata: se il campo
+            // era già chiuso, o ce n'è un altro aperto, il fuoco sta dove l'ha messo chi
+            // scrive. `null` anche per «dropped»: il campo che aspetta è già smontato
+            if (outcome.kind === "applied") doseRef.current?.focus();
+            return outcome.kind === "refused" ? outcome.problem : null;
+          }}
+          onCancel={() => {
+            onClose();
+            doseRef.current?.focus();
+          }}
+        />
+      )}
+      {substituting && (
+        <SubstitutePanel
+          recipeId={recipeId}
+          ingredientId={line.ingredient_id}
+          ingredientName={line.ingredient_name}
+        />
       )}
     </li>
   );
 }
 
+/** `key={id}`: da una variante alla sua originale (R8) la rotta resta la stessa e cambia
+ * solo `:id`. Senza la chiave React terrebbe lo stato della ricetta di prima — le porzioni
+ * scelte, il foglio della cottura o il pannello della variante aperti — e lo applicherebbe
+ * all'altra. */
 export function RecipeDetailScreen() {
   const { id = "" } = useParams();
+  return <RecipeDetailView key={id} id={id} />;
+}
+
+/** Il dettaglio di una ricetta. Con `meal` è la «modalità pasto» (piano Pasti, decisioni
+ * 9 e 21): la ricetta sta dentro `MealScreen`, sotto il piatto, e non è più una pagina
+ * del ricettario. Le condizioni sulla modalità sono `inMeal`, usata in pochi punti:
+ * l'eroe, il titolo, la barra delle azioni e il posto di «Cucina». */
+export function RecipeDetailView({
+  id,
+  meal,
+  highlight = null,
+}: {
+  id: string;
+  meal?: { mealId: string; readOnly: boolean };
+  /** Cosa ha appena cambiato Claude (chat del piatto): quelle parti si segnano, fino al
+   * messaggio dopo. Senza, la ricetta è com'è sempre. */
+  highlight?: RecipeHighlight | null;
+}) {
+  const inMeal = meal !== undefined;
   const [cooking, setCooking] = useState(false);
 
-  // le porzioni chieste: è una vista, non si salva. Uscire dalla ricetta se ne
-  // dimentica, ed è quel che vuole chi sta guardando cosa cucinare stasera.
-  const [servings, setServings] = useState<number | null>(null);
+  // come si vuole vedere la ricetta: per porzioni, o da una dose fissata su una riga
+  // (R2, secondo modo). Un modo alla volta, ed è una vista: non si salva, e uscire
+  // dalla ricetta se ne dimentica — è quel che vuole chi guarda cosa cucinare stasera.
+  // `null` è la ricetta com'è.
+  const [scale, setScale] = useState<RecipeScale | null>(null);
+  // la riga il cui campo «Quanto ne fai?» è aperto: uno alla volta
+  const [anchorField, setAnchorField] = useState<string | null>(null);
+  // quante volte il campo aperto è cambiato (aperto, chiuso, passato a un'altra riga, o
+  // la vista cambiata da un altro gesto): una richiesta di riscalare ricorda quella che
+  // c'era quando è partita, e se al ritorno non è più la stessa non tocca la vista. Una
+  // numerazione e non il nome della riga: chiudere e riaprire la stessa riga è un altro
+  // campo, e la risposta del primo non è più sua
+  const fieldEpoch = useRef(0);
+  function changeAnchorField(next: string | null) {
+    fieldEpoch.current += 1;
+    setAnchorField(next);
+  }
+
+  // R8: il pannello di «Modifica con AI», e il tasto che lo apre. Chiuso il pannello il
+  // fuoco torna sul tasto: il pannello si smonta col campo che aveva il fuoco.
+  const [variantOpen, setVariantOpen] = useState(false);
+  const variantButtonRef = useRef<HTMLButtonElement>(null);
 
   const queryClient = useQueryClient();
   const notice = useNotice();
@@ -122,6 +317,20 @@ export function RecipeDetailScreen() {
       ]),
   });
 
+  // «Salva nel ricettario» / «Togli dal ricettario»: la ricetta del pasto entra o esce
+  // dal ricettario, e con lei le liste che la contano
+  const setInBook = useMutation({
+    mutationFn: (inBook: boolean) => setRecipeInBook(id, inBook),
+    onSuccess: async (_saved, inBook) => {
+      notice({ text: inBook ? "Salvata nel ricettario." : "Tolta dal ricettario." });
+      await Promise.all(
+        [["recipe", id], ["recipes"], ["recipe-categories"], ["meals"]].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        )
+      );
+    },
+  });
+
   const {
     data: recipe,
     error: recipeError,
@@ -129,8 +338,8 @@ export function RecipeDetailScreen() {
     isError: isRecipeError,
     refetch: refetchRecipe,
   } = useQuery({
-    queryKey: ["recipe", id, servings],
-    queryFn: () => fetchRecipe(id, servings ?? undefined),
+    queryKey: ["recipe", id, scale],
+    queryFn: () => fetchRecipe(id, scale ?? undefined),
     // le porzioni stanno nella chiave, quindi ogni tocco dello stepper è una chiave
     // nuova e senza cache: senza questo, `isLoading` torna vero e lo schermo intero
     // viene sostituito da «Carico…» a metà della rilettura — il pulsante sparisce da
@@ -139,16 +348,18 @@ export function RecipeDetailScreen() {
     placeholderData: keepPreviousData,
   });
 
-  // Serve solo per aprire il foglio di cottura: senza dispensa non si può dire
-  // quali vasetti esistono, quindi un fallimento qui non può travestirsi da
-  // "nessun vasetto da aggiornare" — altrimenti "Cucina" apparirebbe disponibile
-  // ma produrrebbe un foglio vuoto, silenziosamente sbagliato.
+  // Serve solo per aprire il foglio di cottura (nel piatto non si cucina: `enabled` la
+  // spegne). Senza dispensa non si può dire quali vasetti esistono, quindi un
+  // fallimento qui non può travestirsi da "nessun vasetto da aggiornare" — altrimenti
+  // "Cucina" apparirebbe disponibile ma produrrebbe un foglio vuoto, silenziosamente
+  // sbagliato.
   const {
     data: pantry,
     isLoading: isPantryLoading,
     isError: isPantryError,
+    isFetching: isPantryFetching,
     refetch: refetchPantry,
-  } = useQuery({ queryKey: ["pantry"], queryFn: fetchPantry });
+  } = useQuery({ queryKey: ["pantry"], queryFn: fetchPantry, enabled: !inMeal });
 
   // Il foglio prende il posto di ciò che sta sotto la testa, e l'inizio del foglio —
   // con «Tocca solo ciò che è cambiato» — può restare fuori vista: si porta in vista
@@ -164,12 +375,53 @@ export function RecipeDetailScreen() {
   // l'esito lo dice l'avviso unico, che il fuoco non lo prende. Un `ref` e non uno
   // stato: è un'intenzione per il prossimo disegno, non qualcosa da disegnare.
   const cookRef = useRef<HTMLButtonElement>(null);
+  const retryPantryRef = useRef<HTMLButtonElement>(null);
   const refocusCook = useRef(false);
+  // Se la dispensa non si ricarica, al posto di «Cucina» c'è l'avviso con «Riprova», e il
+  // fuoco va lì — anche se l'errore arriva dopo, a fuoco già tornato su «Cucina», che
+  // sparendo lo lascia sul `body` (T3 Consegna 5). L'intenzione resta finché la rilettura
+  // della dispensa non è finita. Solo se il fuoco è caduto sulla pagina: chi nel frattempo
+  // ha toccato altro se lo tiene.
   useEffect(() => {
     if (sheetOpen || !refocusCook.current) return;
-    refocusCook.current = false;
-    cookRef.current?.focus();
-  }, [sheetOpen]);
+    const active = document.activeElement;
+    if (active === null || active === document.body) {
+      (isPantryError ? retryPantryRef.current : cookRef.current)?.focus();
+    }
+    if (!isPantryFetching) refocusCook.current = false;
+  }, [sheetOpen, isPantryError, isPantryFetching]);
+
+  // R2, secondo modo: si chiede prima la ricetta riscalata, e solo se il server la dà
+  // la vista cambia. Un 422 (oltre le 50 volte) resta così sotto il campo, con la
+  // frase del server, e la ricetta resta com'era: cambiare vista e scoprire dopo il
+  // rifiuto avrebbe mandato lo schermo intero nel ramo d'errore. La risposta finisce
+  // nella cache con la chiave della query qui sopra, che la trova già pronta (e la
+  // rilegge in sottofondo, come ogni dato vecchio).
+  async function anchorOn(ingredientId: string, amount: string): Promise<AnchorOutcome> {
+    const next: RecipeScale = { anchor: ingredientId, amount };
+    // «Annulla» resta attivo mentre la richiesta è in volo (il server può metterci
+    // qualche secondo): chi ha annullato, aperto un'altra riga o toccato lo stepper ha
+    // già scelto, e una risposta arrivata dopo non deve disfare la sua scelta. La
+    // risposta resta in cache, innocua
+    const epoch = fieldEpoch.current;
+    try {
+      await queryClient.fetchQuery({
+        queryKey: ["recipe", id, next],
+        queryFn: () => fetchRecipe(id, next),
+      });
+    } catch (error) {
+      if (fieldEpoch.current !== epoch) return { kind: "dropped" };
+      if (error instanceof ApiError && error.status === 422) {
+        const detail = (error.body as { detail?: unknown } | null)?.detail;
+        if (typeof detail === "string") return { kind: "refused", problem: detail };
+      }
+      return { kind: "refused", problem: "Non sono riuscito a riscalare. Riprova." };
+    }
+    if (fieldEpoch.current !== epoch) return { kind: "dropped" };
+    changeAnchorField(null);
+    setScale(next);
+    return { kind: "applied" };
+  }
 
   if (isRecipeLoading) return <p className="p-4 text-ink-soft">Carico…</p>;
 
@@ -186,6 +438,30 @@ export function RecipeDetailScreen() {
           <Link to="/ricette" className={buttonClasses("secondary")}>
             Torna al ricettario
           </Link>
+        </div>
+      );
+    }
+    // Una vista riscalata già accettata che il server ora rifiuta: la ricetta è stata
+    // modificata altrove e la dose è uscita dalle 50 volte. «Riprova» rifarebbe la stessa
+    // domanda; l'uscita è la ricetta com'è.
+    if (
+      recipeError instanceof ApiError &&
+      recipeError.status === 422 &&
+      scale !== null &&
+      "anchor" in scale
+    ) {
+      return (
+        <div className="flex flex-col items-start gap-3 p-4">
+          <Alert>Non riesco più a riscalare da quella dose: la ricetta è cambiata.</Alert>
+          <Button
+            onClick={() => {
+              // anche il campo aperto e una riscala in volo cadono: tornano alla ricetta
+              changeAnchorField(null);
+              setScale(null);
+            }}
+          >
+            Torna alle dosi della ricetta
+          </Button>
         </div>
       );
     }
@@ -207,25 +483,38 @@ export function RecipeDetailScreen() {
   // nient'altro — niente «Cucina», niente «Modifica» (R10 §6.1).
   if (recipe.archived_at !== null) {
     return (
-      <div className="px-4 pt-2 pb-4">
-        <BackLink to="/ricette" label="Ricette" />
-        <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
+      <div className={inMeal ? "pb-4" : "px-4 pt-2 pb-4"}>
+        {!inMeal && <BackLink to="/ricette" label="Ricette" />}
+        {inMeal ? (
+          <h2 className="text-xl font-semibold tracking-tight">{recipe.title}</h2>
+        ) : (
+          <h1 className="text-2xl font-semibold tracking-tight">{recipe.title}</h1>
+        )}
         <p className="pt-2 text-ink-soft">Questa ricetta è stata eliminata.</p>
-        <Button
-          variant="primary"
-          shape="block"
-          icon={IconRestore}
-          busy={restore.isPending}
-          onClick={() => restore.mutate()}
-          className="mt-4"
-        >
-          {restore.isPending ? "Ripristino…" : "Ripristina"}
-        </Button>
+        {/* di sola lettura (un avanzo) la ricetta non è di questo pasto: niente «Ripristina» */}
+        {!meal?.readOnly && (
+          <Button
+            variant="primary"
+            shape="block"
+            icon={IconRestore}
+            busy={restore.isPending}
+            onClick={() => restore.mutate()}
+            className="mt-4"
+          >
+            {restore.isPending ? "Ripristino…" : "Ripristina"}
+          </Button>
+        )}
         {restore.isError && (
           <Alert className="pt-2">Non sono riuscito a ripristinarla. Riprova.</Alert>
         )}
       </div>
     );
+  }
+
+  // decisione 19: una ricetta fuori dal ricettario è del suo pasto, e il dettaglio del
+  // ricettario non le mostra mai «Cucina»
+  if (!inMeal && recipe.in_book === false && recipe.meal) {
+    return <Navigate to={`/pasti/${recipe.meal.id}`} replace />;
   }
 
   const groups: { label: string; lines: RecipeIngredientLine[] }[] = [
@@ -234,35 +523,95 @@ export function RecipeDetailScreen() {
   ].filter((group) => group.lines.length > 0);
   // quali righe mancano lo dice il server (`satisfied`): qui si filtra, non si giudica
   const missing = recipe.ingredients.filter((line) => !line.satisfied);
+  // la dose fissata, se la vista è riscalata da un ingrediente (R2). `?? null`: una
+  // risposta di un backend vecchio, in cache nel service worker, non ha il campo
+  const anchor = recipe.anchor ?? null;
+  const anchorLine =
+    anchor === null
+      ? null
+      : (recipe.ingredients.find((line) => line.ingredient_id === anchor.ingredient_id) ??
+        null);
 
   return (
-    <div className="px-4 pt-2 pb-4">
-      <RecipeHero recipe={recipe} />
+    <div className={inMeal ? "pb-4" : "px-4 pt-2 pb-4"}>
+      <RecipeHero recipe={recipe} inMeal={inMeal} />
 
       {/* le due azioni rare accanto al titolo, di sola icona (spec T3 §2): si correggono
           o si tolgono ricette di rado, e non devono competere con «Cucina». `ghost` anche
           «Elimina»: il rosso vuol dire «manca» e «non è andata» (spec §3.1) */}
       <div className="flex items-start gap-2 pt-3">
-        <h1 className="min-w-0 flex-1 pt-1.5 text-2xl font-semibold tracking-tight">
-          {recipe.title}
-        </h1>
-        <IconToolbar label="Azioni della ricetta">
-          <Link
-            to={`/ricette/${recipe.id}/modifica`}
-            aria-label="Modifica"
-            className={buttonClasses("ghost", "icon")}
+        {/* nel piatto l'h1 è il piatto: la ricetta è un h2 */}
+        {inMeal ? (
+          <h2
+            {...changedMark(highlight?.title === true)}
+            className={`min-w-0 flex-1 pt-1.5 text-xl font-semibold tracking-tight ${changedMark(highlight?.title === true).className}`}
           >
-            <IconPencil aria-hidden="true" className="size-5" stroke={1.8} />
-          </Link>
-          <Button
-            variant="ghost"
-            icon={IconTrash}
-            label="Elimina"
-            busy={archiving}
-            onClick={() => archive({ id: recipe.id, title: recipe.title })}
-          />
-        </IconToolbar>
+            {recipe.title}
+            <ChangedNote on={highlight?.title === true} />
+          </h2>
+        ) : (
+          <h1 className="min-w-0 flex-1 pt-1.5 text-2xl font-semibold tracking-tight">
+            {recipe.title}
+          </h1>
+        )}
+        {inMeal ? (
+          // la modifica sta nel modulo di sempre, che poi torna al pasto; «Modifica con AI»
+          // creerebbe una variante nel ricettario da una ricetta che non c'è, e si elimina
+          // il pasto, non la ricetta (decisione 21). Di sola lettura (un avanzo): niente
+          !meal.readOnly && (
+            <IconToolbar label="Azioni della ricetta">
+              <Link
+                to={`/ricette/${recipe.id}/modifica?pasto=${meal.mealId}`}
+                aria-label="Modifica"
+                className={buttonClasses("ghost", "icon")}
+              >
+                <IconPencil aria-hidden="true" className="size-5" stroke={1.8} />
+              </Link>
+            </IconToolbar>
+          )
+        ) : (
+          <IconToolbar label="Azioni della ricetta">
+            <Link
+              to={`/ricette/${recipe.id}/modifica`}
+              aria-label="Modifica"
+              className={buttonClasses("ghost", "icon")}
+            >
+              <IconPencil aria-hidden="true" className="size-5" stroke={1.8} />
+            </Link>
+            {/* R8: fra le due azioni rare, perché è una modifica; la scintilla è l'icona di
+                «scrivi con l'AI» (spec T3 §3.3) */}
+            <Button
+              ref={variantButtonRef}
+              variant="ghost"
+              icon={IconSparkles}
+              label="Modifica con AI"
+              aria-expanded={variantOpen}
+              aria-controls={VARIANT_PANEL_ID}
+              onClick={() => setVariantOpen((open) => !open)}
+            />
+            <Button
+              variant="ghost"
+              icon={IconTrash}
+              label="Elimina"
+              busy={archiving}
+              onClick={() => archive({ id: recipe.id, title: recipe.title })}
+            />
+          </IconToolbar>
+        )}
       </div>
+
+      {/* R8, Mattia: nella variante, sotto il titolo, la ricetta da cui nasce */}
+      {recipe.derived_from && <OriginLink origin={recipe.derived_from} />}
+
+      {!inMeal && variantOpen && (
+        <VariantPrompt
+          recipe={recipe}
+          onClose={() => {
+            setVariantOpen(false);
+            variantButtonRef.current?.focus();
+          }}
+        />
+      )}
 
       {/* categoria e costo da leggere: il costo si cambia da «Modifica» (dal giro, un
           tocco scorrendo sui € lo cambiava) */}
@@ -273,7 +622,15 @@ export function RecipeDetailScreen() {
           <CostMeter cost={recipe.cost} />
         </p>
       )}
-      {recipe.description && <p className="pt-2 text-ink-soft">{recipe.description}</p>}
+      {recipe.description && (
+        <p
+          {...changedMark(highlight?.description === true)}
+          className={`pt-2 ${highlight?.description === true ? "bg-brand-tint text-ink" : "text-ink-soft"}`}
+        >
+          {recipe.description}
+          <ChangedNote on={highlight?.description === true} />
+        </p>
+      )}
 
       {/* L'attribuzione a un tocco, alta 44 px (dal giro: era alta 19). Solo se la
           provenienza è davvero un indirizzo: per le ricette del seme `source_ref` è una
@@ -311,12 +668,45 @@ export function RecipeDetailScreen() {
         </div>
       ) : (
         <>
-          {/* sempre, anche senza porzioni: allora dice perché è fermo */}
+          {/* sempre, anche senza porzioni: allora dice perché è fermo. Con una dose
+              fissata dice le porzioni che fa, «≈ 1,5», e toccarlo torna alle porzioni
+              intere (R2: un modo alla volta) */}
           <div className="pt-3">
+            <div {...changedMark(highlight?.servings === true)}>
+              <ChangedNote on={highlight?.servings === true} />
             <ServingsStepper
-              value={recipe.servings === null ? null : (servings ?? recipe.servings)}
-              onChange={setServings}
+              value={
+                recipe.servings === null
+                  ? null
+                  : scale !== null && "servings" in scale
+                    ? scale.servings
+                    : recipe.servings
+              }
+              approx={anchor?.equivalent_servings ?? null}
+              onChange={(next) => {
+                changeAnchorField(null);
+                setScale({ servings: next });
+              }}
             />
+            </div>
+            {anchorLine !== null && (
+              // da quale dose è riscalata, e l'uscita: sulle ricette senza porzioni − e +
+              // sono spenti, e sarebbe l'unica strada per tornare indietro
+              <div className="flex flex-wrap items-center gap-x-2 pt-1">
+                <p className="text-sm text-ink-soft">
+                  Riscalata da {anchorLine.ingredient_name}: {anchorLine.quantity_display}.
+                </p>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    changeAnchorField(null);
+                    setScale(null);
+                  }}
+                >
+                  Torna alle dosi della ricetta
+                </Button>
+              </div>
+            )}
           </div>
 
           {groups.map(({ label, lines }) => (
@@ -326,7 +716,21 @@ export function RecipeDetailScreen() {
               <Card pad={false}>
                 <ul>
                   {lines.map((line) => (
-                    <IngredientRow key={line.ingredient_id} line={line} />
+                    <IngredientRow
+                      key={line.ingredient_id}
+                      line={line}
+                      recipeId={recipe.id}
+                      changed={highlight?.ingredient_ids.includes(line.ingredient_id) ?? false}
+                      anchoredAmount={
+                        anchor !== null && anchor.ingredient_id === line.ingredient_id
+                          ? anchor.amount
+                          : null
+                      }
+                      open={anchorField === line.ingredient_id}
+                      onOpen={() => changeAnchorField(line.ingredient_id)}
+                      onClose={() => changeAnchorField(null)}
+                      onAnchor={(amount) => anchorOn(line.ingredient_id, amount)}
+                    />
                   ))}
                 </ul>
               </Card>
@@ -349,7 +753,43 @@ export function RecipeDetailScreen() {
               freccia ricetta → lista. Uno sotto l'altro e non affiancati: a 375 px i due
               testi con le icone non ci stanno su una riga */}
           <div className="mt-6 flex flex-col gap-2">
-            {isPantryError ? (
+            {inMeal ? (
+              // nel piatto non si cucina (decisione 9): al posto di «Cucina», il destino
+              // della ricetta. Di sola lettura, niente
+              !meal.readOnly && (
+                <>
+                  {(recipe.in_book ?? true) ? (
+                    <Button
+                      variant="ghost"
+                      shape="block"
+                      icon={IconBookmarkOff}
+                      busy={setInBook.isPending}
+                      onClick={() => setInBook.mutate(false)}
+                    >
+                      Togli dal ricettario
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      shape="block"
+                      icon={IconBookmarkPlus}
+                      busy={setInBook.isPending}
+                      onClick={() => setInBook.mutate(true)}
+                    >
+                      Salva nel ricettario
+                    </Button>
+                  )}
+                  {/* un rifiuto dice sempre cosa è successo: mai un pulsante che non risponde */}
+                  {setInBook.isError && (
+                    <Alert>
+                      {setInBook.error instanceof ApiError
+                        ? setInBook.error.message
+                        : "Non sono riuscito a farlo. Riprova fra poco."}
+                    </Alert>
+                  )}
+                </>
+              )
+            ) : isPantryError ? (
               // il foglio ha bisogno della dispensa per elencare i vasetti concreti:
               // senza, il posto di «Cucina» dice perché non si può procedere invece di
               // aprire un foglio vuoto e muto
@@ -357,13 +797,22 @@ export function RecipeDetailScreen() {
                 <Alert>
                   Non sono riuscito a caricare la dispensa: non posso avviare la cottura.
                 </Alert>
-                <button
-                  type="button"
-                  onClick={() => void refetchPantry()}
-                  className={buttonClasses("secondary")}
+                {/* `busy` mentre rilegge: il fuoco, che può essere arrivato qui dopo
+                    «Ho cucinato», resta qui */}
+                <Button
+                  ref={retryPantryRef}
+                  busy={isPantryFetching}
+                  onClick={() => {
+                    // Se la rilettura riesce «Riprova» sparisce e il fuoco cadrebbe sulla
+                    // pagina: l'intenzione si riarma, e l'effetto lo porta su «Cucina» (o
+                    // di nuovo su «Riprova» se fallisce ancora) — sempre e solo se è
+                    // caduto sulla pagina.
+                    refocusCook.current = true;
+                    void refetchPantry();
+                  }}
                 >
                   Riprova
-                </button>
+                </Button>
               </div>
             ) : (
               <Button
@@ -374,7 +823,13 @@ export function RecipeDetailScreen() {
                 // «non ancora», col perché scritto sotto (regola del Piano 1): un
                 // pulsante grigio e muto non si spiega da sé
                 unavailableReason={isPantryLoading ? "Carico la dispensa…" : undefined}
-                onClick={() => setCooking(true)}
+                onClick={() => {
+                  // il foglio copre la ricetta: il campo aperto si chiude e una riscala
+                  // in volo si lascia cadere, o la vista cambierebbe sotto il foglio e
+                  // chi cuoce manderebbe un'ancora da una vista mai vista cambiare
+                  changeAnchorField(null);
+                  setCooking(true);
+                }}
               >
                 Cucina
               </Button>
@@ -387,9 +842,19 @@ export function RecipeDetailScreen() {
             {/* leggere mentre si cucina: interlinea larga, perché si torna a cercare
                 il punto in cui si era con le mani sporche e lo sguardo di sbieco */}
             <Card>
-              <p className="leading-relaxed whitespace-pre-line">{recipe.instructions}</p>
+              <p
+                {...changedMark(highlight?.instructions === true)}
+                className={`leading-relaxed whitespace-pre-line ${changedMark(highlight?.instructions === true).className}`}
+              >
+                {recipe.instructions}
+                <ChangedNote on={highlight?.instructions === true} />
+              </p>
             </Card>
           </section>
+
+          {/* S4 fetta 2: in fondo, dopo il procedimento, chiuso finché non lo si apre:
+              è una stima, e non compete con «Cucina» */}
+          <RecipeNutritionPanel recipeId={recipe.id} />
         </>
       )}
     </div>

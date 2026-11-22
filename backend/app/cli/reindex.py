@@ -40,7 +40,9 @@ async def reindex(session: AsyncSession) -> int:
     while True:
         rows = await session.execute(
             select(Recipe)
-            # un'eliminata non si cerca, e il vettore lo riceve se torna (R10)
+            # un'eliminata non si cerca, e il vettore lo riceve se torna (R10). Le ricette
+            # dei pasti invece sì (decisione 20): il vettore serve il giorno in cui si
+            # salvano nel ricettario, e la ricerca non le vede comunque
             .where(Recipe.embedding.is_(None), Recipe.archived_at.is_(None))
             .limit(BATCH)
         )

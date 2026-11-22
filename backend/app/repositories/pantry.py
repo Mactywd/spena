@@ -10,6 +10,7 @@ from sqlalchemy.orm import joinedload
 from app.db.models.pantry import PantryItem
 from app.db.models.product import Product
 from app.domain.rules import Availability, PantryStatus, availability_of
+from app.repositories.products import give_barcode_if_missing
 
 
 class ProductIngredientMismatch(Exception):
@@ -110,6 +111,34 @@ async def add_pantry_item(
     item = PantryItem(ingredient_id=ingredient_id, product_id=product_id, status=status, note=note, expires_on=expires_on)
     session.add(item)
     await session.flush()
+    return item
+
+
+async def stock_one(
+    session: AsyncSession,
+    *,
+    ingredient_id: uuid.UUID,
+    product_id: uuid.UUID | None,
+    expires_on: date | None,
+    barcode: str | None,
+    status: PantryStatus = PantryStatus.AVAILABLE,
+    note: str | None = None,
+) -> PantryItem:
+    """Una confezione che entra in dispensa: la voce, e poi il codice letto al prodotto.
+
+    L'ordine è la guardia di S8: il codice va solo a un prodotto che `add_pantry_item`
+    ha già riconosciuto come dell'ingrediente dichiarato — se la coppia è sbagliata
+    solleva prima, e il codice non si lega a niente. La usano la sistemazione (una volta
+    per confezione) e l'ingresso diretto (S3): una copia sola di queste righe, perché
+    due copie divergono al primo difetto corretto (prima lezione di CLAUDE.md).
+    Lo sfuso non ha un prodotto a cui dare il codice: il codice si lascia cadere.
+    """
+    item = await add_pantry_item(
+        session, ingredient_id=ingredient_id, product_id=product_id, status=status,
+        note=note, expires_on=expires_on,
+    )
+    if product_id is not None and barcode:
+        await give_barcode_if_missing(session, product_id, barcode)
     return item
 
 

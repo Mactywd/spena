@@ -55,8 +55,13 @@ export function DecidedTermRow({
   pending: boolean;
   onUndo: () => void;
 }) {
+  // `data-decided-term`: la scheda del termine tornato in coda aspetta che questa riga,
+  // col fuoco sul suo «Annulla», se ne sia andata (TermCard)
   return (
-    <li className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-b-0">
+    <li
+      data-decided-term={term.id}
+      className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-b-0"
+    >
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <p className="truncate font-medium">{term.display_name}</p>

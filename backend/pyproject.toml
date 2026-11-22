@@ -7,6 +7,9 @@ dependencies = [
   "argon2-cffi>=23.1",
   "asyncpg>=0.30",
   "beautifulsoup4>=4.12",
+  # Claude Code come libreria, per i Pasti: porta il suo binario, niente Node.
+  # Fissata: il binario segue la versione.
+  "claude-agent-sdk==0.2.180",
   "fastapi>=0.115",
   "httpx>=0.28",
   "itsdangerous>=2.2",
@@ -32,6 +35,17 @@ asyncio_default_fixture_loop_scope = "session"
 # è stata creata la connessione
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+# Una costante deprecata di Starlette diventa un errore, non un avviso: gli 8 avvisi per
+# `HTTP_422_UNPROCESSABLE_ENTITY` li stampava ogni suite e non li leggeva nessuno.
+# Il filtro `:app` guarda però il modulo che Starlette indica con il suo `stacklevel`, e
+# ne prende solo alcuni usi (quelli a livello di modulo): la guardia vera è
+# tests/test_no_deprecated_status.py, che legge anche le righe che nessun test attraversa.
+# Il filtro si ferma ad `app`: starlette.testclient avvisa da sé, all'import, che usa
+# `httpx` invece di `httpx2` (non installato); quell'avviso è della libreria e non va
+# trasformato in errore, altrimenti la raccolta di tests/test_startup.py cade.
+filterwarnings = [
+    "error::starlette.exceptions.StarletteDeprecationWarning:app",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

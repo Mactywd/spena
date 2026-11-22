@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { AiDraftScreen } from "./AiDraftScreen";
 import { RecipeBookScreen } from "../recipes/RecipeBookScreen";
@@ -40,7 +41,7 @@ function aiDown() {
 }
 
 function renderScreen() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -213,6 +214,22 @@ describe("AiDraftScreen", () => {
     await proposeDraft();
 
     expect(await screen.findByText(/zafferano di Navelli.*non in anagrafica/i)).toBeDefined();
+  });
+
+  it("una riga che il server dice non alimentare lo dice, invece di «non in anagrafica»", async () => {
+    const bozza = {
+      ...DRAFT,
+      ingredients: [
+        ...DRAFT.ingredients,
+        { raw_name: "carta forno", role: "secondary", quantity_text: "1 foglio", ingredient_id: null,
+          matched_name: null, confident: false, proposed_category: null, non_food: true },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(bozza), { status: 200 })));
+    renderScreen();
+    await proposeDraft();
+
+    expect(await screen.findByText("carta forno non è un alimento, sarà escluso")).toBeInTheDocument();
   });
 
   it("salva solo gli agganci confermati, con provenienza AI", async () => {
@@ -504,7 +521,7 @@ describe("AiDraftScreen", () => {
       },
     ]);
 
-    expect(await screen.findByText(/lo creo io salvando/i)).toBeInTheDocument();
+    expect(await screen.findByText(/se non c'è, lo creo in questo reparto/)).toBeInTheDocument();
     const categoria = screen.getByLabelText(/reparto per «speck»/i);
     expect(categoria).toHaveValue("carne");
 
@@ -616,7 +633,7 @@ describe("AiDraftScreen e il ricettario sotto lo stesso QueryClient", () => {
     });
     vi.stubGlobal("fetch", spy);
 
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createTestQueryClient();
     render(
       <QueryClientProvider client={client}>
         <MemoryRouter>
@@ -704,7 +721,7 @@ describe("«Salva nel ricettario» (T4)", () => {
       const { id } = useParams();
       return <p data-testid="dettaglio">{id}</p>;
     }
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createTestQueryClient();
     render(
       <QueryClientProvider client={client}>
         <NoticeProvider>

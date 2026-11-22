@@ -96,3 +96,20 @@ def test_beautifulsoup_e_una_dipendenza_di_base_e_non_un_extra():
         f"{PYPROJECT}: beautifulsoup4 non è fra le dipendenze di base "
         f"({progetto['dependencies']!r}): il parser dell'import non parte."
     )
+
+
+def test_claude_agent_sdk_e_una_dipendenza_di_base_fissata():
+    """Il binario di Claude Code segue la versione del pacchetto: con un `>=` ogni
+    ricostruzione dell'immagine cambierebbe Claude Code senza che nessuno lo decida."""
+    progetto = tomllib.loads(PYPROJECT.read_text())["project"]
+    assert "claude-agent-sdk==0.2.180" in progetto["dependencies"], (
+        f"{PYPROJECT}: manca `claude-agent-sdk==0.2.180` fra le dipendenze di base "
+        f"({progetto['dependencies']!r})"
+    )
+
+
+def test_il_dockerfile_non_installa_node():
+    """L'SDK porta il binario da sé: Node nell'immagine sarebbe peso senza ragione."""
+    for riga in DOCKERFILE.read_text().splitlines():
+        for parola in ("nodejs", "npm", "@anthropic-ai"):
+            assert parola not in riga, f"{DOCKERFILE}: la riga {riga!r} nomina {parola}"

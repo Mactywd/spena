@@ -24,9 +24,13 @@ export {
   IconAlertCircle,
   IconEye,
   IconEyeOff,
+  IconLoader2,
+  IconCopy,
 } from "@tabler/icons-react";
 // barra delle schede
 export { IconListCheck, IconBox, IconToolsKitchen2 } from "@tabler/icons-react";
+// pasti
+export { IconCalendarWeek } from "@tabler/icons-react";
 // lista e sistemazione
 export {
   IconBasketCheck,
@@ -41,6 +45,8 @@ export {
 } from "@tabler/icons-react";
 // dispensa. Il carrello con il + vuol dire «va in lista» ovunque compaia
 export { IconShoppingCartPlus, IconCalendarEvent } from "@tabler/icons-react";
+// dispensa, i reparti che si aprono e si chiudono (S15): giù aperto, a destra chiuso
+export { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 // ricette
 export {
   IconAdjustmentsHorizontal,
@@ -52,7 +58,11 @@ export {
   IconTrash,
   IconRestore,
   IconExternalLink,
+  IconBookmarkPlus,
+  IconBookmarkOff,
 } from "@tabler/icons-react";
+// sostituti (R5): «Sostituisci» in fondo a ogni riga d'ingrediente della ricetta
+export { IconArrowsExchange } from "@tabler/icons-react";
 // anagrafica
 export {
   IconCursorText,
@@ -60,6 +70,7 @@ export {
   IconArrowsTransferDown,
   IconArrowsJoin2,
   IconBarcodeOff,
+  IconMoodSmile,
 } from "@tabler/icons-react";
 // reparti
 export {

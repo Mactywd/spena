@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from app.domain.rules import ExpiryState, PantryStatus
+from app.domain.rules import ExpiryState, IngredientKind, PantryStatus
 
 
 class PantryItemOut(BaseModel):
@@ -12,6 +12,14 @@ class PantryItemOut(BaseModel):
     product_id: uuid.UUID | None
     ingredient_name: str
     ingredient_category: str
+    # Il mondo della voce, cibo o casa, già deciso: il selettore «Tutto / Cibo / Casa»
+    # della Dispensa (S14) lo confronta e non lo ricava dal reparto, che sarebbe una
+    # seconda copia di `kind_for_category`. La stessa forma di `ShoppingItemOut`.
+    ingredient_kind: IngredientKind
+    # La figura della riga (S12): l'emoji dell'ingrediente, o `None` per il ripiego
+    # sull'icona del reparto, che il client sceglie da `ingredient_category`. Un dato e
+    # non un calcolo: «non deciso» e «nessuna» escono tutti e due `None`.
+    ingredient_emoji: str | None
     product_name: str | None
     product_brand: str | None
     status: PantryStatus
@@ -30,6 +38,14 @@ class PantryItemCreate(BaseModel):
     product_id: uuid.UUID | None = None
     status: PantryStatus = PantryStatus.AVAILABLE
     note: str | None = Field(default=None, max_length=300)
+    # S3: l'ingresso diretto scrive la scadenza con la confezione in mano (D5), come la
+    # sistemazione
+    expires_on: date | None = None
+    # il codice letto prima di scegliere il prodotto a catalogo (S8). Senza max_length
+    # per la stessa ragione di StockEntryIn: un codice che non entra in colonna non si
+    # lega e basta (give_barcode_if_missing), mentre un 422 qui respingerebbe la voce
+    # per un di più
+    barcode: str | None = None
 
 
 # Niente `fill_percent`: dal 2026-09-29 non si scrive più (D1 in docs/prossimi-passi.md).

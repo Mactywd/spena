@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "../../test/queryClient";
 import { CookSheet } from "./CookSheet";
 import type { PantryItem, RecipeDetail } from "../../domain/types";
 
@@ -9,42 +10,42 @@ const RECIPE: RecipeDetail = {
   id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, cost: null, archived_at: null, main_department: null, instructions: "Cuoci.", servings: 2, source_ref: null,
-  scaled_to: null, unscalable_lines: 0, dose_lines: 1, owned_by_import: false,
+  scaled_to: null, unscalable_lines: 0, dose_lines: 1, anchor: null, owned_by_import: false, derived_from: null,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "180 g",
-      quantity_display: "180 g", quantity_scaled: false,
+      quantity_display: "180 g", quantity_scaled: false, anchorable: true, anchor_unit: "g",
       note: null, availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "yogurt greco", role: "secondary",
-      quantity_text: "q.b.", quantity_display: "q.b.", quantity_scaled: false,
+      quantity_text: "q.b.", quantity_display: "q.b.", quantity_scaled: false, anchorable: false, anchor_unit: null,
       note: null, availability: "available", satisfied: true },
   ],
 };
 
 const PANTRY: PantryItem[] = [
   { id: "p1", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-    ingredient_category: "cereali", product_name: null, product_brand: null,
-    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null },
+    ingredient_category: "cereali", ingredient_kind: "food", product_name: null, product_brand: null,
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   { id: "p2", ingredient_id: "i2", product_id: "pr1", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Total 0%", product_brand: "Fage",
-    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null },
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Total 0%", product_brand: "Fage",
+    status: "available", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   { id: "p3", ingredient_id: "i2", product_id: "pr2", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Pesca", product_brand: "Carrefour",
-    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null },
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Pesca", product_brand: "Carrefour",
+    status: "low", fill_percent: null, note: null, added_at: "2026-09-11T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   // un secondo sacco di pasta senza codice a barre, quello che "sistema la spesa"
   // produce di routine: non ha né prodotto né marca, e si distingue dal primo solo
   // per la nota, lo stato e la data d'ingresso
   { id: "p4", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-    ingredient_category: "cereali", product_name: null, product_brand: null,
-    status: "low", fill_percent: null, note: "quella aperta", added_at: "2026-09-01T10:00:00Z", expires_on: null, expiry: null },
+    ingredient_category: "cereali", ingredient_kind: "food", product_name: null, product_brand: null,
+    status: "low", fill_percent: null, note: "quella aperta", added_at: "2026-09-01T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
   // già finita e mai archiviata: GET /pantry la restituisce ancora
   { id: "p5", ingredient_id: "i2", product_id: "pr3", ingredient_name: "yogurt greco",
-    ingredient_category: "latticini", product_name: "Greco 2%", product_brand: "Lidl",
-    status: "finished", fill_percent: null, note: null, added_at: "2026-09-10T10:00:00Z", expires_on: null, expiry: null },
+    ingredient_category: "latticini", ingredient_kind: "food", product_name: "Greco 2%", product_brand: "Lidl",
+    status: "finished", fill_percent: null, note: null, added_at: "2026-09-10T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
 ];
 
 function renderSheet(
   onDone = vi.fn(),
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  client = createTestQueryClient(),
   items: PantryItem[] = PANTRY,
   recipe: RecipeDetail = RECIPE
 ) {
@@ -80,7 +81,7 @@ describe("CookSheet", () => {
     expect(pesca.textContent).toContain("Quasi finito");
 
     const aperta = screen.getByText("quella aperta").closest("li")!;
-    expect(aperta.textContent).toContain("pasta");
+    expect(aperta.textContent).toContain("Pasta");
   });
 
   it("due confezioni identiche tranne la data d'ingresso restano distinguibili", async () => {
@@ -89,8 +90,8 @@ describe("CookSheet", () => {
     // dispensa, e deve comparire sia nella riga sia nel nome del controllo.
     const bag = (id: string, addedAt: string): PantryItem => ({
       id, ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-      ingredient_category: "cereali", product_name: null, product_brand: null,
-      status: "available", fill_percent: null, note: null, added_at: addedAt, expires_on: null, expiry: null,
+      ingredient_category: "cereali", ingredient_kind: "food", product_name: null, product_brand: null,
+      status: "available", fill_percent: null, note: null, added_at: addedAt, expires_on: null, expiry: null, ingredient_emoji: null,
     });
     renderSheet(vi.fn(), undefined, [
       bag("pa", "2026-09-11T10:00:00Z"),
@@ -135,6 +136,15 @@ describe("CookSheet", () => {
     expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
   });
 
+  it("la casella «Rimetti in lista» è quella di casa, da 44 px", async () => {
+    renderSheet();
+    const row = screen.getByText("Total 0%").closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    const casella = within(row).getByRole("checkbox", { name: /Rimetti in lista/ });
+    expect(casella.className).toContain("size-6");
+    expect(casella.parentElement!.className).toContain("size-11");
+  });
+
   it("dichiarare quasi finito manda 'low' e non spunta il riacquisto", async () => {
     // "low" è l'unico segnale che fa funzionare la regola primario/secondario:
     // scriverlo come "available" cancellerebbe la differenza fra un barattolo
@@ -169,8 +179,12 @@ describe("CookSheet", () => {
     const pesca = screen.getByText("Pesca").closest("li")!;
     expect(within(yogurt).getByRole("radio", { name: "Disponibile" })).toHaveAttribute("aria-checked", "true");
     expect(within(pesca).getByRole("radio", { name: "Quasi finito" })).toHaveAttribute("aria-checked", "true");
-    // e nessuna domanda sul rientro finché non si tocca niente
-    expect(screen.queryByRole("checkbox")).toBeNull();
+    // la domanda del rientro c'è dove la confezione resta gialla o rossa, anche senza
+    // toccare niente: sulle due quasi finite, vuota (Mattia, 2026-10-09); sulle
+    // disponibili no
+    expect(within(yogurt).queryByRole("checkbox")).toBeNull();
+    expect(within(pesca).getByRole("checkbox", { name: /Rimetti in lista/ })).not.toBeChecked();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
 
     await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
     expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
@@ -289,6 +303,26 @@ describe("CookSheet", () => {
     expect(JSON.parse(spy.mock.calls[0][1].body).servings).toBe(RECIPE.servings);
   });
 
+  it("riscalata da una dose, manda la dose e non le porzioni (R2)", async () => {
+    // «≈ 1,5» non è un numero di porzioni uscito dalla pentola: la cottura registra la
+    // dose fissata, e il server ricalcola il resto
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet(vi.fn(), undefined, PANTRY, {
+      ...RECIPE,
+      anchor: { ingredient_id: "i1", amount: "135", equivalent_servings: 1.5 },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+
+    const corpo = JSON.parse(spy.mock.calls[0][1].body);
+    expect(corpo.anchor).toBe("i1");
+    expect(corpo.amount).toBe("135");
+    expect("servings" in corpo).toBe(false);
+  });
+
   it("una voce sparita dalla dispensa a foglio aperto non entra nel payload", async () => {
     // Se la voce viene archiviata da un'altra scheda, il suo id non esiste più: il
     // backend rifiuterebbe tutta la cottura per una riga che l'utente non ha più
@@ -314,8 +348,8 @@ describe("CookSheet", () => {
     show([
       ...PANTRY,
       { id: "p6", ingredient_id: "i1", product_id: null, ingredient_name: "pasta",
-        ingredient_category: "cereali", product_name: "Penne rigate", product_brand: "Barilla",
-        status: "available", fill_percent: null, note: null, added_at: "2026-09-12T10:00:00Z", expires_on: null, expiry: null },
+        ingredient_category: "cereali", ingredient_kind: "food", product_name: "Penne rigate", product_brand: "Barilla",
+        status: "available", fill_percent: null, note: null, added_at: "2026-09-12T10:00:00Z", expires_on: null, expiry: null, ingredient_emoji: null },
     ]);
 
     const row = screen.getByText("Penne rigate").closest("li")!;
@@ -375,7 +409,7 @@ describe("CookSheet", () => {
     ));
     vi.stubGlobal("fetch", spy);
 
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = createTestQueryClient();
     client.setQueryData(["pantry"], PANTRY);
     client.setQueryData(["shopping-list"], []);
     client.setQueryData(["recipe", "r1"], RECIPE);
@@ -427,5 +461,99 @@ describe("CookSheet", () => {
 
     const body = JSON.parse(spy.mock.calls[0][1].body);
     expect(body.transitions[0].restock).toBe(false);
+  });
+
+  // --- «Rimetti in lista» anche per quasi finito (decisione di Mattia del 2026-10-09) ---
+
+  it("una confezione già quasi finita si rimette in lista senza toccarne lo stato", async () => {
+    // Dalla Consegna 5 toccare lo stato di partenza vuol dire «invariato», e una
+    // confezione gialla non si poteva più rimettere in lista da qui. Ora la casella c'è,
+    // e spuntata parte come transizione allo stesso stato: il backend non tocca la voce
+    // e la rimette in lista col motivo del giallo
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 1 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    const box = within(row).getByRole("checkbox", { name: /Rimetti in lista/ });
+    expect(box).not.toBeChecked();
+    await userEvent.click(box);
+    expect(box).toBeChecked();
+    // le tacche restano dove partono: lo stato non si tocca
+    expect(within(row).getByRole("radio", { name: "Quasi finito" })).toHaveAttribute("aria-checked", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([
+      { pantry_item_id: "p3", to_status: "low", restock: true },
+    ]);
+  });
+
+  it("spuntata e poi tolta, una quasi finita invariata non manda niente", async () => {
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    const box = within(row).getByRole("checkbox", { name: /Rimetti in lista/ });
+    await userEvent.click(box);
+    await userEvent.click(box);
+    expect(box).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
+  });
+
+  it("da quasi finito a finito la casella si spunta; tornando a quasi finito resta, vuota", async () => {
+    // tornare allo stato di partenza annulla la scelta, spunta compresa: la casella resta
+    // perché la confezione è ancora gialla, ma vuota come all'inizio
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    await userEvent.click(within(row).getByRole("radio", { name: "Finito" }));
+    expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).toBeChecked();
+
+    await userEvent.click(within(row).getByRole("radio", { name: "Quasi finito" }));
+    expect(within(row).getByRole("checkbox", { name: /Rimetti in lista/ })).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
+  });
+
+  it("una spunta su una confezione che intanto è tornata disponibile non si manda", async () => {
+    // la dispensa è una prop viva: se la confezione cambia altrove a foglio aperto e non è
+    // più gialla, la casella sparisce, e una spunta che nessuno vede non rientra in lista
+    const spy = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ event_id: "e1", updated: 0, restocked: 0 }), { status: 201 }
+    ));
+    vi.stubGlobal("fetch", spy);
+
+    const { show } = renderSheet();
+    const row = screen.getByText("Pesca").closest("li")!;
+    await userEvent.click(within(row).getByRole("checkbox", { name: /Rimetti in lista/ }));
+
+    show(PANTRY.map((item) => (item.id === "p3" ? { ...item, status: "available" as const } : item)));
+    expect(within(screen.getByText("Pesca").closest("li")!).queryByRole("checkbox")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Ho cucinato" }));
+    expect(JSON.parse(spy.mock.calls[0][1].body).transitions).toEqual([]);
+  });
+
+  // la maiuscola solo a video, come le righe della Dispensa (spec T3 §4.7): il titolo di
+  // una confezione senza prodotto è il nome dell'ingrediente, e apre la riga. Il nome di un
+  // prodotto resta com'è scritto; i nomi accessibili restano in minuscolo
+  it("una confezione senza prodotto si intitola con la maiuscola, una con prodotto col suo nome", () => {
+    renderSheet();
+    const aperta = screen.getByText("quella aperta").closest("li")!;
+    expect(within(aperta).getByText("Pasta")).toBeInTheDocument();
+    expect(within(aperta).getByRole("radiogroup").getAttribute("aria-label")).toMatch(/di pasta/);
+    expect(screen.getByText("Total 0%")).toBeInTheDocument();
   });
 });

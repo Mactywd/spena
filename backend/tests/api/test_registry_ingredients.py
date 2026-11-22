@@ -152,7 +152,7 @@ async def test_il_non_alimentare_con_ricette_e_un_409_che_le_elenca(logged_clien
     assert corpo["code"] == "non_food_in_recipes"
     assert corpo["recipe_count"] == 1
     assert corpo["recipes"] == [
-        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": False}
+        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": False, "from_meal": False}
     ]
     assert corpo["pending_import_count"] == 0
     assert (corpo["pending_terms"], corpo["pending_term_count"]) == ([], 0)
@@ -171,7 +171,7 @@ async def test_il_rifiuto_segna_le_ricette_eliminate(logged_client, db_session, 
 
     assert risposta.status_code == 409
     assert risposta.json()["recipes"] == [
-        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": True}
+        {"id": str(anagrafica["risotto"]), "title": "Risotto al burro", "archived": True, "from_meal": False}
     ]
 
 
@@ -352,3 +352,47 @@ async def test_un_alias_di_un_altro_ingrediente_e_un_404(logged_client, anagrafi
         f"{BASE}/{anagrafica['pomodoro']}/aliases/{anagrafica['manuale']}"
     )
     assert risposta.status_code == 404
+
+
+# --- S12: la figura dell'ingrediente in Dispensa ---
+
+
+async def test_la_scheda_dice_la_figura_e_nasce_senza(logged_client, anagrafica):
+    corpo = (await logged_client.get(f"{BASE}/{anagrafica['pomodori']}")).json()
+    assert corpo["emoji"] is None
+
+
+async def test_cambiare_la_figura(logged_client, anagrafica):
+    risposta = await logged_client.patch(f"{BASE}/{anagrafica['pomodori']}", json={"emoji": "🍅"})
+    assert risposta.status_code == 200
+    assert risposta.json()["emoji"] == "🍅"
+
+
+async def test_nessuna_si_manda_null_e_resta_decisa(logged_client, db_session, anagrafica):
+    """`null` qui vuol dire «Nessuna» e non «nessun cambiamento»: a video è il ripiego,
+    nella colonna la stringa vuota, che il comando dell'AI non chiede più."""
+    await logged_client.patch(f"{BASE}/{anagrafica['pomodori']}", json={"emoji": "🍅"})
+
+    risposta = await logged_client.patch(f"{BASE}/{anagrafica['pomodori']}", json={"emoji": None})
+
+    assert risposta.status_code == 200
+    assert risposta.json()["emoji"] is None
+    salvata = (
+        await db_session.execute(
+            select(Ingredient.emoji).where(Ingredient.id == anagrafica["pomodori"])
+        )
+    ).scalar_one()
+    assert salvata == ""
+
+
+async def test_una_figura_fuori_elenco_e_un_409_e_non_scrive(logged_client, db_session, anagrafica):
+    risposta = await logged_client.patch(f"{BASE}/{anagrafica['pomodori']}", json={"emoji": "🚗"})
+
+    assert risposta.status_code == 409
+    assert risposta.json()["code"] == "unknown_emoji"
+    salvata = (
+        await db_session.execute(
+            select(Ingredient.emoji).where(Ingredient.id == anagrafica["pomodori"])
+        )
+    ).scalar_one()
+    assert salvata is None

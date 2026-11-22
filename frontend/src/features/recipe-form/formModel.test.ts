@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { DraftIngredient, Ingredient, RecipeDetail, RecipeDraft } from "../../domain/types";
 import {
   EMPTY_FORM,
+  NOTE_MAX,
   addNewLine,
   applyDraft,
+  attachIngredient,
   lineFromDraft,
   lineFromIngredient,
   lineFromNewName,
@@ -20,13 +22,13 @@ const DETAIL: RecipeDetail = {
   missing: 0, cookable: true, missing_names: [], image_url: null, prep_minutes: null,
   cook_minutes: null, category: "Primi piatti", cost: 2, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 4, source_ref: "https://esempio.invalid/pasta",
-  scaled_to: null, unscalable_lines: 0, dose_lines: 1, owned_by_import: true,
+  scaled_to: null, unscalable_lines: 0, dose_lines: 1, anchor: null, owned_by_import: true, derived_from: null,
   ingredients: [
     { ingredient_id: "i1", ingredient_name: "pasta", role: "primary", quantity_text: "320 g",
-      quantity_display: "320 g", quantity_scaled: false, note: "al dente",
+      quantity_display: "320 g", quantity_scaled: false, anchorable: true, anchor_unit: "g", note: "al dente",
       availability: "available", satisfied: true },
     { ingredient_id: "i2", ingredient_name: "basilico", role: "secondary", quantity_text: null,
-      quantity_display: null, quantity_scaled: false, note: null,
+      quantity_display: null, quantity_scaled: false, anchorable: false, anchor_unit: null, note: null,
       availability: "missing", satisfied: false },
   ],
 };
@@ -132,6 +134,27 @@ describe("il nome si scrive una volta", () => {
       .toBe("Zafferano non in anagrafica, sarà escluso");
   });
 
+  // la bozza dice perché una riga non è agganciata: un non alimentare in anagrafica c'è,
+  // e «non in anagrafica» sarebbe falso (Parte X)
+  it("una riga che il server dice non alimentare lo dice, e resta esclusa", () => {
+    const riga = lineFromDraft(
+      bozza({ raw_name: "carta forno", ingredient_id: null, matched_name: null, confident: false, non_food: true }),
+      0
+    );
+    expect(riga.nonFood).toBe(true);
+    expect(matchNote(riga)).toBe("carta forno non è un alimento, sarà escluso");
+    expect(savableLines([riga])).toEqual([]);
+  });
+
+  it("senza `non_food` una riga sconosciuta resta «non in anagrafica»", () => {
+    const riga = lineFromDraft(
+      bozza({ raw_name: "Zafferano", ingredient_id: null, matched_name: null, confident: false }),
+      0
+    );
+    expect(riga.nonFood).toBe(false);
+    expect(matchNote(riga)).toBe("Zafferano non in anagrafica, sarà escluso");
+  });
+
   it("la nota dell'aggancio compare solo se dice qualcosa di diverso", () => {
     expect(showsMatch(lineFromIngredient(ZAFFERANO))).toBe(false);
     expect(showsMatch(valuesFromRecipe(DETAIL).lines[0])).toBe(false);
@@ -200,5 +223,80 @@ describe("R12: le righe di un nome nuovo", () => {
     // era «non in anagrafica, sarà escluso»: col reparto, parte salvando
     expect(conZafferano.lines[1].proposedCategory).toBe("spezie");
     expect(savableLines(conZafferano.lines).map((line) => line.key)).toContain(ignota.key);
+  });
+});
+
+describe("la nota della riga (piano 20)", () => {
+  it("il limite è quello della colonna: 300", () => {
+    expect(NOTE_MAX).toBe(300);
+  });
+
+  it("si manda senza spazi ai bordi; vuota o di soli spazi non si manda, e il server salva null", () => {
+    const values = valuesFromRecipe(DETAIL);
+    const [pasta, basilico] = values.lines;
+    const corpo = recipeBody({
+      ...values,
+      lines: [{ ...pasta, note: "  molto al dente  " }, { ...basilico, note: "   " }],
+    });
+    expect(corpo.ingredients).toEqual([
+      { ingredient_id: "i1", role: "primary", quantity_text: "320 g", note: "molto al dente" },
+      { ingredient_id: "i2", role: "secondary", quantity_text: null },
+    ]);
+  });
+
+  it("anche una riga nuova di R12 porta la sua nota", () => {
+    const riga = { ...lineFromNewName("speck", "carne"), note: "a cubetti" };
+    const corpo = recipeBody({ ...EMPTY_FORM, title: "Speck", instructions: "Taglia.", lines: [riga] });
+    expect(corpo.ingredients).toEqual([
+      { name: "speck", category: "carne", role: "primary", quantity_text: null, note: "a cubetti" },
+    ]);
+  });
+
+  it("una nota oltre 300 caratteri si dice prima di salvare", () => {
+    const values = valuesFromRecipe(DETAIL);
+    const [pasta] = values.lines;
+    expect(validationProblem({ ...values, lines: [{ ...pasta, note: "a".repeat(301) }] })).toBe(
+      "La nota di «pasta» è troppo lunga: massimo 300 caratteri."
+    );
+    expect(validationProblem({ ...values, lines: [{ ...pasta, note: "a".repeat(300) }] })).toBeNull();
+  });
+});
+
+describe("attachIngredient: scegliere un ingrediente dal selettore", () => {
+  const FARRO: Ingredient = {
+    id: "i7", name: "farro", display_name: "Farro", category: "cereali", kind: "food",
+  };
+
+  it("dopo «Aggiungi «farro»», scegliere «Farro» aggancia quella riga: una sola, con la sua dose", () => {
+    const nuova = { ...lineFromNewName("farro", "cereali"), quantityText: "160 g", role: "secondary" as const };
+    const righe = attachIngredient([nuova], FARRO);
+    expect(righe).toHaveLength(1);
+    expect(righe[0]).toMatchObject({
+      key: nuova.key, label: "farro", ingredientId: "i7", matchedName: "farro",
+      proposedCategory: null, included: true, quantityText: "160 g", role: "secondary",
+    });
+  });
+
+  it("una riga dell'AI «non in anagrafica» con lo stesso nome si aggancia anche lei", () => {
+    const ai = lineFromDraft(
+      bozza({ raw_name: "Zafferano", ingredient_id: null, matched_name: null, confident: false }),
+      0
+    );
+    const righe = attachIngredient([ai], ZAFFERANO);
+    expect(righe).toHaveLength(1);
+    expect(righe[0]).toMatchObject({ ingredientId: "i9", included: true, proposedCategory: null });
+    expect(savableLines(righe)).toHaveLength(1);
+  });
+
+  it("un nome diverso fa una riga nuova", () => {
+    const righe = attachIngredient([lineFromNewName("orzo", "cereali")], FARRO);
+    expect(righe.map((riga) => riga.label)).toEqual(["orzo", "Farro"]);
+  });
+
+  it("una riga che lo indica già si include e basta", () => {
+    const esclusa = { ...lineFromIngredient(FARRO), included: false };
+    const righe = attachIngredient([esclusa], FARRO);
+    expect(righe).toHaveLength(1);
+    expect(righe[0].included).toBe(true);
   });
 });

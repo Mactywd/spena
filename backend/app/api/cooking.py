@@ -25,7 +25,12 @@ async def cook_recipe(
     ]
     try:
         event = await cook(
-            session, recipe_id=recipe_id, servings=payload.servings, transitions=transitions
+            session, recipe_id=recipe_id, servings=payload.servings, transitions=transitions,
+            anchor=(
+                (payload.anchor, payload.amount)
+                if payload.anchor is not None and payload.amount is not None
+                else None
+            ),
         )
         await session.commit()
     except KeyError as exc:
@@ -34,6 +39,8 @@ async def cook_recipe(
 
     return CookResultOut(
         event_id=event.id,
-        updated=len(event.snapshot["transitions"]),
+        # le confezioni il cui stato è cambiato: una transizione allo stesso stato è solo
+        # un rientro in lista, e lo conta `restocked`
+        updated=sum(1 for t in event.snapshot["transitions"] if t["from"] != t["to"]),
         restocked=event.snapshot["restocked"],
     )

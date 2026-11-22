@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { fetchRecipe, updateRecipe } from "../recipes/api";
 import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
@@ -13,7 +13,7 @@ import type { RecipeDetail } from "../../domain/types";
 
 const TITLE = "Modifica la ricetta";
 
-function EditForm({ recipe }: { recipe: RecipeDetail }) {
+function EditForm({ recipe, mealId }: { recipe: RecipeDetail; mealId: string | null }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const notice = useNotice();
@@ -44,6 +44,12 @@ function EditForm({ recipe }: { recipe: RecipeDetail }) {
           // «Salvata.» dall'avviso unico (T4), non più da uno stato della cronologia che il
           // dettaglio doveva leggere e poi pulire
           notice({ text: "Salvata." });
+          if (mealId) {
+            // da un pasto si torna al pasto, che mostra la ricetta cambiata
+            void queryClient.invalidateQueries({ queryKey: ["meals"] });
+            navigate(`/pasti/${mealId}`, { replace: true });
+            return;
+          }
           // `replace`: il modulo lascia il posto al dettaglio, e «indietro» (quello di
           // Android per primo) non riapre un modulo già salvato
           navigate(`/ricette/${recipe.id}`, { replace: true });
@@ -60,12 +66,16 @@ function EditForm({ recipe }: { recipe: RecipeDetail }) {
  * Il modulo nasce solo da una risposta letta dopo l'apertura, mai dalla cache: la PUT
  * rimpiazza la ricetta intera, e un modulo costruito su una copia vecchia rimanderebbe
  * al server i valori vecchi. Succedeva davvero: dal dettaglio riporzionato la chiave
- * attiva è `["recipe", id, 3]`, e cambiare il costo lì rilegge solo quella — la copia a
+ * attiva è `["recipe", id, { servings: 3 }]`, e cambiare il costo lì rilegge solo quella — la copia a
  * 1× restava col costo di prima, e «Salva le modifiche» lo rimetteva zitto. Un giro in
  * più ad ogni apertura della modifica è il prezzo di non perdere niente. */
 export function RecipeEditScreen() {
   const { id = "" } = useParams();
-  const back = { to: `/ricette/${id}`, label: "Ricetta" };
+  // `?pasto=<id>`: la modifica è partita da un pasto, e a lui ritorna
+  const mealId = useSearchParams()[0].get("pasto");
+  const back = mealId
+    ? { to: `/pasti/${mealId}`, label: "Pasto" }
+    : { to: `/ricette/${id}`, label: "Ricetta" };
   const { data: recipe, error, isError, isFetchedAfterMount, refetch } = useQuery({
     queryKey: ["recipe", id, null],
     queryFn: () => fetchRecipe(id),
@@ -128,7 +138,7 @@ export function RecipeEditScreen() {
 
   return (
     <Screen title={TITLE} back={back}>
-      <EditForm recipe={recipe} />
+      <EditForm recipe={recipe} mealId={mealId} />
     </Screen>
   );
 }

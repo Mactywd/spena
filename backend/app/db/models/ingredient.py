@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.core.db import Base
 from app.db.models.base import TimestampMixin, UUIDMixin
+from app.domain.emoji import EMOJI_MAX_LENGTH
 from app.domain.rules import kind_for_category
 
 # La larghezza delle tre colonne che portano un nome di ingrediente: il nome canonico,
@@ -67,6 +68,12 @@ class Ingredient(UUIDMixin, TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(String(10))
     # popolato in fase 3, quando arrivano le tabelle di composizione
     composition_ref: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # La figura delle sue righe in Dispensa (S12). Tre stati: `NULL` non ancora deciso
+    # (l'AI lo chiederà), `""` deciso «nessuna», altrimenti una voce di
+    # `INGREDIENT_EMOJI`. Chi la scrive passa da `canonical_emoji`
+    # (`app/domain/emoji.py`, dove i tre stati sono spiegati): oggi
+    # `registry.set_ingredient_emoji` e `services/ingredient_emoji.py`, nessun altro.
+    emoji: Mapped[str | None] = mapped_column(String(EMOJI_MAX_LENGTH), nullable=True)
 
     aliases: Mapped[list["IngredientAlias"]] = relationship(
         back_populates="ingredient", cascade="all, delete-orphan", lazy="selectin"

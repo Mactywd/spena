@@ -12,6 +12,7 @@ export function OptionList({
 }: {
   options: Ingredient[];
   onPick: (ingredient: Ingredient) => void;
+  /** Una scelta è in volo: le opzioni restano raggiungibili ma non scelgono. */
   disabled?: boolean;
   /** L'etichetta del campo che l'elenco completa. ARIA vuole un nome per ogni listbox;
    * il nome non è l'etichetta nuda, perché chi cerca il campo per etichetta (uno
@@ -43,9 +44,13 @@ export function OptionList({
             aria-selected={false}
             aria-label={ingredient.display_name}
             aria-describedby={categoryId}
-            disabled={disabled}
-            onClick={() => onPick(ingredient)}
-            className="flex min-h-12 w-full items-baseline gap-3 px-3 py-2.5 text-left text-sm disabled:opacity-50"
+            // `aria-disabled` e non `disabled`: un'opzione che si spegne col fuoco
+            // addosso lo perdeva (pulizie del 2026-10-13); il tocco si ignora qui
+            aria-disabled={disabled || undefined}
+            onClick={() => {
+              if (!disabled) onPick(ingredient);
+            }}
+            className="flex min-h-12 w-full items-baseline gap-3 px-3 py-2.5 text-left text-sm aria-disabled:text-ink-faint"
           >
             <span className="truncate">{ingredient.display_name}</span>
             {/* la categoria serve a distinguere due omonimi, non a essere letta

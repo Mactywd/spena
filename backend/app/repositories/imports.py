@@ -69,6 +69,52 @@ async def pending_pages(session: AsyncSession, source: str) -> list[RecipeImport
     return list(rows.scalars())
 
 
+async def skipped_pages(
+    session: AsyncSession, source: str, *, limit: int, offset: int
+) -> tuple[int, list[RecipeImport]]:
+    """Le pagine scartate, dalla scaricata per ultima, col loro totale.
+
+    A parità di `fetched_at` (una transazione sola scrive lo stesso istante) decide
+    l'indirizzo: senza un secondo ordine stabile, `offset` potrebbe mostrare due volte
+    la stessa pagina e mai un'altra.
+    """
+    where = (RecipeImport.source == source, RecipeImport.state == ImportState.SKIPPED)
+    total = (
+        await session.execute(select(func.count()).select_from(RecipeImport).where(*where))
+    ).scalar_one()
+    rows = await session.execute(
+        select(RecipeImport)
+        .where(*where)
+        .order_by(RecipeImport.fetched_at.desc(), RecipeImport.url)
+        .limit(limit)
+        .offset(offset)
+    )
+    return total, list(rows.scalars())
+
+
+async def count_pending_recipes_with_key(session: AsyncSession, source: str, key: str) -> int:
+    """Le ricette in attesa della fonte che nominano `key` in almeno una riga.
+
+    È il numero che `count_pending_keys` (services/recipe_import/terms.py) dà per quella
+    chiave, contato dal database: `payload->'ingredients' @> '[{"key": …}]'` è vero una
+    volta per pagina, anche se la chiave sta in due righe, e mai per una riga senza chiave.
+    Lo usa `undo_decision`, che riconta un termine solo e prima leggeva tutte le pagine in
+    attesa col loro JSONB intero (tests/repositories/test_imports_count.py tiene uguali i
+    due conti).
+    """
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(RecipeImport)
+            .where(
+                RecipeImport.source == source,
+                RecipeImport.state == ImportState.PENDING,
+                RecipeImport.payload["ingredients"].contains([{"key": key}]),
+            )
+        )
+    ).scalar_one()
+
+
 async def counts(session: AsyncSession, source: str) -> ImportCounts:
     by_state = dict(
         (
@@ -155,6 +201,10 @@ async def terms_by_key(session: AsyncSession, source: str) -> dict[str, ImportTe
 
 async def get_term(session: AsyncSession, term_id: uuid.UUID) -> ImportTerm | None:
     return await session.get(ImportTerm, term_id)
+
+
+async def get_page(session: AsyncSession, page_id: uuid.UUID) -> RecipeImport | None:
+    return await session.get(RecipeImport, page_id)
 
 
 async def waiting_titles(
