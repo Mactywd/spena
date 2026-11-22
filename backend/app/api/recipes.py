@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +27,7 @@ from app.domain.rules import (
     main_department,
     missing_count,
 )
+from app.api.llm_refusal import llm_refusal
 from app.api.refusals import meal_refusal_response
 from app.repositories.meals import get_meal, meal_of_recipe
 from app.repositories.pantry import availability_map
@@ -542,21 +544,19 @@ def _draft_out(draft: RecipeDraft) -> DraftOut:
 @router.post("/ai-draft", response_model=DraftOut)
 async def ai_draft(
     payload: DraftRequest, session: AsyncSession = Depends(get_session)
-) -> DraftOut:
+) -> DraftOut | JSONResponse:
     """Propone, non salva. Il salvataggio passa da POST /recipes come le altre."""
     try:
         draft = await draft_recipe(session, payload.prompt)
     except LlmUnavailable as exc:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, f"stesura AI non disponibile: {exc}"
-        ) from exc
+        return llm_refusal(exc)
     return _draft_out(draft)
 
 
 @router.post("/{recipe_id}/ai-variant", response_model=DraftOut)
 async def ai_variant(
     recipe_id: uuid.UUID, payload: DraftRequest, session: AsyncSession = Depends(get_session)
-) -> DraftOut:
+) -> DraftOut | JSONResponse:
     """Propone una variante della ricetta, e non salva niente (R8).
 
     La variante si salva con `POST /recipes` e `derived_from_id`: una ricetta nuova,
@@ -571,7 +571,5 @@ async def ai_variant(
     try:
         draft = await draft_variant(session, recipe, payload.prompt)
     except LlmUnavailable as exc:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, f"variante AI non disponibile: {exc}"
-        ) from exc
+        return llm_refusal(exc)
     return _draft_out(draft)

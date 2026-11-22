@@ -315,6 +315,26 @@ async def test_un_modello_giu_durante_la_stesura_e_spesa_registrata_come_fallita
     assert riga.cost_usd is None
 
 
+async def test_la_bozza_fallita_registra_l_uso(db_session):
+    """Una risposta tagliata è stata pagata: la riga fallita porta i suoi token."""
+    from sqlalchemy import select
+
+    from app.db.models.llm_call import LlmCall
+    from app.services.llm import LlmCallSite, LlmFailureKind
+    from llm_fakes import COSTO_FINTO, messaggio
+
+    finto = FakeLlm(messaggio("{", stop_reason="max_tokens"))
+    with pytest.raises(LlmUnavailable) as eccezione:
+        await draft_recipe(db_session, "pasta veloce", client=finto)
+
+    assert eccezione.value.kind is LlmFailureKind.TRUNCATED
+    riga = (await db_session.execute(select(LlmCall))).scalar_one()
+    assert riga.call_site == LlmCallSite.RECIPE_DRAFT
+    assert riga.ok is False
+    assert (riga.prompt_tokens, riga.completion_tokens) == (300, 20)
+    assert riga.cost_usd == pytest.approx(COSTO_FINTO)
+
+
 async def test_la_bozza_propone_un_costo(db_session, anagrafica):
     draft = await draft_recipe(db_session, "qualcosa di veloce", client=FakeLlm(DRAFT))
     assert draft.cost == 1

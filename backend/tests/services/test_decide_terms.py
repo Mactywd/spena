@@ -19,7 +19,17 @@ from app.services.ingredient_match import match_name
 from app.services.recipe_import.decide import decide_terms
 from app.db.models.llm_call import LlmCall
 from app.services.llm import LlmCallSite
-from llm_fakes import COSTO_FINTO, LLM_IGNORE, FakeLlm, ScriptedLlm, llm_create, llm_map
+from app.services.llm import LlmFailureKind
+from llm_fakes import (
+    COSTO_FINTO,
+    LLM_IGNORE,
+    FakeLlm,
+    ScriptedLlm,
+    errore_api,
+    llm_create,
+    llm_map,
+    messaggio,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -754,3 +764,79 @@ async def test_ogni_domanda_allai_finisce_nello_storico_delle_spese(db_session, 
     assert LlmCallSite.TERM_DECISION in {r.call_site for r in righe}
     assert all(r.ok for r in righe)
     assert sum(r.cost_usd for r in righe) == pytest.approx(finto.calls * COSTO_FINTO)
+
+
+async def test_il_credito_finito_ferma_il_fan_out(db_session, base, monkeypatch):
+    """Il credito finito darebbe lo stesso esito a ogni termine: dopo il primo guasto
+    terminale le domande che non sono ancora partite non partono, e il collasso (la sua
+    spesa non nasce) si salta."""
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "1")
+    get_settings.cache_clear()
+    termini = await aggiungi(
+        db_session,
+        termine("Rigatoni", "k-rigatoni", 4),
+        termine("Speck", "k-speck", 3),
+        termine("Porro", "k-porro", 2),
+        termine("Acqua", "k-acqua", 1),
+    )
+    finto = ScriptedLlm({
+        "Rigatoni": llm_map("pasta"),
+        "Speck": errore_api(402, "billing_error"),
+        "Porro": llm_create("porro", "Porro", "verdura"),
+        "Acqua": LLM_IGNORE,
+    })
+
+    esito = await decide_terms(db_session, termini, client=finto)
+
+    assert finto.calls == 2
+    assert esito.stopped is not None and esito.stopped.kind is LlmFailureKind.CREDIT
+    assert esito.applied == 1
+    assert esito.still_pending == 3
+    righe = (await db_session.execute(select(LlmCall))).scalars().all()
+    assert sorted((r.call_site, r.ok) for r in righe) == [
+        (LlmCallSite.TERM_DECISION, False),
+        (LlmCallSite.TERM_DECISION, True),
+    ]
+
+
+async def test_un_guasto_passeggero_lascia_in_coda_solo_quel_termine(
+    db_session, base, monkeypatch
+):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "1")
+    get_settings.cache_clear()
+    termini = await aggiungi(
+        db_session,
+        termine("Rigatoni", "k-rigatoni", 4),
+        termine("Speck", "k-speck", 3),
+        termine("Acqua", "k-acqua", 2),
+        termine("Sale", "k-sale", 1),
+    )
+    finto = ScriptedLlm({
+        "Rigatoni": llm_map("pasta"),
+        "Speck": errore_api(529, "overloaded_error"),
+        "Acqua": LLM_IGNORE,
+        "Sale": LLM_IGNORE,
+    })
+
+    esito = await decide_terms(db_session, termini, client=finto)
+
+    assert finto.calls == 4
+    assert esito.stopped is None
+    assert esito.still_pending == 1
+    assert termini[1].decision == TermDecision.PENDING
+
+
+async def test_un_guasto_tagliato_registra_l_uso(db_session, base):
+    (rigatoni,) = await aggiungi(db_session, termine("Rigatoni", "k-rigatoni"))
+    finto = ScriptedLlm({"Rigatoni": messaggio("{", stop_reason="max_tokens")})
+
+    await decide_terms(db_session, [rigatoni], client=finto)
+
+    riga = (await db_session.execute(select(LlmCall))).scalars().one()
+    assert riga.ok is False
+    assert (riga.prompt_tokens, riga.completion_tokens) == (300, 20)
+    assert riga.cost_usd == pytest.approx(COSTO_FINTO)

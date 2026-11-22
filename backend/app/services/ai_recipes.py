@@ -211,8 +211,8 @@ async def _ask(
             max_tokens=max_tokens,
             client=client,
         )
-    except LlmUnavailable:
-        await _record_spend(session, call_site, LlmUsage(), ok=False)
+    except LlmUnavailable as exc:
+        await _record_spend(session, call_site, exc.usage, ok=False)
         raise
 
     await _record_spend(session, call_site, esito.usage, ok=True)

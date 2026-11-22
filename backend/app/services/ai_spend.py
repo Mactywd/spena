@@ -53,10 +53,10 @@ async def complete_recorded(
             max_tokens=max_tokens,
             client=client,
         )
-    except LlmUnavailable:
-        await record_llm_call(session, call_site=call_site, usage=LlmUsage(), ok=False)
+    except LlmUnavailable as exc:
+        await record_llm_call(session, call_site=call_site, usage=exc.usage, ok=False)
         if spend is not None:
-            spend.add(LlmUsage())
+            spend.add(exc.usage)
         raise
     await record_llm_call(session, call_site=call_site, usage=esito.usage, ok=True)
     if spend is not None:

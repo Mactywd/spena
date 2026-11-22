@@ -9,7 +9,7 @@ from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe_import import ImportState, RecipeImport
 from app.db.models.unit import Unit
 from app.services.recipe_import.giallozafferano import RECIPE_SITEMAP, build_client
-from llm_fakes import ScriptedLlm, llm_create, llm_map
+from llm_fakes import ScriptedLlm, errore_api, llm_create, llm_map
 
 PAGINA = """<html><head>
 <script type="application/ld+json">
@@ -302,6 +302,34 @@ async def test_lo_scarico_decide_i_termini_e_materializza(db_session, monkeypatc
         assert esito.decided >= 1
         ricette = (await db_session.execute(select(Recipe))).scalars().all()
         assert len(ricette) == 1
+    finally:
+        get_settings.cache_clear()
+
+
+@respx.mock
+async def test_il_credito_finito_lo_dice(db_session, monkeypatch, capsys):
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
+    try:
+        db_session.add(
+            Ingredient(name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI)
+        )
+        await db_session.flush()
+        client = fonte_finta_con_una_ricetta()
+        llm = ScriptedLlm({
+            "Rigatoni": errore_api(402, "billing_error"),
+            "Speck": errore_api(402, "billing_error"),
+        })
+
+        await run_import(db_session, limit=1, client=client, sleep=nessuna_pausa, llm_client=llm)
+
+        uscita = capsys.readouterr().out
+        assert (
+            "riconoscimento fermato: L'AI non risponde: il credito della chiave API è "
+            "finito. Va ricaricato nella console di Anthropic. 2 termini restano in coda."
+        ) in uscita
     finally:
         get_settings.cache_clear()
 

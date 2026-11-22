@@ -73,7 +73,12 @@ async def _line(
 
 
 async def _line_out(
-    session: AsyncSession, recipe: Recipe, line: RecipeIngredient, *, ai_failed: bool = False
+    session: AsyncSession,
+    recipe: Recipe,
+    line: RecipeIngredient,
+    *,
+    ai_failed: bool = False,
+    ai_notice: str | None = None,
 ) -> LineSubstitutionOut:
     context = recipe_context(recipe.category)
     row = await effective_row(session, recipe.id, line.ingredient_id, context)
@@ -82,6 +87,7 @@ async def _line_out(
         "ingredient_name": line.ingredient.name,
         "context": context,
         "ai_failed": ai_failed,
+        "ai_notice": ai_notice,
     }
     if row is None:
         return LineSubstitutionOut(
@@ -146,7 +152,7 @@ async def ask_line_substitution(
     recipe, line = await _line(session, recipe_id, ingredient_id)
     outcome = await decide_pair(session, line.ingredient_id, recipe_context(recipe.category))
     await session.commit()
-    return await _line_out(session, recipe, line, ai_failed=outcome.failed)
+    return await _line_out(session, recipe, line, ai_failed=outcome.failed, ai_notice=outcome.notice)
 
 
 @recipe_router.put("/{recipe_id}/substitutes/{ingredient_id}", response_model=LineSubstitutionOut)

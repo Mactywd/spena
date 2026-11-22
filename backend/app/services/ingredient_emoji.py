@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.ingredient import Ingredient
 from app.domain.emoji import INGREDIENT_EMOJI, NO_EMOJI, canonical_emoji
 from app.repositories.llm_calls import record_llm_call
-from app.services.llm import LlmCallSite, LlmUnavailable, LlmUsage, complete_json
+from app.services.llm import LlmCallSite, LlmUnavailable, complete_json
 
 # Cento nomi per chiamata (bozza §3.A: «a lotti di un centinaio di nomi»). Una risposta
 # è `{"n": …, "nome": …, "emoji": …}` per nome, ~20 token: duemila per lotto di media,
@@ -150,7 +150,7 @@ async def decide_ingredient_emoji(
         except LlmUnavailable as exc:
             # mai un vicolo cieco: chi resta `NULL` mostra l'icona del reparto
             await record_llm_call(
-                session, call_site=LlmCallSite.INGREDIENT_EMOJI, usage=LlmUsage(), ok=False
+                session, call_site=LlmCallSite.INGREDIENT_EMOJI, usage=exc.usage, ok=False
             )
             unavailable = str(exc)
             break

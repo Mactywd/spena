@@ -33,6 +33,8 @@ class LineSubstitutionOut(BaseModel):
     substitutes: list[LineSubstituteOut]
     # `POST …/ask`: l'AI non ha risposto, o ha risposto qualcosa che non si applica
     ai_failed: bool = False
+    # la frase del guasto, da mostrare sopra «Nessun suggerimento ancora»
+    ai_notice: str | None = None
 
 
 class SubstituteIn(BaseModel):

@@ -15,10 +15,12 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
+from app.api.llm_refusal import llm_refusal
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, RecipeImport, TermDecision
@@ -198,7 +200,7 @@ async def _ingredient_name(
 @router.post("/terms/decide", response_model=DecideOut)
 async def decide_with_ai(
     payload: DecideRequest, session: AsyncSession = Depends(get_session)
-) -> DecideOut:
+) -> DecideOut | JSONResponse:
     """Fa decidere all'AI i termini in coda, e applica.
 
     Non torna proposte da confermare: le decisioni si applicano, con `decided_by="ai"`,
@@ -224,10 +226,13 @@ async def decide_with_ai(
     try:
         outcome = await decide_terms(session, terms)
     except LlmUnavailable as exc:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"il riconoscimento non è disponibile ({exc}): decidi a mano, la coda funziona.",
-        ) from exc
+        return llm_refusal(exc)
+
+    if outcome.stopped is not None and outcome.applied == 0:
+        # il giro si è fermato prima di decidere qualcosa: le righe di spesa delle
+        # chiamate fatte restano, e la coda resta com'era (si decide a mano)
+        await session.commit()
+        return llm_refusal(outcome.stopped)
 
     materialized = await materialize_ready(session, GIALLOZAFFERANO)
     numbers = await counts(session, GIALLOZAFFERANO)
@@ -236,6 +241,7 @@ async def decide_with_ai(
         applied=outcome.applied, created=outcome.created, ignored=outcome.ignored,
         still_pending=outcome.still_pending, unlocked=materialized.created,
         remaining_terms=numbers.pending_terms,
+        stopped_notice=outcome.stopped.notice if outcome.stopped is not None else None,
     )
 
 

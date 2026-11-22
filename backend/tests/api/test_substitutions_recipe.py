@@ -17,7 +17,8 @@ from app.domain.substitutions import SubstitutionContext, SubstitutionVerdict
 from app.repositories import substitutions as repo
 from app.repositories.recipes import create_recipe
 from app.repositories.substitutions import Answer
-from llm_fakes import FakeLlm
+from app.services.llm import LLM_FAILURE_NOTICES, LlmFailureKind
+from llm_fakes import FakeLlm, errore_api
 
 SALATO = SubstitutionContext.SAVORY
 DOLCE = SubstitutionContext.SWEET
@@ -76,6 +77,7 @@ async def test_senza_risposta_la_riga_lo_dice(logged_client, cucina):
     assert risposta.json() == {
         "ingredient_id": str(voci["pasta"].id), "ingredient_name": "pasta", "context": "salato",
         "scope": None, "verdict": None, "decided_by": None, "substitutes": [], "ai_failed": False,
+        "ai_notice": None,
     }
 
 
@@ -156,6 +158,7 @@ async def test_ask_salva_la_risposta_dell_ai(db_session, logged_client, cucina, 
         "general", "substitutes", "ai", False,
     )
     assert [s["name"] for s in corpo["substitutes"]] == ["riso"]
+    assert corpo["ai_notice"] is None
     assert len(finto.bodies) == 1
     chiamate = (await db_session.execute(select(LlmCall.call_site))).scalars().all()
     assert chiamate == ["ingredient_substitutes"]
@@ -172,7 +175,23 @@ async def test_ask_senza_ai_lascia_la_strada_a_mano(db_session, logged_client, c
 
     assert risposta.status_code == 200
     assert (risposta.json()["verdict"], risposta.json()["ai_failed"]) == (None, True)
+    assert risposta.json()["ai_notice"] == LLM_FAILURE_NOTICES[LlmFailureKind.NOT_CONFIGURED]
     get_settings.cache_clear()
+
+
+async def test_ask_con_il_credito_finito_dice_perche_senza_un_503(
+    logged_client, cucina, con_chiave, monkeypatch
+):
+    voci, ricette = cucina
+    finto = FakeLlm(errore_api(402, "billing_error"))
+    monkeypatch.setattr("app.services.substitutions.open_client", lambda: finto)
+
+    risposta = await logged_client.post(_url(ricette["pasta"], voci["pasta"], "/ask"))
+
+    assert risposta.status_code == 200
+    corpo = risposta.json()
+    assert (corpo["verdict"], corpo["ai_failed"]) == (None, True)
+    assert corpo["ai_notice"] == LLM_FAILURE_NOTICES[LlmFailureKind.CREDIT]
 
 
 async def test_ask_con_una_risposta_non_chiama(db_session, logged_client, cucina, con_chiave, monkeypatch):

@@ -211,6 +211,11 @@ async def _settle(
             outcome = await decide_terms(session, waiting, client=llm_client)
             decided = outcome.applied
             still_pending = outcome.still_pending
+            if outcome.stopped is not None:
+                print(
+                    f"riconoscimento fermato: {outcome.stopped.notice} "
+                    f"{outcome.still_pending} termini restano in coda."
+                )
         except LlmUnavailable as exc:
             still_pending = len(waiting)
             print(f"riconoscimento non disponibile ({exc}): i termini restano in coda.")

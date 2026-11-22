@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.db.models.llm_call import LlmCall
 from app.services.ai_spend import Spend, complete_recorded
 from app.services.llm import LlmCallSite, LlmUnavailable
-from llm_fakes import COSTO_FINTO, FakeLlm
+from llm_fakes import COSTO_FINTO, FakeLlm, messaggio
 
 SCHEMA = {
     "type": "object",
@@ -54,3 +54,17 @@ async def test_una_chiamata_fallita_si_registra_e_si_conta_senza_costo(db_sessio
     assert (spesa.calls, spesa.unpriced, spesa.cost_usd) == (1, 1, 0.0)
     riga = (await db_session.execute(select(LlmCall))).scalars().one()
     assert (riga.call_site, riga.ok, riga.cost_usd) == ("ciqual_terms", False, None)
+
+
+async def test_la_chiamata_fallita_somma_il_costo_che_ha(db_session):
+    """Una risposta rifiutata ha l'uso dichiarato: si somma, non si conta «senza costo»."""
+    spesa = Spend()
+
+    with pytest.raises(LlmUnavailable):
+        await _chiama(db_session, FakeLlm(messaggio("", stop_reason="refusal")), spesa)
+
+    assert spesa.calls == 1
+    assert spesa.cost_usd == pytest.approx(COSTO_FINTO)
+    assert spesa.unpriced == 0
+    riga = (await db_session.execute(select(LlmCall))).scalars().one()
+    assert (riga.ok, riga.cost_usd) == (False, COSTO_FINTO)

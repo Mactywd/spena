@@ -365,8 +365,8 @@ async def collapse_creates(
             max_tokens=COLLAPSE_MAX_TOKENS,
             client=client,
         )
-    except LlmUnavailable:
-        return list(proposals), Spesa(LlmCallSite.TERM_COLLAPSE, LlmUsage(), ok=False)
+    except LlmUnavailable as exc:
+        return list(proposals), Spesa(LlmCallSite.TERM_COLLAPSE, exc.usage, ok=False)
 
     spesa = Spesa(LlmCallSite.TERM_COLLAPSE, esito.usage, ok=True)
     payload = esito.data
@@ -448,6 +448,9 @@ class Decided:
     created: int
     ignored: int
     still_pending: int
+    # il guasto terminale che ha fermato il giro (chiave, credito, limite di frequenza):
+    # chi chiama lo mostra, perché «0 decisi» senza motivo è un vicolo cieco
+    stopped: LlmUnavailable | None = None
 
 
 async def decide_terms(
@@ -488,13 +491,21 @@ async def decide_terms(
     # sulla sessione da qui invece romperebbe l'invariante dichiarata in testa al
     # modulo, cioè che il fan-out non scrive.
     spese: list[Spesa] = []
+    # il primo guasto terminale: dopo di lui le domande che non sono ancora partite non
+    # partono, perché darebbero lo stesso esito (credito finito, chiave revocata)
+    stopped: LlmUnavailable | None = None
 
     async def ask(term: ImportTerm, api: AsyncAnthropic) -> TermDecisionProposal | None:
+        nonlocal stopped
         async with semaphore:
+            if stopped is not None:
+                return None
             try:
                 answer = await decide_one(session, term, registry, client=api)
             except LlmUnavailable as exc:
-                spese.append(Spesa(LlmCallSite.TERM_DECISION, LlmUsage(), ok=False))
+                spese.append(Spesa(LlmCallSite.TERM_DECISION, exc.usage, ok=False))
+                if exc.terminal and stopped is None:
+                    stopped = exc
                 # questo termine resta in coda; gli altri non ne sanno niente. Il
                 # livello resta warning e non error: un modello giù è un evento
                 # atteso (timeout, 429), non un difetto nostro — ma deve pur
@@ -532,11 +543,12 @@ async def decide_terms(
                     term.display_name, term.id, exc_info=esito,
                 )
         proposals = [p for p in raw if isinstance(p, TermDecisionProposal)]
-        proposals, spesa_collasso = await collapse_creates(
-            session, proposals, registry, client=api
-        )
-        if spesa_collasso is not None:
-            spese.append(spesa_collasso)
+        if stopped is None:
+            proposals, spesa_collasso = await collapse_creates(
+                session, proposals, registry, client=api
+            )
+            if spesa_collasso is not None:
+                spese.append(spesa_collasso)
     finally:
         if owned:
             await api.close()
@@ -651,5 +663,9 @@ async def decide_terms(
     await session.flush()
     still_pending = sum(1 for term in terms if term.decision == TermDecision.PENDING)
     return Decided(
-        applied=applied, created=created, ignored=ignored, still_pending=still_pending
+        applied=applied,
+        created=created,
+        ignored=ignored,
+        still_pending=still_pending,
+        stopped=stopped,
     )

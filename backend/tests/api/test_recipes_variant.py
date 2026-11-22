@@ -16,7 +16,8 @@ from app.db.models.recipe_import import RecipeImport
 from app.domain.rules import IngredientRole
 from app.repositories.recipes import create_recipe
 from app.services.ai_recipes import DraftIngredient, RecipeDraft
-from app.services.llm import LlmUnavailable
+from app.services.llm import LLM_FAILURE_NOTICES, LlmFailureKind, LlmUnavailable
+from llm_fakes import FakeLlm, errore_api
 
 TITOLO_VARIANTE = "Pasta al pomodoro senza basilico"
 
@@ -284,7 +285,39 @@ async def test_l_ai_che_non_risponde_e_un_503(logged_client, monkeypatch, origin
     )
 
     assert risposta.status_code == 503
-    assert risposta.json()["detail"].startswith("variante AI non disponibile")
+    assert risposta.json() == {
+        "code": "llm_invalid",
+        "detail": LLM_FAILURE_NOTICES[LlmFailureKind.INVALID],
+    }
+
+
+async def test_la_variante_dice_il_motivo(logged_client, monkeypatch, originale):
+    """Il servizio vero, col trasporto finto: il corpo del 503 porta la frase del tipo."""
+    import app.services.llm as llm
+    from app.core.config import get_settings
+
+    for risposta_finta, tipo in [
+        (errore_api(402, "billing_error"), LlmFailureKind.CREDIT),
+        (None, LlmFailureKind.NOT_CONFIGURED),
+    ]:
+        get_settings.cache_clear()
+        if risposta_finta is None:
+            monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        else:
+            monkeypatch.setenv("ANTHROPIC_API_KEY", "chiave-finta")
+            monkeypatch.setattr(llm, "open_client", lambda r=risposta_finta: FakeLlm(r))
+        try:
+            risposta = await logged_client.post(
+                f"/api/v1/recipes/{originale.id}/ai-variant", json={"prompt": "senza basilico"}
+            )
+        finally:
+            get_settings.cache_clear()
+
+        assert risposta.status_code == 503
+        assert risposta.json() == {
+            "code": f"llm_{tipo.value}",
+            "detail": LLM_FAILURE_NOTICES[tipo],
+        }
 
 
 async def test_la_proposta_senza_sessione_e_rifiutata(client, originale):

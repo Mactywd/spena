@@ -53,7 +53,9 @@ from app.repositories.substitutions import (
     store_ai_answer,
 )
 from app.services.llm import (
+    LLM_FAILURE_NOTICES,
     LlmCallSite,
+    LlmFailureKind,
     LlmUnavailable,
     LlmUsage,
     complete_json,
@@ -226,9 +228,10 @@ def describe(outcome: Answer | Rejected, names: Mapping[uuid.UUID, str]) -> str:
 @dataclass(frozen=True)
 class PairOutcome:
     stored: bool = False
-    # l'AI non ha risposto, o ha risposto qualcosa che non si applica: a video
-    # «Nessun suggerimento ancora», con la strada a mano
+    # l'AI non ha risposto, o ha risposto qualcosa che non si applica: a video la frase
+    # del guasto (`notice`) sopra «Nessun suggerimento ancora», con la strada a mano
     failed: bool = False
+    notice: str | None = None
 
 
 async def decide_pair(
@@ -250,18 +253,18 @@ async def decide_pair(
         raise LookupError(f"nessun ingrediente {ingredient_id}")
     try:
         ensure_llm_configured()
-    except LlmUnavailable:
-        return PairOutcome(failed=True)
+    except LlmUnavailable as exc:
+        return PairOutcome(failed=True, notice=exc.notice)
     food = await load_food(session)
     owned = client is None
     api = client if client is not None else open_client()
     try:
         verified, usage = await _ask(ingredient.name, ingredient.id, context, food, api)
-    except LlmUnavailable:
+    except LlmUnavailable as exc:
         await record_llm_call(
-            session, call_site=LlmCallSite.INGREDIENT_SUBSTITUTES, usage=LlmUsage(), ok=False
+            session, call_site=LlmCallSite.INGREDIENT_SUBSTITUTES, usage=exc.usage, ok=False
         )
-        return PairOutcome(failed=True)
+        return PairOutcome(failed=True, notice=exc.notice)
     finally:
         if owned:
             await api.close()
@@ -269,7 +272,7 @@ async def decide_pair(
         session, call_site=LlmCallSite.INGREDIENT_SUBSTITUTES, usage=usage, ok=True
     )
     if isinstance(verified, Rejected):
-        return PairOutcome(failed=True)
+        return PairOutcome(failed=True, notice=LLM_FAILURE_NOTICES[LlmFailureKind.INVALID])
     return PairOutcome(stored=await store_ai_answer(session, ingredient.id, context, verified))
 
 
@@ -329,16 +332,25 @@ async def decide_substitutions(
     rejected = calls = 0
     cost: float | None = None
     unavailable: str | None = None
+    # il primo guasto terminale del lancio: le domande che non sono ancora partite non
+    # partono (credito finito, chiave revocata: lo stesso esito per ogni voce)
+    halted: LlmUnavailable | None = None
 
     async def ask(voice: Voice, api: AsyncAnthropic):
+        nonlocal halted
         async with semaphore:
+            if halted is not None:
+                # non è avvenuta nessuna chiamata: non si conta e non si registra
+                return None, LlmUsage(), halted.detail, False
             try:
                 verified, usage = await _ask(
                     voice.name, voice.ingredient_id, voice.context, food, api
                 )
             except LlmUnavailable as exc:
-                return None, LlmUsage(), str(exc)
-            return verified, usage, None
+                if exc.terminal and halted is None:
+                    halted = exc
+                return None, exc.usage, str(exc), True
+            return verified, usage, None, True
 
     owned = client is None
     api = client if client is not None else open_client()
@@ -346,15 +358,16 @@ async def decide_substitutions(
         for start in range(0, len(voices), batch_size):
             lot = voices[start : start + batch_size]
             answers = await asyncio.gather(*(ask(voice, api) for voice in lot))
-            for voice, (verified, usage, error) in zip(lot, answers, strict=True):
-                calls += 1
-                # la spesa si scrive comunque: una chiamata inutile costa come una buona
-                await record_llm_call(
-                    session,
-                    call_site=LlmCallSite.INGREDIENT_SUBSTITUTES,
-                    usage=usage,
-                    ok=error is None,
-                )
+            for voice, (verified, usage, error, called) in zip(lot, answers, strict=True):
+                if called:
+                    calls += 1
+                    # la spesa si scrive comunque: una chiamata inutile costa come una buona
+                    await record_llm_call(
+                        session,
+                        call_site=LlmCallSite.INGREDIENT_SUBSTITUTES,
+                        usage=usage,
+                        ok=error is None,
+                    )
                 if usage.cost_usd is not None:
                     cost = (cost or 0.0) + usage.cost_usd
                 if error is not None:

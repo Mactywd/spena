@@ -67,6 +67,9 @@ class DecideOut(BaseModel):
     # riconoscimento un lavoro con un risultato visibile
     unlocked: int
     remaining_terms: int
+    # il giro si è fermato a metà per un guasto terminale dell'AI (credito, chiave,
+    # limite di frequenza): la frase da mostrare accanto a quel che è stato deciso
+    stopped_notice: str | None = None
 
 
 class TermDecisionIn(BaseModel):

@@ -16,7 +16,8 @@ from sqlalchemy import select
 from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
 from app.repositories.ingredients import create_ingredient
-from llm_fakes import ScriptedLlm, llm_map
+from app.services.llm import LLM_FAILURE_NOTICES, LlmFailureKind
+from llm_fakes import FakeLlm, ScriptedLlm, errore_api, llm_map
 
 
 @pytest.fixture(autouse=True)
@@ -79,12 +80,107 @@ async def test_senza_chiave_risponde_503_e_dice_che_la_coda_funziona(
     try:
         response = await logged_client.post("/api/v1/imports/terms/decide", json={})
         assert response.status_code == 503
-        assert "a mano" in response.json()["detail"]
+        assert response.json() == {
+            "code": "llm_not_configured",
+            "detail": LLM_FAILURE_NOTICES[LlmFailureKind.NOT_CONFIGURED],
+        }
     finally:
         get_settings.cache_clear()
 
     await db_session.refresh(term)
     assert term.decision == TermDecision.PENDING
+
+
+async def test_il_credito_finito_alla_prima_domanda_risponde_503(
+    logged_client, db_session, monkeypatch
+):
+    from app.db.models.llm_call import LlmCall
+
+    term = ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-speck", display_name="Speck",
+        occurrences=1, decision=TermDecision.PENDING,
+    )
+    db_session.add(term)
+    await db_session.flush()
+
+    import app.services.recipe_import.decide as modulo
+
+    monkeypatch.setattr(
+        modulo, "open_client", lambda: FakeLlm(errore_api(402, "billing_error"))
+    )
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "code": "llm_credit",
+        "detail": LLM_FAILURE_NOTICES[LlmFailureKind.CREDIT],
+    }
+    # la riga di spesa è salvata nonostante il 503, e il termine è ancora in coda
+    righe = (await db_session.execute(select(LlmCall))).scalars().all()
+    assert [(r.call_site, r.ok) for r in righe] == [("term_decision", False)]
+    await db_session.refresh(term)
+    assert term.decision == TermDecision.PENDING
+
+
+async def test_il_giro_fermato_a_meta_dice_perche(logged_client, db_session, monkeypatch):
+    from app.core.config import get_settings
+
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    db_session.add_all([
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key="k-rigatoni", display_name="Rigatoni",
+            occurrences=3, decision=TermDecision.PENDING,
+        ),
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key="k-speck", display_name="Speck",
+            occurrences=2, decision=TermDecision.PENDING,
+        ),
+    ])
+    await db_session.flush()
+
+    import app.services.recipe_import.decide as modulo
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "1")
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        modulo, "open_client",
+        lambda: ScriptedLlm({
+            "Rigatoni": llm_map("pasta"), "Speck": errore_api(402, "billing_error")
+        }),
+    )
+    try:
+        response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    corpo = response.json()
+    assert corpo["applied"] == 1
+    assert corpo["stopped_notice"] == LLM_FAILURE_NOTICES[LlmFailureKind.CREDIT]
+
+
+async def test_un_giro_riuscito_non_ha_una_frase_di_stop(logged_client, db_session, monkeypatch):
+    import app.services.recipe_import.decide as modulo
+
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    db_session.add(ImportTerm(
+        source=GIALLOZAFFERANO, term_key="k-rigatoni", display_name="Rigatoni",
+        occurrences=3, decision=TermDecision.PENDING,
+    ))
+    await db_session.flush()
+    monkeypatch.setattr(
+        modulo, "open_client", lambda: ScriptedLlm({"Rigatoni": llm_map("pasta")})
+    )
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    assert response.json()["stopped_notice"] is None
 
 
 async def test_senza_termini_in_coda_non_e_un_errore(logged_client):

@@ -33,7 +33,8 @@ from app.services.substitutions import (
     decide_substitutions,
     verify_answer,
 )
-from llm_fakes import COSTO_FINTO, FakeLlm, schema_of, system_of, user_of
+from app.services.llm import LLM_FAILURE_NOTICES, LlmFailureKind
+from llm_fakes import COSTO_FINTO, FakeLlm, errore_api, messaggio, schema_of, system_of, user_of
 
 SALATO = SubstitutionContext.SAVORY
 DOLCE = SubstitutionContext.SWEET
@@ -271,6 +272,35 @@ async def test_il_primo_lotto_con_un_guasto_ferma_il_giro(db_session, cucina):
     assert await _spese(db_session) == [False, True]
 
 
+async def test_un_guasto_terminale_non_fa_partire_le_altre_domande_del_lotto(
+    db_session, cucina, monkeypatch
+):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "1")
+    get_settings.cache_clear()
+    risposte = {key: errore_api(401, "authentication_error") for key in TUTTE}
+    finto = SostitutiFinti(risposte)
+
+    esito = await decide_substitutions(db_session, client=finto)
+
+    assert len(finto.bodies) == 1  # le altre tre non partono
+    assert esito.unavailable is not None and "la chiave API non vale più" in esito.unavailable
+    assert (esito.calls, esito.pending) == (1, 4)
+    assert await _spese(db_session) == [False]  # solo la chiamata avvenuta si registra
+
+
+async def test_la_riga_fallita_porta_l_uso_della_risposta(db_session, cucina):
+    finto = SostitutiFinti({("pollo", "salata"): messaggio("{", stop_reason="max_tokens")})
+
+    await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto)
+
+    riga = (await db_session.execute(select(LlmCall))).scalars().one()
+    assert riga.ok is False
+    assert (riga.prompt_tokens, riga.completion_tokens) == (300, 20)
+    assert riga.cost_usd == pytest.approx(COSTO_FINTO)
+
+
 async def test_senza_chiave_non_chiama_e_non_registra(db_session, cucina, monkeypatch):
     from app.core.config import get_settings
 
@@ -310,7 +340,7 @@ async def test_una_voce_sul_momento_si_salva(db_session, cucina):
 
     esito = await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto)
 
-    assert esito == PairOutcome(stored=True, failed=False)
+    assert esito == PairOutcome(stored=True, failed=False, notice=None)
     riga = await repo.general_row(db_session, cucina["pollo"].id, SALATO)
     assert (riga.verdict, riga.decided_by) == ("omit", "ai")
     assert await _spese(db_session) == [True]
@@ -327,15 +357,28 @@ async def test_una_voce_che_ha_gia_una_risposta_non_chiama(db_session, cucina):
 async def test_l_ai_giu_sul_momento_lo_dice_e_registra_la_chiamata(db_session, cucina):
     finto = SostitutiFinti({("pollo", "salata"): httpx.ConnectError("rete giù")})
 
-    assert await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto) == PairOutcome(failed=True)
+    assert await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto) == PairOutcome(
+        failed=True, notice=LLM_FAILURE_NOTICES[LlmFailureKind.TRANSIENT]
+    )
     assert await repo.general_row(db_session, cucina["pollo"].id, SALATO) is None
+    assert await _spese(db_session) == [False]
+
+
+async def test_il_credito_finito_sul_momento_dice_la_sua_frase(db_session, cucina):
+    finto = FakeLlm(errore_api(402, "billing_error"))
+
+    esito = await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto)
+
+    assert esito == PairOutcome(failed=True, notice=LLM_FAILURE_NOTICES[LlmFailureKind.CREDIT])
     assert await _spese(db_session) == [False]
 
 
 async def test_una_risposta_scartata_sul_momento_lo_dice(db_session, cucina):
     finto = SostitutiFinti({("pollo", "salata"): sostituti(("pollo", ""))})
 
-    assert await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto) == PairOutcome(failed=True)
+    assert await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto) == PairOutcome(
+        failed=True, notice=LLM_FAILURE_NOTICES[LlmFailureKind.INVALID]
+    )
     assert await repo.general_row(db_session, cucina["pollo"].id, SALATO) is None
     assert await _spese(db_session) == [True]  # pagata anche se inutile
 
@@ -347,5 +390,7 @@ async def test_senza_chiave_sul_momento_non_chiama(db_session, cucina, monkeypat
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     finto = SostitutiFinti({})
 
-    assert await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto) == PairOutcome(failed=True)
+    assert await decide_pair(db_session, cucina["pollo"].id, SALATO, client=finto) == PairOutcome(
+        failed=True, notice=LLM_FAILURE_NOTICES[LlmFailureKind.NOT_CONFIGURED]
+    )
     assert finto.bodies == [] and await _spese(db_session) == []

@@ -20,7 +20,6 @@ from app.repositories.units import apply_forms, undecided_units
 from app.services.llm import (
     LlmCallSite,
     LlmUnavailable,
-    LlmUsage,
     complete_json,
 )
 
@@ -107,7 +106,7 @@ async def decide_unit_forms(
         # scelta di `import_gz.py` quando il riconoscimento non è disponibile.
         print(f"forme delle unità non disponibili ({exc}): restano come sono arrivate.")
         await record_llm_call(
-            session, call_site=LlmCallSite.UNIT_FORMS, usage=LlmUsage(), ok=False
+            session, call_site=LlmCallSite.UNIT_FORMS, usage=exc.usage, ok=False
         )
         return Decided(applied=0, refused=0, pending=len(undecided))
 
