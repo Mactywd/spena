@@ -20,7 +20,7 @@ def test_nginx_non_trattiene_la_risposta_di_claude():
     assert blocco, "manca la location delle chat in frontend/nginx.conf"
     corpo = blocco["corpo"]
     assert "proxy_buffering off;" in corpo
-    assert "proxy_pass http://backend:8000;" in corpo
+    assert "proxy_pass http://spena-backend:8000;" in corpo
     attesa = re.search(r"proxy_read_timeout (\d+)s;", corpo)
     assert attesa, "la location non alza proxy_read_timeout"
     assert int(attesa[1]) > Settings(_env_file=None).claude_reply_timeout_seconds

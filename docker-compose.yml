@@ -67,6 +67,11 @@ services:
     # vuoto e non costa niente.
     volumes: ["./backend:/app", "./data:/data:ro", "hfcache:/root/.cache/huggingface"]
     restart: unless-stopped
+    # lo stesso alias della produzione: frontend/nginx.conf è uno solo, e lo usa
+    # (vedi il commento in docker-compose.prod.yml)
+    networks:
+      default:
+        aliases: [spena-backend]
 
   frontend:
     build: ./frontend

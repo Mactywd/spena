@@ -22,4 +22,4 @@ def test_nginx_porta_al_backend_i_corpi_oltre_il_limite_del_webhook():
     misura = re.search(r"client_max_body_size (\d+)m;", blocco["corpo"])
     assert misura, "la location del webhook non alza client_max_body_size"
     assert int(misura[1]) * 1024 * 1024 > WEBHOOK_MAX_BYTES
-    assert "proxy_pass http://backend:8000;" in blocco["corpo"]
+    assert "proxy_pass http://spena-backend:8000;" in blocco["corpo"]
