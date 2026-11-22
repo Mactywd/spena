@@ -449,6 +449,13 @@ def write_recipe_tool(ctx: TurnContext) -> SdkMcpTool:
                 # «idle in transaction» finché Claude pensa.
                 await ctx.session.commit()
                 return _error(exc.message)
+            except Exception:
+                # Un errore che non è un rifiuto: `write_meal_recipe` ha già annullato il suo
+                # SAVEPOINT, ma la transazione tiene ancora il lucchetto del pasto (`lock_meal`
+                # sta fuori dal SAVEPOINT). Si chiude qui, o il pasto resterebbe bloccato per
+                # tutto il resto del giro: «Annulla» e «Scrivi la ricetta» aspetterebbero Claude.
+                await ctx.session.rollback()
+                raise
             if ctx.seen is not None:
                 ctx.seen = snapshot_from_json(change.after)
             if meal.recipe_id is not None:

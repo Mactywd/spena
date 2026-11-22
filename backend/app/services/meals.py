@@ -141,6 +141,11 @@ async def delete_meal(
     today: date | None = None,
     _reason: InverseReason = InverseReason.DELETED,
 ) -> None:
+    # Il lucchetto, per primo (F-R6): chi scrive la ricetta o annulla prende il pasto e poi la
+    # ricetta; l'eliminazione fa lo stesso, o `release_recipe` toccherebbe la ricetta prima del
+    # pasto e le due transazioni si aspetterebbero a vicenda (un deadlock). Chi chiama ha già
+    # letto il pasto: con `populate_existing` è lo stesso oggetto, riletto
+    await lock_meal(session, meal.id)
     # prima di toglierlo: la scheda inversa legge il pasto com'è (decisione 22).
     # `_reason` è delle sostituzioni di questo modulo, che tolgono l'occupante e non passano
     # `today`; con `today`, l'inversa di un pasto passato nasce senza spunte

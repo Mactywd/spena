@@ -37,7 +37,13 @@ from app.services.meal_recipes import (
     undo_recipe_change,
     write_meal_recipe,
 )
-from app.services.meals import MealRefusal, MealRefusalCode, create_meal, link_recipe
+from app.services.meals import (
+    MealRefusal,
+    MealRefusalCode,
+    create_meal,
+    delete_meal,
+    link_recipe,
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://spena:spena@localhost:5433/spena_test"
@@ -301,3 +307,128 @@ async def test_salvare_a_mano_mentre_la_coda_scrive_non_lascia_orfane(maker, dat
         assert meal.recipe.title == "Frittata della coda"
         assert (await check.execute(select(func.count()).select_from(Recipe))).scalar() == 1
         assert await _orfane(check) == 0
+
+
+async def test_un_errore_inatteso_della_scrittura_libera_il_pasto(maker, dati, monkeypatch):
+    """Un errore che non è un rifiuto (qui un guasto finto dentro l'imbuto) risale dallo
+    strumento senza lasciare la riga del pasto bloccata per il resto del giro di Claude."""
+    from app.services import meal_recipes
+    from app.services.claude.tools import TurnContext, write_recipe_tool
+
+    meal_id, uova_id = dati
+
+    async def guasto(*args, **kwargs):
+        raise RuntimeError("guasto inatteso")
+
+    async def nessuna_modifica(change):
+        return None
+
+    monkeypatch.setattr(meal_recipes, "resolve_lines", guasto)
+    async with maker() as turno, maker() as altra:
+        ctx = TurnContext(
+            session=turno, lock=asyncio.Lock(), today=date(2026, 11, 19), meal_id=meal_id,
+            conversation_id=None, turn_message_id=None, on_change=nessuna_modifica,
+            create_only=True,
+        )
+        write = write_recipe_tool(ctx)
+        with pytest.raises(RuntimeError):
+            await write.handler({
+                "title": "Frittata", "servings": 1, "instructions": "1. Cuoci.",
+                "summary": "ok",
+                "ingredients": [{"ingredient_id": str(uova_id), "role": "primary"}],
+            })
+        presa = asyncio.create_task(lock_meal(altra, meal_id))
+        try:
+            done, _ = await asyncio.wait({presa}, timeout=WAIT)
+            assert done, "il pasto è ancora bloccato dal giro"
+        finally:
+            await turno.rollback()  # nel rosso libera la riga, così il compito finisce
+            await asyncio.wait_for(presa, 5)
+            await altra.rollback()
+
+
+async def test_eliminare_il_pasto_aspetta_chi_scrive_senza_ciclo(maker, dati):
+    """F-R6: l'eliminazione prende il pasto per primo, come la scrittura e «Annulla». Chi
+    scrive la ricetta tiene il pasto e poi tocca la ricetta; l'eliminazione aspetta il pasto
+    invece di prendere prima la ricetta (il ciclo che Postgres chiuderebbe con un deadlock)."""
+    meal_id, uova_id = dati
+    await _scrivi_e_committa(maker, meal_id, uova_id)
+    async with maker() as x, maker() as y:
+        meal_y = await get_meal(y, meal_id)
+        meal_x = await lock_meal(x, meal_id)
+
+        async def elimina():
+            await delete_meal(y, meal_y)
+            await y.commit()
+
+        eliminazione = asyncio.create_task(elimina())
+        await _aspetta(eliminazione)
+        await write_meal_recipe(x, meal_x, _draft(uova_id, title="Frittata riscritta"))
+        await x.commit()
+        await asyncio.wait_for(eliminazione, 5)
+
+    async with maker() as check:
+        assert await get_meal(check, meal_id) is None
+        recipe = (await check.execute(select(Recipe))).scalar_one()
+        assert recipe.title == "Frittata riscritta" and recipe.archived_at is not None
+        assert await _orfane(check) == 0
+
+
+async def test_annulla_prende_il_lucchetto_prima_di_guardare_se_claude_risponde(
+    maker, dati, monkeypatch
+):
+    """F-R7: «Annulla» aspetta il pasto prima di chiedere al registro se c'è un giro. Un giro
+    che parte mentre aspetta si vede: 409 `claude_busy`, e la ricetta resta com'è."""
+    from app.core.config import get_settings
+    from app.core.db import get_session
+    from app.core.security import hash_password
+    from app.main import app
+    from app.repositories.conversations import get_or_create_dish_conversation
+    from app.services.chat_turns import TurnRegistry, get_turn_registry
+
+    meal_id, uova_id = dati
+    change_id = await _scrivi_e_committa(maker, meal_id, uova_id)
+    async with maker() as setup:
+        conversation = await get_or_create_dish_conversation(setup, meal_id)
+        conversation_id = conversation.id
+        await setup.commit()
+
+    registry = TurnRegistry()
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_PASSWORD_HASH", hash_password("test"))
+    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
+
+    async def sessione_vera():
+        async with maker() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = sessione_vera
+    app.dependency_overrides[get_turn_registry] = lambda: registry
+    libera = asyncio.Event()
+
+    async def giro_vivo(emit):
+        await libera.wait()
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            await c.post("/api/v1/auth/login", json={"password": "test"})
+            async with maker() as x:
+                assert await lock_meal(x, meal_id) is not None
+                annulla = asyncio.create_task(
+                    c.post(f"/api/v1/meals/{meal_id}/chat/changes/{change_id}/undo")
+                )
+                await _aspetta(annulla)
+                registry.start(conversation_id, giro_vivo)
+                await x.commit()
+                r = await asyncio.wait_for(annulla, 5)
+    finally:
+        libera.set()
+        await registry.wait(conversation_id)
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == "claude_busy"
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert meal.recipe is not None and meal.recipe.title == "Frittata della coda"
