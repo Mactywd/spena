@@ -10,6 +10,8 @@ import { Screen } from "../../components/ui/Screen";
 import { SectionHeading } from "../../components/ui/SectionHeading";
 
 const DEBOUNCE_MS = 180;
+// quante righe chiede l'Anagrafica: il tetto della rotta, per vedere anche i quasi-doppioni
+const REGISTRY_SEARCH_LIMIT = 50;
 
 type ResultItem = { key: string; to: string; title: string; note: string | null };
 
@@ -59,13 +61,13 @@ export function RegistryScreen() {
   // spariscono subito, come l'elenco di IngredientPicker
   const showing = term.trim().length >= 2;
 
-  // l'elenco intero, senza il taglio dei suggerimenti: questa schermata serve a
-  // trovare i quasi-doppioni, e il taglio li nasconde appena c'è un riscontro. La
-  // chiave viene da `ingredientSearchKey`, la stessa di «Abbina», e non divide la
-  // cache con i selettori che tagliano
+  // l'elenco intero di 50 righe, senza il taglio dei suggerimenti: questa schermata
+  // serve a trovare i quasi-doppioni, e il taglio li nasconde appena c'è un
+  // riscontro. La chiave ha il limite, quindi non è quella di «Abbina» (10 righe) e
+  // non divide la cache con i selettori che tagliano
   const ingredients = useQuery({
-    queryKey: ingredientSearchKey(debounced, undefined, false),
-    queryFn: () => searchIngredients(debounced, undefined, { trim: false }),
+    queryKey: ingredientSearchKey(debounced, undefined, false, REGISTRY_SEARCH_LIMIT),
+    queryFn: () => searchIngredients(debounced, undefined, { trim: false, limit: REGISTRY_SEARCH_LIMIT }),
     enabled: ready,
   });
   const products = useQuery({
