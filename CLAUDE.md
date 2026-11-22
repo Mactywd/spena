@@ -182,14 +182,15 @@ CIQUAL matches and grams, and drafts recipes and their variants. It never produc
 nutrient values. There is one client on purpose, and its options are built in one
 place (`client_options`), with the key from the settings and the API address written
 in the code, never read from the environment: tests replace only its HTTP transport
-(`httpx2.MockTransport`), so the SDK that builds the request and parses the response
+(`httpx2.MockTransport`; the fakes also make `copy`/`with_options` return themselves, recording the options), so the SDK that builds the request and parses the response
 under test is the one production runs. Anthropic reports tokens, not prices: spena
 computes the cost from the tokens and the price list in
 `backend/app/domain/llm_pricing.py`, cache reads and writes included, and keeps the
 cache tokens in `llm_calls` so every cost can be redone from its row. A failure carries
 a kind (`LlmFailureKind`): no key, a revoked key, credit run out, the rate limit or a
-rejected request stop a fan-out at the first one; the others leave only that item in
-the queue. A second implementation behind a config switch would never run in
+rejected request stop a fan-out at the first one; in the term decisions the others
+leave only that item in the queue, while the batch commands stop at the first failure
+of any kind. A second implementation behind a config switch would never run in
 production, which is the first defect listed above.
 
 The drafts and the variants (R8) are told which utensils the kitchen has: the list
@@ -328,7 +329,8 @@ against the SDK's real message types. Spec:
   term stays in the queue. Specs are
   `docs/superpowers/specs/2026-09-12-import-ricette-design.md` and
   `docs/superpowers/specs/2026-09-13-llm-openrouter-design.md`; the second
-  reverses §8.2 of the first.
+  reverses §8.2 of the first, and is itself superseded for the provider by
+  `docs/superpowers/specs/2026-11-21-llm-haiku-design.md`.
 
 ## Roadmap beyond v1
 

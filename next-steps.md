@@ -68,6 +68,8 @@ ancora committato.
 ### Idee
 - [idea] P3 · Le Message Batches di Anthropic per i `decide_*` e l'import (metà prezzo, risposte entro 24 ore): da misurare su un import vero, con la cache dell'anagrafica che dentro un lotto vale lo stesso [Parte IV]
 - [idea] P3 · Su Haiku la decisione dei termini a lotti (non una chiamata per termine) potrebbe reggere: misurarla contro la chiamata per termine sulla coda vera prima di cambiarla [Parte IV]
+- [idea] P3 · «Riprova con l'AI» nella coda e «Sostituisci» chiedono all'AI dentro la richiesta, con il profilo delle classificazioni (fino a tre tentativi da 45 s, più le pause dell'SDK): possono superare i 60 s di Nginx, che risponde 504, e lo schermo mostra la frase generica invece del motivo. Un profilo per le rotte sincrone che stia sotto i 60 s, o una location più lunga in Nginx (dalla revisione finale di night/llm-haiku) [Parte IV]
+- [idea] P3 · Nel giro dei termini, se la prima domanda fallisce senza fermare il giro, le altre partono insieme senza la cache dell'anagrafica scritta: fino a otto scritture invece di una. Solo costo; si potrebbe far partire da sola anche la seconda (dalla revisione finale di night/llm-haiku) [Parte IV]
 - [idea] P3 · `useArchiveRecipe.test.tsx` fallisce un test (ogni volta uno diverso) quando tutta la suite vitest gira su una macchina occupata, e da solo passa: è un'attesa a tempo da sistemare [Parte X]
 - [idea] P3 · L'elenco dei comandi e2e nei piani del 2026-11-12 non ha le due righe della fixture CIQUAL del piano S4 (senza, 6 prove S4 danno 409): README e modello dei piani devono portarle [Parte X]
 - [idea] P3 · «Chiudi tutto / apri tutto» sui reparti della dispensa, se sul telefono toccarli uno per uno non basta (deciso di no per ora, spec S15 §6.5) [S15]
