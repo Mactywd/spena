@@ -2700,7 +2700,10 @@ Queste restano per il telefono.
   righe in media da 5,60 a 6,54; refusi (912 prove) bersaglio in lista da 93,0 % a 59,0 %,
   con 310 prove perse: il prezzo dichiarato del pavimento a 0,30. «Zucch» dà ancora
   Zucchero prima di Zucchina (decisione 5): se il giro dopo il taglio dice che sbaglia, lo
-  spareggio diventa una voce sua.)*
+  spareggio diventa una voce sua. Il 2026-11-18 Mattia ha deciso che «Abbina» in «Sistema la
+  spesa» e la ricerca dell'Anagrafica ricevono l'elenco non tagliato (`trim=false`), perché
+  vivono delle righe sfumate: il testo intero della voce, i quasi-doppioni; piano
+  `docs/superpowers/plans/2026-11-18-suggerimenti-elenco-intero.md`.)*
 - **Le conferme mancano o stanno fuori vista.** Sono T4.
 - **«Finito» ha tre colori**: rosso sul cursore, grigio sulla pastiglia, nero nel
   foglio della cottura. Il rosso è anche il colore della X e degli errori. Serve un
