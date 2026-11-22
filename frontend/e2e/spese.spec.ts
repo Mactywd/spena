@@ -72,7 +72,7 @@ test("le spese seminate: il totale, le sezioni (una sconosciuta col suo nome), i
     await periodo.getByRole("button", { name: "Ultimi 30 giorni" }).click();
     await expect(periodo.getByRole("button", { name: "Ultimi 30 giorni" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText(/^0,025\s\$$/)).toBeVisible();
-    await expect(page.getByText(/senza un costo/)).toBeVisible();
+    await expect(page.getByText(/senza un costo \(di solito/)).toBeVisible();
 
     const sezioni = page.getByRole("list", { name: "Spesa per sezione" });
     for (const [nome, cifre] of [

@@ -4313,20 +4313,21 @@ test("i sostituti a 375px: il pannello, il modulo e la sezione in Anagrafica si 
     await senzaScorrimentoLaterale(page, "la sezione dei sostituti");
 
     // l'AI non risponde: la frase del guasto sopra «Nessun suggerimento ancora.», con
-    // «Riprova» e «Scrivi tu» (si fingono le letture, come sopra)
+    // «Riprova» e «Scrivi tu». Il pannello legge la risposta salvata e, se non ha un
+    // verdetto, la chiede all'AI (`/ask`): si fingono tutte e due, così la frase misurata
+    // è quella della finta e non dipende dalla chiave dello stack
+    const vuota = { ...risposta, scope: null, verdict: null, decided_by: null, substitutes: [] };
     await page.route(
       new RegExp(`/api/v1/recipes/${ricetta.id}/substitutes/${ricetta.ids.carciofo}$`),
-      (route) =>
-        route.fulfill({
-          json: { ...risposta, scope: null, verdict: null, decided_by: null, substitutes: [],
-            ai_failed: true, ai_notice: AI_NON_COLLEGATA },
-        })
+      (route) => route.fulfill({ json: vuota })
+    );
+    await page.route(
+      new RegExp(`/api/v1/recipes/${ricetta.id}/substitutes/${ricetta.ids.carciofo}/ask$`),
+      (route) => route.fulfill({ json: { ...vuota, ai_failed: true, ai_notice: AI_CREDITO } })
     );
     await page.goto(`/ricette/${ricetta.id}`);
     await page.getByRole("button", { name: "Sostituisci carciofo" }).click();
-    // la frase che si legge è quella del server vero (lo stack non ha la chiave): il pannello
-    // chiede la risposta all'AI aprendosi, e non passa dalla lettura finta qui sopra
-    const frase = page.getByText(AI_NON_COLLEGATA, { exact: true });
+    const frase = page.getByText(AI_CREDITO, { exact: true });
     await expect(frase).toBeVisible();
     await expect(page.getByText("Nessun suggerimento ancora.")).toBeVisible();
     for (const tema of ["light", "dark"] as const) {

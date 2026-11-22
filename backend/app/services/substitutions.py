@@ -285,7 +285,7 @@ class SubstitutionRun:
     irreplaceable: int = 0  # voci salvate «insostituibile»
     rejected: int = 0  # risposte che non si potevano verificare
     calls: int = 0
-    # la somma dei costi calcolati dal listino; None se nessuno ne ha dichiarato uno
+    # la somma dei costi calcolati dal listino; None se nessuna chiamata ne ha uno
     # (zero direbbe «gratis», ed è un'affermazione: la regola dei nutrienti)
     cost_usd: float | None = None
     # le voci ancora scoperte alla fine: senza, «0 salvate» vorrebbe dire insieme «niente
