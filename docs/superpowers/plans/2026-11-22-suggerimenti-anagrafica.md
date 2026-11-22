@@ -19,7 +19,8 @@
 - **Prima lezione di `CLAUDE.md`: l'oggetto provato è quello che gira.** I test del backend passano dall'endpoint vero. Quelli del frontend guardano l'URL che parte davvero, non una copia.
 - **Mai un vicolo cieco**: l'Anagrafica tiene «Nessun ingrediente con questo nome.», e «Abbina» tiene «Aggiungi «…»».
 - Nessuna parola a video nuova, nessun token di colore nuovo. `grep -rn "emerald\|neutral-" frontend/src` dà solo il commento che c'è già in `index.css`.
-- **Il type check è `npm run typecheck`**, mai `tsc --noEmit`. Controlli del frontend, da `<worktree>/frontend`: `npx vitest run`, `npm run typecheck`, `npm run lint`, `npm run build`.
+- **Il type check è `npm run typecheck`**, mai `tsc --noEmit`. Controlli del frontend, da `<worktree>/frontend`: `npx vitest run --maxWorkers=4`, `npm run typecheck`, `npm run lint`, `npm run build`.
+- **Il carico sulla macchina**: al massimo 6 thread e 8 GB (Mattia, 2026-11-22). Le suite intere girano dentro `systemd-run --user --scope -p MemoryMax=8G -p CPUQuota=600% …`, mai due insieme; vitest con `--maxWorkers=4`.
 - **Backend su Postgres vero**: `spena-db-1` (porta 5433), con il database `spena_test_suggerimenti_anagrafica`. Mai `docker compose up` dal worktree. Si usa il `.venv` del checkout principale. Il comando di pytest, da `<worktree>/backend`:
   ```bash
   TEST_DATABASE_URL=postgresql+asyncpg://spena:spena@localhost:5433/spena_test_suggerimenti_anagrafica \
@@ -127,7 +128,7 @@ Poi riscrivi `test_l_elenco_tagliato_e_l_inizio_di_quello_intero` come `test_ogn
   - I test di `IngredientPicker` e di `MatchPanel` che guardano l'URL restano come sono: niente `limit`.
 - [ ] **Step 2: Falliscono**: `npx vitest run src/features/registry src/features/shopping-list/api.test.ts src/components/IngredientPicker.test.tsx`.
 - [ ] **Step 3: Il codice.** `RegistryScreen` usa `ingredientSearchKey(debounced, undefined, false, REGISTRY_SEARCH_LIMIT)` e `searchIngredients(debounced, undefined, { trim: false, limit: REGISTRY_SEARCH_LIMIT })`. Il commento sopra la query dice anche il 50, e che la chiave non è quella di «Abbina».
-- [ ] **Step 4: Passano**, poi i controlli interi del frontend: `npx vitest run`, `npm run typecheck`, `npm run lint`, `npm run build`.
+- [ ] **Step 4: Passano**, poi i controlli interi del frontend: `npx vitest run --maxWorkers=4`, `npm run typecheck`, `npm run lint`, `npm run build`.
 - [ ] **Step 5: Commit**: `anagrafica: fino a 50 ingredienti, con una chiave della cache sua`.
 
 ### Task 3: e2e, la verifica finale, il backlog
@@ -145,6 +146,6 @@ Poi riscrivi `test_l_elenco_tagliato_e_l_inizio_di_quello_intero` come `test_ogn
 ## Comandi di verifica
 
 - Backend: il comando di pytest delle Global Constraints, tutto verde, con i test nuovi.
-- Frontend, da `<worktree>/frontend`: `npx vitest run`, `npm run typecheck`, `npm run lint`, `npm run build`.
+- Frontend, da `<worktree>/frontend`: `npx vitest run --maxWorkers=4`, `npm run typecheck`, `npm run lint`, `npm run build`.
 - e2e: la suite intera, verde.
 - `git -C <worktree> diff master --stat` tocca solo i file dei due task, più `next-steps.md` e il report.

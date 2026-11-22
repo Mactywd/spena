@@ -18,7 +18,8 @@
 - **Mai un vicolo cieco.** Se la sostituzione non si può fare (la ricetta di Claude è già stata toccata, o cambia a metà richiesta), resta il 409 `has_recipe`, e il modulo offre «Salva nel ricettario» e «Vedi la ricetta di Claude» come oggi. Un «Annulla» rifiutato dice perché, con la frase che manda il server.
 - **Il frontend non decide** se la ricetta di Claude è ancora intatta: lo dice il server.
 - Le parole a video **si copiano esatte** da questo piano (fra «»). Gli identificatori in inglese, i commenti in italiano.
-- **Il type check è `npm run typecheck`**, mai `tsc --noEmit`. Controlli del frontend, da `<worktree>/frontend`: `npx vitest run`, `npm run typecheck`, `npm run lint`, `npm run build`. Nei test dei componenti si usa `createTestQueryClient`.
+- **Il type check è `npm run typecheck`**, mai `tsc --noEmit`. Controlli del frontend, da `<worktree>/frontend`: `npx vitest run --maxWorkers=4`, `npm run typecheck`, `npm run lint`, `npm run build`. Nei test dei componenti si usa `createTestQueryClient`.
+- **Il carico sulla macchina**: al massimo 6 thread e 8 GB (Mattia, 2026-11-22). Le suite intere girano dentro `systemd-run --user --scope -p MemoryMax=8G -p CPUQuota=600% …`, mai due insieme; vitest con `--maxWorkers=4`.
 - **Backend su Postgres vero**: `spena-db-1` (porta 5433), con il database `spena_test_ricetta_a_mano`. Mai `docker compose up` dal worktree. Si usa il `.venv` del checkout principale. Il comando di pytest, da `<worktree>/backend`:
   ```bash
   TEST_DATABASE_URL=postgresql+asyncpg://spena:spena@localhost:5433/spena_test_ricetta_a_mano \
@@ -161,7 +162,7 @@
   - Il test di oggi su «Nel frattempo è arrivata la ricetta di Claude…» (409 `has_recipe`) resta com'è.
 - [ ] **Step 2: Falliscono**: `npx vitest run src/features/meals/MealRecipeNewScreen.test.tsx`.
 - [ ] **Step 3: Il codice.** `onSaved` sceglie l'avviso guardando `saved.undo_change_id`. L'«Annulla» chiama `undoChange`: se riesce, invalida le query e mostra «Rimessa la ricetta di Claude.»; se fallisce, mostra il `detail` del server o, senza `detail`, «Non sono riuscito ad annullare: la ricetta di Claude non è tornata.».
-- [ ] **Step 4: Passano**, poi i controlli interi del frontend: `npx vitest run`, `npm run typecheck`, `npm run lint`, `npm run build`.
+- [ ] **Step 4: Passano**, poi i controlli interi del frontend: `npx vitest run --maxWorkers=4`, `npm run typecheck`, `npm run lint`, `npm run build`.
 - [ ] **Step 5: Commit**: `pasti: «Salvata al posto di quella di Claude», con Annulla`.
 
 ### Task 5: e2e, la verifica, il backlog
@@ -179,7 +180,7 @@
 ## Comandi di verifica
 
 - Backend: il comando di pytest delle Global Constraints, tutto verde, con i test nuovi.
-- Frontend, da `<worktree>/frontend`: `npx vitest run`, `npm run typecheck`, `npm run lint`, `npm run build`.
+- Frontend, da `<worktree>/frontend`: `npx vitest run --maxWorkers=4`, `npm run typecheck`, `npm run lint`, `npm run build`.
 - e2e: la suite intera, verde.
 - `grep -rn "emerald\|neutral-" frontend/src` dà solo il commento di `index.css`.
 - `git -C <worktree> diff master --stat` tocca solo i file dei task, più `next-steps.md` e il report.
