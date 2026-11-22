@@ -9,12 +9,15 @@ import type { LineSubstitution } from "./types";
 const LINE = "/api/v1/recipes/r1/substitutes/i-pasta";
 const GENERALE: LineSubstitution = {
   ingredient_id: "i-pasta", ingredient_name: "pasta", context: "salato", scope: "general",
-  verdict: "substitutes", decided_by: "ai", ai_failed: false,
+  verdict: "substitutes", decided_by: "ai", ai_failed: false, ai_notice: null,
   substitutes: [
     { ingredient_id: "i-riso", name: "riso", note: "cottura più lunga", availability: "available", satisfied: true },
     { ingredient_id: "i-farro", name: "farro", note: null, availability: "low", satisfied: false },
   ],
 };
+// Frase copiata esatta dalla spec §5 (llm-haiku-design).
+const CREDITO =
+  "L'AI non risponde: il credito della chiave API è finito. Va ricaricato nella console di Anthropic.";
 const VUOTA: LineSubstitution = { ...GENERALE, scope: null, verdict: null, decided_by: null, substitutes: [] };
 const CORRETTA: LineSubstitution = {
   ...GENERALE, scope: "recipe", decided_by: "human", verdict: "irreplaceable", substitutes: [],
@@ -72,6 +75,18 @@ describe("SubstitutePanel", () => {
     renderPanel();
     expect(screen.getByRole("status")).toHaveTextContent("Cerco cosa usare al posto di pasta…");
     expect(await screen.findByText("Suggerito dall'AI per i piatti salati.")).toBeInTheDocument();
+  });
+
+  it("se l'AI non risponde dice perché, e lascia «Riprova» e «Scrivi tu»", async () => {
+    stubRoutedFetch((_path, method) => [
+      method === "POST" ? { ...VUOTA, ai_failed: true, ai_notice: CREDITO } : VUOTA,
+      200,
+    ]);
+    renderPanel();
+    expect(await screen.findByText(CREDITO)).toBeInTheDocument();
+    expect(screen.getByText("Nessun suggerimento ancora.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Riprova" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Scrivi tu" })).toBeInTheDocument();
   });
 
   it("se l'AI non risponde lascia «Riprova» e «Scrivi tu»", async () => {

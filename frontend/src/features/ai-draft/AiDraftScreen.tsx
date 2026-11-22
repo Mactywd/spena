@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { createRecipe, draftRecipe } from "../recipes/api";
+import { aiNoticeOf } from "../../api/aiNotice";
 import { BackLink } from "../../components/BackLink";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
@@ -85,8 +86,9 @@ export function AiDraftScreen() {
             `Alert tone="degraded"`, lo stesso della coda d'import */}
         {propose.isError && (
           <Alert tone="degraded">
-            La stesura AI non è disponibile. Il modulo qui sotto resta tuo: scrivi la ricetta a
-            mano e salvala.
+            {aiNoticeOf(propose.error) !== null
+              ? `${aiNoticeOf(propose.error)} Il modulo qui sotto resta tuo: scrivi la ricetta a mano e salvala.`
+              : "La stesura AI non è disponibile. Il modulo qui sotto resta tuo: scrivi la ricetta a mano e salvala."}
           </Alert>
         )}
       </div>

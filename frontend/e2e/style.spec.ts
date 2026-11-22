@@ -2492,6 +2492,12 @@ test("il foglio della cottura a 375px: le tacche partono da com'è la confezione
 
 // --- T3 Consegna 6b: il modulo della ricetta, la coda d'import, le parole ---
 
+// Le frasi dei guasti dell'AI, copiate esatte dalla spec llm-haiku §5: le scrive il
+// backend, il frontend le mostra. Qui si misura come si leggono a video.
+const AI_NON_COLLEGATA = "L'AI non è collegata: manca la chiave API sul server.";
+const AI_CREDITO =
+  "L'AI non risponde: il credito della chiave API è finito. Va ricaricato nella console di Anthropic.";
+
 /** Una coda d'import finta, servita da `page.route`. Il seme e2e non ha termini in coda,
  * e «Riprova con l'AI» compare solo con la coda piena: come `ai-draft.spec.ts`, questa è
  * una prova che si costruisce le risposte da sé (prima lezione di `CLAUDE.md`), e vale per
@@ -2519,10 +2525,7 @@ async function codaFinta(page: Page) {
     if (url.pathname.endsWith("/imports/terms/decide") && richiesta.method() === "POST")
       return route.fulfill({
         status: 503,
-        json: {
-          detail:
-            "il riconoscimento non è disponibile (OPENROUTER_API_KEY non configurata): decidi a mano, la coda funziona.",
-        },
+        json: { code: "llm_not_configured", detail: AI_NON_COLLEGATA },
       });
     if (url.pathname.endsWith("/decision") && richiesta.method() === "POST") {
       inCoda = [];
@@ -2668,12 +2671,11 @@ test("la coda d'import: il guasto dell'AI è ambra e senza nomi di variabili, e 
   expect(corpo).toBe("14px");
 
   await page.getByRole("button", { name: "Riprova con l'AI", exact: true }).click();
-  const guasto = page.getByText(
-    "L'AI non è disponibile: decidi a mano qui sotto, la coda funziona.",
-    { exact: true }
-  );
+  const guasto = page.getByText(`${AI_NON_COLLEGATA} Decidi a mano qui sotto: la coda funziona.`, {
+    exact: true,
+  });
   await expect(guasto).toBeVisible();
-  await expect(page.getByText(/OPENROUTER/)).toHaveCount(0);
+  await expect(page.getByText(/ANTHROPIC_API_KEY/)).toHaveCount(0);
   for (const tema of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: tema });
     await fermo(page);
@@ -2699,7 +2701,7 @@ test("il modulo della ricetta e la coda d'import si leggono nei due temi, negli 
   await page.route("**/api/v1/recipes/ai-draft", (route) =>
     route.fulfill({
       status: 503,
-      json: { detail: "stesura AI non disponibile (OPENROUTER_API_KEY non configurata)" },
+      json: { code: "llm_not_configured", detail: AI_NON_COLLEGATA },
     })
   );
   await codaFinta(page);
@@ -2719,7 +2721,9 @@ test("il modulo della ricetta e la coda d'import si leggono nei due temi, negli 
   await expect(page.getByText("Scrivi cosa vuoi cucinare: bastano tre lettere.")).toBeVisible();
   await page.getByLabel("Cosa vuoi cucinare").fill("una zuppa");
   await page.getByRole("button", { name: "Proponi", exact: true }).click();
-  await expect(page.getByText(/La stesura AI non è disponibile/)).toBeVisible();
+  await expect(
+    page.getByText(`${AI_NON_COLLEGATA} Il modulo qui sotto resta tuo: scrivi la ricetta a mano e salvala.`)
+  ).toBeVisible();
   await expect(page.getByText("Servono un titolo e un procedimento per salvare.")).toBeVisible();
   await page.getByLabel("Aggiungi un ingrediente").fill("zz prova contrasto");
   await page.getByRole("button", { name: "Aggiungi «zz prova contrasto»" }).click();
@@ -2733,15 +2737,28 @@ test("il modulo della ricetta e la coda d'import si leggono nei due temi, negli 
   // la coda: la scheda con «Forse» e la casella, e il guasto dell'AI
   await page.goto("/ricette/importa");
   await page.getByRole("button", { name: "Riprova con l'AI", exact: true }).click();
-  await expect(page.getByText(/L'AI non è disponibile/)).toBeVisible();
+  await expect(page.getByText(`${AI_NON_COLLEGATA} Decidi a mano qui sotto`)).toBeVisible();
   await leggibile("coda col guasto dell'AI");
+
+  // il giro fermato a metà: il messaggio del giro e, sotto, la frase del guasto
+  await page.route("**/api/v1/imports/terms/decide", (route) =>
+    route.fulfill({
+      json: {
+        applied: 1, created: 0, ignored: 0, still_pending: 1, unlocked: 0, remaining_terms: 1,
+        stopped_notice: AI_CREDITO,
+      },
+    })
+  );
+  await page.getByRole("button", { name: "Riprova con l'AI", exact: true }).click();
+  await expect(page.getByText(AI_CREDITO, { exact: true })).toBeVisible();
+  await leggibile("coda con il giro fermato a metà");
 });
 
 test("nessuna parola tecnica a video: né «backend», né «dataset», né «autocomplete», né il nome di una variabile", async ({
   page,
 }) => {
   await expect(page.getByRole("link", { name: "Dispensa" })).toBeVisible();
-  const tecniche = /\bbackend\b|\bdataset\b|autocomplete|OPENROUTER_API_KEY/i;
+  const tecniche = /\bbackend\b|\bdataset\b|autocomplete|ANTHROPIC_API_KEY/i;
   for (const luogo of SCHERMATE) {
     await page.goto(luogo);
     await page.waitForLoadState("networkidle");
@@ -3717,12 +3734,13 @@ test("Modifica con AI a 375px: il guasto è ambra, e il pannello e il modulo del
 
     await tasto.click();
     await page.getByLabel("Cosa vuoi cambiare?").fill("senza scamorza");
-    // lo stack e2e non ha la chiave dell'AI: il server risponde 503 da sé, senza rete
-    await page.getByRole("button", { name: "Proponi la variante", exact: true }).click();
-    const guasto = page.getByText(
-      "L'AI non ha risposto: questa ricetta resta com'è. Riprova fra poco.",
-      { exact: true }
+    // il 503 con la frase del backend si finge: così si misura la frase, qualunque sia
+    // la chiave dello stack e2e (il modello qui non si chiama)
+    await page.route(`**/api/v1/recipes/${ricetta.id}/ai-variant`, (route) =>
+      route.fulfill({ status: 503, json: { code: "llm_credit", detail: AI_CREDITO } })
     );
+    await page.getByRole("button", { name: "Proponi la variante", exact: true }).click();
+    const guasto = page.getByText(`${AI_CREDITO} Questa ricetta resta com'è.`, { exact: true });
     await expect(guasto).toBeVisible();
     for (const tema of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: tema });
@@ -4230,7 +4248,7 @@ test("i sostituti a 375px: il pannello, il modulo e la sezione in Anagrafica si 
     await page.setViewportSize({ width: 375, height: 812 });
     const risposta = {
       ingredient_id: ricetta.ids.carciofo, ingredient_name: "carciofo", context: "salato",
-      scope: "general", verdict: "substitutes", decided_by: "ai", ai_failed: false,
+      scope: "general", verdict: "substitutes", decided_by: "ai", ai_failed: false, ai_notice: null,
       substitutes: [
         { ingredient_id: ricetta.ids.radicchio, name: "radicchio", note: "cotto a parte",
           availability: "available", satisfied: true },
@@ -4293,6 +4311,32 @@ test("i sostituti a 375px: il pannello, il modulo e la sezione in Anagrafica si 
       expect((await page.getByRole("button", { name: nome }).boundingBox())!.height, nome).toBeGreaterThanOrEqual(44);
     }
     await senzaScorrimentoLaterale(page, "la sezione dei sostituti");
+
+    // l'AI non risponde: la frase del guasto sopra «Nessun suggerimento ancora.», con
+    // «Riprova» e «Scrivi tu» (si fingono le letture, come sopra)
+    await page.route(
+      new RegExp(`/api/v1/recipes/${ricetta.id}/substitutes/${ricetta.ids.carciofo}$`),
+      (route) =>
+        route.fulfill({
+          json: { ...risposta, scope: null, verdict: null, decided_by: null, substitutes: [],
+            ai_failed: true, ai_notice: AI_CREDITO },
+        })
+    );
+    await page.goto(`/ricette/${ricetta.id}`);
+    await page.getByRole("button", { name: "Sostituisci carciofo" }).click();
+    const frase = page.getByText(AI_CREDITO, { exact: true });
+    await expect(frase).toBeVisible();
+    await expect(page.getByText("Nessun suggerimento ancora.")).toBeVisible();
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await fermo(page);
+      const misura = await contrastoAVideo(frase);
+      expect(misura.colore, `il guasto dei sostituti non è ambra, tema ${tema}`).toBe(
+        tema === "light" ? tokenDelTema("low") : tokenDelTemaScuro("low")
+      );
+      expect(await testiIlleggibili(page), `i sostituti senza risposta, tema ${tema}`).toEqual([]);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
   } finally {
     await ricetta.pulisci();
   }

@@ -1044,7 +1044,7 @@ describe("RecipeDetailScreen — Sostituisci (R5)", () => {
         const path = String(url);
         const corpo = path.includes("/substitutes/i4")
           ? { ingredient_id: "i4", ingredient_name: "basilico", context: "salato", scope: "general",
-              verdict: "omit", decided_by: "ai", ai_failed: false, substitutes: [] }
+              verdict: "omit", decided_by: "ai", ai_failed: false, ai_notice: null, substitutes: [] }
           : path.includes("/pantry")
             ? PANTRY
             : DETAIL;

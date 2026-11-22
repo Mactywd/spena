@@ -37,6 +37,9 @@ export interface LineSubstitution {
   substitutes: LineSubstitute[];
   /** L'AI chiesta adesso non ha risposto, o ha risposto qualcosa che non si applica. */
   ai_failed: boolean;
+  /** Perché l'AI non ha risposto, con la frase scritta nel backend (spec llm-haiku §5);
+   * `null` se non c'è un guasto da dire. */
+  ai_notice: string | null;
 }
 
 export interface ContextSubstitution {

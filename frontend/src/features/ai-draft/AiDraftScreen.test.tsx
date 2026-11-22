@@ -34,6 +34,9 @@ function draftThenSave(saveResponse: Response) {
     .mockResolvedValue(saveResponse);
 }
 
+// Frase copiata esatta dalla spec §5 (llm-haiku-design).
+const TRONCATA = "La risposta dell'AI si è interrotta prima della fine: riprova.";
+
 function aiDown() {
   return vi.fn().mockResolvedValue(
     new Response(JSON.stringify({ detail: "stesura AI non disponibile" }), { status: 503 })
@@ -316,6 +319,26 @@ describe("AiDraftScreen", () => {
   // Il caso per cui questo schermo esiste: Claude giù, nessuna chiave, risposta
   // inutilizzabile. La promessa "scrivila a mano" deve essere vera, e la ricetta
   // che ne esce non è "ai": l'ha scritta una persona.
+  it("la stesura che non risponde dice il motivo", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: "llm_truncated", detail: TRONCATA }), { status: 503 })
+      )
+    );
+    renderScreen();
+    await proposeDraft();
+
+    const avviso = await screen.findByRole("alert");
+    expect(avviso).toHaveTextContent(
+      `${TRONCATA} Il modulo qui sotto resta tuo: scrivi la ricetta a mano e salvala.`
+    );
+    expect(avviso).toHaveClass("text-low");
+    expect(screen.queryByText(/La stesura AI non è disponibile/)).toBeNull();
+    await userEvent.type(screen.getByLabelText("Titolo"), "Cacio e pepe");
+    expect(screen.getByLabelText("Titolo")).toHaveValue("Cacio e pepe");
+  });
+
   it("quando la stesura AI fallisce, la ricetta si scrive a mano e si salva", async () => {
     const spy = vi.fn((url: RequestInfo | URL) =>
       String(url).includes("/recipes/ai-draft")

@@ -303,6 +303,9 @@ export interface DecideResult {
   still_pending: number;
   unlocked: number;
   remaining_terms: number;
+  /** Se il giro si è fermato a metà per un guasto dell'AI, la frase da mostrare
+   * (scritta nel backend, spec llm-haiku §5); `null` se è arrivato in fondo. */
+  stopped_notice?: string | null;
 }
 
 export interface UndoResult {

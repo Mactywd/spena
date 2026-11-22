@@ -111,6 +111,7 @@ export function SubstitutePanel({
   } else if (query.data.verdict === null) {
     body = (
       <>
+        {query.data.ai_notice && <Alert tone="degraded">{query.data.ai_notice}</Alert>}
         <p className="text-sm text-ink-soft">Nessun suggerimento ancora.</p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Button busy={query.isFetching} onClick={() => void query.refetch()}>

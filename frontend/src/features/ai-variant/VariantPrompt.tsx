@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { draftVariant } from "../recipes/api";
+import { aiNoticeOf } from "../../api/aiNotice";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
@@ -82,7 +83,9 @@ export function VariantPrompt({ recipe, onClose }: { recipe: RecipeDetail; onClo
         </Button>
         {propose.isError && (
           <Alert tone="degraded">
-            L'AI non ha risposto: questa ricetta resta com'è. Riprova fra poco.
+            {aiNoticeOf(propose.error) !== null
+              ? `${aiNoticeOf(propose.error)} Questa ricetta resta com'è.`
+              : "L'AI non ha risposto: questa ricetta resta com'è. Riprova fra poco."}
           </Alert>
         )}
         <Button variant="ghost" onClick={onClose}>

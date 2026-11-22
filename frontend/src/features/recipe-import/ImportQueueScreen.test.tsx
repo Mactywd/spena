@@ -134,6 +134,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// Frase copiata esatta dalla spec §5 (llm-haiku-design).
+const CREDITO =
+  "L'AI non risponde: il credito della chiave API è finito. Va ricaricato nella console di Anthropic.";
+
 describe("coda di revisione dell'import", () => {
   it("mostra il termine, quante ricette aspettano e qualche titolo", async () => {
     renderQueue();
@@ -669,6 +673,35 @@ describe("coda di revisione dell'import", () => {
     expect(JSON.parse(String((chiamata?.[1] as RequestInit).body))).toEqual({});
   });
 
+  it("un 503 con la frase del backend la mostra, con la strada a mano", async () => {
+    renderQueue({ askAiResult: [{ code: "llm_credit", detail: CREDITO }, 503] });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+
+    expect(
+      await screen.findByText(`${CREDITO} Decidi a mano qui sotto: la coda funziona.`)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/L'AI non è disponibile/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Forse «pasta»/i })).toBeEnabled();
+  });
+
+  it("un giro fermato a metà dice perché", async () => {
+    renderQueue({
+      askAiResult: [
+        {
+          applied: 1, created: 0, ignored: 0, still_pending: 1, unlocked: 0, remaining_terms: 1,
+          stopped_notice: CREDITO,
+        },
+        200,
+      ],
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+
+    expect(await screen.findByText(/L'AI ha deciso 1 termine/)).toBeInTheDocument();
+    expect(screen.getByText(CREDITO)).toBeInTheDocument();
+  });
+
   it("un 503 dell'AI lo dice con parole sue, senza il nome della variabile, e la coda resta usabile a mano", async () => {
     // Mai un vicolo cieco: il modello irraggiungibile non deve impedire di decidere a
     // mano. Il `detail` è quello vero del backend, col nome della variabile: a video
@@ -678,7 +711,7 @@ describe("coda di revisione dell'import", () => {
       askAiResult: [
         {
           detail:
-            "il riconoscimento non è disponibile (OPENROUTER_API_KEY non configurata): decidi a mano, la coda funziona.",
+            "il riconoscimento non è disponibile (ANTHROPIC_API_KEY non configurata): decidi a mano, la coda funziona.",
         },
         503,
       ],
@@ -689,7 +722,7 @@ describe("coda di revisione dell'import", () => {
     expect(
       await screen.findByText("L'AI non è disponibile: decidi a mano qui sotto, la coda funziona.")
     ).toBeInTheDocument();
-    expect(screen.queryByText(/OPENROUTER_API_KEY/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ANTHROPIC_API_KEY/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Non sono riuscito a chiedere all'AI/i)).not.toBeInTheDocument();
     // i controlli a mano restano lì, invariati dal fallimento dell'AI
     const bottonePastaSuggerita = screen.getByRole("button", { name: /Forse «pasta»/i });

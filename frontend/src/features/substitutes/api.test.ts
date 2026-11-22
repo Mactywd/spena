@@ -9,7 +9,7 @@ import type { LineSubstitution } from "./types";
 
 const VUOTA: LineSubstitution = {
   ingredient_id: "i-pasta", ingredient_name: "pasta", context: "salato", scope: null,
-  verdict: null, decided_by: null, substitutes: [], ai_failed: false,
+  verdict: null, decided_by: null, substitutes: [], ai_failed: false, ai_notice: null,
 };
 const OMETTERE: LineSubstitution = { ...VUOTA, scope: "general", verdict: "omit", decided_by: "ai" };
 

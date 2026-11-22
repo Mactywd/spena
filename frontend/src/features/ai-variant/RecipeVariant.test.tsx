@@ -95,6 +95,10 @@ async function apriIlPannello() {
   return screen.getByLabelText("Cosa vuoi cambiare?");
 }
 
+// Frase copiata esatta dalla spec §5 (llm-haiku-design).
+const CREDITO =
+  "L'AI non risponde: il credito della chiave API è finito. Va ricaricato nella console di Anthropic.";
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -145,6 +149,21 @@ describe("«Modifica con AI» nel dettaglio (R8)", () => {
     const tasto = screen.getByRole("button", { name: "Modifica con AI" });
     expect(tasto).toHaveFocus();
     expect(tasto).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("se l'AI non risponde dice perché", async () => {
+    stubFetch((path) =>
+      path.endsWith("/ai-variant") ? [{ code: "llm_credit", detail: CREDITO }, 503] : undefined
+    );
+    renderAt("/ricette/r1");
+
+    const campo = await apriIlPannello();
+    await userEvent.type(campo, "senza basilico");
+    await userEvent.click(screen.getByRole("button", { name: "Proponi la variante" }));
+
+    const avviso = await screen.findByText(`${CREDITO} Questa ricetta resta com'è.`);
+    expect(avviso).toHaveAttribute("role", "alert");
+    expect(campo).toHaveValue("senza basilico");
   });
 
   it("se l'AI non risponde si resta sulla ricetta, col testo scritto e l'avviso ambra", async () => {

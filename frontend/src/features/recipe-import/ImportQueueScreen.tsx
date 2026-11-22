@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
+import { aiNoticeOf } from "../../api/aiNotice";
 import { defaultQueryRetryPredicate } from "../../lib/queryRetry";
 import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
@@ -87,11 +88,13 @@ function aiRunMessage(result: DecideResult): string {
   return `${decisePart}, ${pendingPart} ${unlockedPart}`;
 }
 
-/** Cosa dire quando chiedere all'AI non riesce. Il 503 porta nel `detail` il motivo per
- * chi amministra il server — il nome della variabile che manca — che a video era una
- * parola tecnica (dal giro di T3): qui si dice cosa resta possibile, con le parole
- * dell'app. Il `detail` resta nella risposta, e nei log. */
+/** Cosa dire quando chiedere all'AI non riesce. Il `detail` di un 503 dell'AI è ora una
+ * frase da schermo scritta nel backend, una per tipo di guasto (spec llm-haiku §5): se
+ * c'è, si mostra seguita dalla strada a mano. Il nome della variabile non c'è più: è
+ * nei log. Senza frase (un 503 d'altra origine, la rete) valgono le frasi di prima. */
 function aiFailureMessage(error: unknown): string {
+  const notice = aiNoticeOf(error);
+  if (notice) return `${notice} Decidi a mano qui sotto: la coda funziona.`;
   if (error instanceof ApiError && error.status === 503)
     return "L'AI non è disponibile: decidi a mano qui sotto, la coda funziona.";
   return "Non sono riuscito a chiedere all'AI. Decidi a mano: la coda funziona.";
@@ -324,7 +327,14 @@ export function ImportQueueScreen() {
       )}
 
       {lastRun?.kind === "ai" && (
-        <p className="pt-2 text-sm font-medium text-brand">{aiRunMessage(lastRun.result)}</p>
+        <>
+          <p className="pt-2 text-sm font-medium text-brand">{aiRunMessage(lastRun.result)}</p>
+          {lastRun.result.stopped_notice && (
+            <Alert tone="degraded" className="pt-2">
+              {lastRun.result.stopped_notice}
+            </Alert>
+          )}
+        </>
       )}
 
       {decide.isError && (
