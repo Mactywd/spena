@@ -32,12 +32,11 @@ PASSWORD_HASH_HOWTO = (
     "APP_PASSWORD_HASH c'è ma non è un hash argon2 leggibile. La causa più probabile "
     "è un troncamento: l'hash contiene dei `$` e Compose li interpreta come "
     "riferimenti a variabili se il servizio backend usa la forma breve "
-    "`env_file: .env`, oppure se Compose è precedente alla 2.30 e non conosce "
-    "`format: raw` (misurato: 62 caratteri su 97 arrivano al container). Controlla "
-    "`docker compose version` e la forma di `env_file` in docker-compose.yml, poi "
-    "rigenera l'hash con: docker compose run --rm backend python -c "
-    "\"from app.core.security import hash_password; print(hash_password('la-tua-password'))\" "
-    "e incollalo in .env senza apici."
+    "`env_file: .env` (senza `format: raw`), oppure se Compose è precedente alla "
+    "2.30 e non conosce `format: raw` (misurato: 62 caratteri su 97 arrivano al "
+    "container). Controlla `docker compose version` e la forma degli `env_file` nel "
+    "file Compose, poi rigenera l'hash con scripts/imposta-password.sh <file compose>, "
+    "che lo scrive in password.env (mai in .env)."
 )
 
 
