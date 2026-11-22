@@ -18,6 +18,17 @@ export function refusalOf(error: unknown): Refusal {
   return { text: error.message || FALLBACK, tone };
 }
 
+/** Il rifiuto da disegnare: nullo se dice quello che la schermata già dice in testa (Claude
+ * non è collegato: l'avviso della vista e il 503 dell'invio hanno lo stesso testo). */
+export function shownRefusal(
+  refusal: Refusal | null,
+  chat: { claude_ready: boolean; claude_notice: string | null } | undefined
+): Refusal | null {
+  if (refusal === null) return null;
+  if (chat && !chat.claude_ready && chat.claude_notice && chat.claude_notice === refusal.text) return null;
+  return refusal;
+}
+
 export type ChatBody = { text: string; retry_of?: string };
 
 /** Il messaggio in volo: il fumetto di Mattia (da `start`) e la risposta che arriva. */

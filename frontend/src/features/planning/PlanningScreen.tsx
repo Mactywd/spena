@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -11,7 +11,7 @@ import { Screen } from "../../components/ui/Screen";
 import type { ChatMessage, MealSlot, PlanningChat } from "../../domain/types";
 import { ChangeCard } from "../change-cards/ChangeCard";
 import { ChatComposer, ChatThread } from "../meal-chat/ChatThread";
-import { refusalOf, useChatSender } from "../meal-chat/useChatSender";
+import { refusalOf, shownRefusal, useChatSender } from "../meal-chat/useChatSender";
 import { SLOT_LABELS, longDayLabel } from "../meals/format";
 import {
   PLANNING_KEY,
@@ -24,11 +24,13 @@ import {
   setPlanningFocus,
   type Focus,
 } from "./api";
-import { ProposalCard } from "./ProposalCard";
+import { ProposalCard, type PlaceState } from "./ProposalCard";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const CURRENT_KEY = [...PLANNING_KEY, "current"] as const;
 const HERE = "/pasti/pianifica";
+
+const NOT_PLACING: PlaceState = { occupants: null, error: null };
 
 const at = (conversationId: string) => `${HERE}?conversazione=${conversationId}`;
 
@@ -77,6 +79,10 @@ export function PlanningScreen() {
     refetch: () => void queryClient.invalidateQueries({ queryKey: PLANNING_KEY }),
   });
   const { setDraft, setRefusal } = sender;
+
+  // Lo stato di «Metti nella settimana» per id della proposta: la risposta di Claude che si
+  // salva ridisegna la proposta in un altro messaggio, e la conferma non deve sparire.
+  const [placing, setPlacing] = useState<Record<string, PlaceState>>({});
 
   const create = useMutation({ mutationFn: (focus?: Focus) => createPlanning(focus) });
   const focus = useMutation({
@@ -164,7 +170,13 @@ export function PlanningScreen() {
       <>
         {proposals.map((p) => (
           // il seguito della messa parte subito, come un messaggio qualsiasi
-          <ProposalCard key={p.id} proposal={p} onPlaced={sender.sendText} />
+          <ProposalCard
+            key={p.id}
+            proposal={p}
+            onPlaced={sender.sendText}
+            state={placing[p.id] ?? NOT_PLACING}
+            onState={(next) => setPlacing((all) => ({ ...all, [p.id]: next }))}
+          />
         ))}
         {cards.map((c) => (
           <ChangeCard key={c.id} card={c} />
@@ -175,6 +187,7 @@ export function PlanningScreen() {
 
   const data = chat.data;
   const { replying, shown, streaming, empty } = sender.thread(data);
+  const refusal = shownRefusal(sender.refusal, data);
 
   return (
     <Screen
@@ -239,7 +252,7 @@ export function PlanningScreen() {
             />
           </>
         )}
-        {sender.refusal && <Alert tone={sender.refusal.tone}>{sender.refusal.text}</Alert>}
+        {refusal && <Alert tone={refusal.tone}>{refusal.text}</Alert>}
         {data && (
           <ChatComposer
             value={sender.draft}

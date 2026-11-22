@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { act } from "@testing-library/react";
 import { PlanningScreen } from "./PlanningScreen";
+import { planningChatKey } from "./api";
+import type { Meal } from "../../domain/types";
 import {
   FOLLOW_UP,
   liveStream,
@@ -256,5 +259,54 @@ describe("Pianifica con Claude", () => {
     stubFetch(() => [planningChat({ claude_ready: false, claude_notice: NOT_CONFIGURED }), 200]);
     renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
     expect(await screen.findByRole("alert")).toHaveTextContent(NOT_CONFIGURED);
+  });
+
+  it("dopo un 503 l'avviso si legge una volta", async () => {
+    stubFetch((url, init) =>
+      init?.method === "POST" && url.endsWith("/messages")
+        ? [{ code: "claude_not_configured", detail: NOT_CONFIGURED }, 503]
+        : [planningChat({ claude_ready: false, claude_notice: NOT_CONFIGURED }), 200]
+    );
+    renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
+    const field = await screen.findByRole("textbox", { name: "Messaggio per Claude" });
+    await userEvent.type(field, "Cosa ceno?");
+    await userEvent.click(screen.getByRole("button", { name: "Invia" }));
+    await waitFor(() => expect(field).toHaveValue("Cosa ceno?"));
+    expect(screen.getAllByText(NOT_CONFIGURED)).toHaveLength(1);
+  });
+
+  it("la conferma dei posti occupati resta quando la risposta si salva", async () => {
+    const reply = (id: string) =>
+      planningChat({
+        messages: [
+          message(),
+          message({ id, role: "assistant", text: "Ecco la proposta.", proposals: [proposal()] }),
+        ],
+      });
+    const PIZZA = {
+      id: "m9", day: "2026-11-14", slot: "lunch", week: "2026-11-09", dish: "Pizza", sides: null,
+      away: false, status: "official", unrecorded: false, recipe: null, leftover_of: null,
+    } as Meal;
+    const PLACE = "/api/v1/planning/proposals/p1/place";
+    let saved = "a1";
+    const spy = stubFetch((url, init) => {
+      if (url === PLACE) {
+        return JSON.parse(String(init?.body)).replace
+          ? [{ chat: reply("a2"), meals: [], follow_up: FOLLOW_UP }, 200]
+          : [{ code: "slots_taken", detail: "posti occupati", chat: reply("a1"), occupants: [PIZZA] }, 409];
+      }
+      return [reply(saved), 200];
+    });
+    const client = renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
+    await userEvent.click(await screen.findByRole("button", { name: "Metti nella settimana" }));
+    expect(await screen.findByText("Questi posti sono occupati:")).toBeInTheDocument();
+    // la risposta salvata porta la proposta in un messaggio con un altro id
+    saved = "a2";
+    act(() => client.setQueryData(planningChatKey("k1"), reply("a2")));
+    expect(screen.getByText("Questi posti sono occupati:")).toBeInTheDocument();
+    // la rilettura della chat che segue il salvataggio ridisegna ancora una volta: si aspetta
+    await new Promise((r) => setTimeout(r, 100));
+    await userEvent.click(screen.getByRole("button", { name: "Sostituisci e metti" }));
+    await waitFor(() => expect(requests(spy, "POST", PLACE)).toEqual([{ replace: false }, { replace: true }]));
   });
 });

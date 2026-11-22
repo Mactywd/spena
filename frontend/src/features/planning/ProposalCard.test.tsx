@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ProposalCard } from "./ProposalCard";
+import { useState } from "react";
+import { ProposalCard, type PlaceState } from "./ProposalCard";
 import {
   FOLLOW_UP,
   planningChat,
@@ -36,10 +37,16 @@ const PIZZA = {
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** La scheda con lo stato che nella schermata sta fuori: qui un `useState`. */
+function Card({ proposal: p, onPlaced }: { proposal: Parameters<typeof ProposalCard>[0]["proposal"]; onPlaced: (f: string) => void }) {
+  const [state, setState] = useState<PlaceState>({ occupants: null, error: null });
+  return <ProposalCard proposal={p} onPlaced={onPlaced} state={state} onState={setState} />;
+}
+
 describe("la proposta", () => {
   it("una riga per posto: giorno, piatto, accompagnamenti e cosa fa al posto occupato", () => {
     stubFetch(() => [{}, 200]);
-    renderAt(<ProposalCard proposal={THREE_ROWS} onPlaced={vi.fn()} />, "/pasti/pianifica");
+    renderAt(<Card proposal={THREE_ROWS} onPlaced={vi.fn()} />, "/pasti/pianifica");
     expect(screen.getByText("Proposta")).toBeInTheDocument();
     expect(screen.getByText("venerdì 13 novembre · Cena")).toBeInTheDocument();
     expect(screen.getByText("Frittata di spinaci")).toBeInTheDocument();
@@ -51,7 +58,7 @@ describe("la proposta", () => {
 
   it("una bozza si intitola «Bozza per la spesa»", () => {
     stubFetch(() => [{}, 200]);
-    renderAt(<ProposalCard proposal={proposal({ kind: "draft" })} onPlaced={vi.fn()} />, "/pasti/pianifica");
+    renderAt(<Card proposal={proposal({ kind: "draft" })} onPlaced={vi.fn()} />, "/pasti/pianifica");
     expect(screen.getByText("Bozza per la spesa")).toBeInTheDocument();
     expect(screen.queryByText("Proposta")).not.toBeInTheDocument();
   });
@@ -63,7 +70,7 @@ describe("la proposta", () => {
         : [{}, 200]
     );
     const onPlaced = vi.fn();
-    renderAt(<ProposalCard proposal={proposal()} onPlaced={onPlaced} />, "/pasti/pianifica");
+    renderAt(<Card proposal={proposal()} onPlaced={onPlaced} />, "/pasti/pianifica");
     await userEvent.click(screen.getByRole("button", { name: "Metti nella settimana" }));
     expect(await screen.findByText("Pasti messi nella settimana.")).toBeInTheDocument();
     expect(requests(spy, "POST", PLACE)).toEqual([{ replace: false }]);
@@ -79,7 +86,7 @@ describe("la proposta", () => {
         : [{ code: "slots_taken", detail: "posti occupati", chat: planningChat(), occupants: [PIZZA] }, 409];
     });
     const onPlaced = vi.fn();
-    renderAt(<ProposalCard proposal={THREE_ROWS} onPlaced={onPlaced} />, "/pasti/pianifica");
+    renderAt(<Card proposal={THREE_ROWS} onPlaced={onPlaced} />, "/pasti/pianifica");
     await userEvent.click(screen.getByRole("button", { name: "Metti nella settimana" }));
     expect(await screen.findByText("Questi posti sono occupati:")).toBeInTheDocument();
     expect(screen.getByText("sabato 14 novembre · Pranzo: «Pizza»")).toBeInTheDocument();
@@ -96,7 +103,7 @@ describe("la proposta", () => {
       { code: "slots_taken", detail: "posti occupati", chat: planningChat(), occupants: [PIZZA] },
       409,
     ]);
-    renderAt(<ProposalCard proposal={THREE_ROWS} onPlaced={vi.fn()} />, "/pasti/pianifica");
+    renderAt(<Card proposal={THREE_ROWS} onPlaced={vi.fn()} />, "/pasti/pianifica");
     await userEvent.click(screen.getByRole("button", { name: "Metti nella settimana" }));
     await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
     expect(screen.queryByText("Questi posti sono occupati:")).not.toBeInTheDocument();
@@ -109,7 +116,7 @@ describe("la proposta", () => {
       release = resolve;
     });
     const spy = stubFetch((url) => (url === PLACE ? pending : [{}, 200]));
-    renderAt(<ProposalCard proposal={proposal()} onPlaced={vi.fn()} />, "/pasti/pianifica");
+    renderAt(<Card proposal={proposal()} onPlaced={vi.fn()} />, "/pasti/pianifica");
     const button = screen.getByRole("button", { name: "Metti nella settimana" });
     await userEvent.click(button);
     await userEvent.click(button);
@@ -128,7 +135,7 @@ describe("la proposta", () => {
       409,
     ]);
     const onPlaced = vi.fn();
-    renderAt(<ProposalCard proposal={proposal()} onPlaced={onPlaced} />, "/pasti/pianifica");
+    renderAt(<Card proposal={proposal()} onPlaced={onPlaced} />, "/pasti/pianifica");
     await userEvent.click(screen.getByRole("button", { name: "Metti nella settimana" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Metti nella settimana" })).not.toHaveAttribute("aria-disabled")
@@ -137,9 +144,40 @@ describe("la proposta", () => {
     expect(onPlaced).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["fuori dal ricettario: lo dice", false, true],
+    ["nel ricettario: tace", true, false],
+    ["senza ricetta: tace", null, false],
+  ] as const)("la conferma e la ricetta dell'occupante, %s", async (_name, inBook, shown) => {
+    const occupant = {
+      ...PIZZA,
+      recipe: inBook === null ? null : { id: "r1", title: "Pizza", in_book: inBook },
+    } as Meal;
+    const SENTENCE = "La sua ricetta non è nel ricettario: si elimina con il pasto.";
+    stubFetch(() => [
+      { code: "slots_taken", detail: "posti occupati", chat: planningChat(), occupants: [occupant] },
+      409,
+    ]);
+    renderAt(<Card proposal={THREE_ROWS} onPlaced={vi.fn()} />, "/pasti/pianifica");
+    await userEvent.click(screen.getByRole("button", { name: "Metti nella settimana" }));
+    await screen.findByText("Questi posti sono occupati:");
+    if (shown) expect(screen.getByText(SENTENCE)).toBeInTheDocument();
+    else expect(screen.queryByText(SENTENCE)).not.toBeInTheDocument();
+  });
+
+  it("una proposta con un giorno passato resta, con la frase", async () => {
+    const PAST = "Questa proposta ha un giorno già passato (giovedì 12 novembre): chiedi a Claude di rifarla.";
+    stubFetch(() => [{ code: "proposal_past", detail: PAST, chat: planningChat() }, 409]);
+    renderAt(<Card proposal={proposal()} onPlaced={vi.fn()} />, "/pasti/pianifica");
+    await userEvent.click(screen.getByRole("button", { name: "Metti nella settimana" }));
+    expect(await screen.findByText(PAST)).toBeInTheDocument();
+    expect(screen.getByText("Frittata di spinaci")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Metti nella settimana" })).toBeInTheDocument();
+  });
+
   it("messa: «Messa nella settimana.» e nessun pulsante", () => {
     stubFetch(() => [{}, 200]);
-    renderAt(<ProposalCard proposal={proposal({ status: "placed" })} onPlaced={vi.fn()} />, "/pasti/pianifica");
+    renderAt(<Card proposal={proposal({ status: "placed" })} onPlaced={vi.fn()} />, "/pasti/pianifica");
     const card = screen.getByText("Messa nella settimana.").closest("section")!;
     expect(within(card).queryByRole("button")).not.toBeInTheDocument();
   });
@@ -147,7 +185,7 @@ describe("la proposta", () => {
   it("sostituita: lo dice, e nessun pulsante", () => {
     stubFetch(() => [{}, 200]);
     renderAt(
-      <ProposalCard proposal={proposal({ status: "superseded" })} onPlaced={vi.fn()} />,
+      <Card proposal={proposal({ status: "superseded" })} onPlaced={vi.fn()} />,
       "/pasti/pianifica"
     );
     expect(screen.getByText("Sostituita da una proposta più nuova.")).toBeInTheDocument();

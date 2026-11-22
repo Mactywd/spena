@@ -7,7 +7,7 @@ import { ChangeCard } from "../change-cards/ChangeCard";
 import { MEALS_KEY } from "../meals/api";
 import { dishChatKey, sendDishMessage, undoRecipeChange, useDishChat } from "./api";
 import { ChatComposer, ChatThread } from "./ChatThread";
-import { refusalOf, useChatSender } from "./useChatSender";
+import { refusalOf, shownRefusal, useChatSender } from "./useChatSender";
 
 /** La chat con Claude sotto la ricetta di un pasto (spec 2026-11-12 §5.3). */
 export function DishChat({ mealId, hasRecipe }: { mealId: string; hasRecipe: boolean }) {
@@ -34,7 +34,7 @@ export function DishChat({ mealId, hasRecipe }: { mealId: string; hasRecipe: boo
     refetch: () => void queryClient.invalidateQueries({ queryKey: dishChatKey(mealId) }),
     onChange: refreshRecipe,
   });
-  const { draft, setDraft, refusal, setRefusal } = sender;
+  const { draft, setDraft, setRefusal } = sender;
 
   const undo = useMutation({
     mutationFn: (changeId: string) => undoRecipeChange(mealId, changeId),
@@ -66,6 +66,7 @@ export function DishChat({ mealId, hasRecipe }: { mealId: string; hasRecipe: boo
   }
 
   const data = chat.data;
+  const refusal = shownRefusal(sender.refusal, data);
   const { replying, shown, streaming, empty } = sender.thread(data);
 
   return (

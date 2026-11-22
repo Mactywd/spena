@@ -18,6 +18,10 @@ type PlaceRefusal = {
   occupants?: Meal[];
 };
 
+/** Lo stato di «Metti nella settimana», che sta in chi disegna le proposte (per id): gli
+ * occupanti da confermare e l'errore. */
+export type PlaceState = { occupants: Meal[] | null; error: string | null };
+
 /** Che cosa fa la riga al suo posto: lo decide il backend (`effect`), qui si dice. */
 function effectText(row: ProposalRow): string | null {
   if (row.occupant === null) return null;
@@ -32,17 +36,20 @@ function effectText(row: ProposalRow): string | null {
 export function ProposalCard({
   proposal,
   onPlaced,
+  state,
+  onState,
 }: {
   proposal: MealProposal;
   onPlaced: (followUp: string) => void;
+  state: PlaceState;
+  onState: (next: PlaceState) => void;
 }) {
+  const { occupants, error } = state;
   const queryClient = useQueryClient();
   const notice = useNotice();
   // una richiesta sola anche con due tocchi ravvicinati: lo stato di React arriva tardi
   const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
-  const [occupants, setOccupants] = useState<Meal[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   // una mutazione: un 401 riporta all'accesso come ogni altra scrittura
   const placing = useMutation({
@@ -53,10 +60,10 @@ export function ProposalCard({
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
-    setError(null);
+    onState({ occupants, error: null });
     try {
       const result = await placing.mutateAsync(replace);
-      setOccupants(null);
+      onState({ occupants: null, error: null });
       putPlanningChat(queryClient, result.chat);
       notice({ text: "Pasti messi nella settimana." });
       void queryClient.invalidateQueries({ queryKey: MEALS_KEY });
@@ -67,16 +74,15 @@ export function ProposalCard({
         const body = e.body as PlaceRefusal | null;
         if (body?.chat) putPlanningChat(queryClient, body.chat);
         if (body?.code === "slots_taken") {
-          setOccupants(body.occupants ?? []);
+          onState({ occupants: body.occupants ?? [], error: null });
         } else if (body?.code === "proposal_placed") {
           // già messa (un altro tocco, un'altra scheda aperta): la chat in cache lo mostra
-          setOccupants(null);
+          onState({ occupants: null, error: null });
         } else {
-          setOccupants(null);
-          setError(body?.detail ?? "Non si può fare.");
+          onState({ occupants: null, error: body?.detail ?? "Non si può fare." });
         }
       } else {
-        setError("Non è andata a buon fine. Riprova.");
+        onState({ occupants, error: "Non è andata a buon fine. Riprova." });
       }
     } finally {
       inFlight.current = false;
@@ -120,13 +126,18 @@ export function ProposalCard({
               {occupants.map((m) => (
                 <li key={m.id} className="text-sm break-words">
                   {`${longDayLabel(m.day)} · ${SLOT_LABELS[m.slot]}: «${m.dish}»`}
+                  {m.recipe && !m.recipe.in_book && (
+                    <span className="block text-ink-soft">
+                      La sua ricetta non è nel ricettario: si elimina con il pasto.
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
             <Button variant="primary" shape="block" busy={busy} onClick={() => void place(true)}>
               Sostituisci e metti
             </Button>
-            <Button variant="ghost" shape="block" busy={busy} onClick={() => setOccupants(null)}>
+            <Button variant="ghost" shape="block" busy={busy} onClick={() => onState({ occupants: null, error })}>
               Annulla
             </Button>
           </div>

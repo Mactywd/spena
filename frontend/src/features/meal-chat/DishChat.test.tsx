@@ -204,6 +204,20 @@ describe("la chat del piatto", () => {
     expect(field).toHaveValue("Fallo con gli spinaci");
   });
 
+  it("dopo un 503 l'avviso si legge una volta", async () => {
+    stubFetch((_url, init) =>
+      init?.method === "POST"
+        ? [{ code: "claude_not_configured", detail: NOT_CONFIGURED }, 503]
+        : [chat({ claude_ready: false, claude_notice: NOT_CONFIGURED }), 200]
+    );
+    renderChat();
+    const field = await screen.findByRole("textbox", { name: "Messaggio per Claude" });
+    await userEvent.type(field, "Fallo con gli spinaci");
+    await userEvent.click(screen.getByRole("button", { name: "Invia" }));
+    await waitFor(() => expect(field).toHaveValue("Fallo con gli spinaci"));
+    expect(screen.getAllByText(NOT_CONFIGURED)).toHaveLength(1);
+  });
+
   it("un 409 «claude_busy» lascia il testo nel campo e dice perché", async () => {
     stubFetch((_url, init) =>
       init?.method === "POST"
