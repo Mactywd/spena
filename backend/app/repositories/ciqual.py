@@ -1,13 +1,17 @@
 """La tabella CIQUAL nel database (S4, fetta 1): scriverla, contarla, cercarla.
 
 I candidati di un ingrediente si trovano con `word_similarity` di `pg_trgm` sui nomi
-francesi, una parola di ricerca alla volta. Non e5: in produzione la ricerca semantica è
-spenta (`INSTALL_EMBEDDINGS=0`, spec §3), e i trigrammi fra italiano e francese non si
+francesi, una parola di ricerca alla volta; a parità di punteggio vince il nome che
+comincia con la prima parola del termine, poi la somiglianza di tutto il nome (vedi
+`find_candidates`). Niente `unaccent`: vorrebbe una migrazione, e sulla tabella vera non
+cambia i posti. Non e5: in produzione la ricerca semantica è spenta
+(`INSTALL_EMBEDDINGS=0`, spec §3), e i trigrammi fra italiano e francese non si
 incontrano — per questo le parole francesi le scrive l'AI (`services/ciqual_match.py`).
 Le tremila righe si leggono intere a ogni domanda: è meno di un millisecondo per riga,
 e un indice non varrebbe la migrazione.
 """
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -98,24 +102,68 @@ async def find_candidates(
     min_similarity: float = CANDIDATE_MIN_SIMILARITY,
 ) -> list[Candidate]:
     """I migliori `limit` alimenti per almeno una delle parole, ciascuno col suo
-    punteggio migliore; a parità, per nome."""
-    best: dict[str, Candidate] = {}
+    punteggio migliore.
+
+    `word_similarity` vale 1 per ogni nome che contiene la parola: sulla tabella vera
+    «riz» ne lega 43, e a parità l'ordine alfabetico metteva «Amidon de riz» e «Boisson
+    au riz» prima di «Riz blanc, cru», lasciando fuori l'alimento semplice. Per questo, a
+    parità, prima il nome che comincia con la prima parola del termine, poi la
+    `similarity` di tutto il nome, poi il nome. Lo stesso ordine vale nella query di
+    ogni parola e nell'unione, dove ogni alimento tiene il massimo di ciascuna delle tre
+    misure fra le parole che lo hanno trovato. `Candidate.score` resta la
+    `word_similarity` migliore.
+    """
+    # codice → (candidato, comincia con la parola, somiglianza di tutto il nome)
+    best: dict[str, tuple[Candidate, bool, float]] = {}
     for term in terms:
         score = func.word_similarity(term, CiqualFood.name_fr)
+        starts = func.lower(CiqualFood.name_fr).startswith(_first_word(term), autoescape=True)
+        closeness = func.similarity(term, CiqualFood.name_fr)
         rows = (
             await session.execute(
-                select(CiqualFood.code, CiqualFood.name_fr, CiqualFood.group_fr, score.label("score"))
+                select(
+                    CiqualFood.code,
+                    CiqualFood.name_fr,
+                    CiqualFood.group_fr,
+                    score.label("score"),
+                    starts.label("starts"),
+                    closeness.label("closeness"),
+                )
                 .where(score >= min_similarity)
-                .order_by(score.desc(), CiqualFood.name_fr)
+                .order_by(score.desc(), starts.desc(), closeness.desc(), CiqualFood.name_fr)
                 .limit(limit)
             )
         ).all()
         for row in rows:
             known = best.get(row.code)
-            if known is None or row.score > known.score:
-                best[row.code] = Candidate(row.code, row.name_fr, row.group_fr, float(row.score))
-    ranked = sorted(best.values(), key=lambda candidate: (-candidate.score, candidate.name_fr))
-    return ranked[:limit]
+            if known is None:
+                best[row.code] = (
+                    Candidate(row.code, row.name_fr, row.group_fr, float(row.score)),
+                    bool(row.starts),
+                    float(row.closeness),
+                )
+                continue
+            candidate, known_starts, known_closeness = known
+            best[row.code] = (
+                Candidate(
+                    candidate.code, candidate.name_fr, candidate.group_fr,
+                    max(candidate.score, float(row.score)),
+                ),
+                known_starts or bool(row.starts),
+                max(known_closeness, float(row.closeness)),
+            )
+    ranked = sorted(
+        best.values(),
+        key=lambda found: (-found[0].score, not found[1], -found[2], found[0].name_fr),
+    )
+    return [candidate for candidate, _, _ in ranked[:limit]]
+
+
+def _first_word(term: str) -> str:
+    """La prima parola del termine, in minuscolo: lettere, cifre, apostrofi e trattini
+    («Riz, cru» → «riz», «huile d'olive» → «huile», «(riz)» → «riz»)."""
+    match = re.search(r"[\w'’-]+", term.lower())
+    return match.group() if match else ""
 
 
 def _escape_like(text: str) -> str:

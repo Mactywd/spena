@@ -1,16 +1,22 @@
 """La tabella CIQUAL nel database: scriverla, cercarla, trovarci i candidati (S4, fetta 1)."""
 
+import re
+
+import pytest
+from ciqual_veri import ALIMENTI_VERI, tabella_vera
 from sqlalchemy import select
 
 from app.db.models.nutrition import CiqualFood
-from app.domain.ciqual import CiqualRow
+from app.domain.ciqual import CiqualRow, normalize_name
 from app.repositories.ciqual import (
+    _first_word,
     count_foods,
     count_missing_from,
     find_candidates,
     search_foods,
     upsert_foods,
 )
+from app.services.ciqual_match import CANDIDATES
 
 ALIMENTI = [
     CiqualRow("90001", "Tomate, crue", "légumes", {"kcal": 18.0}),
@@ -83,3 +89,95 @@ async def test_search_foods_non_usa_jolly(db_session):
 
     assert await search_foods(db_session, "%", limit=20) == []
     assert await search_foods(db_session, "_", limit=20) == []
+
+
+def _codici(candidati):
+    return [candidato.code for candidato in candidati]
+
+
+async def test_a_parita_vince_il_nome_che_comincia_con_la_parola(db_session):
+    """«riz» vale 1 con ogni nome che lo contiene: l'alfabeto metteva prima «Amidon de
+    riz», «Boisson au riz», «Farine de riz», e il riso crudo restava fuori."""
+    await upsert_foods(db_session, ALIMENTI_VERI)
+
+    candidati = await find_candidates(db_session, ["riz"], limit=3)
+
+    assert _codici(candidati) == ["9100", "9104", "39251"]
+
+
+@pytest.mark.parametrize(
+    ("parola", "limit", "attesi"),
+    [
+        ("saumon", 2, {"26036", "26229"}),
+        ("sel", 2, {"11083", "11017"}),
+        ("pomme de terre", 1, {"4008"}),
+        ("tomate", 2, {"20358", "20385"}),
+        ("thon", 2, {"26053", "26039"}),
+    ],
+)
+async def test_il_cibo_semplice_prima_dei_piatti_che_lo_contengono(db_session, parola, limit, attesi):
+    await upsert_foods(db_session, ALIMENTI_VERI)
+
+    candidati = await find_candidates(db_session, [parola], limit=limit)
+
+    assert set(_codici(candidati)) == attesi
+
+
+async def test_le_parole_si_uniscono_con_lo_stesso_ordine(db_session):
+    await upsert_foods(db_session, ALIMENTI_VERI)
+
+    candidati = await find_candidates(db_session, ["riz", "sel"], limit=3)
+
+    assert _codici(candidati) == ["9100", "9104", "39251"]
+
+
+async def test_maiuscole_e_punteggiatura_non_cambiano_l_ordine(db_session):
+    await upsert_foods(db_session, ALIMENTI_VERI)
+
+    assert _codici(await find_candidates(db_session, ["RIZ"], limit=1)) == ["9100"]
+    assert _codici(await find_candidates(db_session, ["Riz, cru"], limit=3)) == ["9100", "9104", "39251"]
+
+
+def test_la_prima_parola_del_termine():
+    assert _first_word("Riz, cru") == "riz"
+    assert _first_word("pomme de terre") == "pomme"
+    assert _first_word("huile d'olive") == "huile"
+    assert _first_word("(riz)") == "riz"
+    assert _first_word("  Épinard cru") == "épinard"
+    assert _first_word("") == ""
+
+
+# (espressione sul nome normalizzato, parole di ricerca): parole plausibili dell'AI per i
+# casi che il pilota del 2026-10-20 ha mancato, e l'alimento che ciascun gruppo deve
+# portare fra i candidati
+GRUPPI_VERI = [
+    ("^riz.*cru", ["riz"]), ("^riz.*cru", ["riz blanc cru", "riz"]), ("^riz.*cru", ["riz cru", "riz blanc"]),
+    ("^saumon", ["saumon"]), ("^saumon", ["saumon cru", "saumon frais"]),
+    ("^saumon", ["saumon atlantique cru", "filet de saumon"]),
+    ("^thon.*(appertise|conserve)", ["thon"]), ("^thon.*(appertise|conserve)", ["thon en conserve", "thon au naturel"]),
+    ("^thon.*(appertise|conserve)", ["thon en boîte", "thon appertisé"]),
+    ("^thon.*(appertise|conserve)", ["thon à l'huile", "thon"]),
+    ("^lentille", ["lentilles"]), ("^lentille", ["lentilles sèches", "lentilles vertes"]), ("^miel", ["miel"]),
+    ("^tomate (sans precision|ronde), crue", ["tomate crue", "tomate"]),
+    ("^tomate (sans precision|ronde), crue", ["tomate"]),
+    ("^pomme de terre.*crue", ["pomme de terre crue", "pomme de terre"]), ("^pomme de terre.*crue", ["pomme de terre"]),
+    ("^sucre blanc", ["sucre"]), ("^sucre blanc", ["sucre blanc", "sucre en poudre"]),
+    ("^sel (blanc|marin|gris)", ["sel"]), ("^sel (blanc|marin|gris)", ["sel fin", "sel de table"]),
+    ("^sel (blanc|marin|gris)", ["sel marin", "sel"]),
+    ("^poulet, filet sans peau cru", ["blanc de poulet", "filet de poulet cru"]),
+    ("^poulet, filet sans peau cru", ["poulet filet cru", "poulet"]),
+]
+
+
+async def test_la_tabella_vera_ha_l_alimento_fra_i_candidati(db_session):
+    """Sulla tabella del 2025 intera, caricata per la strada di `load_ciqual`: ogni gruppo
+    di parole porta il suo alimento fra i `CANDIDATES` che la scelta vede."""
+    assert await tabella_vera(db_session) == 3484
+
+    mancati = []
+    for espressione, parole in GRUPPI_VERI:
+        candidati = await find_candidates(db_session, parole, limit=CANDIDATES)
+        if not any(re.search(espressione, normalize_name(c.name_fr)) for c in candidati):
+            mancati.append((espressione, parole))
+
+    assert mancati == []
