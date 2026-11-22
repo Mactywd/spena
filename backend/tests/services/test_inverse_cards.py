@@ -22,6 +22,7 @@ from app.services.change_cards import (
     InverseReason,
     ListProposal,
     PantryProposal,
+    RowOverride,
     apply_card,
     discard_card,
     get_card,
@@ -570,3 +571,30 @@ async def test_sostituire_un_pasto_passato_spunta_come_sempre(db_session, mondo,
     assert [(r.kind, r.checked, r.note) for r in card.rows] == [
         ("pantry", True, None), ("unlist", True, None),
     ]
+
+
+async def test_l_inversa_toglie_la_riga_aggiunta_all_applicazione(db_session, mondo):
+    # la panna proposta «Quasi finito» e corretta a «Finito»: la riga di lista nata
+    # all'applicazione si toglie con l'inversa, come una qualunque altra
+    panna = Ingredient(name="panna", display_name="Panna", category=IngredientCategory.LATTICINI)
+    db_session.add(panna)
+    await db_session.flush()
+    voce = PantryItem(ingredient_id=panna.id, status=A)
+    db_session.add(voce)
+    await db_session.flush()
+    card = await propose_card(
+        db_session, meals=[mondo["A"]], pantry=[PantryProposal(voce.id, L)], shopping=[]
+    )
+    (dispensa,) = righe(card, "pantry")
+    done = await apply_card(db_session, card.id, [RowOverride(dispensa.id, True, F)])
+    (aggiunta,) = righe(done, "list")
+    assert aggiunta.list_added is True
+
+    await delete_meal(db_session, mondo["A"])
+    card = await l_inversa(db_session)
+    (u,) = righe(card, "unlist")
+    assert (u.label, u.checked, u.note) == ("panna", True, None)
+    assert u.shopping_item_id == aggiunta.shopping_item_id
+    assert u.source_row_ids == [str(aggiunta.id)]
+    (p,) = righe(card, "pantry")
+    assert (p.pantry_item_id, p.to_status) == (voce.id, "available")

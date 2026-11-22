@@ -44,6 +44,8 @@ IN_CART_NOTE = "È già nel carrello."
 BOUGHT_NOTE = "Già comprata: resta com'è."
 REVERSED_NOTE = "Già rimessa da un'altra scheda."
 PAST_MEAL_NOTE = "Pasto già passato: rimettila solo se non l'hai mangiato."
+NO_LONGER_FINISHED_NOTE = "Non va in lista: nella scheda la voce non diventa più «Finito»."
+NOW_FINISHED_NOTE = "In lista perché nella scheda la voce diventa «Finito»."
 
 
 @dataclass(frozen=True)
@@ -204,23 +206,39 @@ async def propose_card(
                 "item": item, "to_status": to_status, "meal_ids": mine,
             }
 
-    # una riga di lista per ingrediente: chi finisce ci va da sé (decisione 19)
+    # una riga di lista per ingrediente: chi finisce ci va da sé (decisione 19). Ognuna
+    # ricorda le voci di dispensa che l'hanno portata e se Claude l'ha chiesta da sé:
+    # chiesta, sta in piedi da sola (decisione 15).
     list_rows: dict[str, dict] = {}
     free_rows: list[dict] = []
 
-    def add_list(ingredient_id, label: str, mine: list[str]) -> None:
+    def add_list(
+        ingredient_id, label: str, mine: list[str], *, from_item: str | None = None
+    ) -> None:
         if ingredient_id is None:
-            free_rows.append({"ingredient_id": None, "label": label, "meal_ids": mine})
+            free_rows.append({
+                "ingredient_id": None, "label": label, "meal_ids": mine,
+                "from_items": [], "asked": True,
+            })
             return
         key = str(ingredient_id)
         if key in list_rows:
             list_rows[key]["meal_ids"] = _union(list_rows[key]["meal_ids"], mine)
         else:
-            list_rows[key] = {"ingredient_id": ingredient_id, "label": label, "meal_ids": mine}
+            list_rows[key] = {
+                "ingredient_id": ingredient_id, "label": label, "meal_ids": mine,
+                "from_items": [], "asked": False,
+            }
+        if from_item is None:
+            list_rows[key]["asked"] = True
+        else:
+            list_rows[key]["from_items"].append(from_item)
 
-    for row in pantry_rows.values():
+    for key, row in pantry_rows.items():
         if adds_to_list(row["to_status"]):
-            add_list(row["item"].ingredient_id, _label(row["item"]), row["meal_ids"])
+            add_list(
+                row["item"].ingredient_id, _label(row["item"]), row["meal_ids"], from_item=key
+            )
     for proposal in shopping:
         ingredient_id = await _list_ingredient(
             session, proposal.ingredient_id, proposal.raw_text
@@ -234,19 +252,27 @@ async def propose_card(
     session.add(card)
     await session.flush()
 
+    # prima le righe di dispensa, perché quelle di lista ne ricordano gli id
     position = 0
-    for row in pantry_rows.values():
+    written: dict[str, ChangeCardRow] = {}
+    for key, row in pantry_rows.items():
         item = row["item"]
-        session.add(ChangeCardRow(
+        written[key] = ChangeCardRow(
             card_id=card.id, position=position, kind=RowKind.PANTRY.value,
             label=_label(item), pantry_item_id=item.id, ingredient_id=item.ingredient_id,
             to_status=row["to_status"], checked=True, editable=True, meal_ids=row["meal_ids"],
-        ))
+        )
+        session.add(written[key])
         position += 1
+    await session.flush()
+    pantry_row_ids = {key: str(written_row.id) for key, written_row in written.items()}
     for row in [*list_rows.values(), *free_rows]:
         session.add(ChangeCardRow(
             card_id=card.id, position=position, kind=RowKind.LIST.value, label=row["label"],
             ingredient_id=row["ingredient_id"], meal_ids=row["meal_ids"],
+            from_pantry_row_ids=(
+                [] if row["asked"] else [pantry_row_ids[key] for key in row["from_items"]]
+            ),
             **await _list_row_fields(session, row["ingredient_id"]),
         ))
         position += 1
@@ -443,6 +469,70 @@ def _origins(row: ChangeCardRow) -> list[uuid.UUID]:
     return [row.source_row_id] if row.source_row_id is not None else []
 
 
+async def _follow_the_pantry(
+    session: AsyncSession, card: ChangeCard, rows: list[ChangeCardRow]
+) -> set[uuid.UUID]:
+    """Le righe di lista seguono la scheda come Mattia l'ha corretta (decisioni 4 e 15).
+
+    Aggiunge a `rows` una riga di lista per ogni riga di dispensa spuntata che adesso va a
+    `finished`, la cui voce viva non è già finita, e il cui ingrediente non ha nessuna riga
+    di lista nella scheda; se quella riga c'è e viene da altre righe di dispensa, questa si
+    aggiunge alle sue origini, così non si salta proprio quando la voce diventa «Finito».
+    Restituisce le righe di lista da saltare: quelle che hanno origini e nessuna delle quali
+    diventa più `finished`. Una riga senza origini sta in piedi da sola e non si salta mai.
+    """
+    finished = PantryStatus.FINISHED.value
+    by_ingredient = {
+        row.ingredient_id: row
+        for row in rows
+        if row.kind == RowKind.LIST.value and row.ingredient_id is not None
+    }
+    position = max((row.position for row in rows), default=-1) + 1
+    added = False
+    for row in list(rows):
+        if row.kind != RowKind.PANTRY.value or not row.checked or row.to_status != finished:
+            continue
+        item = (
+            await session.get(PantryItem, row.pantry_item_id)
+            if row.pantry_item_id is not None
+            else None
+        )
+        if item is None or item.archived_at is not None or item.status == finished:
+            continue
+        listed = by_ingredient.get(item.ingredient_id)
+        if listed is None:
+            await session.refresh(item, ["ingredient", "product"])
+            listed = ChangeCardRow(
+                card_id=card.id, position=position, kind=RowKind.LIST.value,
+                label=_label(item), ingredient_id=item.ingredient_id, checked=True,
+                editable=True, note=NOW_FINISHED_NOTE, meal_ids=list(row.meal_ids),
+                from_pantry_row_ids=[str(row.id)],
+            )
+            session.add(listed)
+            rows.append(listed)
+            by_ingredient[item.ingredient_id] = listed
+            position += 1
+            added = True
+        elif listed.from_pantry_row_ids and str(row.id) not in listed.from_pantry_row_ids:
+            listed.from_pantry_row_ids = [*listed.from_pantry_row_ids, str(row.id)]
+            listed.meal_ids = _union(listed.meal_ids, row.meal_ids)
+    if added:
+        await session.flush()
+
+    finishing = {
+        str(row.id)
+        for row in rows
+        if row.kind == RowKind.PANTRY.value and row.to_status == finished
+    }
+    return {
+        row.id
+        for row in rows
+        if row.kind == RowKind.LIST.value
+        and row.from_pantry_row_ids
+        and finishing.isdisjoint(row.from_pantry_row_ids)
+    }
+
+
 async def apply_card(
     session: AsyncSession, card_id: uuid.UUID, overrides: Sequence[RowOverride]
 ) -> ChangeCard:
@@ -469,6 +559,19 @@ async def apply_card(
     righe d'origine si bloccano (`FOR UPDATE`, in ordine di id) prima di leggere
     `reversed_at`. Una riga inversa di dispensa ha più origini (`source_row_ids`): le
     segna tutte, e si salta se una qualunque è già annullata.
+
+    **La lista segue la scheda corretta** (decisioni 4 e 15): la regola del barattolo
+    avviato — solo `finished` porta in lista — vale sulla scheda come Mattia l'ha
+    corretta, non su quella che Claude aveva proposto. Dopo le correzioni, una riga di
+    lista portata da righe di dispensa (`from_pantry_row_ids`) si salta, con
+    `NO_LONGER_FINISHED_NOTE`, se nessuna di loro va più a `finished`; e una riga di
+    dispensa spuntata che adesso va a `finished`, su una voce non ancora finita, porta in
+    lista il suo ingrediente con una riga nuova (`NOW_FINISHED_NOTE`), se la scheda non ne
+    ha già una. La riga nuova passa da `add_item` come le altre, quindi non duplica mai.
+    La spunta di una riga di dispensa non conta per il salto: una riga non spuntata che
+    va a `finished` lascia la sua riga di lista com'è. Una riga di lista senza origini —
+    chiesta da Claude, aggiunta a mano, o scritta prima della 0026 — sta in piedi da sola
+    e si applica come sempre: perché la voce serve, non perché finisce.
     """
     card = await _locked(session, card_id)
     _must_be_proposed(card)
@@ -506,9 +609,15 @@ async def apply_card(
         )
         sources = {source.id: source for source in locked.scalars()}
 
+    no_longer_finished = await _follow_the_pantry(session, card, rows)
+
     for row in rows:
         if not row.checked:
             row.applied = False
+            continue
+        if row.id in no_longer_finished:
+            row.applied = False
+            row.note = NO_LONGER_FINISHED_NOTE
             continue
         origins = [sources[o] for o in _origins(row) if o in sources]
         if any(origin.reversed_at is not None for origin in origins):

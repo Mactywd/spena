@@ -14,6 +14,8 @@ from app.domain.meals import MealSlot, MealStatus
 from app.domain.rules import PantryStatus
 from app.repositories.shopping import add_item
 from app.services.change_cards import (
+    NO_LONGER_FINISHED_NOTE,
+    NOW_FINISHED_NOTE,
     CardRefusal,
     CardRefusalCode,
     ListProposal,
@@ -241,8 +243,10 @@ async def test_le_correzioni_di_mattia(db_session, mondo):
     assert mondo["voci"]["parmigiano"].status == "available"
     assert riga(done, "pantry", "parmigiano").applied is False
     assert mondo["voci"]["ricotta"].status == "low"
-    assert riga(done, "list", "ricotta").applied is True
-    assert len(await lista_attiva(db_session, mondo["ing"]["ricotta"])) == 1
+    # la ricotta non finisce più: la riga che la sua voce aveva portato in lista si salta
+    # (decisione 4 del piano 2026-11-21-pasti-terzo-giro; prima si applicava lo stesso)
+    assert riga(done, "list", "ricotta").applied is False
+    assert await lista_attiva(db_session, mondo["ing"]["ricotta"]) == []
 
 
 async def test_una_voce_entrata_in_lista_dopo_non_si_duplica(db_session, mondo):
@@ -491,3 +495,184 @@ def test_supersedes():
     assert _supersedes(["a", "b"], ["a", "b", "c"]) is True
     assert _supersedes(["a", "b", "c"], ["a"]) is False
     assert _supersedes([], ["a"]) is False
+
+
+# --- la riga della lista segue lo stato corretto della voce (decisioni 4 e 15) ---------
+
+
+@pytest_asyncio.fixture
+async def cucina(db_session):
+    passata = Ingredient(
+        name="passata", display_name="Passata", category=IngredientCategory.CONDIMENTI
+    )
+    panna = Ingredient(name="panna", display_name="Panna", category=IngredientCategory.LATTICINI)
+    db_session.add_all([passata, panna])
+    await db_session.flush()
+    voci = {
+        "passata": PantryItem(ingredient_id=passata.id, status=A),
+        "panna": PantryItem(ingredient_id=panna.id, status=A),
+    }
+    db_session.add_all(voci.values())
+    await db_session.flush()
+    pasto = await create_meal(
+        db_session, day=date(2026, 11, 20), slot=MealSlot.DINNER, dish="Penne alla panna"
+    )
+    return {"ing": {"passata": passata, "panna": panna}, "voci": voci, "pasto": pasto}
+
+
+async def _proposta(db_session, cucina, pantry, shopping=()):
+    return await propose_card(
+        db_session, meals=[cucina["pasto"]], pantry=pantry, shopping=list(shopping)
+    )
+
+
+async def test_la_riga_della_lista_ricorda_da_dove_viene(db_session, cucina):
+    v, ing = cucina["voci"], cucina["ing"]
+    card = await _proposta(db_session, cucina, [PantryProposal(v["passata"].id, F)])
+    (dispensa,) = righe(card, "pantry")
+    (lista,) = righe(card, "list")
+    assert lista.from_pantry_row_ids == [str(dispensa.id)]
+    assert dispensa.from_pantry_row_ids == []
+
+    chiesta = await _proposta(
+        db_session, cucina, [PantryProposal(v["passata"].id, F)],
+        [ListProposal(ing["passata"].id, "Passata")],
+    )
+    (lista,) = righe(chiesta, "list")
+    assert lista.from_pantry_row_ids == []
+
+    a_mano = await create_empty_card(db_session, cucina["pasto"])
+    a_mano = await add_row(db_session, a_mano, raw_text="Panna")
+    (lista,) = righe(a_mano, "list")
+    assert lista.from_pantry_row_ids == []
+
+
+async def test_correggere_finito_in_quasi_finito_non_mette_in_lista(db_session, cucina):
+    v = cucina["voci"]
+    card = await _proposta(db_session, cucina, [PantryProposal(v["passata"].id, F)])
+    (dispensa,) = righe(card, "pantry")
+    done = await apply_card(db_session, card.id, [RowOverride(dispensa.id, True, L)])
+    assert await lista_attiva(db_session, cucina["ing"]["passata"]) == []
+    (lista,) = righe(done, "list")
+    assert lista.applied is False
+    assert lista.note == NO_LONGER_FINISHED_NOTE
+    assert lista.shopping_item_id is None
+    await db_session.refresh(v["passata"])
+    assert v["passata"].status == "low"
+
+
+async def test_correggere_quasi_finito_in_finito_mette_in_lista(db_session, cucina):
+    v = cucina["voci"]
+    card = await _proposta(
+        db_session, cucina, [PantryProposal(v["panna"].id, L), PantryProposal(v["passata"].id, L)]
+    )
+    assert righe(card, "list") == []
+    dispensa = riga(card, "pantry", "panna")
+    done = await apply_card(db_session, card.id, [RowOverride(dispensa.id, True, F)])
+    (voce,) = await lista_attiva(db_session, cucina["ing"]["panna"])
+    (lista,) = righe(done, "list")
+    assert lista.position == max(r.position for r in done.rows)
+    assert lista.position > max(r.position for r in righe(done, "pantry"))
+    assert (lista.label, lista.ingredient_id) == ("panna", cucina["ing"]["panna"].id)
+    assert lista.applied is True and lista.list_added is True
+    assert lista.shopping_item_id == voce.id
+    assert lista.note == NOW_FINISHED_NOTE
+    assert lista.from_pantry_row_ids == [str(dispensa.id)]
+    assert lista.meal_ids == dispensa.meal_ids
+    assert lista.checked is True and lista.editable is True
+    await db_session.refresh(v["panna"])
+    assert v["panna"].status == "finished"
+
+
+async def test_una_riga_chiesta_da_claude_resta_anche_se_la_voce_non_finisce(
+    db_session, cucina
+):
+    v, ing = cucina["voci"], cucina["ing"]
+    card = await _proposta(
+        db_session, cucina, [PantryProposal(v["passata"].id, F)],
+        [ListProposal(ing["passata"].id, "Passata")],
+    )
+    (dispensa,) = righe(card, "pantry")
+    done = await apply_card(db_session, card.id, [RowOverride(dispensa.id, True, L)])
+    (lista,) = righe(done, "list")
+    assert lista.applied is True and lista.note is None
+    assert len(await lista_attiva(db_session, ing["passata"])) == 1
+
+
+async def test_due_voci_dello_stesso_ingrediente_una_resta_finita(db_session, cucina):
+    v, ing = cucina["voci"], cucina["ing"]
+    seconda = PantryItem(ingredient_id=ing["passata"].id, status=A)
+    db_session.add(seconda)
+    await db_session.flush()
+    card = await _proposta(
+        db_session, cucina,
+        [PantryProposal(v["passata"].id, F), PantryProposal(seconda.id, F)],
+    )
+    (lista,) = righe(card, "list")
+    dispensa = {r.pantry_item_id: r for r in righe(card, "pantry")}
+    assert set(lista.from_pantry_row_ids) == {str(r.id) for r in dispensa.values()}
+    done = await apply_card(
+        db_session, card.id, [RowOverride(dispensa[v["passata"].id].id, True, L)]
+    )
+    (lista,) = righe(done, "list")
+    assert lista.applied is True and lista.note is None
+    assert len(await lista_attiva(db_session, ing["passata"])) == 1
+
+
+async def test_la_riga_aggiunta_non_duplica_la_lista(db_session, cucina):
+    v, ing = cucina["voci"], cucina["ing"]
+    await add_item(db_session, "Panna", ing["panna"].id)
+    card = await _proposta(db_session, cucina, [PantryProposal(v["panna"].id, L)])
+    (dispensa,) = righe(card, "pantry")
+    done = await apply_card(db_session, card.id, [RowOverride(dispensa.id, True, F)])
+    (lista,) = righe(done, "list")
+    assert lista.note == NOW_FINISHED_NOTE
+    assert lista.applied is True and lista.list_added is False
+    assert len(await lista_attiva(db_session, ing["panna"])) == 1
+
+
+async def test_una_voce_gia_finita_non_aggiunge_righe(db_session, cucina):
+    v = cucina["voci"]
+    v["panna"].status = F
+    await db_session.flush()
+    card = await create_empty_card(db_session, cucina["pasto"])
+    card = await add_row(db_session, card, pantry_item_id=v["panna"].id)
+    (dispensa,) = righe(card, "pantry")
+    assert dispensa.to_status == "finished"
+    done = await apply_card(db_session, card.id, [])
+    assert righe(done, "list") == []
+    assert await lista_attiva(db_session, cucina["ing"]["panna"]) == []
+
+
+async def test_una_riga_di_dispensa_non_spuntata_non_aggiunge_righe(db_session, cucina):
+    v = cucina["voci"]
+    card = await _proposta(db_session, cucina, [PantryProposal(v["panna"].id, L)])
+    (dispensa,) = righe(card, "pantry")
+    done = await apply_card(db_session, card.id, [RowOverride(dispensa.id, False, F)])
+    assert righe(done, "list") == []
+    assert await lista_attiva(db_session, cucina["ing"]["panna"]) == []
+
+
+async def test_una_voce_corretta_a_finito_tiene_la_riga_che_l_altra_lascia(db_session, cucina):
+    # due barattoli di passata: quello che la portava in lista si corregge a «Quasi
+    # finito», l'altro a «Finito». La passata va in lista una volta, con la riga di prima.
+    v, ing = cucina["voci"], cucina["ing"]
+    seconda = PantryItem(ingredient_id=ing["passata"].id, status=A)
+    db_session.add(seconda)
+    await db_session.flush()
+    card = await _proposta(
+        db_session, cucina,
+        [PantryProposal(v["passata"].id, F), PantryProposal(seconda.id, L)],
+    )
+    dispensa = {r.pantry_item_id: r for r in righe(card, "pantry")}
+    done = await apply_card(
+        db_session, card.id,
+        [
+            RowOverride(dispensa[v["passata"].id].id, True, L),
+            RowOverride(dispensa[seconda.id].id, True, F),
+        ],
+    )
+    (lista,) = righe(done, "list")
+    assert lista.applied is True and lista.note is None
+    assert str(dispensa[seconda.id].id) in lista.from_pantry_row_ids
+    assert len(await lista_attiva(db_session, ing["passata"])) == 1

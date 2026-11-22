@@ -10,6 +10,14 @@ solo la lista.
 `meal_ids` (decisione 18): sulla scheda sono i pasti per cui è stata chiesta; su ogni riga
 sono i pasti per cui quella voce serve, di norma tutti quelli della scheda. Se Claude
 nomina due volte la stessa voce le righe si fondono e i pasti si uniscono.
+
+`from_pantry_row_ids` (decisione 15 del piano 2026-11-21-pasti-terzo-giro): su una riga di
+lista sono le righe di dispensa della stessa scheda che l'hanno portata, perché la voce
+diventa «Finito». All'applicazione la riga segue la scheda corretta da Mattia: si salta se
+nessuna di quelle righe diventa più `finished`. È vuota quando la riga sta in piedi da
+sola — chiesta da Claude, aggiunta a mano, o scritta prima della 0026 — e allora si
+applica sempre, come prima: per quelle righe non si sa da dove venissero, e toglierle
+sarebbe indovinare.
 """
 
 import uuid
@@ -132,6 +140,11 @@ class ChangeCardRow(UUIDMixin, Base):
     source_row_id: Mapped[uuid.UUID | None] = _fk("change_card_rows.id")
     # Tutte le righe della scheda diretta da cui viene un'inversa (id come stringhe).
     source_row_ids: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default=list
+    )
+    # Le righe di dispensa di questa scheda che hanno portato in lista questa riga (id come
+    # stringhe); vuota se sta in piedi da sola.
+    from_pantry_row_ids: Mapped[list[str]] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), default=list
     )
     reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
