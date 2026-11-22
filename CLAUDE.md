@@ -316,7 +316,7 @@ against the SDK's real message types. Spec:
   (`meals.recipe_id` is unique): picking from the book makes a copy, and deleting a
   meal archives its recipe unless it is in the book. A live recipe out of the book
   always has a meal: «Togli dal ricettario» refuses one without, and restoring one
-  without puts it back in the book. Spec:
+  without puts it back in the book. Deleting from the book a recipe that has a meal takes it out of the book instead, with «Annulla» (decided by Mattia on 2026-11-21): the invariant is kept by the `PATCH`, not by the screen. Spec:
   `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §4.
 
   **Claude proposes, Mattia applies.** No Claude tool writes the pantry or the shopping
@@ -330,10 +330,11 @@ against the SDK's real message types. Spec:
   restoring what another meal still uses or what was bought again; what changed since is
   proposed unticked, with a note, for Mattia to decide.
   A `low` sauce is a started jar: only a row that becomes `finished` brings its list row
-  along. Planned meals arrive from a proposal card («Metti nella settimana»); their
+  along. That rule is applied to the card as corrected: a list row a pantry row brought (`from_pantry_row_ids`) is skipped when no such row becomes `finished` any more, and one is added when a corrected row does. Planned meals arrive from a proposal card («Metti nella settimana»); their
   recipes are written afterwards by an in-process queue, one meal at a time, each in its
   own transaction, so a plan limit halfway leaves every meal usable by hand. Spec:
   `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §5.2, §6.2.
+  Every write of a meal's recipe — the queue, the dish chat, a manual save, «Annulla» — takes the meal row first (`lock_meal`, `SELECT … FOR UPDATE`).
 
   A response that cannot be verified against the real registry is never applied — the
   term stays in the queue. Specs are

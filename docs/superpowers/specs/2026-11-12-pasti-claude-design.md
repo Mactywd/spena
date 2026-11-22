@@ -157,12 +157,13 @@ altro pasto. Di conseguenza:
   (era già la regola dell'«Altro» di P3).
   Spostare un pasto dopo un suo avanzo si chiede: «Sposta e stacca l'avanzo» lo lascia
   come pasto a mano (deciso da Mattia il 2026-11-18).
+  Un avanzo viene da un pasto cucinato prima del suo posto e non più di 3 giorni prima; spostarlo fuori si chiede, e «Sposta e stacca dal pasto d'origine» lo lascia come pasto a mano (deciso da Mattia il 2026-11-21).
 
 Quando la ricetta di un pasto si salva nel ricettario, resta la stessa ricetta: il
 pasto continua a puntarla, e la sua chat la modifica come prima, perché è comunque la
 ricetta di Mattia. «Togli dal ricettario» la rimette fuori **(scelta di
 Claude)**. Eliminare un pasto non elimina la sua ricetta se è nel ricettario; se non lo
-è, la archivia (R10), e nessun altro pasto la usa **(scelta di Claude)**.
+è, la archivia (R10), e nessun altro pasto la usa **(scelta di Claude)**. «Elimina» dal ricettario su una ricetta che ha un pasto la toglie dal ricettario, con «Annulla», e il pasto la tiene (deciso da Mattia il 2026-11-21).
 
 Le ricette fuori dal ricettario vanno escluse anche dagli altri consumatori che oggi
 leggono «tutte le ricette»: la ricerca semantica, il calcolo dei cucinabili e il motore
@@ -241,7 +242,7 @@ come una **scheda** nella chat: posto per posto, il piatto e gli accompagnamenti
 la discute a parole («il salmone no, facciamo merluzzo») e Claude ne manda una nuova.
 Con **«Metti nella settimana»** i pasti entrano nei loro posti, ognuno con la sua
 ricetta. Se un posto è già occupato la scheda lo dice, e mettere il pasto sostituisce
-il vecchio solo con una conferma.
+il vecchio solo con una conferma. La conferma dice quali ricette fuori dal ricettario si eliminano con i pasti sostituiti; una proposta con un giorno già passato non si mette, e la scheda dice di chiederne una nuova.
 
 **Quando si scrivono le ricette (scelta di Claude).** La scheda della proposta porta
 solo piatti e accompagnamenti: rivedere la proposta non costa ricette scritte e poi
@@ -320,7 +321,7 @@ frittata di martedì»).
     ogni voce. Quando un pasto si cancella, si sostituisce o diventa «fuori casa»,
     spena propone la scheda inversa («rimetti in dispensa: spinaci → c'è») anche senza
     Claude, e Mattia la applica o la scarta. Spostare un pasto su un altro posto non
-    propone niente.
+    propone niente. Quando un pasto torna a casa, l'inversa del «fuori casa» ancora proposta si scarta; eliminando un pasto passato l'inversa arriva senza spunte, perché quel pasto si è mangiato. All'applicazione di una scheda, la riga della lista che c'è per una voce finita segue lo stato corretto di quella voce (decisi da Mattia il 2026-11-21).
     La scheda inversa ragiona per voce (l'effetto netto delle schede del pasto) e non
     toglie dalla lista ciò che serve a un altro pasto (piano
     2026-11-18-pasti-correzioni, decisioni 8 e 9). Una scheda nuova di Claude per gli
