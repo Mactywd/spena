@@ -5,8 +5,12 @@ nella cartella sopra la sua e scrive `password.env` lì, quindi lanciato dal suo
 toccherebbe la radice vera del repo. La copia è fatta con `shutil.copy2`, che conserva
 i permessi: un test controlla anche che lo script vero sia eseguibile.
 
-Al posto di Docker c'è un `docker` finto in testa al `PATH`, che registra gli argomenti
-e lo standard input e risponde con un hash finto (o con quello che il test gli chiede).
+Al posto di Docker c'è un `docker` finto in testa al `PATH`, che registra ogni chiamata
+e, per il `run`, gli argomenti e lo standard input, e risponde con un hash finto (o con
+quello che il test gli chiede). Imita anche il difetto misurato nel Task 4: con
+l'immagine assente `docker compose run` la costruisce e manda il progresso di BuildKit
+su stdout, davanti all'hash. Il finto lo fa quando il `run` arriva senza un `build`
+riuscito prima, segnato da un file nella sua cartella.
 La suite non chiama mai Docker: il giro col container vero, che calcola un hash che il
 backend poi verifica, è il Task 4 del piano 2026-11-18-hash-password.
 
@@ -25,11 +29,22 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REAL_SCRIPT = REPO_ROOT / "scripts" / "imposta-password.sh"
 HASH_FINTO = "$argon2id$v=19$m=65536,t=3,p=4$c2FsZS1maW50bw$aGFzaC1maW50by1kZWxsYS1zdWl0ZQ"
-FAKE_DOCKER = """#!/usr/bin/env bash
+PROGRESSO_BUILD = "#5 [backend 2/6] RUN pip install --no-cache-dir ."
+FAKE_DOCKER = f"""#!/usr/bin/env bash
+# Per ogni chiamata, i primi quattro argomenti: il programma dopo `-c` va su più righe.
+printf '%s\\n' "${{1:-}} ${{2:-}} ${{3:-}} ${{4:-}}" >> "$FAKE_DIR/calls"
+if [ "${{4:-}}" = build ]; then
+  printf '%s\\n' '#1 [backend internal] load build definition' '{PROGRESSO_BUILD}'
+  [ "${{FAKE_BUILD_EXIT:-0}}" = 0 ] && touch "$FAKE_DIR/built"
+  exit "${{FAKE_BUILD_EXIT:-0}}"
+fi
 printf '%s\\n' "$@" > "$FAKE_DIR/args"
 cat > "$FAKE_DIR/stdin"
+if [ ! -e "$FAKE_DIR/built" ]; then
+  printf '%s\\n' '#1 [backend internal] load build definition' '{PROGRESSO_BUILD}'
+fi
 printf '%s\\n' "$FAKE_OUTPUT"
-exit "${FAKE_EXIT:-0}"
+exit "${{FAKE_EXIT:-0}}"
 """
 
 
@@ -59,6 +74,7 @@ def lancia(
     stdin: str = "segreta\nsegreta\n",
     output: str = HASH_FINTO,
     exit_code: int = 0,
+    build_exit: int = 0,
 ) -> subprocess.CompletedProcess:
     repo, fake_dir = radice
     tmp_path = repo.parent
@@ -68,6 +84,7 @@ def lancia(
         "FAKE_DIR": str(fake_dir),
         "FAKE_OUTPUT": output,
         "FAKE_EXIT": str(exit_code),
+        "FAKE_BUILD_EXIT": str(build_exit),
     }
     return subprocess.run(
         [repo / "scripts" / "imposta-password.sh", *args],
@@ -137,7 +154,7 @@ def test_senza_il_file_compose_si_rifiuta_e_non_chiama_docker(radice, args):
 
     assert r.returncode == 2
     assert "Uso:" in r.stderr
-    assert not (fake_dir / "args").exists()
+    assert not (fake_dir / "calls").exists()
     assert not (repo / "password.env").exists()
 
 
@@ -148,7 +165,7 @@ def test_con_lhash_ancora_in_env_si_rifiuta_prima_di_compose(radice):
     r = lancia(radice, "docker-compose.yml")
 
     assert r.returncode == 1
-    assert not (fake_dir / "args").exists()
+    assert not (fake_dir / "calls").exists()
     assert "APP_PASSWORD_HASH" in r.stderr
     assert "sed -i '/^APP_PASSWORD_HASH=/d' .env" in r.stderr
     assert HASH_FINTO not in r.stdout + r.stderr
@@ -173,7 +190,7 @@ def test_password_vuote_o_diverse_non_scrivono_niente(radice, stdin):
     r = lancia(radice, "docker-compose.yml", stdin=stdin)
 
     assert r.returncode == 1
-    assert not (fake_dir / "args").exists()
+    assert not (fake_dir / "calls").exists()
     assert not (repo / "password.env").exists()
 
 
@@ -191,4 +208,39 @@ def test_una_risposta_non_argon2_lascia_password_env_comera(radice, output, exit
 
     assert r.returncode == 1
     assert password_env.read_text() == "APP_PASSWORD_HASH=quello-di-prima\n"
+    assert resti_temporanei(repo) == []
+
+
+def test_limmagine_si_costruisce_prima_col_progresso_su_stderr(radice):
+    """Il primo giro dopo un deploy: senza il `build` prima, il `run` costruisce e il
+    progresso di BuildKit arriva su stdout insieme all'hash (Task 4, misurato due
+    volte: 46 righe). Il `build` esplicito lo manda su stderr, dove si vede e non
+    finisce in password.env."""
+    repo, fake_dir = radice
+
+    r = lancia(radice, "docker-compose.prod.yml")
+
+    assert r.returncode == 0
+    assert (repo / "password.env").read_text() == f"APP_PASSWORD_HASH={HASH_FINTO}\n"
+    assert PROGRESSO_BUILD in r.stderr
+    assert PROGRESSO_BUILD not in r.stdout
+    calls = (fake_dir / "calls").read_text().splitlines()
+    assert calls == [
+        "compose -f docker-compose.prod.yml build",
+        "compose -f docker-compose.prod.yml run",
+    ]
+    assert HASH_FINTO not in r.stdout + r.stderr
+
+
+def test_se_la_costruzione_fallisce_password_env_resta_comera(radice):
+    repo, fake_dir = radice
+    password_env = repo / "password.env"
+    password_env.write_text("APP_PASSWORD_HASH=quello-di-prima\n")
+
+    r = lancia(radice, "docker-compose.yml", build_exit=1)
+
+    assert r.returncode == 1
+    assert "la costruzione dell'immagine del backend non è riuscita" in r.stderr
+    assert password_env.read_text() == "APP_PASSWORD_HASH=quello-di-prima\n"
+    assert not (fake_dir / "args").exists()  # il `run` non parte
     assert resti_temporanei(repo) == []

@@ -61,6 +61,17 @@ if [ "$pw" != "$pw2" ]; then
   exit 1
 fi
 
+# L'immagine si costruisce prima, a parte, con il progresso su stderr. Se manca (il
+# primo giro dopo un deploy col backend cambiato), `docker compose run` la costruisce
+# da sé e manda il progresso di BuildKit su stdout, davanti all'hash: lo si
+# catturerebbe insieme all'hash (misurato: 46 righe), e il controllo qui sotto lo
+# rifiuterebbe come se il container avesse sbagliato. Con l'immagine già pronta il
+# `build` non rifà niente.
+if ! docker compose -f "$file" build backend >&2; then
+  echo "la costruzione dell'immagine del backend non è riuscita: password.env non è stato toccato" >&2
+  exit 1
+fi
+
 # La password passa sullo standard input, senza a capo, e mai sulla riga di comando:
 # così non finisce né nella cronologia della shell né in `ps`. `--entrypoint python`
 # salta le migrazioni dell'entrypoint, `--no-deps` non avvia Postgres.
