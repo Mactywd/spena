@@ -20,10 +20,10 @@ function stubRoutedFetch(route: (path: string, init?: RequestInit) => [unknown, 
   return spy;
 }
 
-function renderChooser(busy = false) {
+function renderChooser(busy = false, trim?: boolean) {
   const onChosen = vi.fn();
   const client = createTestQueryClient();
-  render(
+  const { unmount } = render(
     <QueryClientProvider client={client}>
       <IngredientChooser
         label="Cosa hai comprato?"
@@ -31,15 +31,32 @@ function renderChooser(busy = false) {
         initialTerm="ceci neri"
         onChosen={onChosen}
         busy={busy}
+        trim={trim}
         before={<p>prima</p>}
         after={<button type="button">dopo</button>}
       />
     </QueryClientProvider>
   );
-  return { onChosen };
+  return { onChosen, unmount };
 }
 
 describe("IngredientChooser", () => {
+  it("cerca col taglio, salvo trim={false}", async () => {
+    const spy = stubRoutedFetch(() => [[], 200]);
+    const trims = () =>
+      spy.mock.calls
+        .map(([url]) => new URL(String(url), "http://localhost"))
+        .filter((u) => u.pathname.endsWith("/ingredients/search"))
+        .map((u) => u.searchParams.get("trim"));
+
+    const first = renderChooser();
+    await vi.waitFor(() => expect(trims()).toEqual([null]));
+    first.unmount();
+
+    renderChooser(false, false);
+    await vi.waitFor(() => expect(trims()).toEqual([null, "false"]));
+  });
+
   it("quel che sta prima e dopo il selettore c'è solo mentre si sceglie, e l'ingrediente creato è la scelta", async () => {
     stubRoutedFetch((path, init) =>
       path.endsWith("/ingredients") && init?.method === "POST" ? [CECI_NERI, 201] : [[], 200]

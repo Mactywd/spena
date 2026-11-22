@@ -25,11 +25,26 @@ export function patchShoppingItem(
   });
 }
 
-export function searchIngredients(query: string, kind?: "food") {
+/** La chiave della cache di `searchIngredients`: una sola, perché chi cerca la
+ * stessa parola in modi diversi non deve leggere la risposta dell'altro. Il `kind`
+ * e l'elenco intero stanno nella chiave: senza, le risposte si sovrascriverebbero. */
+export function ingredientSearchKey(term: string, kind?: "food", trim = true) {
+  const base = ["ingredients", term, kind ?? "tutti"];
+  return trim ? base : [...base, "intero"];
+}
+
+/** `trim=false` è l'elenco intero, senza il taglio dei suggerimenti: lo chiedono
+ * solo «Abbina» e l'Anagrafica (Mattia, 2026-11-18); tutti gli altri tengono il taglio. */
+export function searchIngredients(
+  query: string,
+  kind?: "food",
+  { trim = true }: { trim?: boolean } = {}
+) {
   const params = new URLSearchParams({ q: query });
   // solo chi vuole il filtro lo manda: senza parametro il server risponde tutto,
   // che è quel che vogliono la lista, la sistemazione e la dispensa
   if (kind) params.set("kind", kind);
+  if (!trim) params.set("trim", "false");
   return apiFetch<Ingredient[]>(`/ingredients/search?${params}`);
 }
 

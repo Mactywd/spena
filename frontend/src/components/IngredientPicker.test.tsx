@@ -32,7 +32,39 @@ const DETERSIVO: Ingredient = {
 
 const LATTE: Ingredient = { id: "i1", name: "latte", display_name: "Latte", category: "latticini", kind: "food" };
 
+const LATTUGA: Ingredient = { id: "i2", name: "lattuga", display_name: "Lattuga", category: "verdura", kind: "food" };
+
 describe("IngredientPicker", () => {
+  it("con trim={false} chiede l'elenco intero, e non divide la cache con chi taglia", async () => {
+    const spy = stubRoutedFetch((path) => {
+      const trim = new URL(path, "http://localhost").searchParams.get("trim");
+      return [trim === "false" ? [LATTE, LATTUGA] : [LATTE], 200];
+    });
+    renderWithClient(
+      <>
+        <IngredientPicker label="Taglia" failureNote="x" onPick={() => {}} />
+        <IngredientPicker label="Intero" failureNote="x" trim={false} onPick={() => {}} />
+      </>
+    );
+    const taglia = screen.getByLabelText("Taglia").closest("div")!;
+    const intero = screen.getByLabelText("Intero").closest("div")!;
+
+    fireEvent.change(screen.getByLabelText("Taglia"), { target: { value: "latt" } });
+    await waitFor(() => expect(within(taglia).getByRole("option", { name: "Latte" })).toBeDefined());
+
+    fireEvent.change(screen.getByLabelText("Intero"), { target: { value: "latt" } });
+    await waitFor(() => expect(within(intero).getByRole("option", { name: "Lattuga" })).toBeDefined());
+    expect(within(taglia).queryByRole("option", { name: "Lattuga" })).toBeNull();
+
+    const trims = spy.mock.calls
+      .map(([url]) => new URL(String(url), "http://localhost"))
+      .filter((u) => u.pathname.endsWith("/ingredients/search"))
+      .map((u) => u.searchParams.get("trim"));
+    expect(trims).toHaveLength(2);
+    expect(trims).toContain("false");
+    expect(trims).toContain(null);
+  });
+
   it("chiede al server solo il cibo quando glielo si dice, e lo mette nella chiave", async () => {
     // due montaggi nello stesso QueryClient, stessa parola cercata: senza il kind
     // nella chiave il secondo leggerebbe la risposta del primo, e il filtro

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { searchIngredients } from "../shopping-list/api";
+import { ingredientSearchKey, searchIngredients } from "../shopping-list/api";
 import { searchProducts } from "../stocking/api";
 import { useDebounced } from "../../hooks/useDebounced";
 import { Alert } from "../../components/ui/Alert";
@@ -59,12 +59,13 @@ export function RegistryScreen() {
   // spariscono subito, come l'elenco di IngredientPicker
   const showing = term.trim().length >= 2;
 
-  // le stesse chiavi di IngredientPicker e di CatalogSearchPanel: è la stessa domanda
-  // allo stesso server, e una seconda chiave per la stessa risposta la chiederebbe due
-  // volte
+  // l'elenco intero, senza il taglio dei suggerimenti: questa schermata serve a
+  // trovare i quasi-doppioni, e il taglio li nasconde appena c'è un riscontro. La
+  // chiave viene da `ingredientSearchKey`, la stessa di «Abbina», e non divide la
+  // cache con i selettori che tagliano
   const ingredients = useQuery({
-    queryKey: ["ingredients", debounced, "tutti"],
-    queryFn: () => searchIngredients(debounced),
+    queryKey: ingredientSearchKey(debounced, undefined, false),
+    queryFn: () => searchIngredients(debounced, undefined, { trim: false }),
     enabled: ready,
   });
   const products = useQuery({

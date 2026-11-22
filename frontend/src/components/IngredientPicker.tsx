@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { searchIngredients } from "../features/shopping-list/api";
+import { ingredientSearchKey, searchIngredients } from "../features/shopping-list/api";
 import { useDebounced } from "../hooks/useDebounced";
 import { OptionList } from "./ui/OptionList";
 import { Button } from "./ui/Button";
@@ -33,6 +33,7 @@ export function IngredientPicker({
   emptyNote,
   initialTerm = "",
   autoFocus = false,
+  trim = true,
 }: {
   /** Etichetta visibile: dice a cosa serve *qui*. */
   label: string;
@@ -74,6 +75,10 @@ export function IngredientPicker({
   initialTerm?: string;
   /** Il campo prende il fuoco appena compare: l'aggiunta si è aperta con un tocco. */
   autoFocus?: boolean;
+  /** Con `false` chiede l'elenco intero, senza il taglio dei suggerimenti. Lo spegne
+   * solo «Abbina», dove il campo nasce col testo intero della voce e col taglio non
+   * troverebbe quasi mai l'ingrediente; gli altri posti tengono il taglio. */
+  trim?: boolean;
 }) {
   const [term, setTerm] = useState(initialTerm);
   const debounced = useDebounced(term, DEBOUNCE_MS).trim();
@@ -81,11 +86,12 @@ export function IngredientPicker({
   const ready = debounced.length >= 2;
 
   const { data: found = [], isError, isSuccess } = useQuery({
-    // il kind sta nella chiave: senza, la risposta filtrata e quella non filtrata
-    // si sovrascriverebbero a vicenda sulla stessa parola cercata, e la dispensa
-    // smetterebbe di vedere il detersivo perché il ricettario ha cercato prima
-    queryKey: ["ingredients", debounced, kind ?? "tutti"],
-    queryFn: () => searchIngredients(debounced, kind),
+    // il kind e il taglio stanno nella chiave: senza, la risposta filtrata e quella
+    // non filtrata (o quella tagliata e quella intera) si sovrascriverebbero a
+    // vicenda sulla stessa parola cercata, e la dispensa smetterebbe di vedere il
+    // detersivo perché il ricettario ha cercato prima
+    queryKey: ingredientSearchKey(debounced, kind, trim),
+    queryFn: () => searchIngredients(debounced, kind, { trim }),
     enabled: ready,
   });
 

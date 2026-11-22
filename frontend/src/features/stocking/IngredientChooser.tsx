@@ -27,6 +27,8 @@ function existingIngredient(error: unknown): Ingredient | null {
  * corretto il 2026-09-20 — misurato in produzione, di sette nomi plausibili di prodotti
  * per la casa tutti e sette pescavano almeno un suggerimento.
  *
+ * «Abbina» spegne il taglio dei suggerimenti (`trim={false}`): vedi `IngredientPicker`.
+ *
  * Un frammento: `before` e `after` (una frase, un «Annulla») stanno nella colonna di chi
  * lo usa, e solo mentre si sceglie — mentre si crea, `NewIngredientFields` ha il suo
  * «Annulla», che torna alla scelta.
@@ -40,6 +42,7 @@ export function IngredientChooser({
   busy = false,
   before,
   after,
+  trim = true,
 }: {
   label: string;
   accessibleLabel?: string;
@@ -50,6 +53,8 @@ export function IngredientChooser({
   busy?: boolean;
   before?: ReactNode;
   after?: ReactNode;
+  /** Passata a `IngredientPicker`: `false` chiede l'elenco intero. */
+  trim?: boolean;
 }) {
   // `null`: si cerca. Una stringa: si crea, e il campo del nome parte da lì
   const [creating, setCreating] = useState<string | null>(null);
@@ -86,6 +91,7 @@ export function IngredientChooser({
           onCreate={(name) => setCreating(name)}
           createWhen="always"
           disabled={busy}
+          trim={trim}
         />
         {after}
       </>

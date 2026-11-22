@@ -26,6 +26,9 @@ export function MatchPanel({
         accessibleLabel={`Abbina un ingrediente per ${item.raw_text}`}
         failureNote="Puoi comunque aggiungerlo."
         initialTerm={item.raw_text}
+        // il campo nasce col testo intero della voce, che col taglio non trova quasi
+        // mai l'ingrediente: l'elenco intero (strada b, Mattia, 2026-11-18)
+        trim={false}
         onChosen={onMatched}
         before={
           <p className="text-sm text-ink-soft">
