@@ -49,8 +49,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     troncato (è quello che fa Compose ai `$` senza `format: raw`) non produce nessun
     sintomo diagnosticabile. `verify_password` risponde False come per una password
     sbagliata, quindi l'unico segnale è «password errata» per sempre, su un
-    `password.env` (scritto da scripts/imposta-password.sh) che a occhio sembra pieno. Un vicolo cieco di questo tipo va fermato dove si
-    vede, cioè nei log dell'avvio.
+    `password.env` (scritto da scripts/imposta-password.sh) che a occhio sembra
+    pieno. Un vicolo cieco di questo tipo va fermato dove si vede, cioè nei log
+    dell'avvio.
 
     Un hash vuoto, o senza `password.env`, invece lascia partire: è la password non
     ancora impostata, e il login risponde 401 dicendo il vero.
