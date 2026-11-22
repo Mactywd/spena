@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
@@ -79,7 +80,7 @@ class MealRecipeDraft:
     title: str
     description: str | None
     instructions: str
-    servings: int
+    servings: int | None
     lines: tuple[DraftLine, ...]
     summary: str
     dish: str | None = None
@@ -386,6 +387,37 @@ async def undoable_change_ids(
 async def change_is_undoable(session: AsyncSession, change: RecipeChange) -> bool:
     """Non annullata, e ricetta e piatto sono ancora esattamente come li ha lasciati."""
     return change.id in await undoable_change_ids(session, [change])
+
+
+async def untouched_ai_change(session: AsyncSession, meal: Meal) -> RecipeChange | None:
+    """La modifica con cui Claude ha creato la ricetta del pasto, se la ricetta è ancora
+    esattamente come l'ha lasciata; altrimenti None. Sola lettura.
+
+    «Intatta»: ricetta viva e fuori dal ricettario; una sola modifica del pasto su quella
+    ricetta, di creazione e non annullata; ancora annullabile (nessuna correzione, risposta
+    della chat o scelta dal ricettario dopo). Le condizioni a buon mercato vengono prima."""
+    if meal.recipe_id is None:
+        return None
+    recipe = await session.get(Recipe, meal.recipe_id)
+    if recipe is None or recipe.archived_at is not None or recipe.in_book:
+        return None
+    changes = list(
+        (
+            await session.scalars(
+                select(RecipeChange).where(
+                    RecipeChange.meal_id == meal.id, RecipeChange.recipe_id == recipe.id
+                )
+            )
+        ).all()
+    )
+    if len(changes) != 1:
+        return None
+    change = changes[0]
+    if not change.created_recipe or change.undone_at is not None:
+        return None
+    if not await change_is_undoable(session, change):
+        return None
+    return change
 
 
 async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> None:
