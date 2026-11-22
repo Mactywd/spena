@@ -356,10 +356,27 @@ async def test_l_elenco_intero_trova_l_ingrediente_nel_testo_lungo_della_voce(lo
     assert intero[0] == "pasta"
 
 
-async def test_l_elenco_tagliato_e_l_inizio_di_quello_intero(logged_client, db_session):
-    """Decisione 4 del piano: il taglio non riordina, e i riscontri vengono prima di ogni
-    sfumato, quindi la lista tagliata è sempre la testa di quella intera. Senza `trim` è
-    la tagliata (il default che tutti gli altri chiamanti usano)."""
+async def test_l_elenco_intero_mette_i_quasi_doppioni_subito_dopo_i_prefissi(logged_client, db_session):
+    """La voce P2 del 2026-11-21, decisa da Mattia il 2026-11-22: con dieci riscontri o più
+    il quasi-doppione restava fuori. «pomodori» e «pomodro» non contengono «pomodoro», ma
+    gli somigliano più di ogni «sugo … di pomodoro»."""
+    sughi = [f"sugo {i:02} di pomodoro" for i in range(1, 12)]
+    await _ingredienti(db_session, "pomodoro", "pomodori", "pomodro", *sughi)
+
+    intero = await _suggeriti(logged_client, "pomodoro", trim="false")
+    assert len(intero) == 10
+    assert intero[0] == "pomodoro"
+    assert set(intero[1:3]) == {"pomodori", "pomodro"}
+
+    # il taglio non cambia: solo chi contiene il testo
+    tagliato = await _suggeriti(logged_client, "pomodoro")
+    assert "pomodori" not in tagliato and "pomodro" not in tagliato
+
+
+async def test_ogni_riga_tagliata_e_anche_nell_elenco_intero(logged_client, db_session):
+    """Decisione 4 del piano del 2026-11-22: l'elenco intero ha un ordine suo, quindi quello
+    tagliato non ne è più l'inizio. Resta che, con un `limit` che li contiene tutti, ogni
+    riga tagliata è anche nell'intero (stesso filtro). Senza `trim` è la tagliata."""
     await _ingredienti(
         db_session, "zucchero", "zucchina", "zucca", "olio di oliva",
         ("tonno in scatola", "tonno sott'olio"), "olive verdi", "pomodoro", "pomodorini",
@@ -369,9 +386,8 @@ async def test_l_elenco_tagliato_e_l_inizio_di_quello_intero(logged_client, db_s
     for testo in ["zucch", "olio", "pomodorr", "caffe", "te", "zenzero", "pasta barilla integrale"]:
         tagliato = await _suggeriti(logged_client, testo)
         assert await _suggeriti(logged_client, testo, trim="true") == tagliato, testo
-        intero = await _suggeriti(logged_client, testo, trim="false")
-        assert intero[: len(tagliato)] == tagliato, testo
-        assert len(intero) >= len(tagliato), testo
+        intero = await _suggeriti(logged_client, testo, trim="false", limit="50")
+        assert set(tagliato) <= set(intero), testo
 
 
 async def test_l_elenco_intero_tiene_il_limite_e_il_kind(logged_client, db_session):
