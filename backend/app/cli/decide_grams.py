@@ -6,7 +6,9 @@
 Una coppia è un ingrediente con un'unità canonica («aglio» × «spicchio», «uova» ×
 «pezzo»). Prima il pilota (`python -m app.cli.s4_pilot`). Scrive solo dove una coppia non
 ha ancora un peso: un peso scritto in Anagrafica non si tocca. Un peso sbagliato si
-corregge in Anagrafica, nella scheda dell'ingrediente, «Pesi per unità».
+corregge in Anagrafica, nella scheda dell'ingrediente, «Pesi per unità». Una coppia a
+cui l'AI non sa rispondere in modo leggibile nemmeno da sola si salta, si nomina e resta
+da pesare.
 """
 
 import asyncio
@@ -16,6 +18,26 @@ from app.core.db import SessionLocal
 from app.services.unit_grams import decide_grams
 
 FLAG_LIMIT = "--limit"
+# quante coppie saltate si nominano per esteso; le altre si contano
+SKIPPED_NAMED = 20
+
+
+def skipped_line(skipped: tuple[str, ...], error: str | None) -> str:
+    """Le coppie che l'AI non ha saputo pesare nemmeno da sole: restano da pesare."""
+    names = ", ".join(skipped[:SKIPPED_NAMED])
+    if len(skipped) > SKIPPED_NAMED:
+        names += f", e altre {len(skipped) - SKIPPED_NAMED}"
+    if len(skipped) == 1:
+        return (
+            "1 coppia saltata in questo giro, perché la risposta dell'AI non si leggeva "
+            f"nemmeno da sola ({error}): {names}. Resta da pesare: un altro giro la richiede, "
+            "o si pesa in Anagrafica, «Pesi per unità»."
+        )
+    return (
+        f"{len(skipped)} coppie saltate in questo giro, perché la risposta dell'AI non si "
+        f"leggeva nemmeno da sole ({error}): {names}. Restano da pesare: un altro giro le "
+        "richiede, o si pesano in Anagrafica, «Pesi per unità»."
+    )
 
 
 async def main(argv: list[str]) -> int:
@@ -42,6 +64,8 @@ async def main(argv: list[str]) -> int:
         f"{esito.weighed} pesi scritti, {esito.none} senza un peso sensato, "
         f"{esito.refused} risposte rifiutate"
     )
+    if esito.skipped:
+        print(skipped_line(esito.skipped, esito.last_error))
     if esito.pending == 1:
         print("1 coppia resta da pesare: rilancia questo comando.")
     elif esito.pending:

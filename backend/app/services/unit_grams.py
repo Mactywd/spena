@@ -20,7 +20,7 @@ un'unità di quell'ingrediente non ha un peso sensato — che si scrive, e non s
 import json
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Literal
 
@@ -44,7 +44,7 @@ from app.domain.recipe_nutrition import (
 from app.domain.rules import IngredientKind
 from app.services.ai_spend import Spend, complete_recorded
 from app.services.ingredient_nutrition import NON_FOOD_CODE, NutritionRefusal
-from app.services.llm import LlmCallSite, LlmUnavailable
+from app.services.llm import LlmCallSite, LlmFailureKind, LlmUnavailable
 
 MEASURED_UNIT_CODE = "measured_unit"
 BAD_GRAMS_CODE = "bad_grams"
@@ -278,9 +278,12 @@ async def apply_ai_grams(
 
 # Quaranta coppie per chiamata: una risposta è ~30 token a coppia, ~1.200 per lotto, ben
 # sotto il tetto. Le 800–1.500 coppie stimate per la produzione (spec §3) sono 20–40
-# chiamate, meno di 0,05 $.
+# chiamate, meno di 0,05 $. Un lotto a cui l'AI risponde in modo illeggibile si divide a
+# metà fino alla coppia sola (`decide_grams`): le misure non cambiano, cambia solo quante
+# coppie porta la domanda che segue un guasto della risposta.
 GRAMS_BATCH = 40
 GRAMS_MAX_TOKENS = 3000
+GRAMS_ALL_BROKEN = "nessuna coppia del lotto ha avuto una risposta leggibile, nemmeno da sola"
 
 GRAMS_SYSTEM_PROMPT = (
     "Ricevi un elenco numerato di coppie ingrediente e unità di misura, prese da ricette "
@@ -412,6 +415,71 @@ class GramsRun:
     pending: int = 0
     unavailable: str | None = None
     asked: int = 0
+    # le coppie a cui l'AI non ha dato una risposta leggibile nemmeno da sole, in questo
+    # giro: «‹ingrediente› × ‹unità›». Restano da pesare, e sono contate in `pending`
+    skipped: tuple[str, ...] = ()
+    # l'errore dell'ultima coppia saltata
+    last_error: str | None = None
+
+
+# I tipi di una risposta arrivata ma inutilizzabile: `TRUNCATED` (tagliata al tetto dei
+# token) e `INVALID` (non JSON, non un oggetto, senza testo; `complete_json` dà lo stesso
+# tipo anche a un 200 che non è un messaggio). Dicono qualcosa del lotto — una coppia può
+# rompere la risposta di tutte — e per questo dividerlo serve. I guasti di passaggio
+# (`TRANSIENT`: rete, tempo, 5xx) e i terminali (`TERMINAL_LLM_FAILURES`: chiave, credito,
+# frequenza, richiesta rifiutata) no: non dicono niente del lotto, e dividere in
+# un'interruzione di rete moltiplicherebbe le chiamate per niente (decisione 10 del piano
+# 2026-11-21-s4-candidati); fermano il giro come prima. Il rifiuto del modello (`REFUSAL`)
+# resta fuori anche lui: non è una risposta rotta, e ferma il giro come prima. Se un
+# `INVALID` non dipende dal lotto, il freno di `decide_grams` tiene il costo limitato.
+_UNUSABLE_ANSWERS = frozenset({LlmFailureKind.TRUNCATED, LlmFailureKind.INVALID})
+
+
+def _answer_unusable(exc: LlmUnavailable) -> bool:
+    return exc.kind in _UNUSABLE_ANSWERS
+
+
+@dataclass
+class _Tally:
+    weighed: int = 0
+    none: int = 0
+    refused: int = 0
+    skipped: list[str] = field(default_factory=list)
+    last_error: str | None = None
+
+
+async def _weigh(
+    session: AsyncSession, pairs: Sequence[Pair], client: AsyncAnthropic | None, tally: _Tally
+) -> None:
+    """Chiede i pesi di `pairs` e li applica. Una risposta illeggibile divide le coppie a
+    metà e richiede le due metà; una coppia sola che non si legge si salta. Ogni altro
+    guasto risale, con quel che le metà prima hanno già scritto."""
+    try:
+        answers, bad = await ask_grams(
+            session,
+            [PairQuestion(pair.ingredient_name, pair.unit_label, pair.example) for pair in pairs],
+            client=client,
+        )
+    except LlmUnavailable as exc:
+        if not _answer_unusable(exc):
+            raise
+        if len(pairs) == 1:
+            pair = pairs[0]
+            tally.skipped.append(f"{pair.ingredient_name} × {pair.unit_label}")
+            tally.last_error = str(exc)
+            return
+        mid = len(pairs) // 2
+        await _weigh(session, pairs[:mid], client, tally)
+        await _weigh(session, pairs[mid:], client, tally)
+        return
+    tally.refused += bad
+    for index, grams in answers.items():
+        pair = pairs[index]
+        if await apply_ai_grams(session, pair.ingredient_id, pair.unit_id, grams):
+            if grams is None:
+                tally.none += 1
+            else:
+                tally.weighed += 1
 
 
 async def decide_grams(
@@ -422,37 +490,39 @@ async def decide_grams(
     batch_size: int = GRAMS_BATCH,
 ) -> GramsRun:
     """Pesa le coppie da decidere, le prime `limit` per ingrediente e unità. Non fa
-    commit: lo fa `after_batch` dopo ogni lotto. Al primo guasto dell'AI si ferma."""
+    commit: lo fa `after_batch` dopo ogni lotto.
+
+    Un lotto a cui l'AI risponde in modo illeggibile (troncato, non JSON, fuori schema) si
+    divide a metà e si richiedono le due metà, fino alla coppia sola; una coppia che non si
+    legge nemmeno da sola si salta per questo giro — resta da pesare, finisce in `skipped`
+    e un giro dopo si richiede — e il giro va avanti. Il freno: se di un lotto tutte le
+    coppie sono state saltate, il guasto non è nel lotto, e il giro si ferma con
+    `GRAMS_ALL_BROKEN`. Ogni altro guasto dell'AI ferma subito il giro, anche a metà di una
+    divisione, e quel che è già scritto resta."""
     pairs = await pending_pairs(session, limit)
-    weighed = none = refused = 0
+    tally = _Tally()
     unavailable: str | None = None
     for start in range(0, len(pairs), batch_size):
         chunk = pairs[start : start + batch_size]
+        skipped_before = len(tally.skipped)
         try:
-            answers, bad = await ask_grams(
-                session,
-                [PairQuestion(pair.ingredient_name, pair.unit_label, pair.example) for pair in chunk],
-                client=client,
-            )
+            await _weigh(session, chunk, client, tally)
         except LlmUnavailable as exc:
             unavailable = str(exc)
             break
-        refused += bad
-        for index, grams in answers.items():
-            pair = chunk[index]
-            if await apply_ai_grams(session, pair.ingredient_id, pair.unit_id, grams):
-                if grams is None:
-                    none += 1
-                else:
-                    weighed += 1
         await session.flush()
         if after_batch is not None:
             await after_batch()
+        if len(tally.skipped) - skipped_before == len(chunk):
+            unavailable = f"{GRAMS_ALL_BROKEN}: {tally.last_error}"
+            break
     return GramsRun(
-        weighed=weighed,
-        none=none,
-        refused=refused,
+        weighed=tally.weighed,
+        none=tally.none,
+        refused=tally.refused,
         pending=await count_pending_pairs(session),
         unavailable=unavailable,
         asked=len(pairs),
+        skipped=tuple(tally.skipped),
+        last_error=tally.last_error,
     )

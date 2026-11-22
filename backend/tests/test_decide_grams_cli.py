@@ -8,6 +8,7 @@ from app.db.models.ingredient import Ingredient
 from app.db.models.nutrition import IngredientUnitGrams
 from app.db.models.recipe import RecipeSource
 from app.repositories.recipes import create_recipe
+from app.services.unit_grams import GramsRun
 
 
 class _SessioneFinta:
@@ -60,3 +61,77 @@ async def test_senza_chiave_dice_quante_ne_restano_e_non_scrive(db_session, monk
         assert (await db_session.execute(select(IngredientUnitGrams))).first() is None
     finally:
         get_settings.cache_clear()
+
+
+def _con_esito(monkeypatch, db_session, esito: GramsRun) -> None:
+    async def finta(session, **_):
+        return esito
+
+    monkeypatch.setattr(comando, "decide_grams", finta)
+    monkeypatch.setattr(comando, "SessionLocal", lambda: _SessioneFinta(db_session))
+
+
+async def test_nomina_le_coppie_saltate(db_session, monkeypatch, capsys):
+    _con_esito(
+        monkeypatch,
+        db_session,
+        GramsRun(
+            weighed=5, none=1, refused=0, pending=2, asked=8,
+            skipped=("aceto di mele × di", "acqua × bicchiere"),
+            last_error="Expecting ':' delimiter",
+        ),
+    )
+
+    assert await main([]) == 0
+
+    righe = capsys.readouterr().out.rstrip().splitlines()
+    assert righe == [
+        "5 pesi scritti, 1 senza un peso sensato, 0 risposte rifiutate",
+        "2 coppie saltate in questo giro, perché la risposta dell'AI non si leggeva nemmeno "
+        "da sole (Expecting ':' delimiter): aceto di mele × di, acqua × bicchiere. Restano da "
+        "pesare: un altro giro le richiede, o si pesano in Anagrafica, «Pesi per unità».",
+        "2 coppie restano da pesare: rilancia questo comando.",
+    ]
+
+
+async def test_nomina_una_coppia_saltata(db_session, monkeypatch, capsys):
+    _con_esito(
+        monkeypatch,
+        db_session,
+        GramsRun(weighed=1, pending=1, asked=2, skipped=("acqua × bicchiere",), last_error="JSON rotto"),
+    )
+
+    assert await main([]) == 0
+
+    assert (
+        "1 coppia saltata in questo giro, perché la risposta dell'AI non si leggeva nemmeno "
+        "da sola (JSON rotto): acqua × bicchiere. Resta da pesare: un altro giro la richiede, "
+        "o si pesa in Anagrafica, «Pesi per unità».\n"
+        "1 coppia resta da pesare: rilancia questo comando."
+    ) in capsys.readouterr().out
+
+
+async def test_oltre_venti_coppie_saltate_nomina_le_prime_venti(db_session, monkeypatch, capsys):
+    saltate = tuple(f"voce {n} × pezzo" for n in range(1, 24))
+    _con_esito(
+        monkeypatch,
+        db_session,
+        GramsRun(pending=23, asked=23, skipped=saltate, last_error="x"),
+    )
+
+    assert await main([]) == 0
+
+    stampato = capsys.readouterr().out
+    assert (
+        "23 coppie saltate in questo giro, perché la risposta dell'AI non si leggeva nemmeno "
+        f"da sole (x): {', '.join(saltate[:20])}, e altre 3. Restano da pesare:"
+    ) in stampato
+    assert "voce 21 × pezzo" not in stampato
+
+
+async def test_senza_coppie_saltate_non_ne_parla(db_session, monkeypatch, capsys):
+    _con_esito(monkeypatch, db_session, GramsRun(weighed=3, asked=3))
+
+    assert await main([]) == 0
+
+    assert "saltat" not in capsys.readouterr().out
