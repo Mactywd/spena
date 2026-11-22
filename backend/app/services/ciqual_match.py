@@ -5,9 +5,11 @@ francese non si incontrano («pomodoro» / «tomate») — spec §4.9–4.12:
 
 1. **le parole di ricerca**: a lotti di `TERMS_BATCH` nomi italiani, l'AI scrive da una a
    tre parole in francese, come le scriverebbe CIQUAL (sezione `ciqual_terms`);
-2. **la scelta**: con quelle parole e il nome italiano, `pg_trgm` trova i candidati veri
-   nella tabella (`find_candidates`), e l'AI sceglie il codice di uno dei **suoi**
-   candidati, o `null` se nessuno è quell'ingrediente (sezione `ciqual_match`).
+2. **la scelta**: con quelle parole `pg_trgm` trova i candidati veri nella tabella
+   (`find_candidates`); il nome italiano si cerca solo se le parole non trovano niente
+   (aggiunto sempre portava rumore: «sale» → «Salers»). L'AI sceglie il codice di uno
+   dei **suoi** candidati, o `null` se nessuno è quell'ingrediente (sezione
+   `ciqual_match`).
 
 L'AI non può inventare un codice: uno che non è fra i candidati di quell'ingrediente non
 si applica. Come in `decide_emoji`, i nomi si numerano e la risposta riporta numero e
@@ -25,7 +27,7 @@ giro sugli ingredienti, e scrive con `apply_ai_choice`, solo dove non c'è nient
 
 import json
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -93,6 +95,8 @@ CHOICE_SYSTEM_PROMPT = (
     "ricetta lo pesa: crudo se si cucina, secco se si compra secco (pasta, riso, legumi "
     "secchi), intero se non è detto altro.\n\n"
     "Regole:\n"
+    "- Carne e pesce: senza pelle né ossa, se il nome non dice altro (per esempio "
+    '"petto di pollo" è "filet sans peau", non "viande et peau").\n'
     '- "n" e "nome" vanno riscritti identici a come te li ho passati.\n'
     '- "codice" è uno dei codici dei candidati di quell\'ingrediente, oppure null se nessun '
     "candidato è quell'ingrediente: meglio nessun valore che uno sbagliato.\n"
@@ -136,11 +140,25 @@ class Matched:
 
 
 @dataclass(frozen=True)
+class Searched:
+    """Cosa si è cercato per un nome: le parole dell'AI, quanti candidati ha visto la
+    scelta, e se venivano dal nome italiano (il ripiego quando le parole non trovano
+    niente)."""
+
+    terms: tuple[str, ...]
+    candidates: int
+    by_italian_name: bool = False
+
+
+@dataclass(frozen=True)
 class MatchBatch:
     # per nome, solo quelli decisi: un nome che manca è da decidere
     decided: dict[str, Matched]
     refused: int = 0
     unavailable: str | None = None
+    # per nome, ogni nome le cui parole si sono verificate, anche se poi la scelta è stata
+    # rifiutata o l'AI si è fermata prima di sceglierlo: è il perché di un caso mancato
+    searched: dict[str, Searched] = field(default_factory=dict)
 
 
 def _numbered(answer: object, asked: dict[int, Any], answered: set[int]) -> int | None:
@@ -258,21 +276,28 @@ async def match_names(
     """Abbina i nomi, a lotti, senza scrivere niente. Al primo guasto dell'AI si ferma e
     torna quel che ha già deciso: chiedere oltre sarebbe pagare per sapere che è giù."""
     decided: dict[str, Matched] = {}
+    searched: dict[str, Searched] = {}
     refused = 0
     for start in range(0, len(names), TERMS_BATCH):
         chunk = names[start : start + TERMS_BATCH]
         try:
             terms, bad = await _ask_terms(session, chunk, client, spend)
         except LlmUnavailable as exc:
-            return MatchBatch(decided, refused, str(exc))
+            return MatchBatch(decided, refused, str(exc), searched)
         refused += bad
         with_candidates: list[tuple[NameToMatch, list[Candidate]]] = []
         for item in chunk:
             if item.name not in terms:
                 continue
-            candidates = await find_candidates(
-                session, [*terms[item.name], item.name], limit=CANDIDATES
-            )
+            candidates = await find_candidates(session, terms[item.name], limit=CANDIDATES)
+            # Il nome italiano solo come ripiego (decisione 6 del piano s4-candidati):
+            # aggiunto sempre porta rumore fra candidati già giusti; da solo, quando le
+            # parole non trovano niente, recupera i nomi che CIQUAL scrive in italiano.
+            by_italian = False
+            if not candidates:
+                candidates = await find_candidates(session, [item.name], limit=CANDIDATES)
+                by_italian = bool(candidates)
+            searched[item.name] = Searched(tuple(terms[item.name]), len(candidates), by_italian)
             if not candidates:
                 decided[item.name] = Matched(code=None, candidates=0)
                 continue
@@ -282,10 +307,10 @@ async def match_names(
             try:
                 chosen, bad = await _ask_choices(session, group, client, spend)
             except LlmUnavailable as exc:
-                return MatchBatch(decided, refused, str(exc))
+                return MatchBatch(decided, refused, str(exc), searched)
             refused += bad
             decided.update(chosen)
-    return MatchBatch(decided, refused, None)
+    return MatchBatch(decided, refused, None, searched)
 
 
 @dataclass(frozen=True)
@@ -294,6 +319,9 @@ class CiqualRun:
 
     matched: int = 0
     none: int = 0
+    # dentro `none`: quelli per cui la ricerca non ha trovato nemmeno un candidato,
+    # nemmeno col nome italiano (la ricerca ha mancato, non l'AI ha detto no)
+    no_candidates: int = 0
     refused: int = 0
     # gli ingredienti alimentari ancora da decidere alla fine, non solo quelli del
     # `--limit`: è la riga che dice a Mattia se rilanciare
@@ -333,7 +361,7 @@ async def decide_ciqual(
     if limit is not None:
         statement = statement.limit(limit)
     rows = (await session.execute(statement)).all()
-    matched = none = refused = 0
+    matched = none = no_candidates = refused = 0
     unavailable: str | None = None
     for start in range(0, len(rows), batch_size):
         chunk = rows[start : start + batch_size]
@@ -346,6 +374,8 @@ async def decide_ciqual(
             if await apply_ai_choice(session, by_name[name], decision.code):
                 if decision.code is None:
                     none += 1
+                    if decision.candidates == 0:
+                        no_candidates += 1
                 else:
                     matched += 1
         await session.flush()
@@ -357,6 +387,7 @@ async def decide_ciqual(
     return CiqualRun(
         matched=matched,
         none=none,
+        no_candidates=no_candidates,
         refused=refused,
         pending=await count_pending(session),
         unavailable=unavailable,

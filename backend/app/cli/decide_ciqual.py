@@ -46,8 +46,9 @@ async def main(argv: list[str]) -> int:
             f"abbinamenti non disponibili ({esito.unavailable}): gli ingredienti restano da "
             "decidere, senza valori nutrizionali."
         )
+    without = f" ({esito.no_candidates} senza nemmeno un candidato)" if esito.no_candidates else ""
     print(
-        f"{esito.matched} ingredienti abbinati, {esito.none} senza un alimento adatto, "
+        f"{esito.matched} ingredienti abbinati, {esito.none} senza un alimento adatto{without}, "
         f"{esito.refused} risposte rifiutate"
     )
     # L'ultima riga dice sempre quanto resta: chi lancia in produzione legge quella.

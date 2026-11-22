@@ -23,9 +23,18 @@ from app.db.models.nutrition import IngredientNutrition
 from app.domain.ciqual import CiqualRow
 from app.repositories.ciqual import upsert_foods
 from app.services.ai_spend import Spend
-from app.services.ciqual_match import CiqualRun, NameToMatch, decide_ciqual, match_names
+from app.services.ciqual_match import (
+    CHOICE_SYSTEM_PROMPT,
+    CiqualRun,
+    Matched,
+    NameToMatch,
+    Searched,
+    decide_ciqual,
+    match_names,
+)
 from app.services.ingredient_nutrition import apply_ai_choice, choose_food
-from llm_fakes import COSTO_FINTO, FakeLlm, schema_of, user_of
+from ciqual_veri import ALIMENTI_VERI
+from llm_fakes import COSTO_FINTO, FakeLlm, schema_of, system_of, user_of
 
 ALIMENTI = [
     CiqualRow("90001", "Tomate, crue", "légumes", {"kcal": 18.0}),
@@ -47,6 +56,19 @@ def chiave(monkeypatch):
 
 async def _mondo(db_session, *voci: tuple[str, str]) -> dict[str, Ingredient]:
     await upsert_foods(db_session, ALIMENTI)
+    creati = {
+        nome: Ingredient(name=nome, display_name=nome.capitalize(), category=reparto)
+        for nome, reparto in voci
+    }
+    db_session.add_all(creati.values())
+    await db_session.flush()
+    return creati
+
+
+async def _mondo_vero(db_session, *voci: tuple[str, str]) -> dict[str, Ingredient]:
+    """Come `_mondo`, ma con gli alimenti veri del 2025: le parità di `word_similarity`
+    e il rumore del nome italiano si vedono solo lì."""
+    await upsert_foods(db_session, ALIMENTI_VERI)
     creati = {
         nome: Ingredient(name=nome, display_name=nome.capitalize(), category=reparto)
         for nome, reparto in voci
@@ -132,6 +154,7 @@ async def test_senza_candidati_si_scrive_nessuno_senza_chiedere_la_scelta(db_ses
 
     assert len(finto.bodies) == 1
     assert (esito.none, esito.pending) == (1, 0)
+    assert esito.no_candidates == 1
     assert await _scelta(db_session, voci["nduja"]) == (None, "ai")
 
 
@@ -281,3 +304,89 @@ async def test_match_names_lavora_sui_nomi_e_somma_la_spesa(db_session):
     assert esito.decided["pomodoro"].candidates >= 1
     assert (spesa.calls, spesa.unpriced) == (2, 0)
     assert spesa.cost_usd == pytest.approx(2 * COSTO_FINTO)
+
+
+def _candidati_chiesti(corpo: dict) -> list[str]:
+    return [c["codice"] for c in _domanda(corpo)["ingredienti"][0]["candidati"]]
+
+
+async def test_il_nome_italiano_non_entra_fra_i_candidati(db_session):
+    """Aggiunto sempre, «sale» portava «Eau minérale Salvetat» e «Salers» fra i sali."""
+    await _mondo_vero(db_session, ("sale", "condimenti"))
+    finto = FakeLlm(_termini((1, "sale", ["sel"])), _scelte((1, "sale", "11083")))
+
+    await decide_ciqual(db_session, client=finto)
+
+    assert _candidati_chiesti(finto.bodies[1]) == ["11083", "11017", "11082", "9104"]
+
+
+async def test_senza_candidati_dalle_parole_si_cerca_col_nome_italiano(db_session):
+    """Il ripiego della decisione 6: CIQUAL scrive in italiano mozzarella, ricotta,
+    bresaola; se le parole dell'AI non trovano niente, il nome li trova."""
+    await upsert_foods(db_session, ALIMENTI_VERI)
+    finto = FakeLlm(
+        _termini((1, "mozzarella", ["zzzz qqqq"])), _scelte((1, "mozzarella", "19590"))
+    )
+
+    esito = await match_names(db_session, [NameToMatch("mozzarella", "latticini")], client=finto)
+
+    assert esito.decided["mozzarella"] == Matched(code="19590", candidates=1)
+    assert _candidati_chiesti(finto.bodies[1]) == ["19590"]
+    assert esito.searched["mozzarella"] == Searched(
+        terms=("zzzz qqqq",), candidates=1, by_italian_name=True
+    )
+
+
+async def test_match_names_dice_cosa_ha_cercato(db_session):
+    """Per ogni nome con le parole verificate, le parole e quanti candidati ha visto la
+    scelta; un nome con le parole rifiutate non c'è."""
+    await upsert_foods(db_session, ALIMENTI_VERI)
+    finto = FakeLlm(
+        _termini((1, "riso", ["riz"]), (2, "mieli", ["miel"])),
+        _scelte((1, "riso", None)),
+    )
+
+    esito = await match_names(
+        db_session,
+        [NameToMatch("riso", "cereali"), NameToMatch("miele", "dolci")],
+        client=finto,
+    )
+
+    assert esito.searched["riso"] == Searched(("riz",), 7, False)
+    assert esito.decided["riso"] == Matched(None, 7)
+    assert "miele" not in esito.searched
+    assert "miele" not in esito.decided
+
+
+async def test_un_candidato_mancato_si_conta_a_parte(db_session):
+    """Dentro «senza un alimento adatto», quelli senza nemmeno un candidato: è la
+    ricerca che ha mancato, non l'AI che ha detto no."""
+    voci = await _mondo_vero(db_session, ("nduja", "carne"), ("riso", "cereali"))
+    finto = FakeLlm(
+        _termini((1, "nduja", ["zzzz qqqq"]), (2, "riso", ["riz"])),
+        _scelte((1, "riso", None)),
+    )
+
+    esito = await decide_ciqual(db_session, client=finto)
+
+    assert (esito.none, esito.no_candidates, esito.matched) == (2, 1, 0)
+    assert await _scelta(db_session, voci["nduja"]) == (None, "ai")
+    assert await _scelta(db_session, voci["riso"]) == (None, "ai")
+
+
+PELLE_E_OSSA = (
+    "- Carne e pesce: senza pelle né ossa, se il nome non dice altro (per esempio "
+    '"petto di pollo" è "filet sans peau", non "viande et peau").'
+)
+
+
+async def test_la_scelta_dice_senza_pelle_ne_ossa(db_session):
+    """Il pilota del 2026-10-20: per il petto di pollo l'AI ha scelto «Poulet blanc,
+    viande et peau crues»."""
+    await _mondo(db_session, ("pomodoro", "verdura"))
+    finto = FakeLlm(_termini((1, "pomodoro", ["tomate crue"])), _scelte((1, "pomodoro", "90001")))
+
+    await decide_ciqual(db_session, client=finto)
+
+    assert PELLE_E_OSSA in CHOICE_SYSTEM_PROMPT
+    assert PELLE_E_OSSA in system_of(finto.bodies[1])

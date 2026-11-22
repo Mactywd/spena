@@ -9,6 +9,7 @@ from app.db.models.ingredient import Ingredient
 from app.db.models.nutrition import IngredientNutrition
 from app.domain.ciqual import CiqualRow
 from app.repositories.ciqual import upsert_foods
+from app.services.ciqual_match import CiqualRun
 
 
 class _SessioneFinta:
@@ -68,3 +69,20 @@ async def test_senza_chiave_dice_quanti_ne_restano_e_non_scrive(db_session, monk
         assert (await db_session.execute(select(IngredientNutrition))).first() is None
     finally:
         get_settings.cache_clear()
+
+
+async def test_dice_quanti_non_hanno_nemmeno_un_candidato(db_session, monkeypatch, capsys):
+    await upsert_foods(db_session, [CiqualRow("90001", "Tomate, crue", "légumes", {"kcal": 18.0})])
+    monkeypatch.setattr(comando, "SessionLocal", lambda: _SessioneFinta(db_session))
+
+    async def finta(*args, **kwargs):
+        return CiqualRun(matched=3, none=2, no_candidates=1, refused=0, pending=0, asked=5)
+
+    monkeypatch.setattr(comando, "decide_ciqual", finta)
+
+    assert await main([]) == 0
+
+    assert (
+        "3 ingredienti abbinati, 2 senza un alimento adatto (1 senza nemmeno un candidato), "
+        "0 risposte rifiutate"
+    ) in capsys.readouterr().out
