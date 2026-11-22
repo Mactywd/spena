@@ -4969,3 +4969,55 @@ test("la domanda dell'avanzo a 375 px, nei due temi", async ({ page }) => {
     for (const id of ids) await page.request.delete(`/api/v1/meals/${id}`);
   }
 });
+
+test("la domanda dell'avanzo spostato e la settimana non valida, a 375 px nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const ids: string[] = [];
+  const crea = async (dati: object) => {
+    const risposta = await page.request.post("/api/v1/meals", { data: dati });
+    expect(risposta.ok()).toBe(true);
+    const id = ((await risposta.json()) as { id: string }).id;
+    ids.push(id);
+    return id;
+  };
+  try {
+    const lasagne = await crea({ day: giornoDiRoma(46), slot: "dinner", dish: "e2e-terzo Stile lasagne" });
+    const avanzo = await crea({
+      day: giornoDiRoma(47),
+      slot: "lunch",
+      dish: "e2e-terzo Stile avanzo",
+      leftover_of_id: lasagne,
+    });
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${avanzo}`);
+      await page.getByRole("button", { name: "Correggi" }).click();
+      await page.getByLabel("Giorno", { exact: true }).fill(giornoDiRoma(50));
+      await page.getByRole("button", { name: "Salva le modifiche" }).click();
+      const sposta = page.getByRole("button", { name: "Sposta e stacca dal pasto d'origine" });
+      await expect(sposta).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la domanda dell'avanzo spostato, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la domanda dell'avanzo spostato, tema ${tema}`);
+      await bersagliDaPollice(
+        [
+          ["Sposta e stacca dal pasto d'origine", sposta],
+          ["Annulla", page.getByRole("button", { name: "Annulla", exact: true })],
+        ],
+        `la domanda dell'avanzo spostato, tema ${tema}`
+      );
+
+      await page.goto("/pasti?settimana=abc");
+      const torna = page.getByRole("link", { name: "Torna a oggi" });
+      await expect(page.getByText("La settimana non si carica.")).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la settimana non valida, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la settimana non valida, tema ${tema}`);
+      await bersagliDaPollice([["Torna a oggi", torna]], `la settimana non valida, tema ${tema}`);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    for (const id of ids) await page.request.delete(`/api/v1/meals/${id}`);
+  }
+});

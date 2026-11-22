@@ -284,3 +284,70 @@ test("«Sostituisci» dice della ricetta dell'occupante", async ({ page }) => {
     for (const id of ids) await togliPasto(page, id);
   }
 });
+
+test("un avanzo spostato fuori dalla finestra chiede, e si stacca", async ({ page }) => {
+  await entra(page);
+  const ids: string[] = [];
+  try {
+    const lasagne = await creaPasto(page, giornoDiRoma(40), "dinner", "e2e-terzo Lasagne");
+    ids.push(lasagne);
+    const risposta = await page.request.post("/api/v1/meals", {
+      data: { day: giornoDiRoma(41), slot: "lunch", dish: "e2e-terzo Il giorno dopo", leftover_of_id: lasagne },
+    });
+    expect(risposta.ok()).toBe(true);
+    const avanzo = ((await risposta.json()) as Pasto).id;
+    ids.push(avanzo);
+
+    await page.goto(`/pasti/${avanzo}`);
+    await page.getByRole("button", { name: "Correggi" }).click();
+    await page.getByLabel("Giorno", { exact: true }).fill(giornoDiRoma(45));
+    await page.getByRole("button", { name: "Salva le modifiche" }).click();
+    await expect(page.getByText(/^Qui non può essere l'avanzo di «e2e-terzo Lasagne» \(/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Annulla", exact: true })).toHaveCount(1);
+    await page.getByRole("button", { name: "Sposta e stacca dal pasto d'origine" }).click();
+
+    await expect
+      .poll(async () => {
+        const p = (await (await page.request.get(`/api/v1/meals/${avanzo}`)).json()) as Pasto;
+        return p.day;
+      })
+      .toBe(giornoDiRoma(45));
+    await page.goto(`/pasti?settimana=${giornoDiRoma(45)}`);
+    await expect(page.getByText("e2e-terzo Il giorno dopo")).toBeVisible();
+    await page.goto(`/pasti/${avanzo}`);
+    await expect(page.getByText("e2e-terzo Il giorno dopo").first()).toBeVisible();
+    await expect(page.getByText(/Avanzo di/)).toHaveCount(0);
+  } finally {
+    for (const id of ids) await togliPasto(page, id);
+  }
+});
+
+test("«Elimina dal ricettario» la ricetta di un pasto la toglie dal ricettario", async ({ page }) => {
+  await entra(page);
+  const pastoId = await creaPasto(page, giornoDiRoma(42), "dinner", "e2e-terzo Frittata");
+  try {
+    await creaRicettaDelPasto(page, pastoId, "e2e-terzo Frittata");
+    const pasto = (await (await page.request.get(`/api/v1/meals/${pastoId}`)).json()) as Pasto;
+    const ricettaId = pasto.recipe!.id;
+    const salvata = await page.request.patch(`/api/v1/recipes/${ricettaId}`, { data: { in_book: true } });
+    expect(salvata.ok()).toBe(true);
+
+    await page.goto(`/ricette/${ricettaId}`);
+    await page.getByRole("button", { name: "Elimina", exact: true }).click();
+    await expect(page.getByText("Tolta dal ricettario: resta la ricetta di «e2e-terzo Frittata».")).toBeVisible();
+
+    await page.goto(`/pasti/${pastoId}`);
+    await expect(page.getByRole("heading", { name: "e2e-terzo Frittata", level: 2 })).toBeVisible();
+    await expect(page.getByText("Questa ricetta è stata eliminata.")).toHaveCount(0);
+  } finally {
+    await togliPasto(page, pastoId);
+  }
+});
+
+test("una settimana non valida torna a oggi", async ({ page }) => {
+  await entra(page);
+  await page.goto("/pasti?settimana=abc");
+  await expect(page.getByText("La settimana non si carica.")).toBeVisible();
+  await page.getByRole("link", { name: "Torna a oggi" }).click();
+  await expect(page.locator('[aria-current="date"]')).toHaveCount(1);
+});
