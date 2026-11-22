@@ -9,10 +9,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # ogni impostazione cadrebbe sul proprio default senza dirlo.
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE = REPO_ROOT / ".env"
+PASSWORD_ENV_FILE = REPO_ROOT / "password.env"
+# Lo stesso ordine dei file Compose: vince il secondo, e può mancare (un file assente
+# è ignorato). L'hash della password sta nel secondo, fuori da `.env`.
+SETTINGS_ENV_FILES = (ENV_FILE, PASSWORD_ENV_FILE)
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
+    model_config = SettingsConfigDict(env_file=SETTINGS_ENV_FILES, extra="ignore")
 
     database_url: str = "postgresql+asyncpg://spena:spena@localhost:5433/spena"
     # nessun default utilizzabile: un segreto scritto in questo repository è

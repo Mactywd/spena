@@ -180,6 +180,31 @@ def test_the_env_file_is_resolved_absolutely(tmp_path, monkeypatch):
     assert (REPO_ROOT / "docker-compose.yml").exists(), "REPO_ROOT non è la radice del repo"
 
 
+def test_le_impostazioni_leggono_password_env_dopo_env(tmp_path, monkeypatch):
+    """Stesso ordine dei file Compose: `.env`, poi `password.env`, che vince e può mancare.
+
+    La suite non legge i file veri, perché `conftest.py` spegne `env_file`: per questo
+    la tupla di produzione si confronta con la costante, e il comportamento si prova
+    su file in `tmp_path`.
+    """
+    from app.core.config import ENV_FILE, PASSWORD_ENV_FILE, REPO_ROOT, SETTINGS_ENV_FILES, Settings
+
+    assert PASSWORD_ENV_FILE == REPO_ROOT / "password.env"
+    assert SETTINGS_ENV_FILES == (ENV_FILE, PASSWORD_ENV_FILE)
+
+    monkeypatch.delenv("APP_PASSWORD_HASH", raising=False)
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("SESSION_SECRET=dal-env\nAPP_PASSWORD_HASH=vecchio\n")
+    password_env = tmp_path / "password.env"
+    password_env.write_text("APP_PASSWORD_HASH=$argon2id$v=19$nuovo\n")
+
+    letto = Settings(_env_file=(env, password_env))
+    assert letto.app_password_hash == "$argon2id$v=19$nuovo"   # vince il secondo, e i $ restano
+    assert letto.session_secret == "dal-env"
+    assert Settings(_env_file=(env, tmp_path / "manca.env")).app_password_hash == "vecchio"
+
+
 def test_the_suite_does_not_read_the_developers_env_file(monkeypatch):
     """Senza questa garanzia, un test che dimostra «variabile non configurata» legge il
     .env reale e il prossimo fa una chiamata a pagamento. Vedi il commento in conftest.

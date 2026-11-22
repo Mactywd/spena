@@ -5,9 +5,11 @@
 #   docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
 #   docker compose -p spena-e2e -f docker-compose.yml -f docker-compose.e2e.yml down -v
 #
-# Fa due cose. Aggiunge un secondo env_file: per le chiavi ripetute vince l'ultimo,
-# quindi APP_PASSWORD_HASH diventa quello della parola «test» e il percorso può fare
-# l'accesso senza conoscere la password dello sviluppatore. E sposta le porte, perché
+# Fa due cose. Aggiunge un secondo env_file: Compose mette in coda le voci di questo
+# file a quelle della base (`.env`, `password.env`), quindi `.env.e2e` è l'ultimo e per
+# le chiavi ripetute vince. APP_PASSWORD_HASH diventa quello della parola «test», anche
+# su un `password.env` dello sviluppatore, e il percorso può fare l'accesso senza
+# conoscere la password dello sviluppatore. E sposta le porte, perché
 # lo stack di sviluppo può tenere occupate 5433, 8000 e 5173: `!override` serve perché
 # le liste di `ports` altrimenti si concatenano e le due pubblicazioni litigherebbero
 # sulla stessa porta dell'host.

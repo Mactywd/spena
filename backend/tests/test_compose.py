@@ -11,14 +11,22 @@ Un commento nei file Compose non basta perché il piano di implementazione
 forma breve sbagliata: «semplificare» uno dei due file copiandola da lì è un
 copia-incolla di distanza, e il sintomo si vede solo provando ad accedere.
 
-docker-compose.e2e.yml non è in questo elenco per un limite dello strumento: usa il
-tag `!override` di Compose, che `yaml.safe_load` si rifiuta di costruire. Il suo
-`env_file` è comunque in forma lunga, per lo stesso motivo.
+docker-compose.e2e.yml si legge con `ComposeLoader`, che accetta i tag `!override` e
+`!reset` di Compose (`yaml.safe_load` li rifiuta). Il suo `env_file` è in forma lunga
+per lo stesso motivo.
+
+L'hash sta in `password.env`, mai in `.env`. Compose legge `.env` due volte: come
+`env_file` del servizio, dove `format: raw` vale, e per sostituire i `${...}` dei file
+Compose, dove non vale. Con l'hash in `.env` i suoi `$` diventavano avvisi del tipo
+`The "argon2id" variable is not set`, con dei pezzi dell'hash, a ogni comando (visti
+sul server il 2026-10-19). Un `env_file` in forma lunga non è mai usato per la
+sostituzione, quindi l'hash lì non produce niente.
 
 PyYAML non è dichiarato tra le dipendenze di questo pacchetto: arriva con
 `uvicorn[standard]`, che lo è (verificato nei metadati del pacchetto installato).
 """
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -28,6 +36,31 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILES = ("docker-compose.yml", "docker-compose.prod.yml")
 ENTRYPOINT = REPO_ROOT / "backend" / "docker-entrypoint.sh"
 DOCKERFILE = REPO_ROOT / "backend" / "Dockerfile"
+
+
+class ComposeLoader(yaml.SafeLoader):
+    """`safe_load` più `!override` e `!reset`, che Compose usa negli override."""
+
+
+def _tag_di_compose(loader, node):
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node, deep=True)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+for _tag in ("!override", "!reset"):
+    ComposeLoader.add_constructor(_tag, _tag_di_compose)
+
+
+def carica(nome_file: str) -> dict:
+    return yaml.load((REPO_ROOT / nome_file).read_text(), Loader=ComposeLoader)
+
+
+TUTTI_I_COMPOSE = COMPOSE_FILES + ("docker-compose.e2e.yml",)
+ENV_EXAMPLE = REPO_ROOT / ".env.example"
+VOCE_PASSWORD_ENV = {"path": "password.env", "format": "raw", "required": False}
 
 PERCHE = (
     "Serve la forma lunga, non la breve `env_file: .env`:\n"
@@ -207,3 +240,90 @@ def test_la_cache_del_modello_vive_in_un_volume(nome_file):
         f"{nome_file}: nessun volume sulla cache del modello; montaggi {bersagli!r}. "
         "Con INSTALL_EMBEDDINGS=1 il modello si riscarica a ogni `up -d --build`."
     )
+
+
+@pytest.mark.parametrize("nome_file", TUTTI_I_COMPOSE)
+def test_ogni_env_file_del_backend_e_in_forma_lunga_con_format_raw(nome_file):
+    env_file = carica(nome_file)["services"]["backend"]["env_file"]
+
+    assert isinstance(env_file, list) and env_file, (
+        f"{nome_file}: `env_file` del backend è {env_file!r}, non un elenco pieno. {PERCHE}"
+    )
+    for voce in env_file:
+        assert isinstance(voce, dict) and voce.get("format") == "raw", (
+            f"{nome_file}: la voce di `env_file` {voce!r} non è in forma lunga con "
+            f"`format: raw`. {PERCHE}"
+        )
+
+
+@pytest.mark.parametrize("nome_file", COMPOSE_FILES)
+def test_lhash_arriva_da_password_env_dopo_env(nome_file):
+    env_file = carica(nome_file)["services"]["backend"]["env_file"]
+    percorsi = [v["path"] for v in env_file]
+
+    assert percorsi.count("password.env") == 1, (
+        f"{nome_file}: `password.env` compare {percorsi.count('password.env')} volte "
+        f"in `env_file` ({percorsi!r}), ne serve una."
+    )
+    assert VOCE_PASSWORD_ENV in env_file, (
+        f"{nome_file}: la voce di password.env è sbagliata, deve essere "
+        f"{VOCE_PASSWORD_ENV!r}. `format: raw` perché i `$` dell'hash arrivino interi; "
+        "`required: false` perché un clone senza il file parta (l'accesso risponde 401)."
+    )
+    assert percorsi.index(".env") < percorsi.index("password.env"), (
+        f"{nome_file}: `password.env` deve venire dopo `.env`, perché per le chiavi "
+        "ripetute vince l'ultimo file. `.env` serve anche a sostituire i `${...}` dei "
+        "file Compose, dove `format: raw` non vale: l'hash non deve stare lì."
+    )
+
+
+def test_nello_stack_e2e_lultimo_env_file_e_env_e2e():
+    env_file = carica("docker-compose.e2e.yml")["services"]["backend"]["env_file"]
+    percorsi = [v["path"] for v in env_file]
+
+    assert percorsi[-1] == ".env.e2e", (
+        f"docker-compose.e2e.yml: l'ultimo `env_file` è {percorsi[-1]!r}, deve essere "
+        "`.env.e2e`: Compose mette in coda le voci dell'override, quindi l'hash di "
+        "«test» vince."
+    )
+    assert "password.env" not in percorsi, (
+        "docker-compose.e2e.yml non deve nominare password.env: l'hash di «test» deve "
+        "vincere su un password.env dello sviluppatore."
+    )
+
+
+@pytest.mark.parametrize("nome_file", TUTTI_I_COMPOSE)
+def test_environment_del_backend_non_nomina_lhash(nome_file):
+    environment = carica(nome_file)["services"]["backend"].get("environment") or {}
+    nomi = (
+        set(environment)
+        if isinstance(environment, dict)
+        else {voce.split("=", 1)[0] for voce in environment}
+    )
+    assert "APP_PASSWORD_HASH" not in nomi, (
+        f"{nome_file}: `environment:` del backend nomina APP_PASSWORD_HASH. Vincerebbe "
+        "su ogni `env_file` e riporterebbe l'hash nella lettura di `.env`, con i suoi "
+        "`$` negli avvisi di Compose: l'hash sta solo in password.env."
+    )
+
+
+def test_env_example_non_porta_lhash_ne_alcun_dollaro():
+    righe = [
+        r for r in ENV_EXAMPLE.read_text().splitlines()
+        if r.strip() and not r.lstrip().startswith("#")
+    ]
+    for riga in righe:
+        assert not riga.startswith("APP_PASSWORD_HASH"), (
+            ".env.example non deve avere APP_PASSWORD_HASH: l'hash sta in password.env, "
+            "scritto da scripts/imposta-password.sh."
+        )
+        assert "$" not in riga, (
+            f".env.example, riga {riga!r}: `.env` si crea copiando questo file, e ogni "
+            "`$` lì dentro è un avviso di Compose a ogni comando."
+        )
+
+
+@pytest.mark.parametrize("nome", ["password.env", "password.env.a1B2c3"])
+def test_password_env_resta_fuori_da_git(nome):
+    esito = subprocess.run(["git", "check-ignore", "-q", nome], cwd=REPO_ROOT)
+    assert esito.returncode == 0, f"{nome} non è ignorato da git: va in .gitignore."

@@ -85,6 +85,8 @@ def test_lavvio_rifiuta_lhash_troncato_da_compose(monkeypatch):
         # Il messaggio è l'unica cosa che chi fa il deploy vedrà: deve nominare la
         # causa, non solo constatare che l'hash non va.
         assert "format: raw" in str(rifiuto.value)
+        assert "password.env" in str(rifiuto.value)
+        assert "scripts/imposta-password.sh" in str(rifiuto.value)
     finally:
         get_settings.cache_clear()
 
@@ -112,8 +114,8 @@ def test_lavvio_riesce_con_lhash_assente(monkeypatch):
 
     Deliberato: qui il login risponde già 401 a chiunque e lo dice (vedi
     tests/api/test_auth.py::test_login_without_configured_password_is_401), quindi
-    non c'è nessun vicolo cieco da fermare all'avvio. È anche il caso in cui si
-    generano i due valori da mettere in `.env`, con `docker compose run`.
+    non c'è nessun vicolo cieco da fermare all'avvio. È anche il caso in cui
+    si genera il segreto da mettere in `.env` e si scrive `password.env` con lo script.
     """
     from app.main import app
 

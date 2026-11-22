@@ -46,9 +46,18 @@ services:
     # breve `env_file: .env`, li interpreta come riferimenti a variabili. Misurato:
     # 97 caratteri arrivano al container come 62, e l'accesso fallisce sempre.
     # Non semplificare alla forma breve. Richiede Compose 2.30 o successivo.
+    # L'hash della password sta in `password.env` e mai in `.env`: Compose legge `.env`
+    # anche per sostituire i `${...}` di questo file, e lì `format: raw` non vale, quindi
+    # i `$` dell'hash diventavano avvisi con i suoi pezzi, a ogni comando (visto sul
+    # server il 2026-10-19). `password.env` lo scrive `scripts/imposta-password.sh`, sta
+    # dopo `.env` e quindi vince; `required: false` lascia partire un clone che non ce
+    # l'ha (l'accesso risponde 401).
     env_file:
       - path: .env
         format: raw
+      - path: password.env
+        format: raw
+        required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       COOKIE_SECURE: "true"
