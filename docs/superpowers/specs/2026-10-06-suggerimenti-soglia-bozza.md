@@ -483,6 +483,13 @@ Intorno servono tre ritocchi alla query, che restano da progettare nel piano:
    `emptyNote` né `onCreate` (§7). (a) dentro questa voce; (b) voce a parte.
    **Raccomandazione: (a).** Senza la nota, il taglio crea muti dove oggi c'è rumore.
    **Deciso da Claude il 2026-10-07, su delega di Mattia per le scelte non funzionali: (a).**
+7. **Chi riceve l'elenco non tagliato** (dalla revisione finale del ramo, 2026-10-18).
+   «Abbina» in «Sistema la spesa» precompila la ricerca col testo intero della voce, e la
+   ricerca dell'Anagrafica serve a trovare i quasi-doppioni: col taglio restano senza le
+   righe che servono. (a) un riscontro anche per il testo che contiene un nome intero;
+   (b) l'elenco non tagliato per questi due chiamanti; (c) accettare. **Deciso da Mattia il
+   2026-11-18: (b)**, con `trim=false` su `/ingredients/search`; tutti gli altri tengono il
+   taglio. Piano `docs/superpowers/plans/2026-11-18-suggerimenti-elenco-intero.md`.
 
 ## 11. Fuori scope
 

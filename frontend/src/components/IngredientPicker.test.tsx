@@ -32,7 +32,39 @@ const DETERSIVO: Ingredient = {
 
 const LATTE: Ingredient = { id: "i1", name: "latte", display_name: "Latte", category: "latticini", kind: "food" };
 
+const LATTUGA: Ingredient = { id: "i2", name: "lattuga", display_name: "Lattuga", category: "verdura", kind: "food" };
+
 describe("IngredientPicker", () => {
+  it("con trim={false} chiede l'elenco intero, e non divide la cache con chi taglia", async () => {
+    const spy = stubRoutedFetch((path) => {
+      const trim = new URL(path, "http://localhost").searchParams.get("trim");
+      return [trim === "false" ? [LATTE, LATTUGA] : [LATTE], 200];
+    });
+    renderWithClient(
+      <>
+        <IngredientPicker label="Taglia" failureNote="x" onPick={() => {}} />
+        <IngredientPicker label="Intero" failureNote="x" trim={false} onPick={() => {}} />
+      </>
+    );
+    const taglia = screen.getByLabelText("Taglia").closest("div")!;
+    const intero = screen.getByLabelText("Intero").closest("div")!;
+
+    fireEvent.change(screen.getByLabelText("Taglia"), { target: { value: "latt" } });
+    await waitFor(() => expect(within(taglia).getByRole("option", { name: "Latte" })).toBeDefined());
+
+    fireEvent.change(screen.getByLabelText("Intero"), { target: { value: "latt" } });
+    await waitFor(() => expect(within(intero).getByRole("option", { name: "Lattuga" })).toBeDefined());
+    expect(within(taglia).queryByRole("option", { name: "Lattuga" })).toBeNull();
+
+    const trims = spy.mock.calls
+      .map(([url]) => new URL(String(url), "http://localhost"))
+      .filter((u) => u.pathname.endsWith("/ingredients/search"))
+      .map((u) => u.searchParams.get("trim"));
+    expect(trims).toHaveLength(2);
+    expect(trims).toContain("false");
+    expect(trims).toContain(null);
+  });
+
   it("chiede al server solo il cibo quando glielo si dice, e lo mette nella chiave", async () => {
     // due montaggi nello stesso QueryClient, stessa parola cercata: senza il kind
     // nella chiave il secondo leggerebbe la risposta del primo, e il filtro
@@ -187,6 +219,76 @@ describe("IngredientPicker", () => {
     fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "zz tre" } });
     await screen.findByRole("button", { name: "Aggiungi «zz tre»" });
     expect(screen.queryByText("Scrivilo in lista.")).toBeNull();
+  });
+
+  // La nota di ripiego (spec 2026-10-06-suggerimenti-soglia, §7 e decisione 6): coi
+  // suggerimenti tagliati una ricerca vuota non è più rara, e cinque schermi non passano
+  // né `onCreate` né `emptyNote`. Senza la nota il pannello resterebbe muto sotto un campo
+  // pieno: il vicolo cieco che il commento di `emptyNote` nomina.
+  it("senza onCreate né emptyNote, a ricerca finita e vuota dice che niente somiglia, e come andare avanti", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderWithClient(<IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "tamarindo" } });
+    // mentre si scrive, prima che la ricerca sia finita, niente nota
+    expect(screen.queryByText(/Nessun ingrediente somiglia/)).toBeNull();
+    expect(
+      await screen.findByText("Nessun ingrediente somiglia a «tamarindo». Prova con un'altra parola.")
+    ).toBeDefined();
+  });
+
+  it("la nota di ripiego non compare se la ricerca trova qualcosa", async () => {
+    stubRoutedFetch(() => [[LATTE], 200]);
+    renderWithClient(<IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "lat" } });
+    await screen.findByRole("option", { name: "Latte" });
+    expect(screen.queryByText(/Nessun ingrediente somiglia/)).toBeNull();
+  });
+
+  it("la nota di ripiego non compare se la ricerca non risponde: lì parla il guasto", async () => {
+    stubRoutedFetch(() => [{ detail: "giù" }, 500]);
+    renderWithClient(<IngredientPicker label="Ingrediente" failureNote="Riprova." onPick={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "tamarindo" } });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "La ricerca degli ingredienti non risponde. Riprova."
+    );
+    expect(screen.queryByText(/Nessun ingrediente somiglia/)).toBeNull();
+  });
+
+  it("la nota di chi lo usa prende il posto di quella di ripiego", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderWithClient(
+      <IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} emptyNote="Scrivilo in lista." />
+    );
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "tamarindo" } });
+    await screen.findByText("Scrivilo in lista.");
+    expect(screen.queryByText(/Nessun ingrediente somiglia/)).toBeNull();
+  });
+
+  it("con onCreate, al posto della nota di ripiego c'è «Aggiungi «…»»", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderWithClient(
+      <IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} onCreate={() => {}} />
+    );
+    fireEvent.change(screen.getByLabelText("Ingrediente"), { target: { value: "tamarindo" } });
+    await screen.findByRole("button", { name: "Aggiungi «tamarindo»" });
+    expect(screen.queryByText(/Nessun ingrediente somiglia/)).toBeNull();
+  });
+
+  // S18 anche per la nota: corretto «lattr» in «latte», per tutta l'attesa la risposta
+  // vuota in mano è ancora quella di «lattr», e dire che «latte» non somiglia a niente
+  // sarebbe falso
+  it("la nota di ripiego vale per il testo cercato, mai per uno di prima", async () => {
+    stubRoutedFetch(() => [[], 200]);
+    renderWithClient(<IngredientPicker label="Ingrediente" failureNote="x" onPick={() => {}} />);
+    const campo = screen.getByLabelText("Ingrediente");
+    fireEvent.change(campo, { target: { value: "lattr" } });
+    await screen.findByText("Nessun ingrediente somiglia a «lattr». Prova con un'altra parola.");
+
+    fireEvent.change(campo, { target: { value: "latte" } });
+    expect(screen.queryByText(/Nessun ingrediente somiglia/)).toBeNull();
+    expect(
+      await screen.findByText("Nessun ingrediente somiglia a «latte». Prova con un'altra parola.")
+    ).toBeDefined();
   });
 
   it("parte dal testo che gli si passa, e cerca subito quello", async () => {

@@ -14,20 +14,10 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-Cinque piani, scritti nella fase giorno del 2026-11-18 con le decisioni di Mattia e chiusi il
-2026-11-21 con le ultime tre conferme (`SESSION_SECRET` resta com'è; l'elenco intero solo per
-«Abbina»; una scheda vecchia si mette da parte solo se tutti i suoi pasti sono nella nuova).
-Il 2026-11-21 si sono aggiunti tre piani nuovi, il 7, l'8 e il 9, scritti sulle decisioni di Mattia di quel giorno.
-
-L'ordine conta in una catena sola, perché ogni ramo parte dal precedente e le migrazioni si mettono
-in fila (0023 → 0026): **1 → 2 → 7 → 8 → 9**. Se una voce della catena si blocca, quelle dopo
-aspettano. Il 3, il 4 con il 5 e il 6 partono da `master` e possono girare in qualunque ordine. Il 3
-continua il ramo `night/suggerimenti-soglia`, e il suo piano sta nel worktree di quel ramo, non
-ancora committato.
-
-3. [pronto] P3 · I suggerimenti degli ingredienti sono sempre dieci righe, anche quando non somigliano più — il taglio è già costruito sul ramo (piano `2026-10-08-suggerimenti-soglia.md`); resta la strada (b) decisa da Mattia il 2026-11-18: il ramo al pari di `master`, poi l'elenco non tagliato (`trim=false`) per «Abbina» in «Sistema la spesa» e per i quasi-doppioni dell'Anagrafica, il taglio per tutti gli altri [T3, esito del giro] → `.worktrees/suggerimenti-soglia/docs/superpowers/plans/2026-11-18-suggerimenti-elenco-intero.md`, ramo `night/suggerimenti-soglia` (lo continua)
+_(nessuno: gli otto piani pronti del 2026-11-21 sono stati fatti nella notte e uniti su `master` il 2026-11-22)_
 
 ## Da approfondire (giorno)
+- [tbd] P2 · Suggerimenti: nell'Anagrafica l'elenco intero (`trim=false`) si ferma a 10 e mette tutti i riscontri prima di ogni sfumato, quindi per una parola con dieci riscontri o più (pomodoro, olio, pasta) un doppione scritto male che oggi si vede resta fuori. TBD: `limit=50` per l'Anagrafica, l'ordine per somiglianza dopo i prefissi con `trim=false`, o prima la misura sull'anagrafica vera? (revisione finale del 2026-11-21, ramo night/suggerimenti-soglia) [T3, esito del giro]
 - [tbd] P2 · Pasti: scrivere a mano la ricetta mentre è «in preparazione». Oggi, se arriva prima quella di Claude, il modulo tiene quel che hai scritto e offre «Salva nel ricettario» e «Vedi la ricetta di Claude». TBD: (a) sostituire la ricetta di Claude non ancora toccata, con «Annulla», o (b) aprire il modulo toglie il pasto dalla coda? [Parte IV]
 - [idea] P3 · Pasti: `PUT /recipes/{id}` e il `PATCH` della ricetta di un pasto non prendono `lock_meal`: una modifica può perdere una scrittura della chat; il `PATCH archived` insieme all'eliminazione del pasto può lasciare una ricetta fuori dal ricettario senza pasto [Parte IV]
 - [idea] P3 · Pasti: la ricetta in sola lettura di un avanzo mostra ancora «Cucina», e cucinare un avanzo segnerebbe di nuovo la dispensa (la spec §4.2 dice che l'avanzo non tocca la dispensa) [Parte IV]
@@ -73,7 +63,6 @@ ancora committato.
 - [idea] P3 · Una schermata per correggere i plurali di `units` (oggi `decide_units --imposta` da riga di comando basta) [Parte X]
 - [idea] P3 · Una voce già in lista (in attesa o spuntata) che entra dall'ingresso diretto: la lista continua a chiederla. La scheda di conferma potrebbe dire «è anche in lista» con «Toglila» — fuori dalla bozza di S3, da valutare dopo l'uso [S3, bozza 2026-10-06]
 - [idea] P3 · La foto del prodotto (`products.image_url`) nella scheda del prodotto e nella scheda di conferma di S3, dove è grande e una sola; porta con sé la domanda delle immagini chieste a Open Food Facts (rete, privacy, senza rete) [S12, bozza 2026-10-06]
-- [idea] P3 · `search_ingredients` non protegge il testo cercato nel `LIKE`: un `%` o un `_` digitati fanno da jolly (`backend/app/repositories/ingredients.py`) [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Un suggerimento non dice da quale alias arriva: «Ketchup» per «sal» («salsa ketchup») o «Olio di cocco» per «burro» («burro di cocco») sembrano rumore e non lo sono [bozza suggerimenti 2026-10-06]
 - [idea] P3 · Il database di sviluppo locale (`spena`) non ha tabelle: per misurare sui dati in sviluppo va migrato e seminato prima (le misure del 2026-10-06 sono state fatte sul seme) [report 2026-10-06]
 - [idea] P3 · In serie la fotocamera si riaccende a ogni codice (`BarcodeScanner` la rilascia al primo letto): se sul telefono l'attesa si sente, tenerla accesa fra un codice e l'altro [S3]
@@ -114,6 +103,7 @@ ancora committato.
 - [idea] P3 · Una coppia a cui l'AI non risponde mai in modo leggibile resta in testa a `pending_pairs`, così ogni giro di `decide_grams` divide di nuovo il primo lotto (circa 12 chiamate in più a giro); e con `--limit N` non più grande del numero di queste coppie in testa un giro non avanza. Le coppie saltate potrebbero andare in fondo all'ordine, o essere ricordate per un giro (da night/s4-candidati) [S4]
 - [idea] P3 · La riga di `decide_grams` sulle coppie saltate cita l'ultimo errore, ma sul ramo di Haiku l'errore di una risposta illeggibile è già la frase avvolta («La risposta dell'AI non si può usare: riprova. (JSON non valido)»): la riga annida le parentesi e perde l'errore preciso del JSON. Basterebbe citare il dettaglio del guasto e non la frase (da night/s4-candidati) [S4]
 - [idea] P3 · H1: il dettaglio di un giorno per sezione (oggi le colonne non si toccano: a 375 px sarebbero bersagli da 10 px) [H1]
+- [idea] P3 · Code dei suggerimenti tagliati, nessuna blocca il merge: `measure_suggestions` non ha due famiglie di prove che mostrerebbero in produzione i costi del taglio — il testo più lungo del nome, e singolare/plurale (sul seme «oliva» mostra solo «olio di oliva» e nasconde Olive 0,500; «gelati» mostra solo «gelatina») —; i suoi «refusi» sui primi sei caratteri possono finire con uno spazio («aceta »); nessun test prova che il suo `SET TRANSACTION READ ONLY` rifiuti una scrittura; `fold_for_match` non normalizza in NFC; il lato database della piega non riduce gli spazi doppi (un alias «sott' olio» non combacerebbe con «sott'olio») [revisione finale night/suggerimenti-soglia]
 
 ## Bloccati
 _(niente: H3, P3 e M1 sono usciti il 2026-11-12, sostituiti dalla sezione Pasti con Claude)_
@@ -149,6 +139,7 @@ fra le idee._
 - [tbd] P2 · S4 fetta 2, da correggere in Anagrafica: «aceto di mele» con l'unità «di» (60 g: «di» non è un'unità, sfuggita a `clean_doses`), «acqua» un bicchiere 100 g (l'aceto 200), «alcol puro» senza unità 400 g [S4]
 - [tbd] P2 · H2 sul telefono, dopo il deploy: Samsung Health › Impostazioni › Health Connect (passi, esercizio, peso; sincronizzazione Samsung Cloud attiva); la prova dei 10 minuti in Health Connect › Dati e accesso (i dati di ieri ci sono); HC Webhook installato e fuori dall'ottimizzazione della batteria; la chiave e i dieci passi di «Collega HC Webhook»; «Testa Webhook»; i passi di ieri uguali a Samsung Health. Nel browser passati la chiave, il webhook attraverso Nginx, i 401, il doppio invio, il rifiuto dei 3 MB, la prova, il contrasto nei due temi, i 375 px [H2]
 - [tbd] P3 · Prove di H1 coi dati veri e sul telefono: «Da sempre» parte dal 17 settembre 2026 e il totale torna con l'attività dell'app su OpenRouter; i tre pulsanti del periodo col pollice. Nel browser passati il ☰, le cifre seminate, la sezione sconosciuta col suo nome, il contrasto nei due temi, i 375 px
+- [tbd] P3 · Dopo il deploy dei suggerimenti tagliati: la misura sull'anagrafica vera, `docker compose -f docker-compose.prod.yml exec -T backend python -m app.cli.measure_suggestions` (sola lettura, qualche minuto; è una lettura della produzione), da confrontare col §6 della bozza; e al telefono, in Lista, «zucch», «olio», «pollo» e una parola con un refuso nelle prime lettere; in «Sistema la spesa», «Abbina» di una voce lunga («pasta barilla integrale») suggerisce l'ingrediente; in Anagrafica, cercando un nome si vedono anche i suoi quasi-doppioni [T3, esito del giro]
 - [tbd] P1 · Prove sul telefono della Consegna 6b: R12 con la tastiera vera aperta (il passo del nome, il reparto col selettore nativo senza perdere il filo, il fuoco sulla quantità); la coda con un termine vero dell'import. Nel browser passati il fuoco sul nome e poi sulla quantità, le caselle tutte da 44, l'avviso dopo un annullamento, «L'AI non è disponibile» con la coda che funziona a mano
 - [tbd] P1 · Prove sul telefono del Dettaglio ricetta (Consegna 5): il tasto «Ricette» sopra una foto chiara e una scura (il seme non ha foto), le tacche del foglio col pollice, «Salvata.» dopo una bozza dell'AI vera. Nel browser passati lo stepper spento col perché a capo sotto, «Metti in lista ciò che manca» con «1 in lista», tacche da 44 e fuoco di ritorno su «Cucina», «Salvata.» dopo il salvataggio a mano
 - [tbd] P1 · Prove sul telefono del Ricettario (Consegna 4): «Filtri» col pollice, le miniature con la rete lenta (il seme non ha foto). Nel browser passati la prima ricetta in vista, il numero su «Filtri», il filtro che resta tornando da una ricetta, «Elimina» e «Annulla» (l'avviso dura 6 s)
@@ -166,6 +157,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-11-21 · I suggerimenti degli ingredienti non sono più sempre dieci righe: chi contiene il testo all'inizio di una parola, nel nome o in un alias e senza accenti, e gli sfumati solo se nessuno lo contiene, sopra max(0,30; 0,8 × il primo); `%` e `_` lettere; la nota di ripiego in `IngredientPicker`; «Abbina» e l'Anagrafica ricevono l'elenco intero (`trim=false`, Mattia, 2026-11-18); il ramo è al pari di `master` [T3, esito del giro] → branch night/suggerimenti-soglia (da revisionare)
 - [fatto] 2026-11-21 · L'hash della password in `password.env` (secondo `env_file`, forma lunga, `format: raw`, `required: false`), mai in `.env`: Compose non stampa più avvisi con i suoi pezzi; `scripts/imposta-password.sh <file compose>` lo scrive senza mostrarlo, e un test sui tre file Compose, `.env.example` e `.gitignore` impedisce di tornare indietro → branch night/hash-password (da revisionare)
 - [fatto] 2026-11-21 · S3 e S15, la Dispensa che non si muove sotto il dito: la serie della scansione non scorre più alla riga nuova e, su «Cibo» o «Casa», non cambia mondo (l'avviso dice «…, sotto «Cibo»»); chiuso il pannello (la ✕, o «Annulla» dello scanner nello stadio di lettura) va in vista l'ultima riga entrata. Il riepilogo delle scadenze spento dallo schermo lascia aperti i reparti che aveva aperto, finché non si tocca un titolo o il selettore, o non si scrive nella barra [S3, S14, S15] → branch night/dispensa-serie-reparti (da revisionare)
 - [fatto] 2026-11-21 · Pasti: la conferma «Questi posti sono occupati» di «Metti nella settimana» non dice quali ricette fuori dal ricettario si eliminano con i pasti sostituiti (decisione 11) — risolta col piano `2026-11-21-pasti-terzo-giro.md` → branch night/pasti-terzo-giro (da revisionare)

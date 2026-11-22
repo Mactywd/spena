@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { searchIngredients } from "../features/shopping-list/api";
+import { ingredientSearchKey, searchIngredients } from "../features/shopping-list/api";
 import { useDebounced } from "../hooks/useDebounced";
 import { OptionList } from "./ui/OptionList";
 import { Button } from "./ui/Button";
@@ -33,6 +33,7 @@ export function IngredientPicker({
   emptyNote,
   initialTerm = "",
   autoFocus = false,
+  trim = true,
 }: {
   /** Etichetta visibile: dice a cosa serve *qui*. */
   label: string;
@@ -62,9 +63,11 @@ export function IngredientPicker({
    * suo nome pesca «Pera» per «cera per pavimenti». */
   createWhen?: "empty" | "always";
   /** Chi non sa creare un ingrediente dice qui dove andare quando la ricerca non
-   * trova niente: senza, il pannello resterebbe muto sotto un campo pieno, ed è un
-   * vicolo cieco. Compare alle stesse condizioni dell'offerta di creare, che quando
-   * c'è ha la precedenza. */
+   * trova niente. Senza, compare la nota di ripiego «Nessun ingrediente somiglia a
+   * «…». Prova con un'altra parola.»: un pannello muto sotto un campo pieno è un vicolo
+   * cieco, e coi suggerimenti tagliati (spec 2026-10-06-suggerimenti-soglia) una
+   * ricerca vuota non è più rara. Compare alle stesse condizioni dell'offerta di creare,
+   * che quando c'è ha la precedenza. */
   emptyNote?: ReactNode;
   /** Il testo con cui il campo nasce: la Dispensa apre l'aggiunta con quel che era
    * scritto nella barra. Vale solo alla nascita — chi vuole ripartire da un altro
@@ -72,6 +75,10 @@ export function IngredientPicker({
   initialTerm?: string;
   /** Il campo prende il fuoco appena compare: l'aggiunta si è aperta con un tocco. */
   autoFocus?: boolean;
+  /** Con `false` chiede l'elenco intero, senza il taglio dei suggerimenti. Lo spegne
+   * solo «Abbina», dove il campo nasce col testo intero della voce e col taglio non
+   * troverebbe quasi mai l'ingrediente; gli altri posti tengono il taglio. */
+  trim?: boolean;
 }) {
   const [term, setTerm] = useState(initialTerm);
   const debounced = useDebounced(term, DEBOUNCE_MS).trim();
@@ -79,11 +86,12 @@ export function IngredientPicker({
   const ready = debounced.length >= 2;
 
   const { data: found = [], isError, isSuccess } = useQuery({
-    // il kind sta nella chiave: senza, la risposta filtrata e quella non filtrata
-    // si sovrascriverebbero a vicenda sulla stessa parola cercata, e la dispensa
-    // smetterebbe di vedere il detersivo perché il ricettario ha cercato prima
-    queryKey: ["ingredients", debounced, kind ?? "tutti"],
-    queryFn: () => searchIngredients(debounced, kind),
+    // il kind e il taglio stanno nella chiave: senza, la risposta filtrata e quella
+    // non filtrata (o quella tagliata e quella intera) si sovrascriverebbero a
+    // vicenda sulla stessa parola cercata, e la dispensa smetterebbe di vedere il
+    // detersivo perché il ricettario ha cercato prima
+    queryKey: ingredientSearchKey(debounced, kind, trim),
+    queryFn: () => searchIngredients(debounced, kind, { trim }),
     enabled: ready,
   });
 
@@ -145,7 +153,14 @@ export function IngredientPicker({
         </Button>
       )}
 
-      {!onCreate && emptyNote && emptySearch && <p className="text-sm text-ink-soft">{emptyNote}</p>}
+      {/* senza chi crea, una ricerca finita e vuota dice sempre qualcosa: la nota di chi
+          usa il selettore se la passa, quella di ripiego altrimenti. Per il testo cercato,
+          mai per uno di prima (S18): `emptySearch` lo garantisce */}
+      {!onCreate && emptySearch && (
+        <p className="text-sm text-ink-soft">
+          {emptyNote ?? `Nessun ingrediente somiglia a «${debounced}». Prova con un'altra parola.`}
+        </p>
+      )}
 
       {/* la ricerca è un aiuto, non un pedaggio: il guasto va detto insieme a
           quello che resta possibile. L'ambra è il colore che nell'app vuol dire

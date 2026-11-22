@@ -20,7 +20,7 @@ from app.repositories.ingredients import (
     create_ingredient,
     find_by_name,
     ingredient_usage,
-    search_ingredients,
+    suggest_ingredients,
 )
 from app.schemas.ingredient import (
     AliasCreate,
@@ -50,9 +50,14 @@ router = APIRouter(
 async def search(
     q: str = Query(min_length=1), limit: int = Query(default=10, le=50),
     kind: IngredientKind | None = Query(default=None),
+    trim: bool = Query(default=True),
     session: AsyncSession = Depends(get_session),
 ) -> list[IngredientOut]:
-    found = await search_ingredients(session, q, limit, kind=kind)
+    # i suggerimenti tagliati: chi contiene il testo, e gli altri solo se nessuno lo
+    # contiene. La ricerca coi suoi sfumati resta `search_ingredients`, per `match_name`
+    # e per i vicini dell'AI (spec 2026-10-06-suggerimenti-soglia, decisione 3)
+    # `trim=false` è l'elenco intero di «Abbina» e dell'Anagrafica (Mattia, 2026-11-18)
+    found = await suggest_ingredients(session, q, limit, kind=kind, trim=trim)
     return [IngredientOut.model_validate(i) for i in found]
 
 

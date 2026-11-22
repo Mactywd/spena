@@ -51,6 +51,23 @@ describe("RegistryScreen", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it("chiede l'elenco intero: l'Anagrafica serve a trovare i quasi-doppioni", async () => {
+    const spy = stubRoutedFetch((path) =>
+      path.includes("/ingredients/search") ? [[BURRO], 200] : [[], 200]
+    );
+    renderScreen();
+    await userEvent.type(screen.getByLabelText("Cerca un ingrediente o un prodotto"), "zucchina");
+    await screen.findByRole("link", { name: /Burro/ });
+    const urls = spy.mock.calls
+      .map(([url]) => new URL(String(url), "http://localhost"))
+      .filter((u) => u.pathname.endsWith("/ingredients/search"));
+    expect(urls.length).toBeGreaterThan(0);
+    for (const u of urls) {
+      expect(u.searchParams.get("trim")).toBe("false");
+      expect(u.searchParams.get("kind")).toBeNull();
+    }
+  });
+
   it("cerca nelle due anagrafiche e mostra due gruppi, ogni risultato con la sua scheda", async () => {
     const spy = stubRoutedFetch((path) => {
       if (path.includes("/ingredients/search")) return [[BURRO], 200];

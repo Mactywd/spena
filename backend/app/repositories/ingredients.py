@@ -1,14 +1,26 @@
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import case, func, select
+from sqlalchemy import String, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.ingredient import NAME_MAX_LENGTH, Ingredient, IngredientAlias
 from app.db.models.shopping import ShoppingListItem, ShoppingStatus
 from app.domain.rules import IngredientKind
+from app.domain.suggestions import FOLD_FROM, FOLD_TO, fold_for_match, trim_suggestions
 
 SIMILARITY_FLOOR = 0.15  # sotto questa soglia i suggerimenti diventano rumore
+
+
+def _purchase_counts():
+    """Quante righe di lista ha ogni ingrediente: lo spareggio di «quel che compri
+    davvero», in comune fra la ricerca e i suggerimenti."""
+    return (
+        select(ShoppingListItem.ingredient_id, func.count().label("uses"))
+        .where(ShoppingListItem.ingredient_id.is_not(None))
+        .group_by(ShoppingListItem.ingredient_id)
+        .subquery()
+    )
 
 
 async def search_ingredients(
@@ -27,24 +39,24 @@ async def search_ingredients(
     entrambe sotto SIMILARITY_FLOOR e comunque troppo vicine per distinguere),
     quindi un match di prefisso scavalca la soglia di somiglianza invece di
     esserne escluso.
+
+    È la ricerca di `match_name` e dei vicini per l'AI, che vivono degli sfumati: i
+    suggerimenti a video passano da `suggest_ingredients`, che taglia (spec
+    2026-10-06-suggerimenti-soglia, decisione 3).
     """
     cleaned = query.strip().lower()
     if not cleaned:
         return []
 
-    purchases = (
-        select(ShoppingListItem.ingredient_id, func.count().label("uses"))
-        .where(ShoppingListItem.ingredient_id.is_not(None))
-        .group_by(ShoppingListItem.ingredient_id)
-        .subquery()
-    )
+    purchases = _purchase_counts()
 
     name_similarity = func.similarity(Ingredient.name, cleaned)
     alias_similarity = func.coalesce(func.max(func.similarity(IngredientAlias.alias, cleaned)), 0.0)
     best_similarity = func.greatest(name_similarity, alias_similarity)
 
-    name_is_prefix = Ingredient.name.like(f"{cleaned}%")
-    alias_is_prefix = func.bool_or(IngredientAlias.alias.like(f"{cleaned}%"))
+    # `autoescape`: un `%` o un `_` scritti sono lettere, non jolly del LIKE
+    name_is_prefix = Ingredient.name.startswith(cleaned, autoescape=True)
+    alias_is_prefix = func.bool_or(IngredientAlias.alias.startswith(cleaned, autoescape=True))
     is_prefix_match = name_is_prefix | func.coalesce(alias_is_prefix, False)
 
     purchase_count = func.coalesce(func.max(purchases.c.uses), 0)
@@ -83,6 +95,112 @@ async def search_ingredients(
     )
     result = await session.execute(statement)
     return list(result.scalars().unique())
+
+
+@dataclass(frozen=True)
+class ScoredIngredient:
+    """Un candidato dei suggerimenti, con quel che serve a `trim_suggestions` per
+    decidere se si vede: la somiglianza migliore fra nome e alias, e se contiene il
+    testo all'inizio di una parola."""
+
+    ingredient: Ingredient
+    best: float
+    is_hit: bool
+
+
+def _folded(column):
+    """La colonna come la confronta il riscontro: senza accenti, apostrofi e trattini
+    (le stesse `FOLD_FROM`/`FOLD_TO` di `fold_for_match`), e con uno spazio davanti,
+    così «all'inizio di una parola» diventa «dopo uno spazio» anche per la prima."""
+    return func.concat(" ", func.translate(column, FOLD_FROM, FOLD_TO, type_=String))
+
+
+async def _suggestion_candidates(
+    session: AsyncSession, query: str, limit: int, kind: IngredientKind | None,
+) -> list[ScoredIngredient]:
+    """I candidati dei suggerimenti, già nell'ordine in cui `trim_suggestions` li vuole.
+
+    Rispetto a `search_ingredients`: il prefisso si confronta senza accenti; un
+    riscontro (`is_hit`, il testo all'inizio di una parola del nome o di un alias)
+    passa il filtro anche sotto lo 0,15 e viene subito dopo i prefissi. È quel che
+    rende sicuro il `LIMIT`: i riscontri arrivano prima di ogni sfumato, e senza
+    riscontri gli sfumati arrivano dal più simile in giù, quindi le righe che il taglio
+    tiene sono sempre in testa (sesta lezione di CLAUDE.md).
+    """
+    cleaned = query.strip().lower()
+    folded = fold_for_match(cleaned)
+    if not folded:
+        return []
+
+    purchases = _purchase_counts()
+
+    name_similarity = func.similarity(Ingredient.name, cleaned)
+    alias_similarity = func.coalesce(func.max(func.similarity(IngredientAlias.alias, cleaned)), 0.0)
+    best_similarity = func.greatest(name_similarity, alias_similarity)
+
+    # `autoescape`: un `%` o un `_` scritti sono lettere, non jolly del LIKE
+    name_folded = _folded(Ingredient.name)
+    alias_folded = _folded(IngredientAlias.alias)
+    word = f" {folded}"
+    is_prefix_match = name_folded.startswith(word, autoescape=True) | func.coalesce(
+        func.bool_or(alias_folded.startswith(word, autoescape=True)), False
+    )
+    is_hit = name_folded.contains(word, autoescape=True) | func.coalesce(
+        func.bool_or(alias_folded.contains(word, autoescape=True)), False
+    )
+
+    purchase_count = func.coalesce(func.max(purchases.c.uses), 0)
+
+    statement = (
+        select(Ingredient, best_similarity.label("best"), is_hit.label("is_hit"))
+        .outerjoin(IngredientAlias, IngredientAlias.ingredient_id == Ingredient.id)
+        .outerjoin(purchases, purchases.c.ingredient_id == Ingredient.id)
+        .group_by(Ingredient.id)
+    )
+    if kind is not None:
+        statement = statement.where(Ingredient.kind == kind)
+    statement = (
+        statement
+        .having((best_similarity >= SIMILARITY_FLOOR) | is_prefix_match | is_hit)
+        .order_by(
+            # l'ordine di `search_ingredients`, con i riscontri subito dopo i prefissi
+            is_prefix_match.desc(),
+            is_hit.desc(),
+            case((is_prefix_match, purchase_count), else_=0).desc(),
+            best_similarity.desc(),
+            purchase_count.desc(),
+            Ingredient.name.asc(),
+        )
+        .limit(limit)
+    )
+    rows = (await session.execute(statement)).all()
+    return [
+        ScoredIngredient(ingredient=row[0], best=float(row.best), is_hit=bool(row.is_hit))
+        for row in rows
+    ]
+
+
+async def suggest_ingredients(
+    session: AsyncSession, query: str, limit: int = 10,
+    kind: IngredientKind | None = None, *, trim: bool = True,
+) -> list[Ingredient]:
+    """I suggerimenti che `/ingredients/search` mostra: chi contiene il testo, e gli altri
+    solo se nessuno lo contiene (`trim_suggestions`; spec
+    docs/superpowers/specs/2026-10-06-suggerimenti-soglia-bozza.md).
+
+    `trim=False` dà l'elenco intero, i candidati così come arrivano: lo chiedono «Abbina»
+    (il testo lungo della voce) e l'Anagrafica (i quasi-doppioni), decisi da Mattia il
+    2026-11-18. Il taglio non riordina mai e i riscontri vengono prima di ogni sfumato,
+    quindi l'elenco tagliato è sempre l'inizio di quello intero (decisione 4 del piano).
+
+    La chiamano l'endpoint e il comando che misura (`app.cli.measure_suggestions`), e
+    nessun altro: `match_name` e i vicini per l'AI restano su `search_ingredients`
+    (decisione 3).
+    """
+    candidates = await _suggestion_candidates(session, query, limit, kind)
+    if not trim:
+        return [candidate.ingredient for candidate in candidates]
+    return [candidate.ingredient for candidate in trim_suggestions(candidates, limit)]
 
 
 def canonical_name(name: str) -> str:

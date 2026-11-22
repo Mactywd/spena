@@ -56,6 +56,18 @@ describe("MatchPanel", () => {
     expect(await screen.findByRole("option", { name: "Pera" })).toBeDefined();
   });
 
+  it("cerca il testo della voce nell'elenco intero", async () => {
+    const spy = stubRoutedFetch(() => [[PERA], 200]);
+    renderPanel();
+    await screen.findByRole("option", { name: "Pera" });
+    const urls = spy.mock.calls
+      .map(([url]) => new URL(String(url), "http://localhost"))
+      .filter((u) => u.pathname.endsWith("/ingredients/search"));
+    expect(urls).toHaveLength(1);
+    expect(urls[0].searchParams.get("q")).toBe("cera per pavimenti");
+    expect(urls[0].searchParams.get("trim")).toBe("false");
+  });
+
   it("scegliere un suggerimento abbina quello", async () => {
     stubRoutedFetch(() => [[PERA], 200]);
     const { onMatched } = renderPanel();
