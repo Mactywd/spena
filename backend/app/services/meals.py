@@ -210,9 +210,11 @@ async def update_meal(
         if occupant is not None and occupant.id != meal.id and not replace:
             raise _slot_taken(occupant)
     # un avanzo spostato fuori dalla finestra del suo pasto (decisione 5): dopo la domanda del
-    # posto, e un avanzo che va fuori casa non chiede, il legame si toglie già
+    # posto. Non chiede un avanzo che va fuori casa, né uno che sostituisce proprio il suo pasto
+    # d'origine (ruling F-R1, come B-R2): in tutti e due il legame si toglie già
+    replaces_origin = occupant is not None and occupant.id == meal.leftover_of_id
     detach_from_origin = False
-    if moved and not away and meal.leftover_of_id is not None:
+    if moved and not away and meal.leftover_of_id is not None and not replaces_origin:
         origin = await _leftover_origin(session, meal.leftover_of_id)
         if not in_leftover_window(origin.day, MealSlot(origin.slot), day, slot):
             if not detach_origin:

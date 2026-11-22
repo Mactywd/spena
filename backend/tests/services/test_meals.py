@@ -576,6 +576,19 @@ async def test_il_posto_occupato_viene_prima_dell_origine(db_session):
     assert await get_meal(db_session, pizza.id) is None
 
 
+async def test_sostituire_il_pasto_d_origine_non_chiede_della_finestra(db_session):
+    # ruling F-R1, simmetrico a B-R2: sostituire proprio l'origine taglia già il legame
+    lasagne, (left, other) = await _lasagne_con_avanzi(db_session, (d(10), L), (d(11), L))
+    moved = await update_meal(db_session, left, {"day": d(9), "slot": "dinner"}, replace=True)
+    assert (moved.day, moved.slot) == (d(9), "dinner")
+    assert moved.leftover_of_id is None
+    assert moved.dish == "Lasagne di ieri"
+    assert await get_meal(db_session, lasagne.id) is None
+    again = await get_meal(db_session, other.id)
+    assert again.leftover_of_id is None
+    assert (again.day, again.dish) == (d(11), "Lasagne di ieri")
+
+
 async def test_l_avanzo_che_va_fuori_casa_non_chiede(db_session):
     _, (left,) = await _lasagne_con_avanzi(db_session, (d(10), L))
     moved = await update_meal(db_session, left, {"day": d(13), "away": True})
