@@ -14,8 +14,13 @@ from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
 from app.repositories.ingredients import create_ingredient
 from app.services.llm import LlmUnavailable
-from app.services.recipe_import.decide import decide_one, load_registry
-from llm_fakes import FakeLlm, user_of
+from app.services.recipe_import.decide import (
+    TERM_CONTEXT_INTRO,
+    TERM_SYSTEM_PROMPT,
+    decide_one,
+    load_registry,
+)
+from llm_fakes import FakeLlm, system_of, user_of
 
 
 @pytest.fixture(autouse=True)
@@ -153,7 +158,7 @@ async def test_un_guasto_del_modello_risale(db_session, anagrafica):
         await decide_one(db_session, term, anagrafica, client=finto)
 
 
-async def test_la_domanda_porta_il_termine_lanagrafica_e_le_categorie(db_session, anagrafica):
+async def test_la_domanda_porta_il_termine_e_il_prefisso_l_anagrafica(db_session, anagrafica):
     term = termine("Rigatoni", "ricette-con-i-Rigatoni")
     db_session.add(term)
     await db_session.flush()
@@ -163,9 +168,12 @@ async def test_la_domanda_porta_il_termine_lanagrafica_e_le_categorie(db_session
     await decide_one(db_session, term, anagrafica, client=finto)
 
     corpo = finto.bodies[0]
-    domanda = json.loads(user_of(corpo))
-    assert domanda["termine"] == "Rigatoni"
-    assert {"nome": "pasta", "categoria": "cereali"} in domanda["anagrafica"]
-    assert "carne" in domanda["categorie"]
-    # una domanda sola, non un array: è la scelta di §4.2 della spec
-    assert isinstance(domanda["termine"], str)
+    # la domanda è il termine e basta: una domanda sola, non un array (§4.2 della spec)
+    assert json.loads(user_of(corpo)) == {"termine": "Rigatoni"}
+    sistema = system_of(corpo)
+    assert sistema.startswith(TERM_SYSTEM_PROMPT)
+    assert TERM_CONTEXT_INTRO in sistema
+    contesto = json.loads(sistema.splitlines()[-1])
+    assert {"nome": "pasta", "categoria": "cereali"} in contesto["anagrafica"]
+    assert "carne" in contesto["categorie"]
+    assert corpo["system"][0]["cache_control"] == {"type": "ephemeral"}

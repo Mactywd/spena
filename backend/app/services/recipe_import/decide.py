@@ -9,12 +9,10 @@ Quattro passi, e l'ordine di esecuzione non è quello in cui si leggono qui:
 3. **collasso** — una chiamata sola sui soli `create`, senza scrivere;
 4. **fan-in** — le scritture, in sequenza.
 
-Una chiamata per termine e non un lotto unico: `gemma-4-26b-a4b-it` ha 3,8 miliardi
-di parametri attivi per token, e un array JSON di 40 elementi ognuno dei quali deve
-riecheggiare identica una delle 40 stringhe ricevute è dove un MoE piccolo si sfalda.
-Il degrado sarebbe invisibile — gli elementi non riconosciuti si scartano in silenzio
-— e costerebbe un ottavo. Vedi spec §4.2 e §12: il parallelo si paga in soldi e si
-guadagna in accuratezza.
+Una chiamata per termine e non un lotto unico: era la misura su Gemma, un MoE da 3,8
+miliardi di parametri attivi che su un array di 40 elementi si sfaldava. Su Haiku il lotto
+potrebbe reggere, ma è da misurare (idea nel backlog); con la cache sull'anagrafica la
+chiamata per termine costa poco più del termine stesso.
 """
 
 import asyncio
@@ -133,15 +131,27 @@ class TermDecisionProposal:
     category: str | None = None
 
 
-def _question(term: ImportTerm, registry: Registry) -> str:
-    return json.dumps(
+TERM_CONTEXT_INTRO = "L'anagrafica e le categorie, in JSON. Il nome da decidere arriva nel messaggio."
+
+
+def term_system(registry: Registry) -> str:
+    """Il prompt di sistema dei termini: le regole, l'anagrafica e le categorie.
+
+    Uguale per ogni termine del lotto, ed è per questo che sta qui e non nella
+    domanda: è il prefisso che si mette in cache.
+    """
+    contesto = json.dumps(
         {
-            "termine": term.display_name,
             "anagrafica": [{"nome": name, "categoria": category} for name, category in registry.entries],
             "categorie": sorted(CATEGORIES),
         },
         ensure_ascii=False,
     )
+    return f"{TERM_SYSTEM_PROMPT}\n{TERM_CONTEXT_INTRO}\n{contesto}"
+
+
+def term_question(term: ImportTerm) -> str:
+    return json.dumps({"termine": term.display_name}, ensure_ascii=False)
 
 
 @dataclass(frozen=True)
@@ -187,10 +197,11 @@ async def decide_one(
     """
     esito = await complete_json(
         call_site=LlmCallSite.TERM_DECISION,
-        system=TERM_SYSTEM_PROMPT,
-        user=_question(term, registry),
+        system=term_system(registry),
+        user=term_question(term),
         schema=TERM_SCHEMA,
         max_tokens=TERM_MAX_TOKENS,
+        cache_system=True,
         client=client,
     )
     return TermAnswer(
@@ -529,9 +540,16 @@ async def decide_terms(
         # condiviso nel `finally` con le altre chiamate ancora in volo — l'opposto
         # dell'isolamento del guasto per cui il fan-out esiste. Ciò che non è una
         # proposta vale «nessuna decisione»: quel termine resta in coda.
-        raw = await asyncio.gather(
-            *(ask(term, api) for term in terms), return_exceptions=True
+        #
+        # Il primo termine parte da solo: richieste parallele con lo stesso prefisso non
+        # leggono la cache che le altre stanno scrivendo (si legge solo dopo che la prima
+        # risposta è cominciata), e otto scritture al primo giro costerebbero otto volte.
+        # Il primo la scrive, gli altri la leggono.
+        first = await asyncio.gather(ask(terms[0], api), return_exceptions=True)
+        rest = await asyncio.gather(
+            *(ask(term, api) for term in terms[1:]), return_exceptions=True
         )
+        raw = [*first, *rest]
         # Un'eccezione qui non è un guasto del modello, è un difetto nostro — il
         # solo assorbimento sopra non la copre — e senza questo log un `decide_one`
         # rotto produce lo stesso `applied=0, still_pending=N` di un modello giù,

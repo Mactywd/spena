@@ -7,6 +7,7 @@ per cui il fan-in esiste.
 """
 
 import asyncio
+import json
 
 import pytest
 import pytest_asyncio
@@ -29,6 +30,7 @@ from llm_fakes import (
     llm_create,
     llm_map,
     messaggio,
+    user_of,
 )
 
 
@@ -840,3 +842,81 @@ async def test_un_guasto_tagliato_registra_l_uso(db_session, base):
     assert riga.ok is False
     assert (riga.prompt_tokens, riga.completion_tokens) == (300, 20)
     assert riga.cost_usd == pytest.approx(COSTO_FINTO)
+
+
+async def test_due_termini_dello_stesso_lotto_hanno_lo_stesso_prefisso(db_session, base):
+    """Il prefisso in cache vale solo se è identico: l'anagrafica sta nel sistema, e il
+    sistema non dipende dal termine."""
+    termini = await aggiungi(
+        db_session, termine("Rigatoni", "k-rigatoni"), termine("Acqua", "k-acqua")
+    )
+    finto = ScriptedLlm({"Rigatoni": llm_map("pasta"), "Acqua": LLM_IGNORE})
+
+    await decide_terms(db_session, termini, client=finto)
+
+    assert len(finto.bodies) == 2
+    assert finto.bodies[0]["system"] == finto.bodies[1]["system"]
+
+
+class EventiLlm(ScriptedLlm):
+    """Annota inizio e fine di ogni domanda. Ogni domanda cede il controllo più volte
+    (`sleep(0)`, nessun orologio) fra i due: se due partono insieme, gli eventi si
+    intrecciano; se una parte da sola, i suoi due eventi stanno uno accanto all'altro."""
+
+    def __init__(self, per_term: dict[str, object]) -> None:
+        self.eventi: list[tuple[str, str]] = []
+        super().__init__(per_term)
+
+    async def answer(self, body: dict) -> object:
+        nome = json.loads(user_of(body))["termine"]
+        self.eventi.append(("inizio", nome))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        self.eventi.append(("fine", nome))
+        return await super().answer(body)
+
+
+async def test_il_primo_termine_parte_da_solo(db_session, base, monkeypatch):
+    """Il primo termine scrive la cache, gli altri la leggono: richieste parallele con
+    lo stesso prefisso non leggono ciò che le altre stanno ancora scrivendo."""
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "8")
+    get_settings.cache_clear()
+    termini = await aggiungi(
+        db_session,
+        termine("Rigatoni", "k-rigatoni"),
+        termine("Speck", "k-speck"),
+        termine("Acqua", "k-acqua"),
+    )
+    finto = EventiLlm({
+        "Rigatoni": llm_map("pasta"), "Speck": llm_map("pasta"), "Acqua": LLM_IGNORE,
+    })
+
+    await decide_terms(db_session, termini, client=finto)
+
+    assert finto.eventi[:2] == [("inizio", "Rigatoni"), ("fine", "Rigatoni")]
+    altri = [tipo for tipo, _ in finto.eventi[2:]]
+    # le altre due si sovrappongono: un «inizio» prima della prima «fine»
+    assert altri == ["inizio", "inizio", "fine", "fine"]
+
+
+async def test_il_primo_termine_terminale_ferma_tutto(db_session, base):
+    termini = await aggiungi(
+        db_session,
+        termine("Rigatoni", "k-rigatoni"),
+        termine("Speck", "k-speck"),
+        termine("Acqua", "k-acqua"),
+    )
+    finto = ScriptedLlm({
+        "Rigatoni": errore_api(401, "authentication_error"),
+        "Speck": llm_map("pasta"),
+        "Acqua": LLM_IGNORE,
+    })
+
+    esito = await decide_terms(db_session, termini, client=finto)
+
+    assert finto.calls == 1
+    assert esito.stopped is not None and esito.stopped.kind is LlmFailureKind.AUTH
+    assert esito.applied == 0
+    assert esito.still_pending == 3
