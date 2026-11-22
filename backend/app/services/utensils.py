@@ -20,7 +20,8 @@ UTENSILS_PROMPT_RULE = (
     "ci sono; se senza quello strumento il piatto non si fa, dillo."
 )
 # La bozza e la variante rispondono con uno schema stretto: «dillo» lì ha un posto solo,
-# la descrizione. La chat dei Pasti chiama senza `rule` e ha la frase di sempre.
+# la descrizione. Senza `rule` chiama solo la pianificazione; la chat del piatto e la coda
+# passano le loro (`UTENSILS_REPLY_RULE`, `UTENSILS_STEPS_RULE`).
 UTENSILS_JSON_RULE = (
     "Usa solo questi strumenti. Se la tecnica di sempre ne chiede uno che manca (la frusta "
     "per montare gli albumi, per esempio), scegli un'altra tecnica che si fa con quelli che "

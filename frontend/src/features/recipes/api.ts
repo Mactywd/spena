@@ -124,7 +124,7 @@ export function createRecipe(
     source_ref: string | null;
     derived_from_id?: string;
     /** La ricetta nasce fuori dal ricettario, legata a questo pasto. */
-    meal_id?: string;
+    meal_id?: string | null;
   }
 ) {
   return apiFetch<RecipeDetail>("/recipes", { method: "POST", body: JSON.stringify(body) });

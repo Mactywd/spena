@@ -28,6 +28,7 @@ function renderNew() {
           <Routes>
             <Route path="/pasti/:id/ricetta/nuova" element={<MealRecipeNewScreen />} />
             <Route path="/pasti/:id" element={<p>il pasto</p>} />
+            <Route path="/ricette/:rid" element={<p>la ricetta r9</p>} />
           </Routes>
         </MemoryRouter>
       </NoticeProvider>
@@ -62,5 +63,57 @@ describe("la ricetta scritta per un pasto", () => {
     expect(body.meal_id).toBe("m1");
     expect(body.source).toBe("manual");
     expect(body.title).toBe("Frittata");
+  });
+
+  function stubConflict(code: string) {
+    const posts: Array<Record<string, unknown>> = [];
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      if (init?.method === "POST") {
+        posts.push(JSON.parse(String(init.body)));
+        if (posts.length === 1) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ code, detail: "Il pasto ha già una ricetta." }), { status: 409 })
+          );
+        }
+        return Promise.resolve(new Response(JSON.stringify({ id: "r9" }), { status: 201 }));
+      }
+      if (path.includes("/meals/m1")) return Promise.resolve(new Response(JSON.stringify(MEAL), { status: 200 }));
+      return Promise.resolve(new Response("[]", { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    return posts;
+  }
+
+  it("se intanto arriva la ricetta di Claude, si salva nel ricettario", async () => {
+    const posts = stubConflict("has_recipe");
+    renderNew();
+    await screen.findByDisplayValue("Frittata");
+    await userEvent.type(screen.getByLabelText(/Procedimento/), "Sbatti le uova.");
+    await userEvent.click(screen.getByRole("button", { name: "Salva la ricetta" }));
+    expect(
+      await screen.findByText(
+        "Nel frattempo è arrivata la ricetta di Claude. Quella che hai scritto non è persa: puoi salvarla nel ricettario."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Il pasto ha già una ricetta.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Procedimento/)).toHaveValue("Sbatti le uova.");
+    expect(screen.getByRole("link", { name: "Vedi la ricetta di Claude" })).toHaveAttribute("href", "/pasti/m1");
+    await userEvent.click(screen.getByRole("button", { name: "Salva nel ricettario" }));
+    expect(await screen.findByText("la ricetta r9")).toBeInTheDocument();
+    expect(screen.getByText("Salvata nel ricettario.")).toBeInTheDocument();
+    expect(posts).toHaveLength(2);
+    expect(posts[1]).toEqual({ ...posts[0], meal_id: null });
+  });
+
+  it("un 409 con un altro code non mostra l'avviso", async () => {
+    stubConflict("altro");
+    renderNew();
+    await screen.findByDisplayValue("Frittata");
+    await userEvent.type(screen.getByLabelText(/Procedimento/), "Sbatti le uova.");
+    await userEvent.click(screen.getByRole("button", { name: "Salva la ricetta" }));
+    expect(await screen.findByText("Il pasto ha già una ricetta.")).toBeInTheDocument();
+    expect(screen.queryByText(/Nel frattempo è arrivata/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Salva nel ricettario" })).not.toBeInTheDocument();
   });
 });

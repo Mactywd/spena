@@ -193,7 +193,7 @@ describe("la schermata del piatto", () => {
     renderMeal();
     const wait = await screen.findByText("Ricetta in preparazione: arriva fra poco.");
     expect(wait.closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
-    expect(screen.getByText("Puoi anche scriverla tu: quella di Claude allora non arriva.")).toBeInTheDocument();
+    expect(screen.getByText("Puoi anche scriverla tu: se la salvi prima, quella di Claude non arriva.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Scrivi la ricetta" })).toHaveAttribute("href", "/pasti/m1/ricetta/nuova");
     expect(screen.getByRole("link", { name: "Scegli dal ricettario" })).toHaveAttribute("href", "/pasti/m1/ricetta/scegli");
     expect(screen.queryByRole("button", { name: "Chiedi la ricetta a Claude" })).toBeNull();

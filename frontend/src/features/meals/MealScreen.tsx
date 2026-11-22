@@ -254,7 +254,7 @@ export function MealScreen() {
               Ricetta in preparazione: arriva fra poco.
             </p>
             <p className="text-sm text-ink-soft">
-              Puoi anche scriverla tu: quella di Claude allora non arriva.
+              Puoi anche scriverla tu: se la salvi prima, quella di Claude non arriva.
             </p>
             <div className="flex flex-wrap gap-2">
               <Link to={`/pasti/${m.id}/ricetta/nuova`} className={buttonClasses("secondary")}>
