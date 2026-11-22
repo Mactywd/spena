@@ -83,6 +83,8 @@ class _Finto(AsyncAnthropic):
     def __init__(self) -> None:
         self.bodies: list[dict] = []
         self.calls = 0
+        # le opzioni con cui `complete_json` ha chiesto la copia del client (tempo, tentativi)
+        self.options: list[dict] = []
         trasporto = httpx2.MockTransport(self._handle)
         super().__init__(
             **{
@@ -91,7 +93,8 @@ class _Finto(AsyncAnthropic):
             }
         )
 
-    def copy(self, **_options) -> "_Finto":  # type: ignore[override]
+    def copy(self, **options) -> "_Finto":  # type: ignore[override]
+        self.options.append(options)
         return self
 
     with_options = copy  # type: ignore[assignment]

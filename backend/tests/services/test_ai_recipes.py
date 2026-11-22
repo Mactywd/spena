@@ -1,7 +1,7 @@
 import httpx
 import pytest
 import pytest_asyncio
-from llm_fakes import FakeLlm, schema_of, system_of, user_of
+from llm_fakes import FakeLlm, errore_api, schema_of, system_of, user_of
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.services.ai_recipes import (
@@ -12,7 +12,7 @@ from app.services.ai_recipes import (
     draft_recipe,
     draft_variant,
 )
-from app.services.llm import LlmUnavailable
+from app.services.llm import LlmFailureKind, LlmUnavailable
 
 
 @pytest.fixture(autouse=True)
@@ -343,6 +343,7 @@ async def test_la_bozza_pensa_con_il_suo_profilo(db_session, originale):
     assert corpo["thinking"] == {"type": "adaptive"}
     assert corpo["output_config"]["effort"] == "low"
     assert corpo["max_tokens"] == 6000
+    assert bozza.options == [{"timeout": 50.0, "max_retries": 0}]
 
     variante = FakeLlm(VARIANTE)
     await draft_variant(db_session, originale, "senza basilico", client=variante)
@@ -350,21 +351,20 @@ async def test_la_bozza_pensa_con_il_suo_profilo(db_session, originale):
     assert corpo["thinking"] == {"type": "adaptive"}
     assert corpo["output_config"]["effort"] == "low"
     assert corpo["max_tokens"] == 8000
+    assert variante.options == [{"timeout": 50.0, "max_retries": 0}]
     assert schema_of(corpo) == DRAFT_SCHEMA
 
 
 async def test_la_bozza_ha_un_tentativo_solo(db_session):
-    """Un 529 non si ritenta: una richiesta sola e un guasto transitorio (il profilo
-    è provato col client vero in test_llm.py)."""
-    from llm_fakes import errore_api
-
-    from app.services.llm import LlmFailureKind
-
+    """Un 529 non si ritenta: una richiesta sola e un guasto transitorio. Il finto ha
+    sempre `max_retries=0`, quindi non è la richiesta sola a provare il profilo: lo prova
+    la copia del client che `complete_json` chiede con tempo e tentativi del profilo."""
     finto = FakeLlm(errore_api(529, "overloaded_error"))
     with pytest.raises(LlmUnavailable) as eccezione:
         await draft_recipe(db_session, "pasta veloce", client=finto)
     assert finto.calls == 1
     assert eccezione.value.kind is LlmFailureKind.TRANSIENT
+    assert finto.options == [{"timeout": 50.0, "max_retries": 0}]
 
 
 async def test_la_bozza_propone_un_costo(db_session, anagrafica):
