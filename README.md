@@ -337,7 +337,9 @@ docker compose exec backend python -m app.cli.decide_grams
 Scrive solo dove una coppia non ha ancora un peso; l'ultima riga dice quante ne restano.
 Se l'AI risponde a un lotto in modo illeggibile, il lotto si divide a metà fino alla coppia
 sola; una coppia che non si legge nemmeno da sola si salta per quel giro, e il comando la
-nomina: resta da pesare.
+nomina: resta da pesare. Quando restano solo coppie così (almeno due), il giro finisce con
+«pesi non disponibili (nessuna coppia del lotto …)»: non è l'AI giù, sono quelle coppie, da
+pesare a mano in Anagrafica, «Pesi per unità».
 Un peso si corregge nella scheda dell'ingrediente in Anagrafica, «Pesi per unità», e
 «Annulla il peso» lo ridà all'AI. Il pilota (`s4_pilot`) prova anche venti pesi noti.
 Nel dettaglio di una ricetta, in fondo, «Valori nutrizionali» somma le righe che hanno una

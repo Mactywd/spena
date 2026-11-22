@@ -492,7 +492,7 @@ async def decide_grams(
     """Pesa le coppie da decidere, le prime `limit` per ingrediente e unità. Non fa
     commit: lo fa `after_batch` dopo ogni lotto.
 
-    Un lotto a cui l'AI risponde in modo illeggibile (troncato, non JSON, fuori schema) si
+    Un lotto a cui l'AI risponde in modo illeggibile (troncato, non JSON, non un oggetto) si
     divide a metà e si richiedono le due metà, fino alla coppia sola; una coppia che non si
     legge nemmeno da sola si salta per questo giro — resta da pesare, finisce in `skipped`
     e un giro dopo si richiede — e il giro va avanti. Il freno: se di un lotto di più

@@ -198,7 +198,9 @@ cache tokens in `llm_calls` so every cost can be redone from its row. A failure 
 a kind (`LlmFailureKind`): no key, a revoked key, credit run out, the rate limit or a
 rejected request stop a fan-out at the first one; in the term decisions the others
 leave only that item in the queue, while the batch commands stop at the first failure
-of any kind. A second implementation behind a config switch would never run in
+of any kind — except `decide_grams`, which splits a batch whose answer cannot be read
+(truncated or invalid) down to a single pair, skips a pair that cannot be read even
+alone, and stops only when every pair of a batch of more than one was skipped. A second implementation behind a config switch would never run in
 production, which is the first defect listed above.
 
 The drafts and the variants (R8) are told which utensils the kitchen has: the list
