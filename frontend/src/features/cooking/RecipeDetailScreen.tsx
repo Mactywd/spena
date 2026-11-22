@@ -312,7 +312,7 @@ export function RecipeDetailView({
   const { archive, pending: archiving } = useArchiveRecipe();
 
   // Ripristinare cambia cosa elencano ricettario e filtro per categoria, oltre al
-  // dettaglio stesso: si rinfrescano tutti e tre.
+  // dettaglio stesso, e i pasti (come `setInBook`): si rinfrescano tutti.
   const restore = useMutation({
     mutationFn: () => setRecipeArchived(id, false),
     onSuccess: () =>
@@ -320,6 +320,7 @@ export function RecipeDetailView({
         queryClient.invalidateQueries({ queryKey: ["recipe", id] }),
         queryClient.invalidateQueries({ queryKey: ["recipes"] }),
         queryClient.invalidateQueries({ queryKey: ["recipe-categories"] }),
+        queryClient.invalidateQueries({ queryKey: ["meals"] }),
       ]),
   });
 

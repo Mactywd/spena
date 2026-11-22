@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { setRecipeArchived, type RecipePage } from "./api";
+import { setRecipeArchived, setRecipeInBook, type RecipePage } from "./api";
 import { useNotice } from "../../components/ui/noticeContext";
 
 type ArchivedRecipe = { id: string; title: string };
@@ -44,11 +44,14 @@ export function useArchiveRecipe(): {
 
   // Eliminare e ripristinare cambiano cosa elencano il ricettario e il filtro per
   // categoria, oltre al dettaglio stesso: si rinfrescano tutti e tre.
+  // I pasti si rinfrescano anche: una ricetta di un pasto che esce dal ricettario, o ci
+  // rientra, cambia cosa dice il pasto di lei.
   function refresh(id: string) {
     return Promise.all([
       queryClient.invalidateQueries({ queryKey: ["recipes"] }),
       queryClient.invalidateQueries({ queryKey: ["recipe-categories"] }),
       queryClient.invalidateQueries({ queryKey: ["recipe", id] }),
+      queryClient.invalidateQueries({ queryKey: ["meals"] }),
     ]);
   }
 
@@ -68,18 +71,44 @@ export function useArchiveRecipe(): {
     );
   }
 
+  // Il server ha tolto dal ricettario la ricetta di un pasto invece di archiviarla: il
+  // pasto la tiene, e «Annulla» la rimette nel ricettario.
+  function restoreToBook(recipe: ArchivedRecipe): void {
+    setRecipeInBook(recipe.id, true).then(
+      () => refresh(recipe.id),
+      () =>
+        notice({
+          text: `Non sono riuscito a riportare «${recipe.title}» nel ricettario.`,
+          action: { label: "Riprova", onClick: () => restoreToBook(recipe) },
+        })
+    );
+  }
+
   const mutation = useMutation({
     mutationFn: (recipe: ArchivedRecipe) => setRecipeArchived(recipe.id, true),
-    onSuccess: (_archived, recipe) => {
+    onSuccess: (saved, recipe) => {
       // prima di tornare al ricettario: una pagina in cache che la contiene ancora la
       // mostrerebbe per il tempo della rilettura, sotto l'avviso che la dice eliminata
       queryClient.setQueriesData<InfiniteData<RecipePage>>({ queryKey: ["recipes"] }, (data) =>
         withoutRecipe(data, recipe.id)
       );
-      notice({
-        text: `Eliminata: ${recipe.title}`,
-        action: { label: "Annulla", onClick: () => restore(recipe) },
-      });
+      // `archived_at` vuoto: è il server che ha deciso, e la ricetta è di un pasto
+      // (stretto: una risposta senza il campo è un'eliminazione come prima)
+      const keptByMeal = saved?.archived_at === null;
+      if (keptByMeal) {
+        const dish = saved.meal?.dish;
+        notice({
+          text: dish
+            ? `Tolta dal ricettario: resta la ricetta di «${dish}».`
+            : "Tolta dal ricettario: resta la ricetta del suo pasto.",
+          action: { label: "Annulla", onClick: () => restoreToBook(recipe) },
+        });
+      } else {
+        notice({
+          text: `Eliminata: ${recipe.title}`,
+          action: { label: "Annulla", onClick: () => restore(recipe) },
+        });
+      }
       // `replace`: la ricetta eliminata lascia il posto al ricettario, e «indietro» non
       // ci riporta sopra
       navigate("/ricette", { replace: true });

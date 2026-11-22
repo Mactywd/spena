@@ -1,10 +1,11 @@
 """La ricetta di un pasto, dalla parte delle ricette (piano Pasti e settimana, Task 5)."""
 
-from datetime import date
+import uuid
+from datetime import UTC, date, datetime
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe import Recipe
@@ -153,6 +154,57 @@ async def test_il_ricettario_di_una_ricetta_eliminata_non_si_cambia(logged_clien
     assert r.status_code == 409
 
 
+async def test_eliminare_dal_ricettario_una_ricetta_di_un_pasto_la_toglie_dal_ricettario(
+    logged_client, db_session, pasta
+):
+    meal = await _pasto(db_session)
+    ricetta = await _scritta_per(logged_client, pasta, meal, "Spaghetti alla nerano")
+    assert (
+        await logged_client.patch(f"{R}/{ricetta['id']}", json={"in_book": True})
+    ).status_code == 200
+
+    r = await logged_client.patch(f"{R}/{ricetta['id']}", json={"archived": True})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["archived_at"] is None
+    assert r.json()["in_book"] is False
+    assert r.json()["meal"]["id"] == str(meal.id)
+    assert await _cerca(logged_client, "Spaghetti alla nerano") == []
+    # il pasto ha ancora la ricetta
+    pasto = (await logged_client.get(f"{M}/{meal.id}")).json()
+    assert pasto["recipe"]["id"] == ricetta["id"]
+
+
+async def test_eliminare_una_ricetta_di_un_pasto_fuori_dal_ricettario_e_409(
+    logged_client, db_session, pasta
+):
+    meal = await _pasto(db_session)
+    ricetta = await _scritta_per(logged_client, pasta, meal)
+
+    r = await logged_client.patch(f"{R}/{ricetta['id']}", json={"archived": True})
+
+    assert r.status_code == 409
+    assert r.json()["detail"] == "È la ricetta di un pasto: si elimina insieme al pasto."
+    # prima di scrivere: la ricetta è com'era
+    dopo = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
+    assert dopo["archived_at"] is None
+    assert dopo["in_book"] is False
+
+
+async def test_tolta_dal_ricettario_si_archivia_col_pasto(logged_client, db_session, pasta):
+    meal = await _pasto(db_session)
+    ricetta = await _scritta_per(logged_client, pasta, meal, "Spaghetti alla nerano")
+    await logged_client.patch(f"{R}/{ricetta['id']}", json={"in_book": True})
+    assert (
+        await logged_client.patch(f"{R}/{ricetta['id']}", json={"archived": True})
+    ).status_code == 200
+
+    assert (await logged_client.delete(f"{M}/{meal.id}")).status_code == 204
+
+    dopo = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
+    assert dopo["archived_at"] is not None
+
+
 async def test_in_book_non_booleano_e_422(logged_client, pasta):
     ricetta = await _del_ricettario(logged_client, pasta)
     r = await logged_client.patch(f"{R}/{ricetta['id']}", json={"in_book": "sì"})
@@ -181,9 +233,14 @@ async def test_ripristinare_la_ricetta_di_un_pasto_la_lascia_fuori(
 ):
     meal = await _pasto(db_session)
     ricetta = await _scritta_per(logged_client, pasta, meal)
-    assert (
-        await logged_client.patch(f"{R}/{ricetta['id']}", json={"archived": True})
-    ).status_code == 200
+    # «Elimina» non la archivia più (Task 7): lo stato (archiviata, col pasto) resta solo
+    # nei dati di prima, e si prepara a mano
+    await db_session.execute(
+        update(Recipe)
+        .where(Recipe.id == uuid.UUID(ricetta["id"]))
+        .values(archived_at=datetime.now(UTC))
+    )
+    await db_session.commit()
 
     r = await logged_client.patch(f"{R}/{ricetta['id']}", json={"archived": False})
 

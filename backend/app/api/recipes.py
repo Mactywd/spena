@@ -78,6 +78,8 @@ NOT_A_MEAL_RECIPE = (
     "Questa ricetta non è di un pasto: per toglierla dal ricettario eliminala."
 )
 
+MEAL_RECIPE_KEPT = "È la ricetta di un pasto: si elimina insieme al pasto."
+
 # R2: le due regole dei parametri del dettaglio. Il frontend non le viola mai, quindi
 # non sono frasi a video: dicono il contratto a chi chiama la rotta a mano
 ANCHOR_NEEDS_AMOUNT = "La dose di un ingrediente vuole `anchor` e `amount` insieme."
@@ -354,7 +356,18 @@ async def update(
             raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
         if not in_book_change and await meal_of_recipe(session, recipe.id) is None:
             raise HTTPException(status.HTTP_409_CONFLICT, NOT_A_MEAL_RECIPE)
-    if payload.archived is True:
+    # «Elimina» su una ricetta che ha un pasto (decisione di Mattia del 2026-11-21): resta
+    # l'invariante «una ricetta viva fuori dal ricettario ha sempre un pasto». Nel
+    # ricettario la toglie dal ricettario e il pasto la tiene; fuori, si elimina col pasto.
+    takes_out_of_book = False
+    if payload.archived is True and recipe.archived_at is None:
+        if await meal_of_recipe(session, recipe.id) is not None:
+            if not recipe.in_book:
+                raise HTTPException(status.HTTP_409_CONFLICT, MEAL_RECIPE_KEPT)
+            takes_out_of_book = True
+    if takes_out_of_book:
+        recipe.in_book = False
+    elif payload.archived is True:
         # la prima data resta: eliminare due volte non sposta l'eliminazione
         if recipe.archived_at is None:
             recipe.archived_at = datetime.now(UTC)

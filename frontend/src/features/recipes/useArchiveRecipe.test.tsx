@@ -102,6 +102,52 @@ describe("useArchiveRecipe", () => {
     });
   });
 
+  it("una ricetta di un pasto si toglie dal ricettario, con Annulla", async () => {
+    const spy = stubFetch((_path, init) => {
+      const corpo = JSON.parse(String(init!.body)) as { archived?: boolean };
+      return corpo.archived
+        ? [
+            {
+              archived_at: null, in_book: false,
+              meal: { id: "m1", day: "2026-11-23", slot: "dinner", dish: "Frittata", recipe_id: "r-carb" },
+            },
+            200,
+          ]
+        : [{}, 200];
+    });
+    const client = nuovoClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    renderProva(client);
+
+    await userEvent.click(screen.getByRole("button", { name: "elimina" }));
+
+    expect(
+      await screen.findByText("Tolta dal ricettario: resta la ricetta di «Frittata».")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Eliminata: Carbonara")).toBeNull();
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["meals"] }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+
+    await waitFor(() =>
+      expect(patchMandate(spy)).toEqual([
+        ["/api/v1/recipes/r-carb", { archived: true }],
+        ["/api/v1/recipes/r-carb", { in_book: true }],
+      ])
+    );
+  });
+
+  it("una ricetta di un pasto, senza il pasto nella risposta, ha l'avviso generico", async () => {
+    stubFetch(() => [{ archived_at: null, in_book: false }, 200]);
+    renderProva();
+
+    await userEvent.click(screen.getByRole("button", { name: "elimina" }));
+
+    expect(
+      await screen.findByText("Tolta dal ricettario: resta la ricetta del suo pasto.")
+    ).toBeInTheDocument();
+  });
+
   it("«Annulla» la rimette nel ricettario", async () => {
     const spy = stubFetch(() => [{}, 200]);
     renderProva();

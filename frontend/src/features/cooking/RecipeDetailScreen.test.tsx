@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createTestQueryClient } from "../../test/queryClient";
@@ -1113,5 +1113,30 @@ describe("RecipeDetailView — la ricetta di un avanzo è in sola lettura (S3)",
     renderView(false);
     expect(await screen.findByRole("button", { name: "Sostituisci pasta" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Metti in lista/ })).toBeInTheDocument();
+  });
+});
+
+describe("RecipeDetailView — il ripristino dalla lapide nel pasto (Task 7)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("ripristinare dalla lapide nel pasto rinfresca i pasti", async () => {
+    stubFetch({ archived_at: "2026-11-20T10:00:00Z" });
+    const client = createTestQueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    render(
+      <QueryClientProvider client={client}>
+        <NoticeProvider>
+          <MemoryRouter>
+            <RecipeDetailView id="r1" meal={{ mealId: "m1", readOnly: false }} />
+          </MemoryRouter>
+        </NoticeProvider>
+      </QueryClientProvider>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Ripristina" }));
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["meals"] })
+    );
   });
 });
