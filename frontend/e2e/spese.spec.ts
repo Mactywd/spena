@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 /**
  * H1, «Spese dell'AI», nel browser vero, a 375×812.
  *
- * Lo stack e2e non ha spese: la chiave di OpenRouter è vuota, e nessuna chiamata costa
+ * Lo stack e2e non ha spese: la chiave API è vuota, e nessuna chiamata costa
  * (al più qualche prova lascia una riga fallita, col costo NULL). Le righe col costo le
  * scrive `backend/tests/e2e_spese.py` nel container del backend — nessuna rete — e le
  * toglie nel `finally`. Le cifre attese sono le sue: negli ultimi 30 giorni 0,025 $. Le
@@ -72,7 +72,7 @@ test("le spese seminate: il totale, le sezioni (una sconosciuta col suo nome), i
     await periodo.getByRole("button", { name: "Ultimi 30 giorni" }).click();
     await expect(periodo.getByRole("button", { name: "Ultimi 30 giorni" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText(/^0,025\s\$$/)).toBeVisible();
-    await expect(page.getByText(/senza un costo dichiarato/)).toBeVisible();
+    await expect(page.getByText(/senza un costo/)).toBeVisible();
 
     const sezioni = page.getByRole("list", { name: "Spesa per sezione" });
     for (const [nome, cifre] of [

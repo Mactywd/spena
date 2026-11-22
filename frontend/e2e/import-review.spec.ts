@@ -11,7 +11,7 @@ import { expect, test } from "@playwright/test";
  * scaricando GialloZafferano, che qui non si tocca. Li semina
  * `backend/tests/e2e_import_review.py` dentro il container del backend, passando da
  * `decide_terms` — la funzione del bottone «Riprova con l'AI» — con il modello finto
- * della suite al posto di OpenRouter: alias, `decided_by = "ai"` e ingrediente creato
+ * della suite al posto del modello: alias, `decided_by = "ai"` e ingrediente creato
  * sono quelli che scrive la produzione. Per questo il file ha bisogno di
  * `docker compose exec` sullo stack e2e, oltre che del browser: se il progetto Compose
  * non si chiama `spena-e2e`, il nome si passa in `E2E_PROJECT`. L'aiutante che gira è

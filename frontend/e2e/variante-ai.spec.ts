@@ -68,7 +68,7 @@ test("R8: la variante nasce dal dettaglio col legame all'originale, che resta co
     // 1. il guasto vero: lo stack non ha la chiave dell'AI, e si resta sull'originale
     await page.getByRole("button", { name: "Proponi la variante", exact: true }).click();
     await expect(
-      page.getByText("L'AI non ha risposto: questa ricetta resta com'è. Riprova fra poco.", { exact: true })
+      page.getByText("L'AI non è collegata: manca la chiave API sul server. Questa ricetta resta com'è.", { exact: true })
     ).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/ricette/${originaleId}$`));
     await expect(page.getByRole("heading", { level: 1, name: titolo })).toBeVisible();

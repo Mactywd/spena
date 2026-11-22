@@ -731,7 +731,7 @@ test("il testo più chiaro dell'app regge 4.5:1 sul fondo della pagina, misurato
   await page.getByLabel("Cosa vuoi cucinare").fill("un sugo");
   await page.getByRole("button", { name: "Proponi", exact: true }).click();
   await controllaContrasto(page.getByText(/^Parte escluso, perché l'aggancio/), "low");
-  // la risposta l'ha data lo stub, non il modello: nessuna chiamata a OpenRouter
+  // la risposta l'ha data lo stub, non il modello: nessuna chiamata al modello
   expect(bozzeServite).toBe(1);
 });
 
@@ -4319,12 +4319,14 @@ test("i sostituti a 375px: il pannello, il modulo e la sezione in Anagrafica si 
       (route) =>
         route.fulfill({
           json: { ...risposta, scope: null, verdict: null, decided_by: null, substitutes: [],
-            ai_failed: true, ai_notice: AI_CREDITO },
+            ai_failed: true, ai_notice: AI_NON_COLLEGATA },
         })
     );
     await page.goto(`/ricette/${ricetta.id}`);
     await page.getByRole("button", { name: "Sostituisci carciofo" }).click();
-    const frase = page.getByText(AI_CREDITO, { exact: true });
+    // la frase che si legge è quella del server vero (lo stack non ha la chiave): il pannello
+    // chiede la risposta all'AI aprendosi, e non passa dalla lettura finta qui sopra
+    const frase = page.getByText(AI_NON_COLLEGATA, { exact: true });
     await expect(frase).toBeVisible();
     await expect(page.getByText("Nessun suggerimento ancora.")).toBeVisible();
     for (const tema of ["light", "dark"] as const) {
@@ -4445,7 +4447,7 @@ test("attività e collegamento a 375px: i testi si leggono nei due temi, e nient
   await senzaScorrimentoLaterale(page, "il collegamento");
 });
 
-// H1, le spese dell'AI. Lo stack e2e non ha spese (la chiave di OpenRouter è vuota): le
+// H1, le spese dell'AI. Lo stack e2e non ha spese (la chiave API è vuota): le
 // semina `backend/tests/e2e_spese.py` nel container del backend, nessuna rete, e le toglie.
 // Vedi `frontend/e2e/spese.spec.ts`.
 function aiutanteSpese(comando: "seed" | "clean"): string {

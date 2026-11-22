@@ -4,9 +4,10 @@ Puro come `rules.py`: niente database e niente orologio. «Oggi» entra come arg
 `today_in_pantry()` di chi chiama: un giorno qui è un giorno di calendario a Roma, come la
 scadenza, e non un giorno UTC — chi apre l'app a mezzanotte e mezza ha speso oggi.
 
-Le cifre sono quelle che dichiarano i fornitori, in dollari: OpenRouter (`usage.cost`) e
-Claude Code per i Pasti (`ResultMessage.total_cost_usd`, calcolato dai token col suo
-listino). Una chiamata senza costo dichiarato — di solito una fallita, e qualche riuscita — non vale zero:
+Le cifre sono in dollari: per l'import e l'AI sulle ricette le calcola spena dai token col
+listino di `app/domain/llm_pricing.py`; per i Pasti le dichiara Claude Code
+(`ResultMessage.total_cost_usd`). Le righe di prima del 2026-11-21 hanno il costo che
+dichiarava OpenRouter. Una chiamata senza costo — di solito una fallita, e qualche riuscita — non vale zero:
 zero direbbe «gratis», e l'assenza è la verità. La somma le salta, chi chiama le conta.
 """
 

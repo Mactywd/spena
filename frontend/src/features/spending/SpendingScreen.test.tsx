@@ -80,7 +80,7 @@ describe("SpendingScreen", () => {
     expect(screen.getByText("6 chiamate")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "1 senza un costo dichiarato (di solito, una chiamata fallita): non è nel totale."
+        "1 senza un costo (di solito, una chiamata fallita): non è nel totale."
       )
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Per sezione" })).toBeInTheDocument();
@@ -153,7 +153,7 @@ describe("SpendingScreen", () => {
     expect(screen.getByText("2 chiamate")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "2 senza un costo dichiarato (di solito, chiamate fallite): non sono nel totale."
+        "2 senza un costo (di solito, chiamate fallite): non sono nel totale."
       )
     ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Per sezione" })).toBeNull();
@@ -165,7 +165,7 @@ describe("SpendingScreen", () => {
     renderScreen();
     await screen.findByText("0,025 $");
 
-    expect(screen.queryByText(/senza un costo dichiarato/)).toBeNull();
+    expect(screen.queryByText(/senza un costo/)).toBeNull();
   });
 
   it("il server che non risponde: lo dice, e «Riprova» richiede", async () => {

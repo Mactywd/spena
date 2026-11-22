@@ -24,10 +24,10 @@ export interface Spending {
   period: SpendingPeriod;
   first_day: string;
   last_day: string;
-  /** la somma dei costi dichiarati da OpenRouter, in dollari */
+  /** la somma dei costi, in dollari */
   total_usd: number;
   calls: number;
-  /** le chiamate senza un costo dichiarato: contate, fuori dal totale */
+  /** le chiamate senza un costo: contate, fuori dal totale */
   unpriced_calls: number;
   /** dalla più cara */
   sections: SectionSpend[];

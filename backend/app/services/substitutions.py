@@ -285,7 +285,7 @@ class SubstitutionRun:
     irreplaceable: int = 0  # voci salvate «insostituibile»
     rejected: int = 0  # risposte che non si potevano verificare
     calls: int = 0
-    # la somma dei costi dichiarati da OpenRouter; None se nessuno ne ha dichiarato uno
+    # la somma dei costi calcolati dal listino; None se nessuno ne ha dichiarato uno
     # (zero direbbe «gratis», ed è un'affermazione: la regola dei nutrienti)
     cost_usd: float | None = None
     # le voci ancora scoperte alla fine: senza, «0 salvate» vorrebbe dire insieme «niente
@@ -405,13 +405,15 @@ async def decide_substitutions(
 
 
 async def measured_cost(session: AsyncSession) -> tuple[int, float | None]:
-    """Quante chiamate riuscite hanno dichiarato un costo, e la loro media: la stima del
-    `--dry-run` si fa su quel che è stato pagato davvero, non su un listino."""
+    """Quante chiamate riuscite del modello di adesso hanno un costo, e la loro media: la
+    stima del `--dry-run` si fa su quel che è stato pagato davvero. Le righe di un altro
+    modello (Gemma, di prima) non stimano niente su Haiku."""
     count, average = (
         await session.execute(
             select(func.count(LlmCall.cost_usd), func.avg(LlmCall.cost_usd)).where(
                 LlmCall.call_site == LlmCallSite.INGREDIENT_SUBSTITUTES.value,
                 LlmCall.ok.is_(True),
+                LlmCall.model == get_settings().llm_model,
             )
         )
     ).one()

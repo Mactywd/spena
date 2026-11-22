@@ -394,3 +394,25 @@ async def test_senza_chiave_sul_momento_non_chiama(db_session, cucina, monkeypat
         failed=True, notice=LLM_FAILURE_NOTICES[LlmFailureKind.NOT_CONFIGURED]
     )
     assert finto.bodies == [] and await _spese(db_session) == []
+
+
+async def test_la_stima_conta_solo_il_modello_di_adesso(db_session):
+    from app.services.llm import LlmCallSite, LlmUsage
+    from app.repositories.llm_calls import record_llm_call
+    from app.services.substitutions import measured_cost
+
+    for modello, costo in (
+        ("claude-haiku-5-5", 0.0001),
+        ("claude-haiku-5-5", 0.0003),
+        ("google/gemma-4-26b-a4b-it", 0.01),
+    ):
+        await record_llm_call(
+            db_session,
+            call_site=LlmCallSite.INGREDIENT_SUBSTITUTES,
+            usage=LlmUsage(model=modello, cost_usd=costo),
+            ok=True,
+        )
+    await db_session.flush()
+
+    count, average = await measured_cost(db_session)
+    assert (count, average) == (2, pytest.approx(0.0002))

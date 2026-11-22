@@ -1,7 +1,7 @@
 """Semina e pulizia per le prove delle spese dell'AI (H1) in `frontend/e2e/`. Non è un test
 di pytest.
 
-Lo stack e2e non ha spese: `.env.e2e` lascia vuota la chiave di OpenRouter, e una chiamata
+Lo stack e2e non ha spese: `.env.e2e` lascia vuota la chiave API, e una chiamata
 che sfugge a uno stub si ferma su `LlmUnavailable` (al più una riga fallita, col costo
 NULL). Le prove della schermata vogliono cifre vere: questo file scrive in `llm_calls` delle
 righe col loro costo, nessuna rete, e le toglie. Le riconosce dal `generation_id`, che

@@ -81,8 +81,8 @@ describe("callsText", () => {
 
 describe("unpricedText", () => {
   it.each([
-    [1, "1 senza un costo dichiarato (di solito, una chiamata fallita): non è nel totale."],
-    [3, "3 senza un costo dichiarato (di solito, chiamate fallite): non sono nel totale."],
+    [1, "1 senza un costo (di solito, una chiamata fallita): non è nel totale."],
+    [3, "3 senza un costo (di solito, chiamate fallite): non sono nel totale."],
   ])("%s → «%s»", (senza, atteso) => {
     expect(unpricedText(senza)).toBe(atteso);
   });

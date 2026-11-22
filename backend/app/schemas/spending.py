@@ -27,10 +27,10 @@ class SpendingOut(BaseModel):
     period: SpendingPeriod
     first_day: date
     last_day: date
-    # la somma dei costi dichiarati dai fornitori (OpenRouter, Claude Code), in dollari
+    # la somma dei costi (calcolati dal listino, o dichiarati da Claude Code), in dollari
     total_usd: float
     calls: int
-    # le chiamate senza un costo dichiarato (di solito le fallite, qualche riuscita): contate
+    # le chiamate senza un costo (di solito le fallite, qualche riuscita): contate
     # qui, fuori dal totale
     unpriced_calls: int
     # dalla più cara

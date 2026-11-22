@@ -76,7 +76,7 @@ test("a 375px la riga «da creare salvando» con un nome lungo sta nello schermo
   await expect(riga.getByText("Salvando lo cerco in anagrafica; se non c'è, lo creo in questo reparto.")).toBeVisible();
   await expect(page.getByLabel(`Reparto per «${NOME_LUNGO}»`)).toHaveValue("carne");
   await expect(page.getByLabel(`Quantità per ${NOME_LUNGO}`)).toHaveValue("150 g");
-  // la risposta l'ha data lo stub, non il modello: nessuna chiamata a OpenRouter
+  // la risposta l'ha data lo stub, non il modello: nessuna chiamata al modello
   expect(bozzeServite).toBe(1);
 
   await page.screenshot({ path: test.info().outputPath("bozza-375.png"), fullPage: true });

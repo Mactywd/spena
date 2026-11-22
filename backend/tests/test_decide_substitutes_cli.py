@@ -98,9 +98,10 @@ async def test_dry_run_dice_cosa_chiederebbe_e_non_chiama_nessuno(
 
 async def test_dry_run_stima_con_il_costo_misurato(db_session, due_voci, capsys):
     db_session.add_all([
-        LlmCall(call_site="ingredient_substitutes", ok=True, cost_usd=0.0004),
-        LlmCall(call_site="ingredient_substitutes", ok=True, cost_usd=0.0006),
-        # una fallita e una d'altra sezione non contano
+        LlmCall(call_site="ingredient_substitutes", ok=True, cost_usd=0.0004, model="claude-haiku-5-5"),
+        LlmCall(call_site="ingredient_substitutes", ok=True, cost_usd=0.0006, model="claude-haiku-5-5"),
+        # una fallita, una d'altra sezione e una d'un altro modello non contano
+        LlmCall(call_site="ingredient_substitutes", ok=True, cost_usd=0.5, model="google/gemma-4-26b-a4b-it"),
         LlmCall(call_site="ingredient_substitutes", ok=False, cost_usd=None),
         LlmCall(call_site="term_decision", ok=True, cost_usd=0.1),
     ])

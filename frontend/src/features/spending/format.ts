@@ -3,7 +3,7 @@ import type { DaySpend } from "./types";
 // Le parole delle spese dell'AI. Solo scrittura: le cifre, i giorni e le quote li decide
 // il server.
 
-// Dollari, perché è quel che OpenRouter dichiara: una conversione in euro sarebbe un
+// Dollari, perché è la valuta del listino di Anthropic: una conversione in euro sarebbe un
 // cambio inventato. Il simbolo stretto («$» e non «USD»), dopo la cifra, come scrive
 // l'italiano; fra i due uno spazio che non va a capo.
 const CENTS = new Intl.NumberFormat("it-IT", {
@@ -84,12 +84,12 @@ export function formatTokens(tokens: number): string {
   return String(Math.round(tokens)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
-/** Le chiamate senza un costo dichiarato (decisa da Mattia il 2026-10-13): il
+/** Le chiamate senza un costo (decisa da Mattia il 2026-10-13): il
  * totale non le comprende, e lo si dice invece di lasciarlo credere completo. */
 export function unpricedText(unpriced: number): string {
   return unpriced === 1
-    ? "1 senza un costo dichiarato (di solito, una chiamata fallita): non è nel totale."
-    : `${unpriced} senza un costo dichiarato (di solito, chiamate fallite): non sono nel totale.`;
+    ? "1 senza un costo (di solito, una chiamata fallita): non è nel totale."
+    : `${unpriced} senza un costo (di solito, chiamate fallite): non sono nel totale.`;
 }
 
 /** Il giorno più caro, che dà l'altezza alle colonne; il primo a parità. `null` se nessun
