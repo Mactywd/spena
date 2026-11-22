@@ -96,7 +96,7 @@ from app.services.claude.tools import TurnContext, dish_tools
 from app.services.llm import LlmCallSite
 from app.services.meal_recipes import change_is_undoable, meal_snapshot, undoable_change_ids
 from app.services.planning import proposal_out
-from app.services.utensils import utensils_prompt_block
+from app.services.utensils import UTENSILS_REPLY_RULE, utensils_prompt_block
 
 logger = logging.getLogger(__name__)
 
@@ -654,7 +654,9 @@ async def _dish_prepare(
 ) -> tuple[str, str, list[SdkMcpTool]]:
     meal = await _dish_meal(session, conversation)
     assert meal is not None  # `_dish_allowed` l'ha appena trovato
-    system_prompt = dish_system_prompt(await utensils_prompt_block(session))
+    system_prompt = dish_system_prompt(
+        await utensils_prompt_block(session, rule=UTENSILS_REPLY_RULE)
+    )
     recipe = await get_recipe(session, meal.recipe_id) if meal.recipe_id is not None else None
     context = DishContext(
         today=ctx.today, day=meal.day, slot=MealSlot(meal.slot), dish=meal.dish,

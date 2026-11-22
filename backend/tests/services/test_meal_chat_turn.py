@@ -32,7 +32,7 @@ from app.services.meal_recipes import (
 )
 from app.services.meals import create_meal, link_recipe
 from app.repositories.utensils import create_utensil
-from app.services.utensils import utensils_prompt_block
+from app.services.utensils import UTENSILS_REPLY_RULE, utensils_prompt_block
 from claude_fakes import Do, Fail, FakeClaude, Finish, Hang, Say, UseTool
 
 DAY = date(2026, 11, 13)
@@ -184,7 +184,7 @@ async def test_il_giro_usa_prompt_strumenti_e_sforzo_della_chat_del_piatto(
         "read_pantry", "read_shopping_list", "read_meals", "search_ingredients", "write_recipe",
         "propose_changes",
     ]
-    block = await utensils_prompt_block(db_session)
+    block = await utensils_prompt_block(db_session, rule=UTENSILS_REPLY_RULE)
     assert block is not None
     assert call["system_prompt"] == dish_system_prompt(block)
     assert "Frittata di spinaci e parmigiano" in call["prompt"]

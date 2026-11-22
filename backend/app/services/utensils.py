@@ -26,6 +26,15 @@ UTENSILS_JSON_RULE = (
     "per montare gli albumi, per esempio), scegli un'altra tecnica che si fa con quelli che "
     "ci sono; se senza quello strumento il piatto non si fa, dillo nella descrizione."
 )
+# I Pasti dicono lo strumento che manca dove la risposta lo porta davvero. Nella coda delle
+# ricette nessuno legge la risposta del giro: resta solo la ricetta, quindi la frase va nel
+# procedimento. Nella chat del piatto la risposta la legge Mattia.
+_RULE_START = UTENSILS_PROMPT_RULE[: -len("dillo.")]
+UTENSILS_STEPS_RULE = (
+    _RULE_START
+    + "scrivilo al primo passo del procedimento: della tua risposta resta solo la ricetta."
+)
+UTENSILS_REPLY_RULE = _RULE_START + "dillo a Mattia nella risposta."
 
 
 def render_utensils_block(

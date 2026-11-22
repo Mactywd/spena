@@ -21,7 +21,12 @@ from app.services.claude.prompts import (
     render_recipe_prompt,
     render_turn_prompt,
 )
-from app.services.utensils import render_utensils_block
+from app.services.utensils import (
+    UTENSILS_PROMPT_RULE,
+    UTENSILS_REPLY_RULE,
+    UTENSILS_STEPS_RULE,
+    render_utensils_block,
+)
 
 
 def test_il_prompt_del_piatto_senza_utensili():
@@ -182,3 +187,18 @@ def test_render_recipe_prompt():
     text = render_recipe_prompt(ctx, history)
     assert "sabato 14 novembre, pranzo" in text and "Pasta al pesto" in text
     assert "Pesto di basilico" in text
+
+
+def test_la_regola_dice_dove_dirlo():
+    inizio = UTENSILS_PROMPT_RULE[: -len("dillo.")]
+    nei_passi = render_utensils_block([("padella", None)], rule=UTENSILS_STEPS_RULE)
+    assert nei_passi is not None and nei_passi.endswith(
+        inizio
+        + "scrivilo al primo passo del procedimento: della tua risposta resta solo la ricetta."
+    )
+    nella_risposta = render_utensils_block([("padella", None)], rule=UTENSILS_REPLY_RULE)
+    assert nella_risposta is not None and nella_risposta.endswith(
+        inizio + "dillo a Mattia nella risposta."
+    )
+    senza = render_utensils_block([("padella", None)])
+    assert senza is not None and senza.endswith(UTENSILS_PROMPT_RULE)

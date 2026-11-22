@@ -21,6 +21,7 @@ from app.domain.rules import today_in_pantry
 from app.repositories.conversations import create_planning
 from app.repositories.meals import get_meal
 from app.repositories.recipes import create_recipe
+from app.repositories.utensils import create_utensil
 from app.services.claude.prompts import recipe_system_prompt
 from app.services.meals import create_meal, link_recipe
 from app.services.recipe_jobs import (
@@ -31,7 +32,7 @@ from app.services.recipe_jobs import (
     recipe_run,
     settle_orphans,
 )
-from app.services.utensils import utensils_prompt_block
+from app.services.utensils import UTENSILS_STEPS_RULE, utensils_prompt_block
 from claude_fakes import Fail, FakeClaude, Finish, Hang, Say, UseTool
 
 TODAY = today_in_pantry(datetime.now(UTC))
@@ -130,6 +131,18 @@ async def test_tre_pasti_tre_ricette(db_session, factory, uova):
     assert fake.calls[0]["tool_names"] == [
         "read_pantry", "read_shopping_list", "read_meals", "search_ingredients", "write_recipe",
     ]
+
+
+async def test_la_coda_chiede_lo_strumento_nel_procedimento(db_session, factory, uova):
+    await create_utensil(db_session, name="frusta elettrica", note=None)
+    meals = (await tre_cene(db_session))[:1]
+    fake = FakeClaude.per_call(ok(uova))
+
+    await in_coda(factory, fake, meals)
+
+    [call] = fake.calls
+    assert call["system_prompt"].endswith(UTENSILS_STEPS_RULE)
+    assert "al primo passo del procedimento" in call["system_prompt"]
 
 
 async def test_il_limite_a_meta_lascia_ogni_pasto_usabile(db_session, factory, uova):

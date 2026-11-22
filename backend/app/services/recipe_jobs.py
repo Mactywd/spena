@@ -45,7 +45,7 @@ from app.services.claude.prompts import DishContext, recipe_system_prompt, rende
 from app.services.claude.tools import TurnContext, recipe_tools
 from app.services.llm import LlmCallSite
 from app.services.meal_chat import chat_history
-from app.services.utensils import utensils_prompt_block
+from app.services.utensils import UTENSILS_STEPS_RULE, utensils_prompt_block
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,9 @@ async def _ask_claude(
         session=session, lock=lock, today=today_in_pantry(now), meal_id=meal.id,
         conversation_id=None, turn_message_id=None, on_change=_no_change, create_only=True,
     )
-    system_prompt = recipe_system_prompt(await utensils_prompt_block(session))
+    system_prompt = recipe_system_prompt(
+        await utensils_prompt_block(session, rule=UTENSILS_STEPS_RULE)
+    )
     history = (
         await chat_history(session, conversation_id) if conversation_id is not None else []
     )
