@@ -172,6 +172,52 @@ describe("il modulo del pasto", () => {
       expect(save).toHaveBeenLastCalledWith({ ...SAVED_BODY, replace: true, detach_leftovers: true });
     });
 
+    const ORIGIN_MESSAGE =
+      "Qui non può essere l'avanzo di «Lasagne» (lunedì cena): un avanzo viene dopo il suo pasto, entro 3 giorni.";
+    const originOut = () => new ApiError(ORIGIN_MESSAGE, 409, { code: "origin_out_of_reach" });
+
+    it("l'avanzo fuori dalla finestra: la domanda e Sposta e stacca dal pasto d'origine", async () => {
+      const save = vi.fn().mockRejectedValueOnce(originOut()).mockResolvedValue(undefined);
+      renderForm({ save, onCancel: () => {} });
+      await fill();
+      expect(await screen.findByText(ORIGIN_MESSAGE)).toBeInTheDocument();
+      // i pulsanti del modulo spariscono: resta il solo «Annulla» della domanda
+      expect(screen.queryByRole("button", { name: "Salva" })).toBeNull();
+      expect(screen.getAllByRole("button", { name: "Annulla" })).toHaveLength(1);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Sposta e stacca dal pasto d'origine" })
+      );
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+      expect(save).toHaveBeenLastCalledWith({ ...SAVED_BODY, detach_origin: true });
+    });
+
+    it("Annulla chiude la domanda dell'origine e i pulsanti tornano", async () => {
+      const save = vi.fn().mockRejectedValue(originOut());
+      renderForm({ save, onCancel: () => {} });
+      await fill();
+      await screen.findByText(ORIGIN_MESSAGE);
+      await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+      expect(screen.queryByText(ORIGIN_MESSAGE)).toBeNull();
+      expect(screen.getByRole("button", { name: "Salva" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Annulla" })).toBeInTheDocument();
+    });
+
+    it("il posto occupato e poi l'origine: due domande in fila", async () => {
+      const save = vi
+        .fn()
+        .mockRejectedValueOnce(taken(null))
+        .mockRejectedValueOnce(originOut())
+        .mockResolvedValue(undefined);
+      renderForm({ save });
+      await fill();
+      await userEvent.click(await screen.findByRole("button", { name: "Sostituisci" }));
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Sposta e stacca dal pasto d'origine" })
+      );
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(3));
+      expect(save).toHaveBeenLastCalledWith({ ...SAVED_BODY, replace: true, detach_origin: true });
+    });
+
     it("una modifica di qualunque campo chiude la domanda e rida «Salva»", async () => {
       const save = vi.fn().mockRejectedValue(leftoverAfter(1));
       renderForm({

@@ -120,6 +120,27 @@ describe("la schermata del piatto", () => {
     expect(calls(spy, "PATCH")[1].body).toEqual({ slot: "lunch", replace: true });
   });
 
+  it("«Correggi» di un avanzo manda detach_origin", async () => {
+    let first = true;
+    const spy = stubFetch((_url, init) => {
+      if (init?.method !== "PATCH") return [meal(), 200];
+      if (first) {
+        first = false;
+        return [{ detail: "Qui non può essere l'avanzo di «Lasagne» (lunedì cena).", code: "origin_out_of_reach" }, 409];
+      }
+      return [meal({ day: "2026-11-14" }), 200];
+    });
+    renderMeal();
+    await userEvent.click(await screen.findByRole("button", { name: "Correggi" }));
+    fireEvent.change(screen.getByLabelText("Giorno"), { target: { value: "2026-11-14" } });
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Sposta e stacca dal pasto d'origine" })
+    );
+    await vi.waitFor(() => expect(calls(spy, "PATCH")).toHaveLength(2));
+    expect(calls(spy, "PATCH")[1].body).toEqual({ day: "2026-11-14", detach_origin: true });
+  });
+
   it("cambiare giorno dopo un posto occupato toglie la domanda: «Sostituisci» non cancella un pasto mai confermato", async () => {
     const spy = stubFetch((_url, init) =>
       init?.method === "PATCH"

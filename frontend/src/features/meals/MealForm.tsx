@@ -8,7 +8,8 @@ import { SLOT_LABELS, longDayLabel } from "./format";
 
 type Question =
   | { kind: "slot_taken"; message: string; body: MealBody; recipeGoes: boolean }
-  | { kind: "leftover_after"; message: string; body: MealBody; leftovers: number };
+  | { kind: "leftover_after"; message: string; body: MealBody; leftovers: number }
+  | { kind: "origin_out_of_reach"; message: string; body: MealBody };
 
 /** Il pasto scritto a mano (spec 2026-11-12 §5.2). Il modulo non sa se crea o corregge:
  * `save` riceve il corpo intero e chi lo usa decide che cosa mandare. */
@@ -42,8 +43,9 @@ export function MealForm({
   // può già dire un altro posto, e cancellerebbe un pasto mai confermato). Se cambia
   // un campo qualunque (giorno, pasto, piatto, contorni, «Fuori casa», avanzo) la domanda
   // non vale più e sparisce, e tornano «Salva» e «Annulla» del modulo.
-  // Due domande, dal backend: il posto occupato (`slot_taken`, con l'occupante) e l'avanzo
-  // che verrebbe prima (`leftover_after`, con quanti sono). Il frontend non decide quale.
+  // Tre domande, dal backend: il posto occupato (`slot_taken`, con l'occupante), l'avanzo
+  // che verrebbe prima (`leftover_after`, con quanti sono) e l'avanzo spostato fuori dalla
+  // finestra del suo pasto (`origin_out_of_reach`). Il frontend non decide quale.
   const [taken, setTaken] = useState<Question | null>(null);
 
   const body = (replace: boolean): MealBody => ({
@@ -85,6 +87,8 @@ export function MealForm({
           body: sent ?? body(replace),
           leftovers: typeof count === "number" ? count : 1,
         });
+      } else if (err instanceof ApiError && err.status === 409 && code === "origin_out_of_reach") {
+        setTaken({ kind: "origin_out_of_reach", message: err.message, body: sent ?? body(replace) });
       } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
@@ -210,6 +214,14 @@ export function MealForm({
             {taken.kind === "slot_taken" ? (
               <Button variant="danger" busy={busy} onClick={() => void send(true, { ...taken.body, replace: true })}>
                 Sostituisci
+              </Button>
+            ) : taken.kind === "origin_out_of_reach" ? (
+              <Button
+                variant="danger"
+                busy={busy}
+                onClick={() => void send(true, { ...taken.body, detach_origin: true })}
+              >
+                Sposta e stacca dal pasto d'origine
               </Button>
             ) : (
               <Button

@@ -31,6 +31,7 @@ function patchFrom(meal: Meal, body: MealBody): MealPatch {
   if (body.away !== meal.away) patch.away = body.away;
   if (Object.keys(patch).length > 0 && body.replace) patch.replace = true;
   if (Object.keys(patch).length > 0 && body.detach_leftovers) patch.detach_leftovers = true;
+  if (Object.keys(patch).length > 0 && body.detach_origin) patch.detach_origin = true;
   return patch;
 }
 

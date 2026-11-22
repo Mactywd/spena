@@ -530,11 +530,14 @@ export interface MealBody {
   replace?: boolean;
   /** Lo spostamento stacca gli avanzi che verrebbero prima (risposta a `leftover_after`). */
   detach_leftovers?: boolean;
+  /** Lo spostamento di un avanzo lo stacca dal pasto d'origine (risposta a `origin_out_of_reach`). */
+  detach_origin?: boolean;
 }
 export type MealPatch = Partial<Pick<MealBody, "day" | "slot" | "dish" | "sides" | "away">> & {
   status?: "official";
   replace?: boolean;
   detach_leftovers?: boolean;
+  detach_origin?: boolean;
 };
 
 /** Una modifica della ricetta fatta da Claude, come la riga sotto la sua risposta
