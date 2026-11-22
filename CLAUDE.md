@@ -30,6 +30,14 @@ not pay for them again:
   97 characters arrive as 62) and login then fails always. Both compose files use
   the long form with `format: raw`, which needs Compose 2.30 or newer, and a test
   parses them to keep it that way. Do not "simplify" it.
+  The hash itself lives in `password.env` (gitignored, mode 600, written by
+  `scripts/imposta-password.sh <compose file>`), never in `.env`: Compose also reads
+  `.env` to substitute the `${...}` inside the compose files, a step `format: raw`
+  does not reach, so every `$` of the hash became a "variable is not set" warning
+  that printed a piece of it, on every command (seen on the server 2026-10-19).
+  `password.env` is the second long-form entry, `required: false`, after `.env`, so
+  it wins; the e2e override's `.env.e2e` lands after both. The same test parses all
+  three compose files, `.env.example` and `.gitignore` to keep it that way.
 - **A `docker compose` without `-f` replaces production with the dev stack.** Both
   files share the project name `spena`, so `docker compose up -d` on the server
   swaps the prod containers for the dev ones — same volume, no data lost, and no

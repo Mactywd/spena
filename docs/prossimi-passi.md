@@ -3145,8 +3145,12 @@ della b si rifiuta di partire (lo prova `backend/tests/test_e2e_import_review_gu
   mescolarcisi; lasciarla vuota è l'altra scelta legittima, e oggi è quella in atto.
 - **Due file non tracciati sul server**, in `~/sites/spena`: `.env.bak` e
   `imposta-password.sh`.
-- **I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
-  `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.
+- ~~**I warning `"argon2id" variable is not set`** sul server sono l'interpolazione
+  `${VAR}` di Compose dentro lo YAML, cosmetici e preesistenti. Non inseguirli.~~
+  **Chiusa il 2026-11-21, sul ramo `night/hash-password`, non ancora in produzione.**
+  Non erano cosmetici: i nomi delle «variabili» erano pezzi dell'hash. Ora l'hash sta
+  in `password.env` (piano `docs/superpowers/plans/2026-11-18-hash-password.md`), e
+  dopo il deploy Mattia cambia la password.
 - ~~**Nel foglio della cottura la casella «Rimetti in lista» è pre-spuntata solo per
   «finito»**~~ **Chiusa il 2026-10-19, decisa da Mattia il 2026-10-09** (spec
   `docs/superpowers/specs/2026-10-09-rimetti-in-lista-design.md`, piano

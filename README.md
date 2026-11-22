@@ -58,23 +58,26 @@ docker compose run --rm --build backend \
   python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-E l'hash della password di accesso, generato con lo stesso argon2 che l'applicazione
-usa per verificarlo:
+E la password di accesso:
 
 ```bash
-docker compose run --rm --build backend \
-  python -c "from app.core.security import hash_password; print(hash_password('la-tua-password'))"
+./scripts/imposta-password.sh docker-compose.yml
 ```
 
-Questi due comandi funzionano anche su un `.env` ancora a metà: `docker compose run
-... python -c` sostituisce il comando del container, quindi l'applicazione non parte
-e i controlli all'avvio non scattano. Per `docker compose up`, invece, i due valori
-devono essere già in `.env`.
+Lo script chiede la password due volte senza mostrarla, calcola l'hash nel container
+con lo stesso argon2 che l'applicazione usa per verificarlo e lo scrive in
+`password.env`: fuori da git, permessi 600, senza stamparlo. L'hash non va mai in
+`.env`, perché Compose legge `.env` anche per sostituire i `${...}` dei file Compose,
+dove `format: raw` non vale, e ogni `$` dell'hash diventava un avviso che ne stampava
+un pezzo. Senza `password.env` l'app parte e l'accesso risponde 401.
 
-Incolla i due valori in `.env` **senza apici**. L'hash contiene dei `$` e sembra
-naturale proteggerlo con degli apici singoli: non farlo. `format: raw` non li
-toglie, quindi arriverebbero dentro il container come parte dell'hash e la verifica
-fallirebbe sempre.
+Il comando del segreto funziona anche su un `.env` ancora a metà: `docker compose run
+... python -c` sostituisce il comando del container, quindi l'applicazione non parte
+e i controlli all'avvio non scattano. Per `docker compose up`, invece, il valore
+deve essere già in `.env`.
+
+Incolla il segreto in `.env` **senza apici**: `format: raw` non li toglie, quindi
+arriverebbero dentro il container come parte del valore.
 
 Se `SESSION_SECRET` resta vuota — o al valore di esempio — il backend **rifiuta di
 partire**, e lo dice nei log con il comando per generarne una. È deliberato: un
@@ -103,12 +106,10 @@ arrivare mentre le migrazioni sono ancora in corso.
 L'app è su <http://localhost:5173>. Il seme è idempotente: rieseguirlo non duplica
 niente.
 
-**Rumore previsto.** Ogni comando `docker compose` stampa avvisi come
-`The "argon2id" variable is not set. Defaulting to a blank string.` Sono cosmetici:
-vengono dalla lettura del `.env` che Compose fa per sostituire i `${...}` dentro al
-file Compose stesso, che è una cosa diversa da `env_file:` e non accetta
-`format: raw`. Verificato: dentro al container `APP_PASSWORD_HASH` è lungo 97
-caratteri, cioè intero.
+**Nessun avviso previsto.** Se un comando `docker compose` stampa
+`The "…" variable is not set`, in `.env` c'è un `$`: quel nome è un pezzo del valore,
+e non va copiato da nessuna parte. Le righe si trovano senza mostrarne i valori con
+`grep -n '\$' .env | cut -d= -f1`. Un hash va in `password.env`, con lo script.
 
 ## Portare ricette nel ricettario
 
@@ -409,7 +410,8 @@ parte dell'app che i test di Vitest non possono vedere. Quelli non vogliono uno 
 pulito: i pochi che scrivono (una voce di dispensa, un prodotto) la tolgono prima di
 finire. Gira su uno stack Compose a parte,
 `spena-e2e`, per due motivi: la password serve conosciuta (`.env.e2e` contiene
-l'hash della parola `test`, e non protegge niente) e lo stack va distrutto con i
+l'hash della parola `test`, e non protegge niente; `.env.e2e` è l'ultimo `env_file`,
+quindi vince anche su un `password.env` presente) e lo stack va distrutto con i
 volumi alla fine, cosa che non si può fare sul progetto di sviluppo senza perdere la
 dispensa vera.
 
@@ -509,6 +511,10 @@ In `.env` servono, oltre alle variabili dell'avvio locale, `SPENA_HOST` con il n
 di host pubblicato e le `POSTGRES_*` (qui non hanno default: il Compose di
 produzione non ne inventa uno).
 
+La password si imposta, sul server, con `./scripts/imposta-password.sh
+docker-compose.prod.yml`, sempre con il file di produzione, come ogni altro comando
+lì. Poi il deploy di sempre la fa valere.
+
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 120
 docker compose -f docker-compose.prod.yml exec backend python -m app.cli.seed --solo-ingredienti
@@ -554,13 +560,23 @@ fotocamera non parte, e il cookie di sessione viaggia con `Secure` — il Compos
 produzione impone `COOKIE_SECURE=true` al servizio backend — quindi su `http` il
 browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 
+### Cambiare la password
+
+```bash
+./scripts/imposta-password.sh docker-compose.prod.yml
+docker compose -f docker-compose.prod.yml up -d --wait --force-recreate backend
+```
+
+I dispositivi già entrati restano dentro: il cookie è firmato con `SESSION_SECRET` e
+non con la password. Per buttarli fuori tutti si cambia anche quella.
+
 ## Variabili d'ambiente
 
 | Variabile | Default | Scopo |
 |---|---|---|
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | vedi `.env.example` | connessione al database |
 | `SESSION_SECRET` | nessuno, obbligatorio | firma del cookie di sessione; vuota, il backend non parte |
-| `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso; illeggibile (troncato), il backend non parte |
+| `APP_PASSWORD_HASH` | nessuno, obbligatorio | hash argon2 della password di accesso, **in `password.env`, mai in `.env`**, scritto da `scripts/imposta-password.sh`; illeggibile (troncato), il backend non parte |
 | `COOKIE_SECURE` | `false` | `true` in produzione: il cookie solo su HTTPS |
 | `OPENROUTER_API_KEY` | vuoto | stesura ricette con l'AI e decisione dei termini incerti nell'import |
 | `OPENROUTER_MODEL` | `google/gemma-4-26b-a4b-it` | il modello; cambiarlo è come passare a uno più grosso (es. `anthropic/claude-sonnet-5`) |
