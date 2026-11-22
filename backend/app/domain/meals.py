@@ -42,6 +42,14 @@ def is_before(day: date, slot: MealSlot, other_day: date, other_slot: MealSlot) 
     return (day, slot_rank(slot)) < (other_day, slot_rank(other_slot))
 
 
+def in_leftover_window(origin_day: date, origin_slot: MealSlot, day: date, slot: MealSlot) -> bool:
+    """Un avanzo in `day`/`slot` può venire dal pasto d'origine: cucinato prima del posto e non
+    più di `LEFTOVER_WINDOW_DAYS` giorni prima. Una regola sola per il modulo e la scrittura."""
+    return is_before(origin_day, origin_slot, day, slot) and origin_day >= day - timedelta(
+        days=LEFTOVER_WINDOW_DAYS
+    )
+
+
 def place_words(day: date, slot: MealSlot) -> str:
     """Il posto a parole, «martedì pranzo»: il giorno della settimana basta, perché un avanzo
     sta al massimo 3 giorni dopo il suo pasto."""

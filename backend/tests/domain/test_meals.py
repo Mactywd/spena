@@ -5,6 +5,7 @@ import pytest
 from app.domain.meals import (
     MealSlot,
     MealStatus,
+    in_leftover_window,
     is_before,
     is_unrecorded,
     place_words,
@@ -42,6 +43,22 @@ L, D = MealSlot.LUNCH, MealSlot.DINNER
 )
 def test_is_before(a, b, expected):
     assert is_before(date(2026, 11, a[0]), a[1], date(2026, 11, b[0]), b[1]) is expected
+
+
+# l'avanzo a martedì 10 pranzo; il 9 è lunedì, il 7 sabato, il 6 venerdì
+@pytest.mark.parametrize(
+    ("origin", "expected"),
+    [
+        ((9, D), True),  # lunedì cena
+        ((7, L), True),  # sabato pranzo, 3 giorni prima
+        ((6, D), False),  # venerdì cena, 4 giorni prima
+        ((10, L), False),  # martedì pranzo, lo stesso posto
+        ((10, D), False),  # martedì cena, dopo
+    ],
+)
+def test_in_leftover_window(origin, expected):
+    got = in_leftover_window(date(2026, 11, origin[0]), origin[1], date(2026, 11, 10), L)
+    assert got is expected
 
 
 @pytest.mark.parametrize(

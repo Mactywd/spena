@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models.meal import Meal
-from app.domain.meals import LEFTOVER_WINDOW_DAYS, MealSlot, is_before
+from app.domain.meals import LEFTOVER_WINDOW_DAYS, MealSlot, in_leftover_window
 
 _LOADS = (
     selectinload(Meal.recipe),
@@ -59,5 +59,5 @@ async def leftover_candidates(session: AsyncSession, day: date, slot: MealSlot) 
         Meal.away.is_(False),
     )
     found = (await session.execute(statement)).scalars().all()
-    before = [m for m in found if is_before(m.day, MealSlot(m.slot), day, MealSlot(slot))]
+    before = [m for m in found if in_leftover_window(m.day, MealSlot(m.slot), day, MealSlot(slot))]
     return sorted(before, key=lambda m: (m.day, MealSlot(m.slot) == MealSlot.DINNER), reverse=True)

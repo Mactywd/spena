@@ -55,6 +55,7 @@ _MEAL_STATUS = {
     MealRefusalCode.NO_RECIPE_HERE: 409,
     MealRefusalCode.RECIPE_ARCHIVED: 409,
     MealRefusalCode.LEFTOVER_AFTER: 409,
+    MealRefusalCode.ORIGIN_OUT_OF_REACH: 409,
     MealRefusalCode.BAD_LEFTOVER: 422,
     MealRefusalCode.STAYS_OFFICIAL: 422,
 }

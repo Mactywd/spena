@@ -278,3 +278,29 @@ async def test_patch_con_detach_leftovers_sposta(logged_client, db_session):
     week = (await logged_client.get(f"{M}/week", params={"of": "2026-11-10"})).json()
     got = next(m for m in week["meals"] if m["id"] == str(avanzo.id))
     assert got["leftover_of"] is None
+
+
+async def test_patch_dell_avanzo_fuori_finestra_e_409(logged_client, db_session):
+    origine = await pasto(db_session, d(9), D, "Lasagne")
+    avanzo = await pasto(db_session, d(10), L, "Avanzo", leftover_of_id=origine.id)
+    r = await logged_client.patch(f"{M}/{avanzo.id}", json={"day": "2026-11-13"})
+    assert r.status_code == 409
+    assert r.json() == {
+        "code": "origin_out_of_reach",
+        "detail": (
+            "Qui non può essere l'avanzo di «Lasagne» (lunedì cena): un avanzo viene dopo "
+            "il suo pasto, entro 3 giorni."
+        ),
+    }
+
+
+async def test_patch_con_detach_origin_sposta(logged_client, db_session):
+    origine = await pasto(db_session, d(9), D, "Lasagne")
+    avanzo = await pasto(db_session, d(10), L, "Avanzo", leftover_of_id=origine.id)
+    r = await logged_client.patch(
+        f"{M}/{avanzo.id}", json={"day": "2026-11-13", "detach_origin": True}
+    )
+    assert r.status_code == 200
+    assert r.json()["day"] == "2026-11-13"
+    assert r.json()["leftover_of"] is None
+    assert r.json()["dish"] == "Avanzo"

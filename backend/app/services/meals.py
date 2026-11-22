@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe
-from app.domain.meals import MealSlot, MealStatus, is_before, place_words
+from app.domain.meals import MealSlot, MealStatus, in_leftover_window, place_words
 from app.repositories.meals import get_meal, meal_at
 from app.repositories.recipes import copy_recipe
 from app.services.change_cards import InverseReason, propose_inverse_card
@@ -28,6 +28,7 @@ class MealRefusalCode(StrEnum):
     STAYS_OFFICIAL = "stays_official"
     RECIPE_ARCHIVED = "recipe_archived"
     LEFTOVER_AFTER = "leftover_after"
+    ORIGIN_OUT_OF_REACH = "origin_out_of_reach"
 
 
 class MealRefusal(Exception):
@@ -48,21 +49,35 @@ class MealRefusal(Exception):
 def _bad_leftover() -> MealRefusal:
     return MealRefusal(
         MealRefusalCode.BAD_LEFTOVER,
-        "Un avanzo viene da un pasto cucinato prima, che non sia a sua volta un avanzo.",
+        "Un avanzo viene da un pasto cucinato nei 3 giorni prima, che non sia a sua volta "
+        "un avanzo.",
     )
+
+
+async def _leftover_origin(session: AsyncSession, leftover_of_id: uuid.UUID) -> Meal:
+    """Il pasto d'origine di un avanzo, se può esserlo dovunque stia l'avanzo: c'è, non è fuori
+    casa e non è a sua volta un avanzo."""
+    origin = await session.get(Meal, leftover_of_id)
+    if origin is None or origin.away or origin.leftover_of_id is not None:
+        raise _bad_leftover()
+    return origin
 
 
 async def _check_leftover(
     session: AsyncSession, leftover_of_id: uuid.UUID, day: date, slot: MealSlot
 ) -> None:
-    origin = await session.get(Meal, leftover_of_id)
-    if (
-        origin is None
-        or origin.away
-        or origin.leftover_of_id is not None
-        or not is_before(origin.day, MealSlot(origin.slot), day, slot)
-    ):
+    origin = await _leftover_origin(session, leftover_of_id)
+    if not in_leftover_window(origin.day, MealSlot(origin.slot), day, slot):
         raise _bad_leftover()
+
+
+def _origin_out_of_reach(origin: Meal) -> MealRefusal:
+    return MealRefusal(
+        MealRefusalCode.ORIGIN_OUT_OF_REACH,
+        f"Qui non può essere l'avanzo di «{origin.dish}» "
+        f"({place_words(origin.day, MealSlot(origin.slot))}): un avanzo viene dopo il suo "
+        "pasto, entro 3 giorni.",
+    )
 
 
 async def _unlink_leftovers_of(session: AsyncSession, meal: Meal) -> None:
@@ -86,16 +101,17 @@ def _leftovers_sentence(places: list[str]) -> str:
 async def _leftovers_left_behind(
     session: AsyncSession, meal: Meal, day: date, slot: MealSlot, skip: uuid.UUID | None
 ) -> list[Meal]:
-    """Gli avanzi di `meal` che nel posto nuovo non verrebbero più dopo di lui, in ordine di
-    posto. `skip` è l'occupante che la sostituzione elimina: se è un avanzo di `meal` non si
-    considera (ruling B-R2), non si scrive su una riga che sparisce."""
+    """Gli avanzi di `meal` che dal posto nuovo uscirebbero dalla finestra (prima di lui, o più
+    di 3 giorni dopo), in ordine di posto. `skip` è l'occupante che la sostituzione elimina: se
+    è un avanzo di `meal` non si considera (ruling B-R2), non si scrive su una riga che
+    sparisce."""
     rows = (
         await session.execute(select(Meal).where(Meal.leftover_of_id == meal.id))
     ).scalars().all()
     behind = [
         r
         for r in rows
-        if r.id != skip and not is_before(day, slot, r.day, MealSlot(r.slot))
+        if r.id != skip and not in_leftover_window(day, slot, r.day, MealSlot(r.slot))
     ]
     return sorted(behind, key=lambda r: (r.day, MealSlot(r.slot) == MealSlot.DINNER))
 
@@ -172,6 +188,7 @@ async def update_meal(
     *,
     replace: bool = False,
     detach_leftovers: bool = False,
+    detach_origin: bool = False,
 ) -> Meal:
     unknown = set(changes) - _ALLOWED
     if unknown:
@@ -187,15 +204,22 @@ async def update_meal(
     if meal.status == MealStatus.OFFICIAL and status == MealStatus.DRAFT:
         raise MealRefusal(MealRefusalCode.STAYS_OFFICIAL, "Un pasto ufficiale non torna bozza.")
     moved = (day, slot.value) != (meal.day, meal.slot)
-    if moved and not away and meal.leftover_of_id is not None:
-        await _check_leftover(session, meal.leftover_of_id, day, slot)
     occupant = None
     if moved:
         occupant = await meal_at(session, day, slot)
         if occupant is not None and occupant.id != meal.id and not replace:
             raise _slot_taken(occupant)
-    # i suoi avanzi non possono stare prima di lui (decisione 5): un pasto che va fuori casa non
-    # chiede, i suoi avanzi si staccano già
+    # un avanzo spostato fuori dalla finestra del suo pasto (decisione 5): dopo la domanda del
+    # posto, e un avanzo che va fuori casa non chiede, il legame si toglie già
+    detach_from_origin = False
+    if moved and not away and meal.leftover_of_id is not None:
+        origin = await _leftover_origin(session, meal.leftover_of_id)
+        if not in_leftover_window(origin.day, MealSlot(origin.slot), day, slot):
+            if not detach_origin:
+                raise _origin_out_of_reach(origin)
+            detach_from_origin = True
+    # i suoi avanzi non possono stare prima di lui né più di 3 giorni dopo (decisioni 1 e 5): un
+    # pasto che va fuori casa non chiede, i suoi avanzi si staccano già
     behind: list[Meal] = []
     if moved and not away:
         skip = occupant.id if occupant is not None and occupant.id != meal.id else None
@@ -207,6 +231,8 @@ async def update_meal(
                 leftovers=len(behind),
             )
 
+    if detach_from_origin:
+        meal.leftover_of_id = None  # prima di scrivere il posto: diventa un pasto a mano
     if occupant is not None and occupant.id != meal.id:
         await delete_meal(session, occupant, _reason=InverseReason.REPLACED)
     for row in behind:
