@@ -27,7 +27,7 @@ function existingIngredient(error: unknown): Ingredient | null {
  * corretto il 2026-09-20 — misurato in produzione, di sette nomi plausibili di prodotti
  * per la casa tutti e sette pescavano almeno un suggerimento.
  *
- * «Abbina» spegne il taglio dei suggerimenti (`trim={false}`): vedi `IngredientPicker`.
+ * «Abbina» chiede l'elenco intero, senza il taglio dei suggerimenti: vedi `IngredientPicker`.
  *
  * Un frammento: `before` e `after` (una frase, un «Annulla») stanno nella colonna di chi
  * lo usa, e solo mentre si sceglie — mentre si crea, `NewIngredientFields` ha il suo
