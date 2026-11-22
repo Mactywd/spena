@@ -18,6 +18,7 @@ from app.domain.rules import PantryStatus
 from app.repositories.pantry import set_status
 from app.repositories.shopping import StockEntry, patch_item, stock_items
 from app.services.change_cards import (
+    NO_LONGER_FINISHED_NOTE,
     PAST_MEAL_NOTE,
     InverseReason,
     ListProposal,
@@ -598,3 +599,58 @@ async def test_l_inversa_toglie_la_riga_aggiunta_all_applicazione(db_session, mo
     assert u.source_row_ids == [str(aggiunta.id)]
     (p,) = righe(card, "pantry")
     assert (p.pantry_item_id, p.to_status) == (voce.id, "available")
+
+
+async def test_applicare_l_inversa_non_aggiunge_righe_di_lista(db_session, mondo):
+    # F-R4: la lista segue la dispensa solo nelle schede in avanti. L'inversa che rimette
+    # la ricotta «Finito» (com'era prima del pasto) non la porta in lista.
+    ricotta = mondo["voci"]["ricotta"]
+    await set_status(db_session, ricotta.id, F)
+    await applicata(db_session, [mondo["A"]], [PantryProposal(ricotta.id, A)])
+    await delete_meal(db_session, mondo["A"])
+    card = await l_inversa(db_session)
+    (p,) = righe(card, "pantry")
+    assert (p.to_status, p.checked) == ("finished", True)
+
+    done = await apply_card(db_session, card.id, [])
+    assert righe(done, "list") == []
+    await db_session.refresh(ricotta)
+    assert ricotta.status == "finished"
+    listed = (
+        await db_session.execute(
+            select(ShoppingListItem).where(
+                ShoppingListItem.ingredient_id == mondo["ing"]["ricotta"].id
+            )
+        )
+    ).scalars().all()
+    assert listed == []
+
+
+async def test_una_riga_saltata_non_tiene_in_lista_l_ingrediente(db_session, mondo):
+    # F-R5: la scheda di B ha saltato la sua riga di lista (passata corretta a «Quasi
+    # finito»): non serve a B, quindi eliminando A l'inversa toglie la passata dalla lista.
+    passata = Ingredient(
+        name="passata", display_name="Passata", category=IngredientCategory.CONDIMENTI
+    )
+    db_session.add(passata)
+    await db_session.flush()
+    voce = PantryItem(ingredient_id=passata.id, status=A)
+    db_session.add(voce)
+    await db_session.flush()
+
+    di_b = await propose_card(
+        db_session, meals=[mondo["B"]], pantry=[PantryProposal(voce.id, F)], shopping=[]
+    )
+    (riga_b,) = righe(di_b, "pantry")
+    di_b = await apply_card(db_session, di_b.id, [RowOverride(riga_b.id, True, L)])
+    (saltata,) = righe(di_b, "list")
+    assert saltata.applied is False and saltata.note == NO_LONGER_FINISHED_NOTE
+
+    di_a = await applicata(db_session, [mondo["A"]], [PantryProposal(voce.id, F)])
+    (in_lista,) = righe(di_a, "list")
+    assert in_lista.list_added is True
+
+    await delete_meal(db_session, mondo["A"])
+    card = await l_inversa(db_session)
+    (u,) = righe(card, "unlist")
+    assert u.shopping_item_id == in_lista.shopping_item_id and u.checked is True

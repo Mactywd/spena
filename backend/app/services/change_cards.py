@@ -571,7 +571,8 @@ async def apply_card(
     La spunta di una riga di dispensa non conta per il salto: una riga non spuntata che
     va a `finished` lascia la sua riga di lista com'è. Una riga di lista senza origini —
     chiesta da Claude, aggiunta a mano, o scritta prima della 0026 — sta in piedi da sola
-    e si applica come sempre: perché la voce serve, non perché finisce.
+    e si applica come sempre: perché la voce serve, non perché finisce. Vale solo per le
+    schede in avanti: un'inversa che rimette una voce «Finito» non la porta in lista.
     """
     card = await _locked(session, card_id)
     _must_be_proposed(card)
@@ -609,7 +610,11 @@ async def apply_card(
         )
         sources = {source.id: source for source in locked.scalars()}
 
-    no_longer_finished = await _follow_the_pantry(session, card, rows)
+    no_longer_finished = (
+        await _follow_the_pantry(session, card, rows)
+        if card.kind == CardKind.FORWARD.value
+        else set()
+    )
 
     for row in rows:
         if not row.checked:
@@ -718,7 +723,9 @@ async def _list_still_needed(
     """La voce di lista serve ancora a un altro pasto: o lo dice la riga stessa
     (`_still_used_elsewhere`), o un'altra scheda in avanti, proposta o applicata, ha una
     riga di lista per lo stesso ingrediente al servizio di un altro pasto ufficiale e non
-    fuori casa (anche se la sua riga era «Già in lista.» e non è mai stata applicata)."""
+    fuori casa (anche se la sua riga era «Già in lista.» e non è mai stata applicata). Non
+    conta una riga saltata con `NO_LONGER_FINISHED_NOTE`: la scheda stessa ha detto che al
+    suo pasto non serve."""
     if await _still_used_elsewhere(session, source, meal_id):
         return True
     if source.ingredient_id is None:
@@ -735,6 +742,9 @@ async def _list_still_needed(
                 ChangeCardRow.kind == RowKind.LIST.value,
                 ChangeCardRow.ingredient_id == source.ingredient_id,
                 ChangeCardRow.id != source.id,
+                # una riga che la sua scheda ha saltato perché la voce non finisce più
+                # non serve al suo pasto (F-R5)
+                ChangeCardRow.note.is_distinct_from(NO_LONGER_FINISHED_NOTE),
             )
         )
     ).scalars().all()
