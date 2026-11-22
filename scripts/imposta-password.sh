@@ -37,12 +37,12 @@ file=$1
 # Con l'hash ancora in .env, il `docker compose run` qui sotto stamperebbe proprio gli
 # avvisi con i pezzi dell'hash che questo script serve a togliere: ci si ferma prima.
 # La riga non si stampa mai; una riga vuota (dal vecchio .env.example) non conta.
-if [ -f .env ] && grep -qE '^APP_PASSWORD_HASH=.+' .env; then
+if [ -f .env ] && grep -qE '^[[:space:]]*(export[[:space:]]+)?APP_PASSWORD_HASH=.+' .env; then
   {
     echo "In .env c'è ancora APP_PASSWORD_HASH."
     echo "Compose legge .env anche per sostituire i \${...} dei file Compose, e ne"
     echo "stampa dei pezzi negli avvisi. Toglila prima, poi rilancia lo script:"
-    echo "  sed -i '/^APP_PASSWORD_HASH=/d' .env"
+    echo "  sed -i -E '/^[[:space:]]*(export[[:space:]]+)?APP_PASSWORD_HASH=/d' .env"
   } >&2
   exit 1
 fi
@@ -101,4 +101,7 @@ mv "$tmp" password.env
 
 echo "password.env scritto: lo legge solo il proprietario."
 echo "Vale dal prossimo avvio del backend:"
-echo "  docker compose -f $file up -d --wait --force-recreate backend"
+echo "  docker compose -f $file up -d --wait --wait-timeout 120 --force-recreate backend"
+echo "Lo script ha costruito l'immagine del backend dal codice di questa cartella."
+echo "Se non è il codice che gira, al posto del riavvio fai il deploy completo:"
+echo "  docker compose -f $file up -d --build --wait"

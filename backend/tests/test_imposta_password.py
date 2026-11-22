@@ -144,6 +144,8 @@ def test_non_stampa_ne_lhash_ne_la_password(radice):
     assert "segreta" not in out
     # Il messaggio finale dice il comando di riavvio con il file passato.
     assert "docker-compose.yml" in out
+    assert "up -d --wait --wait-timeout 120 --force-recreate backend" in out
+    assert "up -d --build --wait" in out
 
 
 @pytest.mark.parametrize("args", [(), ("non-esiste.yml",)], ids=["nessun-argomento", "file-assente"])
@@ -167,8 +169,23 @@ def test_con_lhash_ancora_in_env_si_rifiuta_prima_di_compose(radice):
     assert r.returncode == 1
     assert not (fake_dir / "calls").exists()
     assert "APP_PASSWORD_HASH" in r.stderr
-    assert "sed -i '/^APP_PASSWORD_HASH=/d' .env" in r.stderr
+    assert "sed -i -E '/^[[:space:]]*(export[[:space:]]+)?APP_PASSWORD_HASH=/d' .env" in r.stderr
     assert HASH_FINTO not in r.stdout + r.stderr
+    assert not (repo / "password.env").exists()
+
+
+@pytest.mark.parametrize(
+    "riga", ["export APP_PASSWORD_HASH=x", "  APP_PASSWORD_HASH=x"], ids=["export", "spazi"]
+)
+def test_con_lhash_in_env_nelle_forme_che_compose_legge_si_rifiuta(radice, riga):
+    repo, fake_dir = radice
+    (repo / ".env").write_text(f"SESSION_SECRET=x\n{riga}\n")
+
+    r = lancia(radice, "docker-compose.yml")
+
+    assert r.returncode == 1
+    assert not (fake_dir / "calls").exists()
+    assert "APP_PASSWORD_HASH" in r.stderr
     assert not (repo / "password.env").exists()
 
 

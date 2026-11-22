@@ -37,7 +37,9 @@ not pay for them again:
   that printed a piece of it, on every command (seen on the server 2026-10-19).
   `password.env` is the second long-form entry, `required: false`, after `.env`, so
   it wins; the e2e override's `.env.e2e` lands after both. The same test parses all
-  three compose files, `.env.example` and `.gitignore` to keep it that way.
+  three compose files, `.env.example` and `.gitignore` to keep it that way. Never run
+  `docker compose config` without `--quiet`: it prints the backend's resolved
+  environment, which is the hash.
 - **A `docker compose` without `-f` replaces production with the dev stack.** Both
   files share the project name `spena`, so `docker compose up -d` on the server
   swaps the prod containers for the dev ones — same volume, no data lost, and no

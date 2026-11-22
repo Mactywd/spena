@@ -49,9 +49,10 @@ che resta l'autorità su scopo e perimetro.
 cp .env.example .env
 ```
 
-Poi riempi le due variabili obbligatorie. Entrambe si generano con il Python del
-container, perché «Cosa serve» non promette un Python sull'host. Il segreto di
-sessione:
+Poi riempi `SESSION_SECRET`, l'unica variabile obbligatoria di `.env`; la password di
+accesso non va lì, ma in `password.env`, scritto dallo script qui sotto. Il segreto si
+genera con il Python del container, perché «Cosa serve» non promette un Python
+sull'host:
 
 ```bash
 docker compose run --rm --build backend \
@@ -71,6 +72,9 @@ con lo stesso argon2 che l'applicazione usa per verificarlo e lo scrive in
 dove `format: raw` non vale, e ogni `$` dell'hash diventava un avviso che ne stampava
 un pezzo. Senza `password.env` l'app parte e l'accesso risponde 401.
 
+**Mai `docker compose config` senza `--quiet`**: stampa l'ambiente risolto del backend,
+cioè l'hash.
+
 Il comando del segreto funziona anche su un `.env` ancora a metà: `docker compose run
 ... python -c` sostituisce il comando del container, quindi l'applicazione non parte
 e i controlli all'avvio non scattano. Per `docker compose up`, invece, il valore
@@ -83,12 +87,12 @@ Se `SESSION_SECRET` resta vuota — o al valore di esempio — il backend **rifi
 partire**, e lo dice nei log con il comando per generarne una. È deliberato: un
 server che firma i cookie con un segreto pubblicato su git non deve sembrare sano.
 
-Lo stesso se `APP_PASSWORD_HASH` c'è ma non è un hash argon2 leggibile, che è come
-arriva un hash troncato dai `$`: il backend rifiuta di partire nominando la causa
+Lo stesso se `APP_PASSWORD_HASH` (in `password.env`) c'è ma non è un hash argon2
+leggibile, che è come arriva un hash troncato dai `$`: il backend rifiuta di partire nominando la causa
 probabile e il comando per rigenerarlo. Senza quel rifiuto l'unico sintomo sarebbe
-«password errata» per qualunque password, su un `.env` che a occhio sembra pieno.
-Vuota invece lascia partire: è il `.env` non ancora riempito, e l'accesso risponde
-401 dicendo il vero.
+«password errata» per qualunque password, su un `password.env` che a occhio sembra pieno.
+Vuota (o senza `password.env`) invece lascia partire: è la password non ancora
+impostata, e l'accesso risponde 401 dicendo il vero.
 
 Poi:
 
@@ -564,8 +568,13 @@ browser non lo rimanderebbe e ogni chiamata dopo l'accesso risponderebbe 401.
 
 ```bash
 ./scripts/imposta-password.sh docker-compose.prod.yml
-docker compose -f docker-compose.prod.yml up -d --wait --force-recreate backend
+docker compose -f docker-compose.prod.yml up -d --wait --wait-timeout 120 --force-recreate backend
 ```
+
+Lo script costruisce l'immagine del backend dal codice di questa cartella, e il
+riavvio porta su quell'immagine. Se il checkout è più avanti di quanto gira, o non è
+il codice che vuoi in produzione, al posto del riavvio fai il deploy completo:
+`docker compose -f docker-compose.prod.yml up -d --build --wait`.
 
 I dispositivi già entrati restano dentro: il cookie è firmato con `SESSION_SECRET` e
 non con la password. Per buttarli fuori tutti si cambia anche quella.

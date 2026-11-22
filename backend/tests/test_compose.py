@@ -292,6 +292,21 @@ def test_nello_stack_e2e_lultimo_env_file_e_env_e2e():
     )
 
 
+@pytest.mark.parametrize("nome_file", TUTTI_I_COMPOSE)
+def test_environment_del_backend_non_nomina_lhash(nome_file):
+    environment = carica(nome_file)["services"]["backend"].get("environment") or {}
+    nomi = (
+        set(environment)
+        if isinstance(environment, dict)
+        else {voce.split("=", 1)[0] for voce in environment}
+    )
+    assert "APP_PASSWORD_HASH" not in nomi, (
+        f"{nome_file}: `environment:` del backend nomina APP_PASSWORD_HASH. Vincerebbe "
+        "su ogni `env_file` e riporterebbe l'hash nella lettura di `.env`, con i suoi "
+        "`$` negli avvisi di Compose: l'hash sta solo in password.env."
+    )
+
+
 def test_env_example_non_porta_lhash_ne_alcun_dollaro():
     righe = [
         r for r in ENV_EXAMPLE.read_text().splitlines()

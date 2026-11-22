@@ -48,12 +48,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     L'hash della password sta qui per un motivo peggiore: un APP_PASSWORD_HASH
     troncato (è quello che fa Compose ai `$` senza `format: raw`) non produce nessun
     sintomo diagnosticabile. `verify_password` risponde False come per una password
-    sbagliata, quindi l'unico segnale è «password errata» per sempre, su un `.env`
-    che a occhio sembra pieno. Un vicolo cieco di questo tipo va fermato dove si
+    sbagliata, quindi l'unico segnale è «password errata» per sempre, su un
+    `password.env` (scritto da scripts/imposta-password.sh) che a occhio sembra pieno. Un vicolo cieco di questo tipo va fermato dove si
     vede, cioè nei log dell'avvio.
 
-    Un hash vuoto invece lascia partire: è il `.env` non ancora riempito, e il login
-    risponde 401 dicendo il vero.
+    Un hash vuoto, o senza `password.env`, invece lascia partire: è la password non
+    ancora impostata, e il login risponde 401 dicendo il vero.
     """
     settings = get_settings()
     if is_insecure_session_secret(settings.session_secret):
