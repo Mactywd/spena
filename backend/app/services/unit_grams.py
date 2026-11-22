@@ -495,9 +495,9 @@ async def decide_grams(
     Un lotto a cui l'AI risponde in modo illeggibile (troncato, non JSON, fuori schema) si
     divide a metà e si richiedono le due metà, fino alla coppia sola; una coppia che non si
     legge nemmeno da sola si salta per questo giro — resta da pesare, finisce in `skipped`
-    e un giro dopo si richiede — e il giro va avanti. Il freno: se di un lotto tutte le
-    coppie sono state saltate, il guasto non è nel lotto, e il giro si ferma con
-    `GRAMS_ALL_BROKEN`. Ogni altro guasto dell'AI ferma subito il giro, anche a metà di una
+    e un giro dopo si richiede — e il giro va avanti. Il freno: se di un lotto di più
+    coppie tutte sono state saltate, il guasto non è nel lotto, e il giro si ferma con
+    `GRAMS_ALL_BROKEN`; un lotto di una coppia sola che non si legge è solo un salto. Ogni altro guasto dell'AI ferma subito il giro, anche a metà di una
     divisione, e quel che è già scritto resta."""
     pairs = await pending_pairs(session, limit)
     tally = _Tally()
@@ -513,7 +513,8 @@ async def decide_grams(
         await session.flush()
         if after_batch is not None:
             await after_batch()
-        if len(tally.skipped) - skipped_before == len(chunk):
+        # una coppia sola saltata è il salto e basta: il freno è per un lotto di più coppie
+        if len(chunk) > 1 and len(tally.skipped) - skipped_before == len(chunk):
             unavailable = f"{GRAMS_ALL_BROKEN}: {tally.last_error}"
             break
     return GramsRun(

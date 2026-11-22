@@ -320,3 +320,35 @@ async def test_un_guasto_terminale_durante_la_divisione_ferma_il_giro(db_session
     assert esito.unavailable is not None
     # quel che la prima metà ha scritto resta
     assert await _scritti(db_session) == [(Decimal("5.00"), "ai")]
+
+
+async def test_l_ultimo_lotto_di_una_coppia_sola_che_non_si_legge_si_salta_e_basta(db_session):
+    await _mondo(db_session)
+    finto = FakeLlm(
+        _pesi((1, "aglio", "spicchio", 5), (2, "olio di oliva", "cucchiai", 12)),
+        ROTTO,  # uova, da sola nel secondo lotto
+    )
+
+    esito = await decide_grams(db_session, client=finto, batch_size=2)
+
+    assert _coppie_chieste(finto) == [2, 1]
+    assert esito.skipped == ("uova × pezzo",)
+    assert esito.last_error
+    assert esito.unavailable is None
+    assert (esito.weighed, esito.pending) == (2, 1)
+
+
+async def test_a_lotti_di_una_coppia_quella_rotta_si_salta_e_le_altre_si_pesano(db_session):
+    await _mondo(db_session)
+    finto = FakeLlm(
+        ROTTO,  # aglio
+        _pesi((1, "olio di oliva", "cucchiai", 12)),
+        _pesi((1, "uova", "pezzo", 50)),
+    )
+
+    esito = await decide_grams(db_session, client=finto, batch_size=1)
+
+    assert _coppie_chieste(finto) == [1, 1, 1]
+    assert esito.skipped == ("aglio × spicchio",)
+    assert esito.unavailable is None
+    assert (esito.weighed, esito.pending) == (2, 1)
