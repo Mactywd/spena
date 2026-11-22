@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe
 from app.domain.meals import MealSlot, MealStatus, in_leftover_window, place_words
-from app.repositories.meals import get_meal, lock_meal, meal_at
+from app.repositories.meals import get_meal, lock_meal, meal_at, meal_of_recipe
 from app.repositories.recipes import copy_recipe
 from app.services.change_cards import (
     InverseReason,
@@ -132,6 +132,23 @@ async def release_recipe(session: AsyncSession, meal: Meal) -> None:
     if recipe is not None and not recipe.in_book and recipe.archived_at is None:
         recipe.archived_at = datetime.now(UTC)
     await session.flush()
+
+
+async def lock_meal_of_recipe(session: AsyncSession, recipe: Recipe) -> Meal | None:
+    """Il pasto di `recipe`, con la sua riga bloccata, prima di toccare la ricetta: lo stesso
+    ordine di `delete_meal` e della scrittura (F-R6, prima il pasto e poi la ricetta), così chi
+    cambia la ricetta e chi elimina il pasto si mettono in fila invece di incrociarsi.
+
+    Senza pasto non blocca niente. Preso il lucchetto, rilegge il pasto (mentre si aspettava
+    può essere stato eliminato: allora `None`) e la ricetta, com'è dopo il `commit` dell'altro:
+    i controlli di chi chiama si fanno su questa lettura, non su quella di prima."""
+    meal = await meal_of_recipe(session, recipe.id)
+    if meal is None:
+        return None
+    await lock_meal(session, meal.id)
+    meal = await meal_of_recipe(session, recipe.id)
+    await session.refresh(recipe)
+    return meal
 
 
 async def delete_meal(

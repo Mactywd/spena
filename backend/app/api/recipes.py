@@ -60,7 +60,12 @@ from app.services.embeddings import get_embedding_provider
 from app.services.llm import LlmUnavailable
 from app.domain.recipe_changes import recipe_version
 from app.services.meal_recipes import recipe_snapshot
-from app.services.meals import MealRefusal, check_can_take_recipe, link_recipe
+from app.services.meals import (
+    MealRefusal,
+    check_can_take_recipe,
+    link_recipe,
+    lock_meal_of_recipe,
+)
 from app.services.recipe_writing import RepeatedIngredient, embedding_for, resolve_lines
 from app.services.recipe_search import search_recipes, semantic_search_usable
 from app.services.rescale import (
@@ -347,6 +352,9 @@ async def update(
     recipe = await get_recipe(session, recipe_id)
     if recipe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
+    # Il pasto per primo, come `delete_meal` (F-R6): chi elimina il pasto e chi cambia la
+    # ricetta si mettono in fila, e i controlli sotto leggono pasto e ricetta dopo l'attesa
+    meal = await lock_meal_of_recipe(session, recipe)
     archived_after = (
         recipe.archived_at is not None if payload.archived is None else payload.archived
     )
@@ -357,14 +365,14 @@ async def update(
     if in_book_change is not None:
         if archived_after:
             raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
-        if not in_book_change and await meal_of_recipe(session, recipe.id) is None:
+        if not in_book_change and meal is None:
             raise HTTPException(status.HTTP_409_CONFLICT, NOT_A_MEAL_RECIPE)
     # «Elimina» su una ricetta che ha un pasto (decisione di Mattia del 2026-11-21): resta
     # l'invariante «una ricetta viva fuori dal ricettario ha sempre un pasto». Nel
     # ricettario la toglie dal ricettario e il pasto la tiene; fuori, si elimina col pasto.
     takes_out_of_book = False
     if payload.archived is True and recipe.archived_at is None:
-        if await meal_of_recipe(session, recipe.id) is not None:
+        if meal is not None:
             if not recipe.in_book:
                 raise HTTPException(status.HTTP_409_CONFLICT, MEAL_RECIPE_KEPT)
             takes_out_of_book = True
@@ -381,7 +389,7 @@ async def update(
         if (
             recipe.archived_at is not None
             and not recipe.in_book
-            and await meal_of_recipe(session, recipe.id) is None
+            and meal is None
         ):
             recipe.in_book = True
         recipe.archived_at = None
