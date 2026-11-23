@@ -137,6 +137,87 @@ describe("useArchiveRecipe", () => {
     );
   });
 
+  // il pasto eliminato nel frattempo: il PATCH in_book risponde 409, e «Annulla» ripristina
+  function stubPastoEliminato(inBook: (n: number) => [unknown, number]) {
+    let tentativiInBook = 0;
+    return stubFetch((_path, init) => {
+      const corpo = JSON.parse(String(init!.body)) as { archived?: boolean; in_book?: boolean };
+      if (corpo.archived === true) return [{ archived_at: null, in_book: false }, 200];
+      if (corpo.in_book === true) {
+        tentativiInBook += 1;
+        return inBook(tentativiInBook);
+      }
+      return [{}, 200];
+    });
+  }
+
+  it("«Annulla» dopo il pasto eliminato la rimette nel ricettario", async () => {
+    const spy = stubPastoEliminato(() => [{ detail: "eliminata", code: "RECIPE_ARCHIVED" }, 409]);
+    const client = nuovoClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    renderProva(client);
+
+    await userEvent.click(screen.getByRole("button", { name: "elimina" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+
+    expect(await screen.findByText("Rimessa nel ricettario.")).toBeInTheDocument();
+    expect(patchMandate(spy)).toEqual([
+      ["/api/v1/recipes/r-carb", { archived: true }],
+      ["/api/v1/recipes/r-carb", { in_book: true }],
+      ["/api/v1/recipes/r-carb", { archived: false }],
+    ]);
+    expect(screen.queryByText(/Non sono riuscito/)).toBeNull();
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["recipes"] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["recipe", "r-carb"] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["meals"] });
+    });
+  });
+
+  it("un 500 sul PATCH in_book non ripristina: lo dice, e «Riprova» rifà tutto il giro", async () => {
+    const spy = stubPastoEliminato((n) => (n === 1 ? [{ detail: "giù" }, 500] : [{}, 200]));
+    renderProva();
+
+    await userEvent.click(screen.getByRole("button", { name: "elimina" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+    expect(
+      await screen.findByText("Non sono riuscito a riportare «Carbonara» nel ricettario.")
+    ).toBeInTheDocument();
+    expect(patchMandate(spy)).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
+    await waitFor(() => expect(patchMandate(spy)).toHaveLength(3));
+    expect(patchMandate(spy)[2]).toEqual(["/api/v1/recipes/r-carb", { in_book: true }]);
+  });
+
+  it("se anche il ripristino fallisce, lo dice, e «Riprova» rifà tutto il giro", async () => {
+    let ripristini = 0;
+    const spy = stubFetch((_path, init) => {
+      const corpo = JSON.parse(String(init!.body)) as { archived?: boolean; in_book?: boolean };
+      if (corpo.archived === true) return [{ archived_at: null, in_book: false }, 200];
+      if (corpo.in_book === true) return [{ detail: "eliminata" }, 409];
+      ripristini += 1;
+      return ripristini === 1 ? [{ detail: "giù" }, 500] : [{}, 200];
+    });
+    renderProva();
+
+    await userEvent.click(screen.getByRole("button", { name: "elimina" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Annulla" }));
+    expect(
+      await screen.findByText("Non sono riuscito a riportare «Carbonara» nel ricettario.")
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Riprova" }));
+
+    expect(await screen.findByText("Rimessa nel ricettario.")).toBeInTheDocument();
+    expect(patchMandate(spy).slice(1)).toEqual([
+      ["/api/v1/recipes/r-carb", { in_book: true }],
+      ["/api/v1/recipes/r-carb", { archived: false }],
+      ["/api/v1/recipes/r-carb", { in_book: true }],
+      ["/api/v1/recipes/r-carb", { archived: false }],
+    ]);
+  });
+
   it("una ricetta di un pasto, senza il pasto nella risposta, ha l'avviso generico", async () => {
     stubFetch(() => [{ archived_at: null, in_book: false }, 200]);
     renderProva();

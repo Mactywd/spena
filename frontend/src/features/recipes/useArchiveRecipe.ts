@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { setRecipeArchived, setRecipeInBook, type RecipePage } from "./api";
+import { ApiError } from "../../api/client";
 import { useNotice } from "../../components/ui/noticeContext";
 
 type ArchivedRecipe = { id: string; title: string };
@@ -73,15 +74,29 @@ export function useArchiveRecipe(): {
 
   // Il server ha tolto dal ricettario la ricetta di un pasto invece di archiviarla: il
   // pasto la tiene, e «Annulla» la rimette nel ricettario.
+  // Se il pasto è stato eliminato nel frattempo, il `PATCH in_book` risponde 409 (la
+  // ricetta è eliminata, e il suo ricettario non si cambia: decisione 2 del piano): solo
+  // allora, e solo su quel 409, «Annulla» la ripristina con `archived=false`, e il server
+  // (decisione 18) la rimette nel ricettario perché non ha più un pasto. Ogni altro
+  // errore, un 500 per primo, non ripristina: avvisa, e «Riprova» rifà tutto il giro.
   function restoreToBook(recipe: ArchivedRecipe): void {
-    setRecipeInBook(recipe.id, true).then(
-      () => refresh(recipe.id),
-      () =>
+    setRecipeInBook(recipe.id, true)
+      .then(
+        () => refresh(recipe.id),
+        (error: unknown) => {
+          if (!(error instanceof ApiError) || error.status !== 409) throw error;
+          return setRecipeArchived(recipe.id, false).then(() => {
+            notice({ text: "Rimessa nel ricettario." });
+            return refresh(recipe.id);
+          });
+        }
+      )
+      .catch(() =>
         notice({
           text: `Non sono riuscito a riportare «${recipe.title}» nel ricettario.`,
           action: { label: "Riprova", onClick: () => restoreToBook(recipe) },
         })
-    );
+      );
   }
 
   const mutation = useMutation({
