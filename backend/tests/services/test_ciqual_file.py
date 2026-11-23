@@ -131,3 +131,15 @@ def test_un_archivio_rovinato_dice_che_il_file_non_va(tmp_path):
 
     with pytest.raises(CiqualFormatError, match="ciqual-prova.xlsx"):
         read_ciqual(path)
+
+
+def test_la_tabella_vera_ha_le_vitamine_e_e_a():
+    """Il file vero, non quello di prova: la E con il ripiego e la A in equivalenti."""
+    from app.cli.load_ciqual import CANDIDATE_FILES
+
+    letto = read_ciqual(CANDIDATE_FILES[0])
+
+    assert letto.with_value["vitamin_e"] == 2329
+    assert letto.with_value["vitamin_a"] == 1922
+    assert letto.unreadable.get("vitamin_e", 0) == 0
+    assert letto.unreadable.get("vitamin_a", 0) == 0

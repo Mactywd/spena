@@ -12,6 +12,7 @@ attesa.
 import pytest
 
 from app.domain.ciqual import (
+    CIQUAL_FALLBACKS,
     CIQUAL_NAMES,
     REQUIRED_KEYS,
     CiqualFormatError,
@@ -228,6 +229,10 @@ def test_map_columns_riconosce_le_intestazioni_vere_del_2025():
         "kcal": 10, "protein": 14, "carbs": 16, "fat": 17,
     }
     assert colonne.nutrients["folate"] == 79 and colonne.nutrients["vitamin_e"] == 69
+    # la A è l'attività in equivalenti retinolo; la E ha il ripiego sull'alfa-tocoferolo
+    assert colonne.nutrients["vitamin_a"] == 62
+    assert colonne.fallbacks == {"vitamin_e": 68}
+    assert not any("tocoph" in colonna.lower() for colonna in colonne.unused)
     # le colonne non usate si dicono su una riga, come le scrive chi le legge
     assert colonne.unused[0] == "Energie, Règlement UE N° 1169 2011 (kJ 100 g)"
     assert all("\n" not in colonna for colonna in colonne.unused)
@@ -269,15 +274,15 @@ def test_map_columns_rifiuta_un_file_senza_una_colonna_d_obbligo():
         map_columns([colonna for colonna in INTESTAZIONE if not colonna.startswith("Lipides")])
 
 
-def test_i_nomi_coprono_il_vocabolario_tranne_cinque():
-    """Trenta nutrienti dell'Allegato XIII: fuori la vitamina A (CIQUAL dà retinolo e
-    beta-carotene separati) e i quattro che CIQUAL non ha (spec §4.3)."""
+def test_i_nomi_coprono_il_vocabolario_tranne_quattro():
+    """Trentuno nutrienti dell'Allegato XIII: fuori i quattro che CIQUAL non ha (spec
+    §4.3). La A entra dall'attività in equivalenti retinolo."""
     assert set(CIQUAL_NAMES) <= set(NUTRIENT_FIELDS)
     assert set(NUTRIENT_FIELDS) - set(CIQUAL_NAMES) == {
-        "vitamin_a", "biotin", "fluoride", "chromium", "molybdenum",
+        "biotin", "fluoride", "chromium", "molybdenum",
     }
     assert set(REQUIRED_KEYS) == {"kcal", "protein", "carbs", "fat"}
-    for nomi in CIQUAL_NAMES.values():
+    for nomi in (*CIQUAL_NAMES.values(), *CIQUAL_FALLBACKS.values()):
         for nome in nomi:
             assert nome == normalize_name(nome), nome
 
@@ -313,3 +318,57 @@ def test_food_from_row_un_sottogruppo_trattino_lascia_il_gruppo():
     alimento, _ = food_from_row(["02", "légumes et fruits", "-", "20047", "Tomate, crue", "18"], colonne)
 
     assert alimento.group_fr == "légumes et fruits"
+
+
+_RIPIEGO = [
+    "alim_code",
+    "alim_nom_fr",
+    "Energie, Règlement UE N° 1169/2011 (kcal/100 g)",
+    "Protéines, N x facteur de Jones (g/100 g)",
+    "Glucides (g/100 g)",
+    "Lipides (g/100 g)",
+    "Alpha-tocophérol (vitamine E) (mg/100 g)",
+    "Vitamine E (mg/100 g)",
+]
+
+
+@pytest.mark.parametrize(
+    ("principale", "ripiego", "atteso", "illeggibili"),
+    [
+        ("0,5", "", 0.5, []),
+        ("0,5", "1,2", 0.5, []),
+        ("", "1,2", 1.2, []),
+        ("-", "< 0,2", 0.1, []),
+        ("n.d.", "1,2", None, ["vitamin_e"]),
+        ("", "", None, []),
+    ],
+)
+def test_il_ripiego_della_vitamina_e(principale, ripiego, atteso, illeggibili):
+    """Il ripiego legge la seconda colonna solo dove la prima è vuota: una cella
+    illeggibile nella principale non si sostituisce."""
+    # nel file di prova l'alfa-tocoferolo sta prima di «Vitamine E»
+    colonne = map_columns(_RIPIEGO)
+    assert colonne.fallbacks == {"vitamin_e": 6}
+    riga = ["1", "Tomate", "18", "0,9", "2,5", "0,2", ripiego, principale]
+
+    alimento, mancanti = food_from_row(riga, colonne)
+
+    assert alimento.nutrients.get("vitamin_e") == atteso
+    assert mancanti == illeggibili
+
+
+def test_un_ripiego_nell_unita_sbagliata_rifiuta_il_file():
+    sbagliato = [*_RIPIEGO[:6], "Alpha-tocophérol (vitamine E) (µg/100 g)", _RIPIEGO[7]]
+
+    with pytest.raises(CiqualFormatError, match="Alpha-tocoph"):
+        map_columns(sbagliato)
+
+
+def test_solo_il_ripiego_vale_come_colonna():
+    senza_principale = _RIPIEGO[:7]
+
+    colonne = map_columns(senza_principale)
+
+    assert colonne.nutrients["vitamin_e"] == 6
+    assert colonne.fallbacks == {}
+    assert "vitamin_e" not in colonne.absent

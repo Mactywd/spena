@@ -168,3 +168,27 @@ async def test_senza_unita_in_attesa_non_chiama_nessuno(db_session):
 
     assert (esito.applied, esito.refused, esito.pending) == (0, 0, 0)
     assert finto.bodies == []
+
+
+async def test_il_peso_sulla_forma_passa_alla_canonica(db_session):
+    from decimal import Decimal
+
+    from app.db.models.ingredient import Ingredient
+    from app.db.models.nutrition import IngredientUnitGrams
+
+    await _unita(db_session, "cucchiai", "cucchiaio")
+    olio = Ingredient(name="olio", display_name="Olio", category="condimenti")
+    db_session.add(olio)
+    await db_session.flush()
+    cucchiai = await _riletta(db_session, "cucchiai")
+    cucchiaio = await _riletta(db_session, "cucchiaio")
+    db_session.add(IngredientUnitGrams(
+        ingredient_id=olio.id, unit_id=cucchiai.id, grams=Decimal("12"), decided_by="ai"
+    ))
+    await db_session.flush()
+    finto = FakeLlm({"units": [{"key": "cucchiai", "singular": "cucchiaio", "plural": "cucchiai"}]})
+
+    await decide_unit_forms(db_session, client=finto)
+
+    righe = (await db_session.execute(select(IngredientUnitGrams))).scalars().all()
+    assert [(r.unit_id, r.grams) for r in righe] == [(cucchiaio.id, Decimal("12.00"))]

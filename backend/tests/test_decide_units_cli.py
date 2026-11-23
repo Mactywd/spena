@@ -226,3 +226,25 @@ async def test_imposta_una_chiave_vera_scrive_e_lo_dice(db_session, monkeypatch,
         await db_session.execute(select(Unit).where(Unit.key == "cucchiai"))
     ).scalars().one()
     assert riga.singular == "cucchiaio" and riga.decided_by == "human"
+
+
+async def test_imposta_sposta_il_peso_sulla_canonica(db_session, monkeypatch):
+    from decimal import Decimal
+
+    from app.db.models.ingredient import Ingredient
+    from app.db.models.nutrition import IngredientUnitGrams
+
+    cucchiai, cucchiaio = Unit(key="cucchiai"), Unit(key="cucchiaio", singular="cucchiaio", plural="cucchiai", decided_by="ai")
+    olio = Ingredient(name="olio", display_name="Olio", category="condimenti")
+    db_session.add_all([cucchiai, cucchiaio, olio])
+    await db_session.flush()
+    db_session.add(IngredientUnitGrams(
+        ingredient_id=olio.id, unit_id=cucchiai.id, grams=Decimal("12"), decided_by="ai"
+    ))
+    await db_session.flush()
+    monkeypatch.setattr("app.cli.decide_units.SessionLocal", lambda: _SessioneFinta(db_session))
+
+    assert await main(["--imposta", "cucchiai", "cucchiaio", "cucchiai"]) == 0
+
+    righe = (await db_session.execute(select(IngredientUnitGrams))).scalars().all()
+    assert [(r.unit_id, r.grams) for r in righe] == [(cucchiaio.id, Decimal("12.00"))]

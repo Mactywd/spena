@@ -91,6 +91,40 @@ async def test_search_foods_non_usa_jolly(db_session):
     assert await search_foods(db_session, "_", limit=20) == []
 
 
+async def test_search_foods_ignora_gli_accenti(db_session):
+    await upsert_foods(
+        db_session,
+        [
+            CiqualRow("90021", "Pâtes sèches, crues", "pâtes, riz et céréales", {"kcal": 350.0}),
+            CiqualRow("90022", "Pâtes cuites", "pâtes, riz et céréales", {"kcal": 120.0}),
+            *ALIMENTI,
+        ],
+    )
+
+    assert (await search_foods(db_session, "pates seches", limit=20))[0].name_fr == "Pâtes sèches, crues"
+    for scritto in ("PÂTES", "pâtes", "pates"):
+        trovati = await search_foods(db_session, scritto, limit=20)
+        assert {alimento.code for alimento in trovati[:2]} == {"90021", "90022"}
+    assert await search_foods(db_session, "-", limit=20) == []
+    assert await search_foods(db_session, "'", limit=20) == []
+
+
+async def test_search_foods_a_parita_comincia_con_la_parola(db_session):
+    await upsert_foods(db_session, ALIMENTI_VERI)
+
+    assert (await search_foods(db_session, "riz", limit=20))[0].name_fr == "Riz blanc, cru"
+
+
+async def test_search_foods_sulla_tabella_vera(db_session):
+    assert await tabella_vera(db_session) == 3484
+
+    riz = await search_foods(db_session, "riz", limit=20)
+    assert all(a.name_fr.startswith("Riz") for a in riz[:5])
+    assert "Riz blanc, cru" in [a.name_fr for a in riz[:3]]
+    pates = await search_foods(db_session, "pates", limit=20)
+    assert "Pâtes sèches, standard, crues" in [a.name_fr for a in pates[:3]]
+
+
 def _codici(candidati):
     return [candidato.code for candidato in candidati]
 

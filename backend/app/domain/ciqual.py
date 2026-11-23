@@ -38,9 +38,9 @@ SUBGROUP_COLUMN = "alim_ssgrp_nom_fr"
 # Il nome di ogni costituente com'è scritto nelle intestazioni di CIQUAL, già passato per
 # `normalize_name` (senza accenti né maiuscole). Una tupla per chiave: se un'edizione
 # nuova scrive lo stesso costituente in un altro modo, si aggiunge un nome, non una
-# regola. Fuori la vitamina A (CIQUAL dà retinolo e beta-carotene separati, e la somma
-# in equivalenti è un calcolo che non si fa senza dirlo), e biotina, fluoruro, cromo e
-# molibdeno, che CIQUAL non ha (spec §4.3). La vitamina K è la K1.
+# regola. La vitamina A è l'attività in equivalenti retinolo: il calcolo lo fa CIQUAL e lo
+# dice nel nome; dove manca, la A manca (niente ripiego sul retinolo). Fuori biotina,
+# fluoruro, cromo e molibdeno, che CIQUAL non ha (spec §4.3). La vitamina K è la K1.
 CIQUAL_NAMES: dict[str, tuple[str, ...]] = {
     "kcal": ("energie, reglement ue n°1169/2011",),
     "protein": ("proteines, n x facteur de jones",),
@@ -50,6 +50,7 @@ CIQUAL_NAMES: dict[str, tuple[str, ...]] = {
     "saturated_fat": ("ag satures",),
     "fiber": ("fibres alimentaires",),
     "salt": ("sel chlorure de sodium",),
+    "vitamin_a": ("activite vitaminique a, equivalents retinol",),
     "vitamin_d": ("vitamine d",),
     "vitamin_e": ("vitamine e",),
     "vitamin_k": ("vitamine k1",),
@@ -72,6 +73,13 @@ CIQUAL_NAMES: dict[str, tuple[str, ...]] = {
     "manganese": ("manganese",),
     "selenium": ("selenium",),
     "iodine": ("iode",),
+}
+
+# Colonne di ripiego: un'altra colonna, letta riga per riga solo dove la principale è
+# vuota (le due sono disgiunte nel file del 2025). Stessi nomi già normalizzati, stessa
+# unità della chiave.
+CIQUAL_FALLBACKS: dict[str, tuple[str, ...]] = {
+    "vitamin_e": ("alpha-tocopherol (vitamine e)",),
 }
 
 # Senza queste quattro colonne un file non è la tabella che crediamo: niente si scrive.
@@ -171,6 +179,8 @@ class ColumnMap:
     subgroup: int | None
     # chiave del vocabolario → indice della colonna
     nutrients: dict[str, int]
+    # chiave → indice della colonna di ripiego, solo se il file ha anche la principale
+    fallbacks: dict[str, int]
     # le chiavi di `CIQUAL_NAMES` che il file non ha
     absent: tuple[str, ...]
     # le colonne di costituente che nessuna chiave usa («Eau (g/100 g)»): si dicono
@@ -180,11 +190,15 @@ class ColumnMap:
 def map_columns(headers: list[str | None]) -> ColumnMap:
     """Quale colonna è quale. Solleva `CiqualFormatError` se il file non va."""
     wanted = {_comparable(name): key for key, names in CIQUAL_NAMES.items() for name in names}
+    fallback_wanted = {
+        _comparable(name): key for key, names in CIQUAL_FALLBACKS.items() for name in names
+    }
     identity: dict[str, int] = {}
     # (posizione, intestazione) delle colonne di costituente che nessuna chiave usa
     skipped: list[tuple[int, str]] = []
     # chiave → le colonne con quel nome, nell'ordine del file: (posizione, intestazione, unità)
     candidates: dict[str, list[tuple[int, str, str]]] = {}
+    fallback_candidates: dict[str, list[tuple[int, str, str]]] = {}
     for index, header in enumerate(headers):
         if header is None:
             continue
@@ -196,9 +210,14 @@ def map_columns(headers: list[str | None]) -> ColumnMap:
         if split is None:
             continue
         name, unit = split
-        key = wanted.get(_comparable(name))
+        comparable = _comparable(name)
+        key = wanted.get(comparable)
         if key is None:
-            skipped.append((index, plain))
+            fallback_key = fallback_wanted.get(comparable)
+            if fallback_key is None:
+                skipped.append((index, plain))
+            else:
+                fallback_candidates.setdefault(fallback_key, []).append((index, plain, unit))
             continue
         candidates.setdefault(key, []).append((index, plain, unit))
     # Nel CIQUAL l'energia compare due volte con lo stesso nome, in kJ e in kcal, una
@@ -206,7 +225,9 @@ def map_columns(headers: list[str | None]) -> ColumnMap:
     # ha una nell'unità giusta per la stessa chiave. Se c'è, quella sbagliata è una colonna
     # non usata e si usa la prima in unità giusta.
     nutrients: dict[str, int] = {}
-    for key, columns in candidates.items():
+    fallbacks: dict[str, int] = {}
+
+    def right_column(key: str, columns: list[tuple[int, str, str]]) -> int:
         field = NUTRIENT_FIELDS[key]
         right = normalize_unit(field.unit)
         found = next((index for index, _, unit in columns if unit == right), None)
@@ -216,8 +237,18 @@ def map_columns(headers: list[str | None]) -> ColumnMap:
                 f"la colonna «{plain}» è in {unit}, ma «{field.label}» si conta in "
                 f"{field.unit}: il file non è quello atteso"
             )
-        nutrients[key] = found
         skipped.extend((index, plain) for index, plain, unit in columns if unit != right)
+        return found
+
+    for key, columns in candidates.items():
+        nutrients[key] = right_column(key, columns)
+    for key, columns in fallback_candidates.items():
+        found = right_column(key, columns)
+        if key in nutrients:
+            fallbacks[key] = found
+        else:
+            # il file ha solo il ripiego: diventa la colonna della chiave
+            nutrients[key] = found
     unused = [plain for _, plain in sorted(skipped)]
     missing = [column for column in (CODE_COLUMN, NAME_COLUMN) if column not in identity]
     if missing:
@@ -235,6 +266,7 @@ def map_columns(headers: list[str | None]) -> ColumnMap:
         group=identity.get(GROUP_COLUMN),
         subgroup=identity.get(SUBGROUP_COLUMN),
         nutrients=nutrients,
+        fallbacks=fallbacks,
         absent=tuple(key for key in CIQUAL_NAMES if key not in nutrients),
         unused=tuple(unused),
     )
@@ -277,6 +309,14 @@ def food_from_row(
         except ValueError:
             unreadable.append(key)
             continue
+        if value is None and key in columns.fallbacks:
+            # il ripiego solo dove la principale è vuota: una illeggibile non si sostituisce
+            index = columns.fallbacks[key]
+            try:
+                value = parse_teneur(cells[index] if index < len(cells) else None)
+            except ValueError:
+                unreadable.append(key)
+                continue
         if value is not None:
             values[key] = value
     return (

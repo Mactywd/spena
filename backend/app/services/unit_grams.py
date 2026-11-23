@@ -12,6 +12,12 @@ solo dove non c'è niente, e lo controlla nella stessa INSERT. «Annulla il peso
 riga: la coppia torna da decidere. Il rifiuto ha la forma di quelli della fetta 1
 (`NutritionRefusal`).
 
+Il modulo scrive in tre modi: il peso a mano, quello dell'AI e il riallineamento
+(`realign_weights`). Quest'ultimo serve perché «sempre sull'unità canonica» è vero al
+momento della scrittura, ma un'unità può ricevere la sua canonica dopo (`decide_units`,
+`imposta`): il peso già scritto sulla forma si sposta, si fonde o si toglie, così la coppia
+giusta non si richiede all'AI.
+
 L'AI pesa le coppie da decidere a lotti di `GRAMS_BATCH` (`decide_grams`, sezione
 `unit_grams`): i grammi netti della parte che si mangia di una unità, o `null` se
 un'unità di quell'ingrediente non ha un peso sensato — che si scrive, e non si richiede.
@@ -19,7 +25,7 @@ un'unità di quell'ingrediente non ha un peso sensato — che si scrive, e non s
 
 import json
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Literal
@@ -184,6 +190,64 @@ async def resolve_pair_unit(
     canonical = unit if unit.canonical_id is None else await session.get(Unit, unit.canonical_id)
     kind = classify_unit(canonical.key, canonical.singular)
     return (None if kind.piece else canonical.id), unit_label(canonical.key, canonical.singular), kind
+
+
+@dataclass(frozen=True)
+class Realigned:
+    moved: int = 0
+    merged: int = 0
+    dropped: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.moved + self.merged + self.dropped
+
+
+async def realign_weights(
+    session: AsyncSession, unit_ids: Collection[uuid.UUID] | None = None
+) -> Realigned:
+    """Porta sulla coppia giusta i pesi scritti su un'unità che poi ha ricevuto la
+    canonica. La coppia giusta è quella di `resolve_pair_unit`: se è libera il peso si
+    sposta; se è occupata si fonde (vince il peso a mano su quello dell'AI, a parità
+    quello che c'era già); se l'unità è di massa o di volume il peso si toglie. Fa
+    `flush`, non `commit`."""
+    statement = select(IngredientUnitGrams).where(IngredientUnitGrams.unit_id.is_not(None))
+    if unit_ids is not None:
+        statement = statement.where(IngredientUnitGrams.unit_id.in_(list(unit_ids)))
+    rows = list((await session.execute(statement)).scalars().all())
+    targets: dict[uuid.UUID, tuple[uuid.UUID | None, UnitKind]] = {}
+    moved = merged = dropped = 0
+    for row in rows:
+        if row.unit_id not in targets:
+            pair_unit, _, kind = await resolve_pair_unit(session, row.unit_id)
+            targets[row.unit_id] = (pair_unit, kind)
+        pair_unit, kind = targets[row.unit_id]
+        if kind.measure == "pair" and pair_unit == row.unit_id:
+            continue
+        if kind.measure != "pair":
+            await session.delete(row)
+            dropped += 1
+            continue
+        await session.flush()
+        existing = (
+            await session.execute(
+                select(IngredientUnitGrams).where(
+                    IngredientUnitGrams.ingredient_id == row.ingredient_id, _same_unit(pair_unit)
+                )
+            )
+        ).scalars().first()
+        if existing is None:
+            row.unit_id = pair_unit
+            moved += 1
+            continue
+        if row.decided_by == NutritionDecider.HUMAN and existing.decided_by != NutritionDecider.HUMAN:
+            existing.grams = row.grams
+            existing.decided_by = row.decided_by
+            existing.decided_at = row.decided_at
+        await session.delete(row)
+        merged += 1
+    await session.flush()
+    return Realigned(moved=moved, merged=merged, dropped=dropped)
 
 
 async def _food(session: AsyncSession, ingredient_id: uuid.UUID) -> Ingredient:
@@ -420,6 +484,8 @@ class GramsRun:
     skipped: tuple[str, ...] = ()
     # l'errore dell'ultima coppia saltata
     last_error: str | None = None
+    # i pesi riallineati prima di cercare le coppie (`realign_weights`)
+    realigned: int = 0
 
 
 # I tipi di una risposta arrivata ma inutilizzabile: `TRUNCATED` (tagliata al tetto dei
@@ -499,7 +565,9 @@ async def decide_grams(
     coppie tutte sono state saltate, il guasto non è nel lotto, e il giro si ferma con
     `GRAMS_ALL_BROKEN`; un lotto di una coppia sola che non si legge è solo un salto. Ogni
     altro guasto dell'AI ferma subito il giro, anche a metà di una divisione, e quel che è
-    già scritto resta."""
+    già scritto resta. Prima di cercare le coppie riallinea i pesi rimasti sulle forme di
+    un'unità che ha poi ricevuto la canonica."""
+    realigned = (await realign_weights(session)).total
     pairs = await pending_pairs(session, limit)
     tally = _Tally()
     unavailable: str | None = None
@@ -527,4 +595,5 @@ async def decide_grams(
         asked=len(pairs),
         skipped=tuple(tally.skipped),
         last_error=tally.last_error,
+        realigned=realigned,
     )

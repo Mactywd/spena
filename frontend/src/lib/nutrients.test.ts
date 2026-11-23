@@ -11,6 +11,12 @@ describe("formatNutrient", () => {
     [0, "g", "0 g"],
     [2.04, "g", "2 g"],
     [1500, "µg", "1500 µg"],
+    [0.003, "mg", "< 0,01 mg"],
+    [0.0049, "µg", "< 0,01 µg"],
+    [0.3, "kcal", "< 1 kcal"],
+    [0.005, "mg", "0,01 mg"],
+    [0, "mg", "0 mg"],
+    [0.25, "g", "0,25 g"],
   ])("%s %s si legge «%s»", (valore, unita, atteso) => {
     expect(formatNutrient(valore, unita)).toBe(atteso);
   });

@@ -88,7 +88,9 @@ class IngredientUnitGrams(UUIDMixin, Base):
     «cucchiaio» hanno un peso solo. `unit_id` NULL è il «pezzo», la dose senza unità («2»
     uova). `grams` NULL è «nessun peso sensato», deciso: non si richiede. Le unità di
     massa e di volume non hanno righe qui: i loro grammi si contano da sé
-    (`app/domain/recipe_nutrition.py`). L'unico che scrive è `app/services/unit_grams.py`.
+    (`app/domain/recipe_nutrition.py`). Quando un'unità riceve la canonica dopo che il peso era
+    già scritto su di lei, `realign_weights` lo porta sulla coppia giusta e tiene vera la frase.
+    L'unico che scrive è `app/services/unit_grams.py`.
 
     `CASCADE` sull'unità, non `RESTRICT`: la pulizia delle dosi toglie le unità spurie, e
     il peso di un'unità che non c'è più non serve a niente.

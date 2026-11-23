@@ -55,6 +55,10 @@ async def main(argv: list[str]) -> int:
         esito = await decide_grams(session, limit=limit, after_batch=session.commit)
         await session.commit()
 
+    if esito.realigned == 1:
+        print("1 peso spostato sull'unità canonica.")
+    elif esito.realigned:
+        print(f"{esito.realigned} pesi spostati sull'unità canonica.")
     if esito.unavailable is not None:
         print(
             f"pesi non disponibili ({esito.unavailable}): le dosi senza peso restano fuori "

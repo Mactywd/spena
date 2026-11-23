@@ -14,9 +14,13 @@ export type NutrientValue = {
 export type NutrientRow = NutrientValue & { note?: string };
 
 /** Il numero all'italiana: kcal senza decimali, il resto con uno, due sotto l'unità, e
- * senza il punto delle migliaia (che in una tabella stretta si legge come un decimale). */
+ * senza il punto delle migliaia (che in una tabella stretta si legge come un decimale).
+ * Un valore sopra zero che le cifre mostrate arrotondano a zero si legge «< 0,01 mg» (la
+ * più piccola cifra scritta), non «0»: zero è un'affermazione, non un arrotondamento. */
 export function formatNutrient(value: number, unit: string): string {
   const digits = unit === "kcal" ? 0 : value !== 0 && Math.abs(value) < 1 ? 2 : 1;
-  const number = value.toLocaleString("it-IT", { maximumFractionDigits: digits, useGrouping: false });
+  const format = (n: number) => n.toLocaleString("it-IT", { maximumFractionDigits: digits, useGrouping: false });
+  const number = format(value);
+  if (value > 0 && !/[1-9]/.test(number)) return `< ${format(10 ** -digits)} ${unit}`;
   return `${number} ${unit}`;
 }

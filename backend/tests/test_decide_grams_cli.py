@@ -135,3 +135,17 @@ async def test_senza_coppie_saltate_non_ne_parla(db_session, monkeypatch, capsys
     assert await main([]) == 0
 
     assert "saltat" not in capsys.readouterr().out
+
+
+async def test_dice_quanti_pesi_ha_spostato(db_session, monkeypatch, capsys):
+    _con_esito(monkeypatch, db_session, GramsRun(realigned=1))
+    assert await main([]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == "1 peso spostato sull'unità canonica."
+
+    _con_esito(monkeypatch, db_session, GramsRun(realigned=3))
+    assert await main([]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == "3 pesi spostati sull'unità canonica."
+
+    _con_esito(monkeypatch, db_session, GramsRun())
+    assert await main([]) == 0
+    assert "sull'unità canonica" not in capsys.readouterr().out

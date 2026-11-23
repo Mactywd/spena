@@ -91,6 +91,10 @@ Reversibili; Mattia le rivede.
    calcolo che non si fa senza dirlo), biotina, fluoruro, cromo e molibdeno (CIQUAL non li ha).
    La vitamina K è la K1. Le colonne si riconoscono **dal nome**, senza accenti né maiuscole
    (`CIQUAL_NAMES` in `backend/app/domain/ciqual.py`), mai dalla posizione.
+   *Aggiornato il 2026-11-23 (rifiniture di S4)*: la vitamina A entra dall'«Activité vitaminique A,
+   équivalents rétinol» (il calcolo lo fa CIQUAL e lo dice nel nome; dove manca, la A manca), e la
+   vitamina E ha il ripiego «Alpha-tocophérol (vitamine E)» dove «Vitamine E» è vuota
+   (`CIQUAL_FALLBACKS`): i nutrienti letti sono 31, fuori restano biotina, fluoruro, cromo, molibdeno.
 4. **Come si legge un valore** (`parse_teneur`): «10,4» → 10,4; «traces» → 0; «< 0,5» → 0,25
    (la metà del limite, la convenzione «middle bound» dell'EFSA: il valore vero sta fra 0 e il
    limite); «-» o la cella vuota → **assente**, mai zero (CLAUDE.md, «missing nutrients stay

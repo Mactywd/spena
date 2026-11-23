@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.nutrition import CiqualFood
 from app.domain.ciqual import CIQUAL_VERSION, CiqualRow
+from app.domain.suggestions import FOLD_FROM, FOLD_TO, fold_for_match
 
 # Sotto questa somiglianza un alimento non è un candidato: l'AI sceglierebbe fra rumore.
 CANDIDATE_MIN_SIMILARITY = 0.3
@@ -170,14 +171,33 @@ def _escape_like(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _folded_name():
+    """Il nome francese come lo confronta la ricerca: minuscolo, senza accenti, apostrofi
+    e trattini in spazi, spazi (a capo compresi) ridotti a uno."""
+    return func.regexp_replace(
+        func.translate(func.lower(CiqualFood.name_fr), FOLD_FROM, FOLD_TO), r"\s+", " ", "g"
+    )
+
+
 async def search_foods(session: AsyncSession, query: str, limit: int) -> list[CiqualFood]:
     """La ricerca della correzione in Anagrafica: il codice esatto prima, poi il pezzo di
-    nome e la somiglianza. `%` e `_` sono lettere, non jolly."""
-    text = query.strip()
+    nome e la somiglianza. `%` e `_` sono lettere, non jolly.
+
+    Il nome e il testo cercato si piegano come nei suggerimenti (`FOLD_FROM`/`FOLD_TO`):
+    «pates» trova «Pâtes». È la `translate()` e non `unaccent`, che vorrebbe una
+    migrazione per l'estensione; copre ogni lettera dei nomi del file. Il codice esatto
+    si confronta col testo com'è. A parità di `word_similarity` (1 per ogni nome che
+    contiene la parola) vale lo spareggio di `find_candidates`: prima il nome che comincia
+    con la prima parola, poi la `similarity` di tutto il nome, poi il nome.
+    """
+    code = query.strip()
+    text = fold_for_match(code.lower())
     if not text:
         return []
-    score = func.word_similarity(text, CiqualFood.name_fr)
-    exact = CiqualFood.code == text
+    name = _folded_name()
+    score = func.word_similarity(text, name)
+    exact = CiqualFood.code == code
+    starts = name.startswith(_first_word(text), autoescape=True)
     return list(
         (
             await session.execute(
@@ -185,11 +205,17 @@ async def search_foods(session: AsyncSession, query: str, limit: int) -> list[Ci
                 .where(
                     or_(
                         exact,
-                        CiqualFood.name_fr.ilike(f"%{_escape_like(text)}%", escape="\\"),
+                        name.ilike(f"%{_escape_like(text)}%", escape="\\"),
                         score >= SEARCH_MIN_SIMILARITY,
                     )
                 )
-                .order_by(exact.desc(), score.desc(), CiqualFood.name_fr)
+                .order_by(
+                    exact.desc(),
+                    score.desc(),
+                    starts.desc(),
+                    func.similarity(text, name).desc(),
+                    CiqualFood.name_fr,
+                )
                 .limit(limit)
             )
         ).scalars()
