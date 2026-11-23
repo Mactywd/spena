@@ -10,7 +10,7 @@ import { IconX } from "../../components/ui/icons";
 import { Screen } from "../../components/ui/Screen";
 import type { ChatMessage, MealSlot, PlanningChat } from "../../domain/types";
 import { ChangeCard } from "../change-cards/ChangeCard";
-import { ChatComposer, ChatThread } from "../meal-chat/ChatThread";
+import { CONTINUE_TEXT, ChatComposer, ChatThread } from "../meal-chat/ChatThread";
 import { refusalOf, shownRefusal, useChatSender } from "../meal-chat/useChatSender";
 import { SLOT_LABELS, longDayLabel } from "../meals/format";
 import {
@@ -247,6 +247,7 @@ export function PlanningScreen() {
               // la pianificazione non scrive ricette: nessuna modifica da annullare
               onUndo={() => {}}
               onRetry={sender.retry}
+              onContinue={() => sender.sendText(CONTINUE_TEXT)}
               busy={replying}
               renderExtras={extras}
             />

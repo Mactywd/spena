@@ -260,6 +260,25 @@ describe("la chat del piatto", () => {
     second.close();
   });
 
+  it("Continua manda il messaggio fisso, senza `retry_of`", async () => {
+    const interrupted = message({
+      id: "a1", role: "assistant", text: "Ho cambiato gli spinaci.", notice: "Claude si è fermato.",
+      can_continue: true,
+    });
+    const stream = liveStream();
+    const spy = stubFetch((_url, init) =>
+      init?.method === "POST" ? stream.response : [chat({ messages: [interrupted] }), 200]
+    );
+    renderChat();
+    await userEvent.click(await screen.findByRole("button", { name: "Continua" }));
+    await waitFor(() =>
+      expect(requests(spy, "POST", "/api/v1/meals/m1/chat/messages")).toEqual([
+        { text: "Continua da dove ti sei fermato." },
+      ])
+    );
+    stream.close();
+  });
+
   it("un `error` con `chat: null` non svuota la chat: la rilegge, e il messaggio fallito resta con «Riprova»", async () => {
     const stream = liveStream();
     const user = message({ status: "pending" });

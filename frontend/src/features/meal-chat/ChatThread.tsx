@@ -3,6 +3,9 @@ import { Alert } from "../../components/ui/Alert";
 import { Button } from "../../components/ui/Button";
 import type { ChangeCard, ChatMessage, MealProposal, RecipeChange } from "../../domain/types";
 
+/** Il messaggio che «Continua» manda, come se lo scrivesse Mattia. */
+export const CONTINUE_TEXT = "Continua da dove ti sei fermato.";
+
 /** La risposta di Claude mentre arriva: il testo dei `delta`, le modifiche già fatte e,
  * nella pianificazione, le proposte e le schede appena nate. */
 export type StreamingReply = {
@@ -49,22 +52,27 @@ function ChangeLine({
   const lineId = useId();
   const verb = change.created_recipe ? "Ricetta scritta" : "Ricetta aggiornata";
   return (
-    <div className="flex flex-wrap items-center gap-x-2">
-      <p id={lineId} className="min-w-0 py-1 text-sm break-words text-ink-soft">
-        {`${verb}: ${change.summary}${change.undone ? " — annullata" : ""}`}
-      </p>
-      {onUndo && change.undoable && (
-        <Button
-          variant="ghost"
-          className="-mx-2"
-          busy={busy}
-          aria-describedby={lineId}
-          onClick={() => onUndo(change.id)}
-        >
-          Annulla
-        </Button>
+    <>
+      <div className="flex flex-wrap items-center gap-x-2">
+        <p id={lineId} className="min-w-0 py-1 text-sm break-words text-ink-soft">
+          {`${verb}: ${change.summary}${change.undone ? " — annullata" : ""}`}
+        </p>
+        {onUndo && change.undoable && (
+          <Button
+            variant="ghost"
+            className="-mx-2"
+            busy={busy}
+            aria-describedby={lineId}
+            onClick={() => onUndo(change.id)}
+          >
+            Annulla
+          </Button>
+        )}
+      </div>
+      {change.undone && change.kept_note && (
+        <p className="min-w-0 pb-1 text-sm break-words text-ink-soft">{change.kept_note}</p>
       )}
-    </div>
+    </>
   );
 }
 
@@ -80,6 +88,7 @@ export function ChatThread({
   streaming,
   onUndo,
   onRetry,
+  onContinue,
   busy = false,
   renderExtras,
 }: {
@@ -88,6 +97,8 @@ export function ChatThread({
   streaming: StreamingReply | null;
   onUndo: (changeId: string) => void;
   onRetry: (message: ChatMessage) => void;
+  /** «Continua» sotto l'ultima risposta interrotta; senza, il pulsante non c'è (chat senza campo per scrivere). */
+  onContinue?: () => void;
   /** Una richiesta della chat è in volo: «Annulla» e «Riprova» aspettano. */
   busy?: boolean;
   /** Quello che sta sotto un messaggio, dopo le sue modifiche; `null` per niente. */
@@ -110,10 +121,15 @@ export function ChatThread({
               ))}
               {renderExtras && <Extras>{renderExtras(message)}</Extras>}
               {message.status === "sent" && message.notice && (
-                // una risposta fermata a metà (troppi passaggi): il testo c'è, l'avviso lo spiega, niente «Riprova»
+                // una risposta fermata a metà (troppi passaggi): il testo c'è, l'avviso lo spiega, niente «Riprova», ma «Continua» se il server dice che si può
                 <Alert tone="degraded" className={`max-w-full pt-1 ${mine ? "text-right" : ""}`}>
                   {message.notice}
                 </Alert>
+              )}
+              {onContinue && message.status === "sent" && message.can_continue && (
+                <Button variant="ghost" className="-mx-2" busy={busy} onClick={onContinue}>
+                  Continua
+                </Button>
               )}
               {message.status === "failed" && (
                 <div className="flex max-w-full flex-col items-end">
