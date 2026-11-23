@@ -5,6 +5,8 @@ modifica di Claude: «Annulla» lo confronta con lo stato di adesso e, se è anc
 quello, rimette `before`. `changed_parts` dice che cosa evidenziare a video.
 """
 
+import hashlib
+import json
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -118,3 +120,29 @@ def changed_to_json(parts: ChangedParts, order: tuple[LineSnapshot, ...]) -> dic
         "instructions": parts.instructions,
         "description": parts.description,
     }
+
+
+def recipe_version(snapshot: RecipeSnapshot) -> str:
+    """L'impronta di quel che la chat può cambiare: titolo, descrizione, procedimento,
+    porzioni e righe (ordinate per ingrediente). Il costo e il reparto non entrano.
+    Due letture della stessa ricetta danno la stessa versione; non si salva da nessuna parte."""
+    canonical = {
+        "title": snapshot.title,
+        "description": snapshot.description,
+        "instructions": snapshot.instructions,
+        "servings": snapshot.servings,
+        "lines": sorted(
+            (
+                {
+                    "ingredient_id": str(line.ingredient_id),
+                    "role": line.role,
+                    "quantity_text": line.quantity_text,
+                    "note": line.note,
+                }
+                for line in snapshot.lines
+            ),
+            key=lambda d: (d["ingredient_id"], d["role"], d["quantity_text"] or "", d["note"] or ""),
+        ),
+    }
+    text = json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(text.encode()).hexdigest()[:16]

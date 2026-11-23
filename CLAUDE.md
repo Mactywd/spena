@@ -351,9 +351,11 @@ against the SDK's real message types. Spec:
   `docs/superpowers/specs/2026-11-12-pasti-claude-design.md` §5.2, §6.2.
   Every write of a meal's recipe that races with the queue — the queue, the dish chat,
   the manual save, «Annulla» — takes the meal row first (`lock_meal`,
-  `SELECT … FOR UPDATE`); the edit (`PUT /recipes/{id}`) and the recipe's `PATCH` do not
-  yet. A recipe written by hand while Claude's arrives is not lost: the form offers to
-  save it in the recipe book.
+  `SELECT … FOR UPDATE`); the edit (`PUT /recipes/{id}`) and the recipe's `PATCH` take it
+  too now, and the `PUT` refuses an old version of the recipe (409 `recipe_changed`, the
+  form offers «Salva comunque la mia» / «Ricarica la ricetta»). A recipe written by
+  hand while Claude's arrives is not lost: the form offers to save it in the recipe
+  book.
 
   A response that cannot be verified against the real registry is never applied — the
   term stays in the queue. Specs are

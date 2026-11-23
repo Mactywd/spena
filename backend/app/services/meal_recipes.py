@@ -123,28 +123,33 @@ RECIPE_DELETED_MESSAGE = (
 )
 
 
+def recipe_snapshot(recipe: Recipe) -> RecipeSnapshot:
+    """La ricetta com'è nella sessione, con le righe caricate, ordinate per ingrediente."""
+    return RecipeSnapshot(
+        title=recipe.title,
+        description=recipe.description,
+        instructions=recipe.instructions,
+        servings=recipe.servings,
+        lines=tuple(
+            LineSnapshot(ri.ingredient_id, ri.role, ri.quantity_text, ri.note)
+            for ri in sorted(recipe.ingredients, key=lambda ri: str(ri.ingredient_id))
+        ),
+    )
+
+
 async def meal_snapshot(session: AsyncSession, meal: Meal) -> MealSnapshot:
     """Piatto, accompagnamenti e ricetta com'è adesso nel database (la ricetta si rilegge
     con `get_recipe`, e si aggiorna se la sessione la teneva già in memoria).
 
     Le righe non hanno una posizione in tabella: stanno ordinate per ingrediente, così due
     letture della stessa ricetta danno lo stesso snapshot."""
-    recipe_snapshot: RecipeSnapshot | None = None
+    snapshot: RecipeSnapshot | None = None
     if meal.recipe_id is not None:
         recipe = await get_recipe(session, meal.recipe_id)
         if recipe is not None:
             await session.refresh(recipe)
-            recipe_snapshot = RecipeSnapshot(
-                title=recipe.title,
-                description=recipe.description,
-                instructions=recipe.instructions,
-                servings=recipe.servings,
-                lines=tuple(
-                    LineSnapshot(ri.ingredient_id, ri.role, ri.quantity_text, ri.note)
-                    for ri in sorted(recipe.ingredients, key=lambda ri: str(ri.ingredient_id))
-                ),
-            )
-    return MealSnapshot(dish=meal.dish, sides=meal.sides, recipe=recipe_snapshot)
+            snapshot = recipe_snapshot(recipe)
+    return MealSnapshot(dish=meal.dish, sides=meal.sides, recipe=snapshot)
 
 
 def _invalid(exc: ValidationError, what: str) -> RecipeWriteRefused:

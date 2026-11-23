@@ -331,3 +331,83 @@ async def test_scrivi_la_ricetta_dopo_la_coda_non_lascia_orfane(logged_client, d
     assert dopo == prima
     pasto = (await logged_client.get(f"{M}/{meal.id}")).json()
     assert pasto["recipe"]["title"] == "Pasta della coda"
+
+
+CLAUDE_CHANGED = "Claude ha cambiato la ricetta mentre la correggevi."
+
+
+def _corpo_di(dettaglio, titolo, **extra):
+    """Il modulo com'era quando si è aperto (dal dettaglio), con un titolo nuovo."""
+    return {
+        "title": titolo, "description": dettaglio["description"],
+        "category": dettaglio["category"], "instructions": dettaglio["instructions"],
+        "servings": dettaglio["servings"], "cost": dettaglio["cost"],
+        "ingredients": [
+            {"ingredient_id": i["ingredient_id"], "role": i["role"],
+             "quantity_text": i["quantity_text"], "note": i["note"]}
+            for i in dettaglio["ingredients"]
+        ],
+        **extra,
+    }
+
+
+async def _la_chat_scrive(session, meal, pasta, titolo="Pasta della chat"):
+    await write_meal_recipe(
+        session, meal,
+        MealRecipeDraft(
+            title=titolo, description=None, instructions="Cuoci di più.", servings=2,
+            lines=(DraftLine(pasta.id, None, None, "primary", "200 g", None),),
+            summary="dalla chat",
+        ),
+    )
+    await session.commit()
+
+
+async def test_il_put_con_la_versione_vecchia_e_409(logged_client, db_session, pasta):
+    """Review Focus 3: il modulo è aperto, la chat riscrive la ricetta, poi si salva il
+    modulo. Il server confronta le versioni e rifiuta, senza scrivere niente."""
+    meal = await _pasto(db_session)
+    ricetta = await _scritta_per(logged_client, pasta, meal)
+    aperta = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
+    await _la_chat_scrive(db_session, meal, pasta)
+
+    r = await logged_client.put(
+        f"{R}/{ricetta['id']}",
+        json=_corpo_di(aperta, "Pasta mia", expected_version=aperta["version"]),
+    )
+
+    assert r.status_code == 409, r.text
+    assert r.json() == {"code": "recipe_changed", "detail": CLAUDE_CHANGED}
+    dopo = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
+    assert dopo["title"] == "Pasta della chat"
+    assert dopo["instructions"] == "Cuoci di più."
+
+
+async def test_il_put_senza_versione_scrive_come_oggi(logged_client, db_session, pasta):
+    """Review Focus 4: un client vecchio, o «Salva comunque la mia», non manda la versione."""
+    meal = await _pasto(db_session)
+    ricetta = await _scritta_per(logged_client, pasta, meal)
+    aperta = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
+    await _la_chat_scrive(db_session, meal, pasta)
+
+    r = await logged_client.put(f"{R}/{ricetta['id']}", json=_corpo_di(aperta, "Pasta mia"))
+
+    assert r.status_code == 200, r.text
+    assert r.json()["title"] == "Pasta mia"
+    assert r.json()["instructions"] == aperta["instructions"]
+    assert r.json()["meal"]["id"] == str(meal.id)
+
+
+async def test_il_put_con_la_versione_giusta_scrive(logged_client, db_session, pasta):
+    meal = await _pasto(db_session)
+    ricetta = await _scritta_per(logged_client, pasta, meal)
+    aperta = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
+
+    r = await logged_client.put(
+        f"{R}/{ricetta['id']}",
+        json=_corpo_di(aperta, "Pasta mia", expected_version=aperta["version"]),
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["title"] == "Pasta mia"
+    assert r.json()["version"] != aperta["version"]

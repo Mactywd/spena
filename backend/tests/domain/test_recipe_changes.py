@@ -64,3 +64,39 @@ def test_lo_snapshot_va_e_torna_dal_json():
     assert snapshot_from_json(data) == snap
     empty = MealSnapshot("Pasta", None, None)
     assert snapshot_from_json(snapshot_to_json(empty)) == empty
+
+
+# --- la versione ---------------------------------------------------------------
+
+from app.domain.recipe_changes import recipe_version  # noqa: E402
+
+
+def test_la_stessa_ricetta_ha_la_stessa_versione():
+    a = recipe(line(A), line(B, "secondary", "q.b."))
+    b = recipe(line(B, "secondary", "q.b."), line(A))
+    assert recipe_version(a) == recipe_version(b)
+    assert len(recipe_version(a)) == 16
+    int(recipe_version(a), 16)
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        recipe(line(A), line(B, "secondary", "q.b."), title="Altro"),
+        recipe(line(A), line(B, "secondary", "q.b."), description="Nuova"),
+        recipe(line(A), line(B, "secondary", "q.b."), instructions="Cuoci di più."),
+        recipe(line(A), line(B, "secondary", "q.b."), servings=4),
+        recipe(line(A, text="200 g"), line(B, "secondary", "q.b.")),
+        recipe(line(A, "secondary"), line(B, "secondary", "q.b.")),
+        recipe(line(A, note="a fuoco basso"), line(B, "secondary", "q.b.")),
+    ],
+    ids=["titolo", "descrizione", "procedimento", "porzioni", "dose", "ruolo", "nota"],
+)
+def test_ogni_campo_cambia_la_versione(changed):
+    assert recipe_version(changed) != recipe_version(BEFORE)
+
+
+def test_il_costo_non_cambia_la_versione():
+    # il costo non è nello snapshot: la versione non può dipenderne
+    assert "cost" not in RecipeSnapshot.__dataclass_fields__
+    assert recipe_version(BEFORE) == recipe_version(replace(BEFORE))

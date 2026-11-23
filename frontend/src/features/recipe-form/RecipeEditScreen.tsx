@@ -1,25 +1,94 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { fetchRecipe, updateRecipe } from "../recipes/api";
+import { fetchRecipe, isRecipeChanged, updateRecipe } from "../recipes/api";
 import { ApiError } from "../../api/client";
 import { Alert } from "../../components/ui/Alert";
 import { Screen } from "../../components/ui/Screen";
 import { buttonClasses } from "../../components/ui/buttonClasses";
 import { RecipeForm } from "./RecipeForm";
-import { valuesFromRecipe } from "./formModel";
+import { recipeBody, valuesFromRecipe } from "./formModel";
+import { Button } from "../../components/ui/Button";
 import { useNotice } from "../../components/ui/noticeContext";
 import type { RecipeDetail } from "../../domain/types";
 
 const TITLE = "Modifica la ricetta";
 
-function EditForm({ recipe, mealId }: { recipe: RecipeDetail; mealId: string | null }) {
+function EditForm({
+  recipe,
+  mealId,
+  onReload,
+}: {
+  recipe: RecipeDetail;
+  mealId: string | null;
+  onReload: (fresh: RecipeDetail) => void;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const notice = useNotice();
   // Una volta sola, dalla ricetta caricata: una rilettura in background mentre si
   // scrive (il fuoco che torna alla finestra) non deve cancellare il lavoro.
   const [values, setValues] = useState(() => valuesFromRecipe(recipe));
+  // E la versione va congelata insieme ai valori: se una rilettura portasse la nuova
+  // in `recipe` e il modulo la mandasse coi valori vecchi, il controllo non scatterebbe.
+  const [version] = useState(() => recipe.version);
+  // la frase del server quando la ricetta è cambiata dopo che il modulo l'ha letta
+  const [changed, setChanged] = useState<string | null>(null);
+  const [overwriting, setOverwriting] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [reloadError, setReloadError] = useState(false);
+
+  function saved(saved: RecipeDetail) {
+    // la risposta della PUT è la ricetta a 1×, la stessa della GET senza porzioni:
+    // il dettaglio la mostra subito, e «Salvata.» non sta mai sopra la versione di
+    // prima mentre la rilettura è in viaggio. Le altre chiavi (le porzioni, il
+    // ricettario, le categorie) si rileggono come prima.
+    queryClient.setQueryData(["recipe", recipe.id, null], saved);
+    void queryClient.invalidateQueries({ queryKey: ["recipe", recipe.id] });
+    void queryClient.invalidateQueries({ queryKey: ["recipes"] });
+    void queryClient.invalidateQueries({ queryKey: ["recipe-categories"] });
+    // «Salvata.» dall'avviso unico (T4), non più da uno stato della cronologia che il
+    // dettaglio doveva leggere e poi pulire
+    notice({ text: "Salvata." });
+    if (mealId) {
+      // da un pasto si torna al pasto, che mostra la ricetta cambiata
+      void queryClient.invalidateQueries({ queryKey: ["meals"] });
+      navigate(`/pasti/${mealId}`, { replace: true });
+      return;
+    }
+    // `replace`: il modulo lascia il posto al dettaglio, e «indietro» (quello di
+    // Android per primo) non riapre un modulo già salvato
+    navigate(`/ricette/${recipe.id}`, { replace: true });
+  }
+
+  async function overwrite() {
+    setOverwriting(true);
+    setReloadError(false);
+    try {
+      // senza versione: scrive comunque, come un client che non la manda
+      saved(await updateRecipe(recipe.id, recipeBody(values)));
+    } catch (err) {
+      if (isRecipeChanged(err)) {
+        setChanged(((err.body as { detail?: unknown }).detail as string) ?? changed);
+      } else {
+        setReloadError(true);
+      }
+    } finally {
+      setOverwriting(false);
+    }
+  }
+
+  async function reload() {
+    setReloading(true);
+    setReloadError(false);
+    try {
+      onReload(await fetchRecipe(recipe.id));
+    } catch {
+      setReloadError(true);
+    } finally {
+      setReloading(false);
+    }
+  }
 
   return (
     <>
@@ -31,31 +100,38 @@ function EditForm({ recipe, mealId }: { recipe: RecipeDetail; mealId: string | n
       <RecipeForm
         values={values}
         onChange={setValues}
-        save={(body) => updateRecipe(recipe.id, body)}
-        onSaved={(saved) => {
-          // la risposta della PUT è la ricetta a 1×, la stessa della GET senza porzioni:
-          // il dettaglio la mostra subito, e «Salvata.» non sta mai sopra la versione di
-          // prima mentre la rilettura è in viaggio. Le altre chiavi (le porzioni, il
-          // ricettario, le categorie) si rileggono come prima.
-          queryClient.setQueryData(["recipe", recipe.id, null], saved);
-          void queryClient.invalidateQueries({ queryKey: ["recipe", recipe.id] });
-          void queryClient.invalidateQueries({ queryKey: ["recipes"] });
-          void queryClient.invalidateQueries({ queryKey: ["recipe-categories"] });
-          // «Salvata.» dall'avviso unico (T4), non più da uno stato della cronologia che il
-          // dettaglio doveva leggere e poi pulire
-          notice({ text: "Salvata." });
-          if (mealId) {
-            // da un pasto si torna al pasto, che mostra la ricetta cambiata
-            void queryClient.invalidateQueries({ queryKey: ["meals"] });
-            navigate(`/pasti/${mealId}`, { replace: true });
-            return;
+        save={async (body) => {
+          setChanged(null);
+          setReloadError(false);
+          try {
+            return await updateRecipe(recipe.id, body, version);
+          } catch (err) {
+            if (isRecipeChanged(err)) {
+              const detail = (err.body as { detail?: unknown }).detail;
+              setChanged(typeof detail === "string" ? detail : "La ricetta è cambiata mentre la correggevi.");
+            }
+            throw err;
           }
-          // `replace`: il modulo lascia il posto al dettaglio, e «indietro» (quello di
-          // Android per primo) non riapre un modulo già salvato
-          navigate(`/ricette/${recipe.id}`, { replace: true });
         }}
+        onSaved={saved}
         submitLabel="Salva le modifiche"
       />
+      {changed !== null && (
+        <div className="space-y-3 pt-4">
+          <Alert tone="note">{changed}</Alert>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" busy={overwriting} onClick={() => void overwrite()}>
+              Salva comunque la mia
+            </Button>
+            <Button variant="secondary" busy={reloading} onClick={() => void reload()}>
+              Ricarica la ricetta
+            </Button>
+          </div>
+        </div>
+      )}
+      {reloadError && (
+        <Alert>Non sono riuscito a completare l'operazione. Il modulo è com'era: riprova.</Alert>
+      )}
     </>
   );
 }
@@ -76,6 +152,8 @@ export function RecipeEditScreen() {
   const back = mealId
     ? { to: `/pasti/${mealId}`, label: "Pasto" }
     : { to: `/ricette/${id}`, label: "Ricetta" };
+  const [fresh, setFresh] = useState<RecipeDetail | null>(null);
+  const [reloads, setReloads] = useState(0);
   const { data: recipe, error, isError, isFetchedAfterMount, refetch } = useQuery({
     queryKey: ["recipe", id, null],
     queryFn: () => fetchRecipe(id),
@@ -136,9 +214,19 @@ export function RecipeEditScreen() {
     );
   }
 
+  const current = fresh ?? recipe;
   return (
     <Screen title={TITLE} back={back}>
-      <EditForm recipe={recipe} mealId={mealId} />
+      {/* «Ricarica la ricetta» cambia la chiave: il modulo riparte da `valuesFromRecipe` */}
+      <EditForm
+        key={reloads}
+        recipe={current}
+        mealId={mealId}
+        onReload={(next) => {
+          setFresh(next);
+          setReloads((n) => n + 1);
+        }}
+      />
     </Screen>
   );
 }

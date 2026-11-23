@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createTestQueryClient } from "../../test/queryClient";
@@ -10,7 +10,7 @@ import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
-  id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
+  version: "v1", id: "r1", title: "Pasta al pomodoro", description: null, source: "manual",
   missing: 1, cookable: false, missing_names: ["Basilico"], image_url: null,
   prep_minutes: null, cook_minutes: null, category: null, cost: null, archived_at: null, main_department: null,
   instructions: "Cuoci.", servings: 2, source_ref: null, scaled_to: null,
@@ -115,6 +115,154 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     expect(corpo.ingredients).toEqual([{ ingredient_id: "i1", role: "primary", quantity_text: "180 g" }]);
     // la provenienza non si manda: non si cambia
     expect(corpo.source).toBeUndefined();
+  });
+
+  it("salvando manda la versione letta", async () => {
+    const spy = stubFetch((_path, init) => (init?.method === "PUT" ? [DETAIL, 200] : undefined));
+    renderEdit();
+
+    await screen.findByDisplayValue("Pasta al pomodoro");
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+    await screen.findByText("Salvata.");
+
+    const put = spy.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    expect(JSON.parse(String(put[1]!.body)).expected_version).toBe("v1");
+  });
+
+  describe("se la ricetta è cambiata mentre la correggevi", () => {
+    const CAMBIATA = "Claude ha cambiato la ricetta mentre la correggevi.";
+    const NUOVA = { ...DETAIL, version: "v2", title: "Pasta di Claude" };
+
+    function conflitto(reload: RecipeDetail = NUOVA) {
+      let puts = 0;
+      let reads = 0;
+      const spy = stubFetch((path, init) => {
+        if (init?.method === "PUT") {
+          puts += 1;
+          if (puts === 1) return [{ code: "recipe_changed", detail: CAMBIATA }, 409];
+          return [DETAIL, 200];
+        }
+        if (path.endsWith("/recipes/r1")) {
+          reads += 1;
+          return [reads > 1 ? reload : DETAIL, 200];
+        }
+        return undefined;
+      });
+      return spy;
+    }
+
+    it("lo dice e lascia scegliere, tenendo quel che si è scritto", async () => {
+      conflitto();
+      renderEdit();
+
+      const titolo = await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.clear(titolo);
+      await userEvent.type(titolo, "La mia pasta");
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+
+      expect(await screen.findByText(CAMBIATA)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Salva comunque la mia" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ricarica la ricetta" })).toBeInTheDocument();
+      expect(screen.getByDisplayValue("La mia pasta")).toBeInTheDocument();
+      // niente frase generica accanto al pulsante
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+    });
+
+    it("«Salva comunque la mia» manda la PUT senza versione", async () => {
+      const spy = conflitto();
+      renderEdit();
+
+      await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Salva comunque la mia" }));
+
+      expect(await screen.findByText("Salvata.")).toBeInTheDocument();
+      const puts = spy.mock.calls.filter(([, init]) => init?.method === "PUT");
+      expect(puts).toHaveLength(2);
+      expect(JSON.parse(String(puts[1][1]!.body)).expected_version).toBeUndefined();
+    });
+
+    it("«Ricarica la ricetta» rifà il modulo dalla ricetta nuova", async () => {
+      conflitto();
+      renderEdit();
+
+      const titolo = await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.clear(titolo);
+      await userEvent.type(titolo, "La mia pasta");
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Ricarica la ricetta" }));
+
+      expect(await screen.findByDisplayValue("Pasta di Claude")).toBeInTheDocument();
+      expect(screen.queryByDisplayValue("La mia pasta")).toBeNull();
+      expect(screen.queryByText(CAMBIATA)).toBeNull();
+    });
+
+    it("«Ricarica la ricetta» rimette anche le righe tolte", async () => {
+      conflitto();
+      renderEdit();
+
+      await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.click(screen.getByRole("button", { name: "Togli basilico" }));
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Ricarica la ricetta" }));
+
+      await screen.findByDisplayValue("Pasta di Claude");
+      expect(screen.getByRole("button", { name: "Togli basilico" })).toBeInTheDocument();
+    });
+
+    it("una rilettura in sottofondo non cancella il modulo, e il salvataggio dopo trova il conflitto", async () => {
+      let reads = 0;
+      stubFetch((path, init) => {
+        if (init?.method === "PUT") {
+          const sent = JSON.parse(String(init.body)).expected_version;
+          // il server ha già la v2: la versione letta all'apertura non passa
+          return sent === "v2" ? [DETAIL, 200] : [{ code: "recipe_changed", detail: CAMBIATA }, 409];
+        }
+        if (path.endsWith("/recipes/r1")) {
+          reads += 1;
+          return [reads > 1 ? NUOVA : DETAIL, 200];
+        }
+        return undefined;
+      });
+      let client!: QueryClient;
+      renderEdit("/ricette/r1/modifica", (c) => { client = c; });
+
+      const titolo = await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.clear(titolo);
+      await userEvent.type(titolo, "La mia pasta");
+      // il fuoco torna alla finestra: la query si rilegge e porta la v2
+      await act(async () => {
+        await client.refetchQueries({ queryKey: ["recipe", "r1", null] });
+      });
+      expect(reads).toBeGreaterThan(1);
+      expect(screen.getByDisplayValue("La mia pasta")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      expect(await screen.findByText(CAMBIATA)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Salva comunque la mia" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ricarica la ricetta" })).toBeInTheDocument();
+      expect(screen.getByDisplayValue("La mia pasta")).toBeInTheDocument();
+    });
+
+    it("se «Salva comunque la mia» fallisce per altro, le due scelte restano e l'errore sta sotto", async () => {
+      let puts = 0;
+      stubFetch((_path, init) => {
+        if (init?.method !== "PUT") return undefined;
+        puts += 1;
+        if (puts === 1) return [{ code: "recipe_changed", detail: CAMBIATA }, 409];
+        return [{ detail: "boom" }, 500];
+      });
+      renderEdit();
+
+      await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Salva comunque la mia" }));
+
+      expect(await screen.findByText(/Non sono riuscito a completare l'operazione/)).toBeInTheDocument();
+      expect(screen.getByText(CAMBIATA)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Salva comunque la mia" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ricarica la ricetta" })).toBeInTheDocument();
+    });
   });
 
   it("dopo il salvataggio, «indietro» non riporta al modulo", async () => {

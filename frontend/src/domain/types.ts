@@ -162,6 +162,8 @@ export interface RecipeAnchor {
 }
 
 export interface RecipeDetail extends RecipeSummary {
+  /** L'impronta di quel che la chat può cambiare: la calcola il server, il client la rimanda. */
+  version: string;
   instructions: string;
   servings: number | null;
   source_ref: string | null;

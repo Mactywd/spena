@@ -9,7 +9,7 @@ import { NoticeProvider } from "../../components/ui/NoticeProvider";
 import type { PantryItem, RecipeDetail } from "../../domain/types";
 
 const DETAIL: RecipeDetail = {
-  id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
+  version: "v1", id: "r1", title: "Pasta al pomodoro", description: "Di sempre", source: "manual",
   missing: 2, cookable: false, missing_names: ["Basilico", "Pomodoro"], image_url: null, prep_minutes: null, cook_minutes: null,
   category: null, cost: null, archived_at: null, main_department: null, instructions: "Cuoci.",
   servings: 2, source_ref: null, scaled_to: null, owned_by_import: false, derived_from: null,

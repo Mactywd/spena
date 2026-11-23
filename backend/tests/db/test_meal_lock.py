@@ -8,6 +8,7 @@ vede solo fra due transazioni vere. «Aspetta» è un `wait_for` di 0,3 secondi 
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 import os
 import uuid
 import subprocess
@@ -432,3 +433,231 @@ async def test_annulla_prende_il_lucchetto_prima_di_guardare_se_claude_risponde(
     async with maker() as check:
         meal = await get_meal(check, meal_id)
         assert meal.recipe is not None and meal.recipe.title == "Frittata della coda"
+
+
+@asynccontextmanager
+async def _client(maker, monkeypatch):
+    """Il client HTTP dell'app, autenticato, su sessioni vere del database di questi test."""
+    from app.core.config import get_settings
+    from app.core.db import get_session
+    from app.core.security import hash_password
+    from app.main import app
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("APP_PASSWORD_HASH", hash_password("test"))
+    monkeypatch.setenv("SESSION_SECRET", "segreto-di-test")
+
+    async def sessione_vera():
+        async with maker() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = sessione_vera
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            await c.post("/api/v1/auth/login", json={"password": "test"})
+            yield c
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+async def _ricetta_del_pasto(maker, meal_id, uova_id, *, in_book: bool) -> uuid.UUID:
+    """La coda scrive la ricetta del pasto; `in_book` la mette nel ricettario («Salva»)."""
+    await _scrivi_e_committa(maker, meal_id, uova_id)
+    async with maker() as setup:
+        meal = await get_meal(setup, meal_id)
+        meal.recipe.in_book = in_book
+        await setup.commit()
+        return meal.recipe_id
+
+
+async def _patch_mentre_si_elimina_il_pasto(maker, monkeypatch, meal_id, recipe_id, body):
+    """A tiene il pasto; il `PATCH` parte e aspetta il lucchetto; A elimina il pasto e
+    committa; il `PATCH` finisce sul pasto che non c'è più."""
+    async with _client(maker, monkeypatch) as c, maker() as a:
+        meal_a = await lock_meal(a, meal_id)
+        assert meal_a is not None
+        patch = asyncio.create_task(c.patch(f"/api/v1/recipes/{recipe_id}", json=body))
+        await _aspetta(patch)
+        await delete_meal(a, meal_a)
+        await a.commit()
+        return await asyncio.wait_for(patch, 5)
+
+
+async def test_elimina_dal_ricettario_mentre_si_elimina_il_pasto_non_lascia_orfane(
+    maker, dati, monkeypatch
+):
+    """Review Focus 1: «Elimina» su una ricetta del pasto nel ricettario la toglierebbe dal
+    ricettario lasciandola al pasto; ma il pasto se ne va mentre il `PATCH` aspetta. Col
+    pasto riletto dopo il lucchetto, la ricetta si elimina davvero e non resta orfana."""
+    meal_id, uova_id = dati
+    recipe_id = await _ricetta_del_pasto(maker, meal_id, uova_id, in_book=True)
+
+    r = await _patch_mentre_si_elimina_il_pasto(
+        maker, monkeypatch, meal_id, recipe_id, {"archived": True}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["archived_at"] is not None
+    async with maker() as check:
+        assert await get_meal(check, meal_id) is None
+        recipe = await check.get(Recipe, recipe_id)
+        assert recipe.archived_at is not None
+        assert await _orfane(check) == 0
+
+
+async def test_togli_dal_ricettario_mentre_si_elimina_il_pasto_non_lascia_orfane(
+    maker, dati, monkeypatch
+):
+    """«Togli dal ricettario» mentre il pasto se ne va: il pasto non c'è più, e una ricetta
+    viva fuori dal ricettario senza pasto è proprio l'orfana. 409, e resta nel ricettario."""
+    from app.api.recipes import NOT_A_MEAL_RECIPE
+
+    meal_id, uova_id = dati
+    recipe_id = await _ricetta_del_pasto(maker, meal_id, uova_id, in_book=True)
+
+    r = await _patch_mentre_si_elimina_il_pasto(
+        maker, monkeypatch, meal_id, recipe_id, {"in_book": False}
+    )
+
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"] == NOT_A_MEAL_RECIPE
+    async with maker() as check:
+        recipe = await check.get(Recipe, recipe_id)
+        assert recipe.in_book is True and recipe.archived_at is None
+        assert await _orfane(check) == 0
+
+
+async def test_salva_nel_ricettario_mentre_si_elimina_il_pasto(maker, dati, monkeypatch):
+    """Review Focus 2: l'eliminazione del pasto, col pasto bloccato, elimina la sua ricetta
+    fuori dal ricettario. «Salva nel ricettario» che arriva in quel momento aspetta, rilegge
+    la ricetta eliminata e risponde 409: mai una ricetta eliminata nel ricettario con un 200."""
+    from app.api.recipes import RECIPE_ARCHIVED
+
+    meal_id, uova_id = dati
+    recipe_id = await _ricetta_del_pasto(maker, meal_id, uova_id, in_book=False)
+
+    async with _client(maker, monkeypatch) as c, maker() as a:
+        meal_a = await lock_meal(a, meal_id)
+        assert meal_a is not None
+        await delete_meal(a, meal_a)
+        patch = asyncio.create_task(
+            c.patch(f"/api/v1/recipes/{recipe_id}", json={"in_book": True})
+        )
+        await _aspetta(patch)
+        await a.commit()
+        r = await asyncio.wait_for(patch, 5)
+
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"] == RECIPE_ARCHIVED
+    async with maker() as check:
+        assert await get_meal(check, meal_id) is None
+        eliminate_nel_ricettario = (
+            await check.execute(
+                select(func.count()).select_from(Recipe).where(
+                    Recipe.in_book.is_(True), Recipe.archived_at.is_not(None)
+                )
+            )
+        ).scalar_one()
+        assert eliminate_nel_ricettario == 0
+        assert await _orfane(check) == 0
+
+
+def _corpo_put(dettaglio, titolo, **extra):
+    """Il modulo com'era quando si è aperto (dal dettaglio), con un titolo nuovo."""
+    return {
+        "title": titolo, "description": dettaglio["description"],
+        "category": dettaglio["category"], "instructions": dettaglio["instructions"],
+        "servings": dettaglio["servings"], "cost": dettaglio["cost"],
+        "ingredients": [
+            {"ingredient_id": i["ingredient_id"], "role": i["role"],
+             "quantity_text": i["quantity_text"], "note": i["note"]}
+            for i in dettaglio["ingredients"]
+        ],
+        **extra,
+    }
+
+
+async def test_il_put_aspetta_la_chat_e_poi_dice_che_e_cambiata(maker, dati, monkeypatch):
+    """Review Focus 3, la chat prima: A scrive la ricetta col pasto bloccato e non ha ancora
+    committato; il `PUT` del modulo aperto prima aspetta il pasto, rilegge la ricetta dopo il
+    `commit` di A e risponde 409 `recipe_changed`. La scrittura della chat resta."""
+    meal_id, uova_id = dati
+    recipe_id = await _ricetta_del_pasto(maker, meal_id, uova_id, in_book=False)
+
+    async with _client(maker, monkeypatch) as c, maker() as a:
+        aperta = (await c.get(f"/api/v1/recipes/{recipe_id}")).json()
+        meal_a = await get_meal(a, meal_id)
+        await write_meal_recipe(a, meal_a, _draft(uova_id, title="Frittata della chat"))
+        put = asyncio.create_task(
+            c.put(
+                f"/api/v1/recipes/{recipe_id}",
+                json=_corpo_put(aperta, "Frittata mia", expected_version=aperta["version"]),
+            )
+        )
+        await _aspetta(put)
+        await a.commit()
+        r = await asyncio.wait_for(put, 5)
+
+    assert r.status_code == 409, r.text
+    assert r.json() == {
+        "code": "recipe_changed",
+        "detail": "Claude ha cambiato la ricetta mentre la correggevi.",
+    }
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert meal.recipe_id == recipe_id
+        assert meal.recipe.title == "Frittata della chat"
+        assert await _orfane(check) == 0
+
+
+async def test_la_chat_aspetta_il_put_e_poi_si_ferma(maker, dati, monkeypatch):
+    """Review Focus 3, il `PUT` prima: tiene il pasto (fermo appena prima del `commit`), la
+    chat con l'istantanea di prima aspetta, e dopo il `commit` si ferma con
+    `STALE_WRITE_MESSAGE`. La scrittura del modulo resta."""
+    from app.api import recipes as recipes_api
+    from app.services.meal_recipes import STALE_WRITE_MESSAGE, meal_snapshot
+
+    meal_id, uova_id = dati
+    recipe_id = await _ricetta_del_pasto(maker, meal_id, uova_id, in_book=False)
+    original = recipes_api.adopt_import_page
+    dentro, via = asyncio.Event(), asyncio.Event()
+
+    async def adozione_ferma(*args, **kwargs):
+        dentro.set()
+        await via.wait()
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(recipes_api, "adopt_import_page", adozione_ferma)
+    try:
+        async with _client(maker, monkeypatch) as c, maker() as b:
+            aperta = (await c.get(f"/api/v1/recipes/{recipe_id}")).json()
+            meal_b = await get_meal(b, meal_id)
+            visto = await meal_snapshot(b, meal_b)  # quel che Claude ha letto
+            put = asyncio.create_task(
+                c.put(
+                    f"/api/v1/recipes/{recipe_id}",
+                    json=_corpo_put(aperta, "Frittata mia", expected_version=aperta["version"]),
+                )
+            )
+            await asyncio.wait_for(dentro.wait(), 5)
+            chat = asyncio.create_task(
+                write_meal_recipe(
+                    b, meal_b, _draft(uova_id, title="Frittata della chat"), expected=visto
+                )
+            )
+            await _aspetta(chat)
+            via.set()
+            r = await asyncio.wait_for(put, 5)
+            with pytest.raises(RecipeWriteRefused) as refused:
+                await asyncio.wait_for(chat, 5)
+            await b.rollback()
+    finally:
+        via.set()
+
+    assert r.status_code == 200, r.text
+    assert refused.value.message == STALE_WRITE_MESSAGE
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert meal.recipe.title == "Frittata mia"
+        assert await _orfane(check) == 0
