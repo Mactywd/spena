@@ -581,7 +581,7 @@ async def test_la_ricetta_cambiata_fra_la_lettura_e_il_lucchetto_ha_il_vettore_g
         await write_meal_recipe(session, meal, _draft(uova_id))
         await session.commit()
 
-    assert [title for title, _ in chiamate] == ["Frittata della coda"]
+    assert chiamate == [("Frittata della coda", False)]
     async with maker() as check:
         meal = await get_meal(check, meal_id)
         assert meal.recipe.title == "Frittata della coda"

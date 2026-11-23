@@ -499,6 +499,22 @@ async def test_una_riga_smarcata_su_una_scheda_ancora_proposta_tiene_la_voce(
     assert await inverse(db_session) == []
 
 
+async def test_una_riga_modificabile_su_una_scheda_proposta_prima_tiene_la_voce(
+    db_session, mondo
+):
+    """B è proposta PRIMA che A metta il pesto in lista: la riga di B è modificabile
+    (non «Già in lista.») e con `applied` NULL: la tiene solo il ramo «scheda proposta»."""
+    pesto = mondo["ing"]["pesto"]
+    scheda_b = await propose_card(
+        db_session, meals=[mondo["B"]], pantry=[], shopping=[ListProposal(pesto.id, "Pesto")]
+    )
+    (riga_b,) = righe(scheda_b, "list")
+    assert riga_b.editable is True and riga_b.applied is None
+    await applicata(db_session, [mondo["A"]], [], [ListProposal(pesto.id, "Pesto")])
+    await delete_meal(db_session, mondo["A"])
+    assert await inverse(db_session) == []
+
+
 async def test_una_scheda_scartata_non_tiene_la_voce_in_lista(db_session, mondo):
     pesto = await _scheda_a_con_pesto_in_lista(db_session, mondo)
     scheda_b = await propose_card(

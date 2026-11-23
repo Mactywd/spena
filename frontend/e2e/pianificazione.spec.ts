@@ -236,10 +236,9 @@ test("la risposta interrotta ha Continua", async ({ page }) => {
 
     await continua.click();
 
-    // senza Claude il giro è rifiutato, come ogni altro messaggio della chat
+    // senza Claude il giro è rifiutato e il messaggio non si perde: torna nel campo
     await expect(page.getByText(SENZA_CHIAVE).first()).toBeVisible();
-    // il messaggio non si perde: «Continua» è ancora lì per riprovare
-    await expect(page.getByRole("button", { name: "Continua", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox")).toHaveValue("Continua da dove ti sei fermato.");
   } finally {
     pulisci();
   }
