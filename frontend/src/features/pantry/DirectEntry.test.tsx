@@ -60,16 +60,17 @@ function posts(spy: ReturnType<typeof stubRoutedFetch>, suffix: string) {
     .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
 }
 
-function renderEntry(door: EntryDoor) {
+function renderEntry(door: EntryDoor, undoneItemIds: ReadonlySet<string> = new Set()) {
   const onEntered = vi.fn();
   const onClose = vi.fn();
   const client = createTestQueryClient();
-  render(
+  const tree = (undone: ReadonlySet<string>) => (
     <QueryClientProvider client={client}>
-      <DirectEntry door={door} onEntered={onEntered} onClose={onClose} />
+      <DirectEntry door={door} onEntered={onEntered} onClose={onClose} undoneItemIds={undone} />
     </QueryClientProvider>
   );
-  return { onEntered, onClose };
+  const { rerender } = render(tree(undoneItemIds));
+  return { onEntered, onClose, undo: (ids: string[]) => rerender(tree(new Set(ids))) };
 }
 
 async function readCode(code: string) {
@@ -217,6 +218,19 @@ describe("DirectEntry, «Scansiona»", () => {
       await screen.findByText("L'hai appena messo in dispensa: se è un'altra confezione, mettila pure.")
     ).toBeDefined();
     expect(posts(spy, "/pantry")).toHaveLength(1);
+  });
+
+  it("dopo un annullamento la nota sparisce", async () => {
+    stubRoutedFetch(() => [inCatalog(FAGE)]);
+    const { undo } = renderEntry({ kind: "scan" });
+    await readCode("52010");
+    await userEvent.click(await screen.findByRole("button", { name: "Metti in dispensa" }));
+    await screen.findByRole("heading", { name: "Codice a barre" });
+    await readCode("52010");
+    const nota = "L'hai appena messo in dispensa: se è un'altra confezione, mettila pure.";
+    expect(await screen.findByText(nota)).toBeDefined();
+    undo([CREATED.id]);
+    expect(screen.queryByText(nota)).toBeNull();
   });
 
   it("un codice nuovo: l'ingrediente, poi il modulo già compilato senza la domanda, poi la scheda", async () => {

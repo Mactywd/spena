@@ -1375,6 +1375,48 @@ describe("PantryScreen, la serie della scansione (S3, S14, S15, 2026-11-18)", ()
   const chiudiIlPannello = () =>
     fireEvent.click(screen.getByRole("button", { name: "Chiudi l'aggiunta" }));
 
+  const NOTA = "L'hai appena messo in dispensa: se è un'altra confezione, mettila pure.";
+
+  /** Una confezione entra in serie e l'avviso offre «Annulla»; il PATCH risponde come dice `patch`. */
+  async function entraEToccaAnnulla(patch: [unknown, number]) {
+    const base = serieFinta(ITEMS, [P9], undefined);
+    const spy = vi.fn(async (url: unknown, init?: RequestInit) =>
+      init?.method === "PATCH"
+        ? new Response(JSON.stringify(patch[0]), { status: patch[1] })
+        : base(url, init)
+    );
+    vi.stubGlobal("fetch", spy);
+    renderScreen();
+    await scansiona();
+    await leggi("52010");
+    await screen.findByRole("heading", { name: "Codice a barre" });
+    // l'«Annulla» dell'avviso, non quello dello scanner
+    const avviso = (await screen.findByText("In dispensa: Fage Total 0%", { exact: false })).closest(
+      '[role="status"]'
+    ) as HTMLElement;
+    fireEvent.click(within(avviso).getByRole("button", { name: "Annulla" }));
+    return spy;
+  }
+
+  it("«Annulla» nell'avviso toglie la nota della serie", async () => {
+    const spy = await entraEToccaAnnulla([P9, 200]);
+    await vi.waitFor(() =>
+      expect(spy.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true)
+    );
+    await act(async () => {});
+    await userEvent.type(screen.getByLabelText("Codice a barre"), "52010{Enter}");
+    expect(await screen.findByRole("button", { name: "Metti in dispensa" })).toBeDefined();
+    expect(screen.queryByText(NOTA)).toBeNull();
+  });
+
+  it("un Annulla fallito lascia la nota", async () => {
+    const spy = await entraEToccaAnnulla([{ detail: "no" }, 500]);
+    expect(await screen.findByText("Non sono riuscito a togliere Fage Total 0% dalla dispensa.")).toBeDefined();
+    expect(spy.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true);
+    await userEvent.type(screen.getByLabelText("Codice a barre"), "52010{Enter}");
+    expect(await screen.findByText(NOTA)).toBeDefined();
+  });
+
   it("in serie la riga nuova non va in vista, basta l'avviso; chiuso il pannello va in vista l'ultima entrata", async () => {
     const scrolled = righePortateInVista();
     const spy = serieFinta(ITEMS, [P9, P10]);
