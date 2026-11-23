@@ -2750,7 +2750,10 @@ test("il modulo della ricetta e la coda d'import si leggono nei due temi, negli 
     })
   );
   await page.getByRole("button", { name: "Riprova con l'AI", exact: true }).click();
-  await expect(page.getByText(AI_CREDITO, { exact: true })).toBeVisible();
+  // dopo la frase del guasto, la coda dice anche quanto l'AI ha deciso (tempi dell'AI)
+  await expect(page.getByRole("alert").filter({ hasText: AI_CREDITO })).toContainText(
+    "L'AI ha deciso 1 termine."
+  );
   await leggibile("coda con il giro fermato a metà");
 });
 
@@ -2862,12 +2865,23 @@ test("l'ingresso diretto a 375px: «Scansiona», la scheda in due tocchi, la ser
     await avviso.getByRole("button", { name: "Annulla", exact: true }).click();
     await expect(page.locator("li", { hasText: nome })).toHaveCount(0);
 
-    // lo stesso codice riletto: la scheda lo dice, invece di scriverlo due volte
+    // lo stesso codice riletto dopo «Annulla»: la voce non c'è più, e la scheda non dice
+    // «L'hai appena messo» (Annulla in Dispensa, notte del 2026-11-23)
+    const nota = page.getByText(
+      "L'hai appena messo in dispensa: se è un'altra confezione, mettila pure."
+    );
     await campo.fill(codice);
     await campo.press("Enter");
-    await expect(
-      page.getByText("L'hai appena messo in dispensa: se è un'altra confezione, mettila pure.")
-    ).toBeVisible();
+    await expect(metti).toBeFocused();
+    await expect(nota).toHaveCount(0);
+
+    // rimessa davvero, la stessa lettura lo dice, invece di scriverla due volte
+    await metti.click();
+    await expect(page.locator("li", { hasText: nome })).toBeVisible();
+    await expect(campo).toHaveValue("");
+    await campo.fill(codice);
+    await campo.press("Enter");
+    await expect(nota).toBeVisible();
     await leggibileNeiDueTemi(page, "la scheda con la nota della serie");
     await page.getByRole("button", { name: "Chiudi l'aggiunta", exact: true }).click();
     await expect(metti).toHaveCount(0);
