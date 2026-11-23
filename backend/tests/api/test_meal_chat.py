@@ -270,6 +270,16 @@ async def test_un_secondo_messaggio_mentre_risponde_e_409(chat, frittata, db_ses
     assert risposta.json() == {"code": "claude_busy", "detail": BUSY_NOTICE}
 
 
+async def test_la_chat_dice_se_l_ultima_risposta_si_continua(chat, frittata):
+    chat.fake = FakeClaude(
+        [Say("Ho iniziato."), Fail(FailureKind.MAX_TURNS, input_tokens=1, output_tokens=1, cost_usd=0.1)]
+    )
+    await scrivi(chat, frittata)
+    messaggi = (await chat.client.get(url(frittata))).json()["messages"]
+    assert messaggi[-1]["can_continue"] is True
+    assert messaggi[0]["can_continue"] is False
+
+
 async def test_riprova_toglie_il_tentativo_fallito(chat, frittata):
     chat.fake = FakeClaude([Fail(FailureKind.UNAVAILABLE)])
     risposta = await scrivi(chat, frittata, "Quanti spinaci?")
@@ -391,3 +401,54 @@ async def test_un_messaggio_del_piatto_in_attesa_da_cinque_minuti_e_gia_vecchio(
     await db_session.commit()
     risposta = await scrivi(chat, frittata, "Seconda")
     assert risposta.status_code == 200
+
+
+def _scrivi_con_novelli(voci):
+    args = spinaci_args(voci)
+    args["ingredients"].append(
+        {"name": "Spinaci novelli", "department": "verdura", "role": "secondary"}
+    )
+    return args
+
+
+async def test_annullare_una_ricetta_scritta_dice_gli_ingredienti_che_restano(
+    chat, db_session, voci
+):
+    senza_ricetta = await create_meal(
+        db_session, day=DAY, slot=MealSlot.LUNCH, dish="Frittata di spinaci"
+    )
+    await db_session.commit()
+    chat.fake = FakeClaude(
+        [UseTool("write_recipe", _scrivi_con_novelli(voci)), Say("Fatto."), Finish()]
+    )
+    await scrivi(chat, senza_ricetta, "Scrivila.")
+    corpo = (await chat.client.get(url(senza_ricetta))).json()
+    change = corpo["messages"][-1]["changes"][0]
+    assert change["created_recipe"] is True and change["kept_note"] is None
+    risposta = await chat.client.post(url(senza_ricetta, f"/changes/{change['id']}/undo"))
+    annullata = risposta.json()["messages"][-1]["changes"][0]
+    assert annullata["undone"] is True
+    assert annullata["kept_note"] == "Resta in Anagrafica: Spinaci novelli."
+
+
+async def test_annullare_una_modifica_che_toglie_l_ingrediente_non_dice_niente(
+    chat, frittata, voci
+):
+    chat.fake = FakeClaude(
+        [UseTool("write_recipe", _scrivi_con_novelli(voci)), Say("Fatto."), Finish()]
+    )
+    await scrivi(chat, frittata, "Aggiungi qualcosa.")
+    corpo = (await chat.client.get(url(frittata))).json()
+    change_id = corpo["messages"][-1]["changes"][0]["id"]
+    risposta = await chat.client.post(url(frittata, f"/changes/{change_id}/undo"))
+    annullata = risposta.json()["messages"][-1]["changes"][0]
+    assert annullata["undone"] is True
+    assert annullata["kept_note"] is None
+
+
+async def test_una_modifica_annullata_senza_ingredienti_creati_non_dice_niente(
+    chat, frittata, voci
+):
+    change_id = await modifica(chat, frittata, voci)
+    risposta = await chat.client.post(url(frittata, f"/changes/{change_id}/undo"))
+    assert risposta.json()["messages"][-1]["changes"][0]["kept_note"] is None

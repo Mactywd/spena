@@ -21,6 +21,9 @@ class RecipeChangeOut(BaseModel):
     created_recipe: bool
     undone: bool
     undoable: bool
+    # su una modifica annullata: gli ingredienti che aveva creato e che restano in
+    # Anagrafica (lo scrive il server, il frontend mostra soltanto)
+    kept_note: str | None = None
 
 
 class ChatMessageOut(BaseModel):
@@ -35,6 +38,9 @@ class ChatMessageOut(BaseModel):
     # se la risposta non c'è), come le modifiche
     proposals: list[MealProposalOut] = []
     cards: list[ChangeCardOut] = []
+    # vero solo sull'ultima risposta di Claude interrotta ai troppi passaggi: la chat
+    # mostra «Continua» (lo decide il server, il frontend non lo ricalcola)
+    can_continue: bool = False
 
 
 class HighlightOut(BaseModel):

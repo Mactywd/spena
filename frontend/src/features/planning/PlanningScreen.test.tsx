@@ -147,6 +147,30 @@ describe("Pianifica con Claude", () => {
     stream.close();
   });
 
+  it("Continua manda il messaggio fisso sulla pianificazione", async () => {
+    const stream = liveStream();
+    const spy = stubFetch((_url, init) =>
+      init?.method === "POST"
+        ? stream.response
+        : [
+            planningChat({
+              messages: [
+                message({ id: "a1", role: "assistant", text: "Ecco.", notice: "Claude si è fermato.", can_continue: true }),
+              ],
+            }),
+            200,
+          ]
+    );
+    renderAt(<PlanningScreen />, "/pasti/pianifica?conversazione=k1");
+    await userEvent.click(await screen.findByRole("button", { name: "Continua" }));
+    await waitFor(() =>
+      expect(requests(spy, "POST", `${CONVERSATIONS}/k1/messages`)).toEqual([
+        { text: "Continua da dove ti sei fermato." },
+      ])
+    );
+    stream.close();
+  });
+
   it("messa mentre Claude scrive: il seguito parte da solo dopo `done`, e il campo resta com'è", async () => {
     const first = liveStream();
     const second = liveStream();

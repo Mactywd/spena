@@ -339,6 +339,12 @@ async def delete_ingredient_if_unused(
     indipendente, e se contassero nessun ingrediente creato dall'AI sarebbe mai
     cancellabile — ogni decisione ne scrive uno.
 
+    Contano come uso anche le righe di una scheda di modifiche **proposta**
+    (`ChangeCardRow` di una `ChangeCard` con `status == proposed`): Mattia può ancora
+    applicarla, e la riga perderebbe l'ingrediente. Una scheda applicata non conta, perché
+    quello che la riga ha scritto vive già nella dispensa o nella lista, che contano da
+    sé; una scartata o superata non si applica più.
+
     È questo controllo che rende gratuito l'annullamento di un collasso: se «salmone
     selvaggio» era stato accorpato in «salmone», annullare «Salmone» trova l'altro
     termine e non cancella niente.
@@ -360,6 +366,22 @@ async def delete_ingredient_if_unused(
         ).scalars().first()
         if used is not None:
             return False
+
+    from app.db.models.change_card import CardStatus, ChangeCard, ChangeCardRow
+
+    proposed = (
+        await session.execute(
+            select(ChangeCardRow.id)
+            .join(ChangeCard, ChangeCard.id == ChangeCardRow.card_id)
+            .where(
+                ChangeCardRow.ingredient_id == ingredient_id,
+                ChangeCard.status == CardStatus.PROPOSED.value,
+            )
+            .limit(1)
+        )
+    ).scalars().first()
+    if proposed is not None:
+        return False
 
     ingredient = await session.get(Ingredient, ingredient_id)
     if ingredient is None:

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from enum import StrEnum
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -725,7 +725,9 @@ async def _list_still_needed(
     riga di lista per lo stesso ingrediente al servizio di un altro pasto ufficiale e non
     fuori casa (anche se la sua riga era «Già in lista.» e non è mai stata applicata). Non
     conta una riga saltata con `NO_LONGER_FINISHED_NOTE`: la scheda stessa ha detto che al
-    suo pasto non serve."""
+    suo pasto non serve. Non conta nemmeno una riga che Mattia ha lasciato senza spunta
+    applicando la scheda (modificabile, `applied` falso): non dice che la voce serve a
+    quel pasto (decisione 5 del piano «pasti, quarto giro»)."""
     if await _still_used_elsewhere(session, source, meal_id):
         return True
     if source.ingredient_id is None:
@@ -745,6 +747,14 @@ async def _list_still_needed(
                 # una riga che la sua scheda ha saltato perché la voce non finisce più
                 # non serve al suo pasto (F-R5)
                 ChangeCardRow.note.is_distinct_from(NO_LONGER_FINISHED_NOTE),
+                # una riga modificabile che Mattia ha smarcato su una scheda già applicata
+                # non tiene la voce (decisione 5): contano le schede ancora proposte, le
+                # righe applicate e quelle non modificabili («Già in lista.»)
+                or_(
+                    ChangeCard.status == CardStatus.PROPOSED.value,
+                    ChangeCardRow.applied.is_(True),
+                    ChangeCardRow.editable.is_(False),
+                ),
             )
         )
     ).scalars().all()

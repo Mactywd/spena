@@ -3,6 +3,7 @@ quando Claude non c'è, il messaggio rimasto appeso. Niente database, niente SDK
 
 from datetime import datetime, timedelta
 from enum import StrEnum
+from collections.abc import Sequence
 from typing import Protocol
 
 from app.domain.meals import MealStatus
@@ -23,6 +24,11 @@ RECIPE_EFFORT = "medium"
 RECIPE_MAX_TURNS = 12
 
 BUSY_NOTICE = "Claude sta ancora rispondendo al messaggio di prima."
+# Nella cronologia, dopo una risposta che si è fermata ai troppi passaggi
+INTERRUPTED_HISTORY_LINE = (
+    "(Qui la risposta si è interrotta: erano finiti i passaggi. "
+    "Mattia ha letto solo il testo sopra.)"
+)
 
 _MESI = [
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
@@ -54,6 +60,22 @@ def can_chat(meal: _ChatMeal) -> bool:
         and not meal.away
         and meal.leftover_of_id is None
     )
+
+
+def reply_interrupted(role: str, status: str, notice: str | None) -> bool:
+    """Una risposta di Claude inviata con un avviso è una risposta interrotta ai troppi
+    passaggi (solo `_reply` dà un avviso a una risposta di Claude)."""
+    return role == "assistant" and status == "sent" and bool(notice)
+
+
+def kept_ingredients_note(names: Sequence[str]) -> str | None:
+    """La frase sotto una modifica annullata: gli ingredienti che la modifica aveva creato
+    e che sono rimasti in Anagrafica (decisione 9). `None` se non ne è rimasto nessuno."""
+    if not names:
+        return None
+    if len(names) == 1:
+        return f"Resta in Anagrafica: {names[0]}."
+    return f"Restano in Anagrafica: {', '.join(names[:-1])} e {names[-1]}."
 
 
 def pending_is_stale(created_at: datetime, now: datetime, timeout_seconds: float) -> bool:

@@ -15,7 +15,7 @@ from app.db.models.llm_call import LlmCall
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe, RecipeSource
 from app.db.models.recipe_change import RecipeChange
-from app.domain.meal_chat import FailureKind, failure_notice
+from app.domain.meal_chat import INTERRUPTED_HISTORY_LINE, FailureKind, failure_notice
 from app.domain.meals import MealSlot
 from app.domain.rules import PANTRY_TZ
 from app.repositories.conversations import get_or_create_dish_conversation
@@ -407,6 +407,73 @@ async def test_la_cronologia_torna_nel_prompt(db_session, factory, frittata, voc
     assert prompt.count("E il parmigiano?") == 1
 
 
+async def test_dopo_i_troppi_passaggi_il_giro_dopo_sa_dell_interruzione(
+    db_session, factory, frittata
+):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Cambia gli spinaci")
+    await giro(
+        factory,
+        FakeClaude(
+            [
+                Say("Ho cambiato gli spinaci. "),
+                Fail(FailureKind.MAX_TURNS, input_tokens=10, output_tokens=10, cost_usd=0.1),
+            ]
+        ),
+        conversation, first,
+    )
+    _, second = await nuovo_messaggio(db_session, frittata, "Come va?")
+    fake = FakeClaude([Say("Bene."), Finish()])
+
+    await giro(factory, fake, conversation, second)
+
+    prompt = fake.calls[0]["prompt"]
+    assert "Claude: Ho cambiato gli spinaci." in prompt
+    assert INTERRUPTED_HISTORY_LINE in prompt
+    assert prompt.index("Claude: Ho cambiato gli spinaci.") < prompt.index(
+        INTERRUPTED_HISTORY_LINE
+    )
+    assert prompt.index(INTERRUPTED_HISTORY_LINE) < prompt.index("Come va?")
+
+
+async def test_continua_solo_sull_ultima_risposta_interrotta(db_session, factory, frittata):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Cambia gli spinaci")
+    interrotta = FakeClaude(
+        [Say("Ho cambiato."), Fail(FailureKind.MAX_TURNS, input_tokens=1, output_tokens=1, cost_usd=0.1)]
+    )
+    events = await giro(factory, interrotta, conversation, first)
+    user, reply = events[-1].data["chat"]["messages"]
+    assert (user["can_continue"], reply["can_continue"]) == (False, True)
+
+    _, second = await nuovo_messaggio(db_session, frittata, "Come va?")
+    events = await giro(factory, FakeClaude([Say("Bene."), Finish()]), conversation, second)
+    messages = events[-1].data["chat"]["messages"]
+    assert [m["can_continue"] for m in messages] == [False, False, False, False]
+
+
+async def test_una_risposta_normale_non_si_continua(db_session, factory, frittata):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Ciao")
+    events = await giro(factory, FakeClaude([Say("Ciao."), Finish()]), conversation, first)
+    assert [m["can_continue"] for m in events[-1].data["chat"]["messages"]] == [False, False]
+
+
+async def test_un_messaggio_fallito_non_si_continua(db_session, factory, frittata):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Ciao")
+    await giro(factory, FakeClaude([Fail(FailureKind.UNAVAILABLE)]), conversation, first)
+    view = await dish_chat_view(db_session, frittata, replying=False, now=datetime.now(UTC))
+    assert [(m.status, m.can_continue) for m in view.messages] == [("failed", False)]
+
+
+async def test_una_risposta_normale_non_porta_l_interruzione(db_session, factory, frittata):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Ciao")
+    await giro(factory, FakeClaude([Say("Ciao a te."), Finish()]), conversation, first)
+    _, second = await nuovo_messaggio(db_session, frittata, "Come va?")
+    fake = FakeClaude([Say("Bene."), Finish()])
+
+    await giro(factory, fake, conversation, second)
+
+    assert INTERRUPTED_HISTORY_LINE not in fake.calls[0]["prompt"]
+
+
 async def test_la_cronologia_non_porta_i_messaggi_falliti(db_session, factory, frittata):
     conversation, first = await nuovo_messaggio(db_session, frittata, "Messaggio non risposto")
     await giro(factory, FakeClaude([Fail(FailureKind.UNAVAILABLE)]), conversation, first)
@@ -779,6 +846,36 @@ async def test_la_vista_della_chat_non_rilegge_il_pasto_per_ogni_modifica(
     otto = await create_meal(db_session, day=DAY, slot=MealSlot.DINNER, dish="Otto")
     await _turni_con_modifiche(db_session, uno, voci, 1)
     await _turni_con_modifiche(db_session, otto, voci, 8)
+
+    con_una = await _statements_of_the_view(db_session, uno)
+    con_otto = await _statements_of_the_view(db_session, otto)
+
+    assert con_una == con_otto
+
+
+async def test_la_vista_legge_gli_ingredienti_rimasti_con_una_query_sola(db_session, voci):
+    uno = await create_meal(db_session, day=DAY, slot=MealSlot.LUNCH, dish="Uno")
+    otto = await create_meal(db_session, day=DAY, slot=MealSlot.DINNER, dish="Otto")
+    await _turni_con_modifiche(db_session, uno, voci, 1)
+    await _turni_con_modifiche(db_session, otto, voci, 8)
+    # ogni modifica annullata ha un ingrediente rimasto (diverso per ognuna)
+    for meal in (uno, otto):
+        conversation = await get_or_create_dish_conversation(db_session, meal.id)
+        changes = (
+            await db_session.execute(
+                select(RecipeChange).where(RecipeChange.conversation_id == conversation.id)
+            )
+        ).scalars().all()
+        for i, change in enumerate(changes):
+            kept = Ingredient(
+                name=f"rimasto {meal.dish} {i}", display_name=f"Rimasto {i}",
+                category=IngredientCategory.VERDURA,
+            )
+            db_session.add(kept)
+            await db_session.flush()
+            change.created_ingredient_ids = [str(kept.id)]
+            change.undone_at = datetime.now(UTC)
+    await db_session.flush()
 
     con_una = await _statements_of_the_view(db_session, uno)
     con_otto = await _statements_of_the_view(db_session, otto)

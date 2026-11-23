@@ -16,7 +16,7 @@ from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.llm_call import LlmCall
 from app.db.models.pantry import PantryItem
 from app.db.models.planning import MealProposal
-from app.domain.meal_chat import FailureKind, failure_notice
+from app.domain.meal_chat import INTERRUPTED_HISTORY_LINE, FailureKind, failure_notice
 from app.domain.meals import MealSlot
 from app.domain.rules import PANTRY_TZ, today_in_pantry
 from app.repositories.conversations import create_planning, get_or_create_dish_conversation
@@ -187,6 +187,48 @@ async def test_troppi_passaggi_nella_pianificazione(db_session, factory, dal_dat
     ).scalars().all()
     assert row.ok is False and row.cost_usd == 0.7
     assert row.prompt_tokens == 4000 and row.completion_tokens == 900
+
+
+async def test_dopo_i_troppi_passaggi_la_pianificazione_sa_dell_interruzione(
+    db_session, factory
+):
+    conversation = await create_planning(db_session)
+    first = await messaggio(db_session, conversation, "Pianifica la settimana")
+    await giro(
+        factory,
+        FakeClaude(
+            [
+                Say("Ecco tre cene."),
+                Fail(FailureKind.MAX_TURNS, input_tokens=10, output_tokens=10, cost_usd=0.1),
+            ]
+        ),
+        conversation, first,
+    )
+    second = await messaggio(db_session, conversation, "Continuiamo")
+    fake = FakeClaude([Say("Sì."), Finish()])
+
+    await giro(factory, fake, conversation, second)
+
+    prompt = fake.calls[0]["prompt"]
+    assert prompt.index("Claude: Ecco tre cene.") < prompt.index(INTERRUPTED_HISTORY_LINE)
+    assert prompt.index(INTERRUPTED_HISTORY_LINE) < prompt.index("Continuiamo")
+
+
+async def test_la_pianificazione_interrotta_si_continua(db_session, factory):
+    conversation = await create_planning(db_session)
+    first = await messaggio(db_session, conversation, "Pianifica la settimana")
+    events = await giro(
+        factory,
+        FakeClaude(
+            [Say("Ecco."), Fail(FailureKind.MAX_TURNS, input_tokens=1, output_tokens=1, cost_usd=0.1)]
+        ),
+        conversation, first,
+    )
+    user, reply = events[-1].data["chat"]["messages"]
+    assert (user["can_continue"], reply["can_continue"]) == (False, True)
+    second = await messaggio(db_session, conversation, "Grazie")
+    events = await giro(factory, FakeClaude([Say("Prego."), Finish()]), conversation, second)
+    assert [m["can_continue"] for m in events[-1].data["chat"]["messages"]] == [False] * 4
 
 
 async def test_il_limite_a_meta_lascia_la_proposta(db_session, factory, dal_database):

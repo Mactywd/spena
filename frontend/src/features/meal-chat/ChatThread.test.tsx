@@ -85,6 +85,90 @@ describe("ChatThread", () => {
     expect(screen.queryByRole("button", { name: "Riprova" })).not.toBeInTheDocument();
   });
 
+  const INTERRUPTED = message({
+    id: "a1", role: "assistant", text: "Ho cambiato gli spinaci.", status: "sent", notice: MAX_TURNS,
+  });
+
+  it("la risposta interrotta che si può continuare ha Continua", async () => {
+    const onContinue = vi.fn();
+    render(
+      <ChatThread
+        messages={[{ ...INTERRUPTED, can_continue: true }]}
+        streaming={null}
+        onUndo={vi.fn()}
+        onRetry={vi.fn()}
+        onContinue={onContinue}
+      />
+    );
+    expect(screen.getByText("Ho cambiato gli spinaci.")).toBeInTheDocument();
+    expect(screen.getByText(MAX_TURNS)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Riprova" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Continua" }));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it("senza can_continue niente Continua", () => {
+    for (const can_continue of [false, undefined]) {
+      const { unmount } = render(
+        <ChatThread
+          messages={[{ ...INTERRUPTED, can_continue }]}
+          streaming={null}
+          onUndo={vi.fn()}
+          onRetry={vi.fn()}
+          onContinue={vi.fn()}
+        />
+      );
+      expect(screen.getByText(MAX_TURNS)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Continua" })).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("Continua aspetta mentre la chat è occupata", async () => {
+    const onContinue = vi.fn();
+    render(
+      <ChatThread
+        messages={[{ ...INTERRUPTED, can_continue: true }]}
+        streaming={null}
+        onUndo={vi.fn()}
+        onRetry={vi.fn()}
+        onContinue={onContinue}
+        busy
+      />
+    );
+    const button = screen.getByRole("button", { name: "Continua" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(button);
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
+  it("sotto una modifica annullata, gli ingredienti che restano", () => {
+    const kept = "Resta in Anagrafica: Spinaci novelli.";
+    const { unmount } = render(
+      <ChatThread
+        messages={[
+          message({
+            id: "a1", role: "assistant", text: "Fatto.",
+            changes: [change({ created_recipe: true, undone: true, undoable: false, kept_note: kept })],
+          }),
+        ]}
+        streaming={null}
+        onUndo={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/Ricetta scritta: .* — annullata/)).toBeInTheDocument();
+    expect(screen.getByText(kept)).toBeInTheDocument();
+    unmount();
+    renderThread([
+      message({
+        id: "a1", role: "assistant", text: "Fatto.",
+        changes: [change({ undone: true, undoable: false, kept_note: null })],
+      }),
+    ]);
+    expect(screen.queryByText(/Anagrafica/)).not.toBeInTheDocument();
+  });
+
   it("una risposta vuota con l'avviso mostra solo l'avviso", () => {
     renderThread([message({ id: "a1", role: "assistant", text: "", status: "sent", notice: MAX_TURNS })]);
     expect(screen.getByText(MAX_TURNS)).toBeInTheDocument();

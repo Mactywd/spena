@@ -31,12 +31,13 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import get_settings
@@ -47,6 +48,7 @@ from app.db.models.conversation import (
     MessageStatus,
 )
 from app.db.models.change_card import CardStatus, ChangeCard
+from app.db.models.ingredient import Ingredient
 from app.db.models.meal import Meal
 from app.db.models.planning import MealProposal, ProposalStatus
 from app.db.models.recipe_change import RecipeChange
@@ -57,7 +59,9 @@ from app.domain.meal_chat import (
     FailureKind,
     can_chat,
     failure_notice,
+    kept_ingredients_note,
     pending_is_stale,
+    reply_interrupted,
 )
 from app.domain.meals import MealSlot
 from app.domain.rules import today_in_pantry
@@ -200,14 +204,40 @@ def _by_message[T: TurnProduct](
     return groups
 
 
-def _change_out(change: RecipeChange, undoable: bool) -> RecipeChangeOut:
+def _change_out(
+    change: RecipeChange, undoable: bool, kept_names: Sequence[str] = ()
+) -> RecipeChangeOut:
     return RecipeChangeOut(
         id=change.id,
         summary=change.summary,
         created_recipe=change.created_recipe,
         undone=change.undone_at is not None,
         undoable=undoable,
+        kept_note=kept_ingredients_note(kept_names) if change.undone_at is not None else None,
     )
+
+
+async def _kept_names(
+    session: AsyncSession, changes: Sequence[RecipeChange]
+) -> dict[uuid.UUID, list[str]]:
+    """Per ogni modifica annullata, i nomi degli ingredienti che aveva creato e che esistono
+    ancora, nell'ordine di `created_ingredient_ids`. Una query sola per tutte."""
+    wanted = {
+        c.id: [uuid.UUID(i) for i in c.created_ingredient_ids]
+        for c in changes
+        if c.undone_at is not None and c.created_ingredient_ids
+    }
+    ids = {i for group in wanted.values() for i in group}
+    if not ids:
+        return {}
+    names = dict(
+        (
+            await session.execute(
+                select(Ingredient.id, Ingredient.display_name).where(Ingredient.id.in_(ids))
+            )
+        ).all()
+    )
+    return {cid: [names[i] for i in group if i in names] for cid, group in wanted.items()}
 
 
 async def change_out(session: AsyncSession, change: RecipeChange) -> RecipeChangeOut:
@@ -264,6 +294,7 @@ async def chat_messages_out(
     changes = await changes_of(session, conversation.id)
     if undoable is None:
         undoable = await undoable_change_ids(session, changes)
+    kept = await _kept_names(session, changes)
     proposals = await proposals_of(session, conversation.id)
     cards = await cards_of(session, conversation.id)
     change_groups = _by_message(messages, changes)
@@ -271,7 +302,7 @@ async def chat_messages_out(
     card_groups = _by_message(messages, cards)
 
     out: list[ChatMessageOut] = []
-    for m in messages:
+    for i, m in enumerate(messages):
         out.append(
             ChatMessageOut(
                 id=m.id,
@@ -280,11 +311,16 @@ async def chat_messages_out(
                 status=m.status,  # type: ignore[arg-type]
                 notice=m.notice,
                 created_at=m.created_at,
-                changes=[_change_out(c, c.id in undoable) for c in change_groups.get(m.id, [])],
+                changes=[
+                    _change_out(c, c.id in undoable, kept.get(c.id, ()))
+                    for c in change_groups.get(m.id, [])
+                ],
                 proposals=[
                     await proposal_out(session, p) for p in proposal_groups.get(m.id, [])
                 ],
                 cards=[await card_out(session, c) for c in card_groups.get(m.id, [])],
+                can_continue=i == len(messages) - 1
+                and reply_interrupted(m.role, m.status, m.notice),
             )
         )
     return out
@@ -360,6 +396,7 @@ async def chat_history(
                 _product_line(p)
                 for p in sorted(groups.get(m.id, []), key=lambda p: p.created_at)
             ),
+            interrupted=reply_interrupted(m.role, m.status, m.notice),
         )
         for m in sent[-HISTORY_MESSAGES:]
     ]
@@ -436,7 +473,8 @@ async def _reply(
     emit: Emit,
 ) -> None:
     """Il giro ha una risposta di Claude: il successo, o i troppi passaggi (`ok` falso e
-    `notice`). Il messaggio di Mattia passa a `sent`, la risposta si scrive, e la chiamata
+    `notice`). Solo qui una risposta di Claude prende un `notice`: su questo si regge
+    `reply_interrupted`. Il messaggio di Mattia passa a `sent`, la risposta si scrive, e la chiamata
     va nelle spese con l'uso che l'SDK ha dichiarato."""
     async with lock:
         message = await session.get(ConversationMessage, message_id)

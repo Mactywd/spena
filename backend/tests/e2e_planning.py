@@ -26,6 +26,8 @@ Si lancia dentro il container del backend, dove `./backend` è montato su `/app`
 
     $E2E exec -T backend python tests/e2e_planning.py seed
     # stampa {"conversation", "proposal_draft", "proposal_official", "card", "meal"}
+    $E2E exec -T backend python tests/e2e_planning.py interrupted
+    # stampa {"meal"}: un pasto «e2e-plan» col messaggio di Mattia e la risposta interrotta
     $E2E exec -T backend python tests/e2e_planning.py clean
 
 `clean` si può chiamare prima di seminare: toglie anche gli avanzi di un giro interrotto, e
@@ -66,10 +68,13 @@ from app.db.models.pantry import PantryItem  # noqa: E402
 from app.db.models.planning import MealProposal, ProposalKind  # noqa: E402
 from app.db.models.recipe import Recipe  # noqa: E402
 from app.db.models.shopping import ShoppingListItem  # noqa: E402
-from app.domain.meal_chat import FailureKind  # noqa: E402
+from app.domain.meal_chat import FailureKind, failure_notice  # noqa: E402
 from app.domain.meals import MealSlot  # noqa: E402
 from app.domain.rules import PantryStatus, today_in_pantry  # noqa: E402
-from app.repositories.conversations import create_planning  # noqa: E402
+from app.repositories.conversations import (  # noqa: E402
+    create_planning,
+    get_or_create_dish_conversation,
+)
 from app.repositories.ingredients import create_ingredient, delete_ingredient_if_unused  # noqa: E402
 from app.repositories.pantry import stock_one  # noqa: E402
 from app.services.change_cards import PantryProposal, propose_card  # noqa: E402
@@ -84,6 +89,7 @@ DRAFT_LUNCH = f"{MARK} Insalata di farro e ceci"
 DRAFT_DINNER = f"{MARK} Merluzzo al forno"
 OFFICIAL_DISH = f"{MARK} Pasta ricotta e spinaci"
 CARD_DISH = f"{MARK} Pasta ricotta e parmigiano"
+INTERRUPTED_DISH = f"{MARK} Riso e zucchine"
 
 
 def _seeded_places(today: date) -> list[tuple[date, MealSlot]]:
@@ -94,6 +100,7 @@ def _seeded_places(today: date) -> list[tuple[date, MealSlot]]:
         (today + timedelta(days=30), MealSlot.DINNER),
         (today + timedelta(days=32), MealSlot.DINNER),
         (today + timedelta(days=33), MealSlot.DINNER),
+        (today + timedelta(days=34), MealSlot.DINNER),
     ]
 
 
@@ -214,6 +221,37 @@ async def seed() -> dict:
     return result
 
 
+async def interrupted() -> dict:
+    """Un pasto «e2e-plan» (giorno +34, cena) con la chat del piatto che finisce su una
+    risposta interrotta: le due righe che scrive `_reply` quando i passaggi sono finiti."""
+    await clean()
+    now = datetime.now(UTC)
+    today = today_in_pantry(now)
+    async with SessionLocal() as session:
+        meal = await create_meal(
+            session, day=today + timedelta(days=34), slot=MealSlot.DINNER,
+            dish=INTERRUPTED_DISH,
+        )
+        conversation = await get_or_create_dish_conversation(session, meal.id)
+        asked = _message(
+            conversation.id, MessageRole.USER,
+            "Riscrivimi la ricetta con le zucchine e il riso integrale.",
+            now - timedelta(minutes=3),
+        )
+        session.add(asked)
+        await session.flush()
+        answer = _message(
+            conversation.id, MessageRole.ASSISTANT,
+            "Ho cominciato dal riso: prima lo tosto, poi aggiungo le zucchine.",
+            now - timedelta(minutes=2), reply_to=asked.id,
+        )
+        answer.notice = failure_notice(FailureKind.MAX_TURNS, None, now)
+        session.add(answer)
+        result = {"meal": str(meal.id)}
+        await session.commit()
+    return result
+
+
 async def clean() -> dict:
     today = today_in_pantry(datetime.now(UTC))
     async with SessionLocal() as session:
@@ -292,10 +330,12 @@ def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command == "seed" and len(sys.argv) == 2:
         print(json.dumps(asyncio.run(seed())))
+    elif command == "interrupted" and len(sys.argv) == 2:
+        print(json.dumps(asyncio.run(interrupted())))
     elif command == "clean" and len(sys.argv) == 2:
         print(json.dumps(asyncio.run(clean())))
     else:
-        raise SystemExit("uso: e2e_planning.py seed | clean")
+        raise SystemExit("uso: e2e_planning.py seed | interrupted | clean")
 
 
 if __name__ == "__main__":

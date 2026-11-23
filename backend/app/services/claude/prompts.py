@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from app.db.models.recipe import Recipe
 from app.db.models.planning import MealProposal
+from app.domain.meal_chat import INTERRUPTED_HISTORY_LINE
 from app.domain.meals import SLOT_WORDS, WEEKDAY_NAMES, MealSlot
 
 # il backend non ha i nomi italiani di giorni e mesi: stanno qui, in due tuple
@@ -139,6 +140,7 @@ class HistoryItem:
     role: str  # user | assistant
     text: str
     changes: tuple[str, ...] = ()  # «Ricetta aggiornata: … — annullata»
+    interrupted: bool = False  # la risposta si è fermata ai troppi passaggi
 
 
 def _recipe_block(recipe: Recipe) -> list[str]:
@@ -170,13 +172,9 @@ def render_turn_prompt(context: DishContext, history: Sequence[HistoryItem], tex
         parts.append("Il pasto non ha ancora una ricetta.")
     else:
         parts.append("\n".join(_recipe_block(context.recipe)))
-    if history:
-        rows = ["La conversazione finora:"]
-        for item in history:
-            who = "Mattia" if item.role == "user" else "Claude"
-            rows.append(f"{who}: {item.text}")
-            rows.extend(item.changes)
-        parts.append("\n".join(rows))
+    block = _history_rows(history)
+    if block:
+        parts.append(block)
     parts.append(f"Il messaggio nuovo di Mattia:\n{text}")
     return "\n\n".join(parts)
 
@@ -189,6 +187,8 @@ def _history_rows(history: Sequence[HistoryItem]) -> str | None:
         who = "Mattia" if item.role == "user" else "Claude"
         rows.append(f"{who}: {item.text}")
         rows.extend(item.changes)
+        if item.interrupted:
+            rows.append(INTERRUPTED_HISTORY_LINE)
     return "\n".join(rows)
 
 

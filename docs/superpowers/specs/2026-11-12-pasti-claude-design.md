@@ -326,7 +326,8 @@ frittata di martedì»).
     toglie dalla lista ciò che serve a un altro pasto (piano
     2026-11-18-pasti-correzioni, decisioni 8 e 9). Una scheda nuova di Claude per gli
     stessi pasti mette da parte quelle non ancora applicate (confermato da Mattia il
-    2026-11-21).
+    2026-11-21). Una riga di lista che Mattia ha smarcato applicando la scheda di un
+    altro pasto non tiene la voce in lista (deciso da Mattia il 2026-11-23).
 - Le regole della skill sugli stati restano: una confezione da una porzione diventa
   `finished`, una confezione grande resta com'è, un vasetto di sugo appena aperto
   diventa `low`; un sugo `low` è avviato, non in esaurimento, e non va in lista per
@@ -351,6 +352,9 @@ aggiorna). La sicurezza sta altrove:
   li usa. L'annullamento di una «Ricetta scritta» (ricetta nata da Claude) li lascia
   sempre, perché la ricetta archiviata li usa ancora; la rimozione scatta solo quando si
   annulla la modifica di una ricetta che esisteva già;
+- sotto la modifica annullata la chat dice quali restano («Restano in Anagrafica: …»);
+  un ingrediente nominato da una scheda dei cambi ancora proposta conta come usato
+  (deciso da Mattia il 2026-11-23);
 - nella stessa modifica Claude può correggere anche il **piatto e gli accompagnamenti**
   del pasto, perché la settimana non dica «Frittata di spinaci» dopo il passaggio alle
   zucchine; «Annulla» rimette anche quelli. Il posto (data e pranzo/cena) Claude non lo
@@ -422,6 +426,9 @@ non arriva entro un tempo massimo. In ogni caso:
   Claude;
 - una risposta interrotta a metà non lascia una ricetta scritta a metà: le scritture
   della ricetta sono atomiche (§6.3).
+- una risposta fermata dai troppi passaggi resta con il suo avviso e il pulsante
+  «Continua», che manda «Continua da dove ti sei fermato.»; al giro dopo Claude sa che
+  si era interrotta (deciso da Mattia il 2026-11-23).
 
 La sezione nelle spese dell'AI (H1) conta le chiamate dei Pasti con il loro costo, come le altre.
 

@@ -4768,7 +4768,7 @@ test("la chat con l'avviso e il campo, nei due temi", async ({ page }) => {
 // quando Claude chiama i suoi strumenti, e lo stack e2e non ha la chiave API: le semina
 // `backend/tests/e2e_planning.py` nel container del backend, passando dai servizi veri, e
 // le toglie nel `finally`. Vedi `frontend/e2e/pianificazione.spec.ts`.
-function aiutantePianificazione(comando: "seed" | "clean"): string {
+function aiutantePianificazione(comando: "seed" | "interrupted" | "clean"): string {
   const uscita = execFileSync(
     "docker",
     [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_planning.py", comando],
@@ -4792,6 +4792,28 @@ function pulisciPianificazione() {
     expect.soft(false, `pulizia: non sono riuscito a togliere la pianificazione seminata (${guasto})`).toBe(true);
   }
 }
+
+test("la risposta interrotta con Continua a 375 px, nei due temi", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByLabel("Aggiungi alla lista")).toBeVisible();
+  const seminato = JSON.parse(aiutantePianificazione("interrupted")) as { meal: string };
+  try {
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.goto(`/pasti/${seminato.meal}`);
+      const continua = page.getByRole("button", { name: "Continua", exact: true });
+      await expect(continua).toBeVisible();
+      await fermo(page);
+      expect(await testiIlleggibili(page), `la risposta interrotta, tema ${tema}`).toEqual([]);
+      await senzaScorrimentoLaterale(page, `la risposta interrotta, tema ${tema}`);
+      const alto = (await continua.boundingBox())?.height ?? 0;
+      expect(alto, "«Continua» è troppo basso").toBeGreaterThanOrEqual(44);
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+  } finally {
+    pulisciPianificazione();
+  }
+});
 
 /** Ogni bersaglio nominato è alto almeno 44 px, la regola di casa (`min-h-11`). */
 async function bersagliDaPollice(bersagli: [string, Locator][], luogo: string) {

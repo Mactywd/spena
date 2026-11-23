@@ -552,6 +552,8 @@ export interface RecipeChange {
   created_recipe: boolean;
   undone: boolean;
   undoable: boolean;
+  /** Gli ingredienti che dopo «Annulla» restano in Anagrafica; lo dice il server. Facoltativo: le risposte vecchie in cache non l'hanno. */
+  kept_note?: string | null;
 }
 export interface ChatMessage {
   id: string;
@@ -561,6 +563,8 @@ export interface ChatMessage {
   notice: string | null;
   created_at: string;
   changes: RecipeChange[];
+  /** Vero solo sull'ultima risposta interrotta che si può continuare; lo dice il server. */
+  can_continue?: boolean;
   /** Le proposte e le schede del giro, sotto il messaggio (piano 6c). Facoltative: le
    * risposte vecchie in cache non le hanno. */
   proposals?: MealProposal[];

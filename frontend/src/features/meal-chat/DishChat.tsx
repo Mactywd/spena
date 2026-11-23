@@ -6,7 +6,7 @@ import type { ChatMessage, DishChat as DishChatData, Meal } from "../../domain/t
 import { ChangeCard } from "../change-cards/ChangeCard";
 import { MEALS_KEY } from "../meals/api";
 import { dishChatKey, sendDishMessage, undoRecipeChange, useDishChat } from "./api";
-import { ChatComposer, ChatThread } from "./ChatThread";
+import { CONTINUE_TEXT, ChatComposer, ChatThread } from "./ChatThread";
 import { refusalOf, shownRefusal, useChatSender } from "./useChatSender";
 
 /** La chat con Claude sotto la ricetta di un pasto (spec 2026-11-12 §5.3). */
@@ -88,6 +88,7 @@ export function DishChat({ mealId, hasRecipe }: { mealId: string; hasRecipe: boo
           streaming={streaming}
           onUndo={undoChange}
           onRetry={sender.retry}
+          onContinue={() => sender.sendText(CONTINUE_TEXT)}
           busy={replying || undo.isPending}
           renderExtras={extras}
         />
