@@ -131,7 +131,7 @@ async def test_con_la_cache_il_sistema_porta_il_segno(con_chiave):
 
 
 def test_il_caso_peggiore_di_un_profilo():
-    # (ritentativi + 1) x tempo, piu le pause dell'SDK (0,5 x 2^n per ritentativo)
+    # (ritentativi + 1) x tempo, più le pause dell'SDK (0,5 x 2^n per ritentativo)
     assert profile_worst_seconds(SYNC_PROFILE, Settings(_env_file=None)) == 90.5
     assert profile_worst_seconds(CLASSIFY, Settings(_env_file=None)) == 136.5
 
@@ -455,3 +455,16 @@ def test_gli_schemi_veri_sono_accettati_dalle_structured_outputs(schema):
     for sotto in _tutti_i_sotto_schemi(schema):
         assert not isinstance(sotto.get("type"), list), sotto
         assert not (CHIAVI_NON_ACCETTATE & set(sotto)), sotto
+
+
+def test_la_scadenza_sincrona_sotto_il_caso_peggiore_di_una_chiamata_e_rifiutata():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    worst = profile_worst_seconds(SYNC_PROFILE, Settings(_env_file=None))
+
+    with pytest.raises(ValidationError, match="LLM_SYNC_DEADLINE_SECONDS"):
+        Settings(_env_file=None, llm_sync_deadline_seconds=worst - 1)
+    assert Settings(_env_file=None, llm_sync_deadline_seconds=worst).llm_sync_deadline_seconds == worst

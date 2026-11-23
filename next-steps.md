@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-23 (fase giorno: le idee rimaste portate a piano con Mattia — nove piani nuovi, 26 voci `pronto`; chiusa senza codice la voce dei legami d'avanzo fuori finestra; aggiunta un'idea sulle confezioni uguali in Dispensa); notte: i tempi dell'AI fatti, da revisionare)_
+_Ultimo aggiornamento: 2026-11-23 (revisione finale dei tempi dell'AI: aggiunte due idee e una prova a mano; fase giorno: le idee rimaste portate a piano con Mattia — nove piani nuovi, 26 voci `pronto`; chiusa senza codice la voce dei legami d'avanzo fuori finestra; aggiunta un'idea sulle confezioni uguali in Dispensa); notte: i tempi dell'AI fatti, da revisionare)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -49,6 +49,8 @@ Il repo è pubblico: qui non vanno dati di produzione.
 ## Da approfondire (giorno)
 
 ### Idee
+- [idea] P3 · Una chiamata all'AI fermata dalla scadenza non scrive la riga in «Spese dell'AI»: la spesa è sottostimata [Parte IV]
+- [idea] P3 · Mentre l'AI decide la coda (fino a 4 minuti) le schede dei termini restano attive: un termine deciso a mano nel frattempo viene riscritto dalla risposta dell'AI, e coda e anagrafica non vanno d'accordo [Parte IV]
 - [idea] P3 · In Dispensa due confezioni dello stesso prodotto con la stessa scadenza non si distinguono, né a video né nel nome accessibile (visto scrivendo il piano `2026-11-23-ricettario-rifiniture.md`, che lo fa per il foglio della cottura; `PantryRow` lo tocca `2026-11-23-dispensa-rifiniture.md`, quindi dopo quel ramo) [T3]
 
 ## Bloccati
@@ -80,7 +82,7 @@ _Voci che si è deciso di non fare adesso, ciascuna col motivo (sezione nata il 
 ## Da fare a mano (solo Mattia)
 
 - [tbd] P2 · Dopo il deploy dell'LLM su Haiku (deploy del 2026-11-22; `check_llm --prova` già passato: `claude-haiku-5-5`, listino noto, 0,000026 $): qualche decisione vera dalla coda e il costo di «Spese dell'AI» confrontato con la console di Anthropic dopo qualche giorno (vedi «Dopo il deploy» in `docs/superpowers/plans/2026-11-21-llm-haiku.md`) [Parte IV]
-- [tbd] P3 · Dopo il deploy dei tempi dell'AI: una settimana pianificata con Claude, e guardare se il giro finisce prima degli 8 minuti; «Riprova con l'AI» su una coda vera [Parte IV]
+- [tbd] P3 · Dopo il deploy dei tempi dell'AI: una settimana pianificata con Claude, e guardare se il giro finisce prima degli 8 minuti; «Riprova con l'AI» su una coda vera; una chiamata all'AI di più di 60 s passa anche da Traefik [Parte IV]
 - [fatto] 2026-11-21 · Prima del deploy dei Pasti con Claude: confermare l'uso del token del piano con l'Agent SDK: superata il 2026-11-21, Mattia ha scelto la chiave API [Parte IV]
 - [fatto] 2026-11-22 · Prima del deploy dei Pasti con Claude: la chiave API nuova nel `.env` del server con il limite di spesa nella console; `check_claude --prova` passato dopo il deploy (resta da fare il giro sul telefono, voce qui sotto). Il comando, chiudendosi, stampa un `RuntimeError: aclose(): asynchronous generator is already running` dell'SDK ma esce con 0 [Parte IV]
 - [tbd] P2 · Prove sul telefono dopo il deploy di night/dispensa-serie-reparti: un censimento vero con la dispensa lunga (lo scanner resta in vista, alla ✕ si arriva all'ultima riga), una serie su «Casa» con un cibo in mezzo (l'avviso «sotto «Cibo»» si legge in tempo?), e il riepilogo premuto con un reparto chiuso, «Finito» sull'ultima voce e poi «In lista» [S3, S15]

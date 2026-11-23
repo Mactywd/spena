@@ -698,7 +698,28 @@ describe("coda di revisione dell'import", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
 
-    expect(await screen.findByText(CREDITO)).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(CREDITO))).toBeInTheDocument();
+    expect(screen.getByText(/L'AI ha deciso 1 termine\./)).toBeInTheDocument();
+  });
+
+  it("dopo una scadenza a metà dice anche cosa ha deciso e sbloccato", async () => {
+    const SCADUTO =
+      "L'AI ci ha messo troppo: 10 termini restano in coda. Decidili a mano qui sotto, o riprova.";
+    renderQueue({
+      askAiResult: [
+        {
+          applied: 30, created: 0, ignored: 0, still_pending: 10, unlocked: 5, remaining_terms: 10,
+          stopped_notice: SCADUTO,
+        },
+        200,
+      ],
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+
+    expect(await screen.findByText(new RegExp(SCADUTO))).toBeInTheDocument();
+    expect(screen.getByText(/L'AI ha deciso 30 termini\. Sbloccate 5 ricette\./)).toBeInTheDocument();
+    expect(screen.queryByText(/non li ha saputi giudicare/)).not.toBeInTheDocument();
   });
 
   it("dopo la scadenza dice solo la frase del server", async () => {

@@ -194,6 +194,9 @@ async def test_sostituisci_oltre_la_scadenza_lascia_la_strada_a_mano(
             return await super().answer(body)
 
     voci, ricette = cucina
+    # le impostazioni rifiutano una scadenza sotto il caso peggiore di una chiamata: qui
+    # si abbassa, per provare la scadenza in un secondo e non in un minuto e mezzo
+    monkeypatch.setattr("app.services.llm.profile_worst_seconds", lambda profile, settings: 0.5)
     monkeypatch.setenv("LLM_SYNC_DEADLINE_SECONDS", "1.0")
     get_settings.cache_clear()
     finto = Lento({"esito": "sostituti", "sostituti": [{"nome": "riso", "nota": ""}]})

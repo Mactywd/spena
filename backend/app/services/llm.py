@@ -209,7 +209,7 @@ SYNC_PROFILE = CallProfile(thinking=False, effort="low", timeout_seconds=45.0, m
 
 
 def profile_worst_seconds(profile: CallProfile, settings: Settings) -> float:
-    """Il caso peggiore di una chiamata: (ritentativi + 1) x tempo, piu le pause dell'SDK.
+    """Il caso peggiore di una chiamata: (ritentativi + 1) x tempo, più le pause dell'SDK.
 
     Con `None` nel profilo legge le impostazioni, come `complete_json`. Le pause sono
     `min(0,5 x 2^n, 8)` per ogni ritentativo; un `retry-after` del server non ha tetto.

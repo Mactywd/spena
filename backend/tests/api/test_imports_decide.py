@@ -480,6 +480,39 @@ async def test_la_scadenza_lascia_in_coda_chi_non_ha_risposto(
     assert (speck.ingredient_id, guanciale.ingredient_id) == (None, None)
 
 
+async def test_la_frase_della_scadenza_conta_quel_che_resta_in_coda(
+    logged_client, db_session, monkeypatch, scadenza_corta
+):
+    """Uno deciso, uno tagliato dalla scadenza, uno risposto ma non applicabile: in coda
+    ne restano due, e la frase dice due (non uno, i soli scaduti)."""
+    import app.services.recipe_import.decide as modulo
+
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    rigatoni, speck, guanciale = _termini(db_session, "Rigatoni", "Speck", "Guanciale")
+    await db_session.flush()
+    monkeypatch.setattr(
+        modulo, "open_client",
+        lambda: LentoLlm(
+            {"Rigatoni": llm_map("pasta"), "Speck": llm_map("pasta"),
+             "Guanciale": llm_map("ingrediente-che-non-esiste")},
+            lenti={"Speck"},
+        ),
+    )
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    corpo = response.json()
+    assert corpo["applied"] == 1
+    assert corpo["still_pending"] == 2
+    assert corpo["stopped_notice"] == (
+        "L'AI ci ha messo troppo: 2 termini restano in coda. "
+        "Decidili a mano qui sotto, o riprova."
+    )
+
+
 async def test_la_scadenza_prima_di_ogni_risposta_non_e_un_503(
     logged_client, db_session, monkeypatch, scadenza_corta
 ):
@@ -573,7 +606,11 @@ async def test_la_scadenza_del_collasso_tiene_le_decisioni_separate(
                 await asyncio.sleep(30)
             return await super().answer(body)
 
+    import app.services.llm as llm_modulo
+
     monkeypatch.setattr(rotta, "profile_worst_seconds", lambda profile, settings: 0.5)
+    # anche le impostazioni la leggono (rifiutano una scadenza sotto il caso peggiore)
+    monkeypatch.setattr(llm_modulo, "profile_worst_seconds", lambda profile, settings: 0.5)
     monkeypatch.setenv("LLM_SYNC_DEADLINE_SECONDS", "1.5")
     get_settings.cache_clear()
     _termini(db_session, "Salmone", "Salmone selvaggio")

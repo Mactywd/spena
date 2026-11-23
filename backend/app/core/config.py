@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Il .env vive nella radice del repository, non in backend/. Un percorso relativo
@@ -60,6 +61,20 @@ class Settings(BaseSettings):
     embedding_endpoint: str = ""
     off_base_url: str = "https://world.openfoodfacts.org"
     off_timeout_seconds: float = 3.0
+
+    @model_validator(mode="after")
+    def _sync_deadline_covers_one_call(self) -> "Settings":
+        """La scadenza delle rotte sincrone deve contenere almeno una chiamata col profilo
+        sincrono nel suo caso peggiore: sotto, il tempo delle domande sarebbe negativo."""
+        from app.services.llm import SYNC_PROFILE, profile_worst_seconds
+
+        worst = profile_worst_seconds(SYNC_PROFILE, self)
+        if self.llm_sync_deadline_seconds < worst:
+            raise ValueError(
+                f"LLM_SYNC_DEADLINE_SECONDS ({self.llm_sync_deadline_seconds}) è sotto il "
+                f"caso peggiore di una chiamata sincrona ({worst} s)"
+            )
+        return self
 
 
 @lru_cache

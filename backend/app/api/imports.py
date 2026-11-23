@@ -81,7 +81,7 @@ def questions_deadline_seconds(settings: Settings) -> float:
 
 
 def deadline_notice(timed_out: int) -> str:
-    """La frase della scadenza: quanti termini l'AI non ha deciso in tempo."""
+    """La frase della scadenza: quanti termini di questo giro restano in coda."""
     if timed_out == 1:
         return "L'AI ci ha messo troppo: 1 termine resta in coda. Decidilo a mano qui sotto, o riprova."
     return (
@@ -263,7 +263,7 @@ async def decide_with_ai(
     if outcome.stopped is not None:
         notice = outcome.stopped.notice
     elif outcome.timed_out:
-        notice = deadline_notice(outcome.timed_out)
+        notice = deadline_notice(outcome.still_pending)
 
     materialized = await materialize_ready(session, GIALLOZAFFERANO)
     numbers = await counts(session, GIALLOZAFFERANO)
