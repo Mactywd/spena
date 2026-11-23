@@ -130,7 +130,7 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
   });
 
   describe("se la ricetta è cambiata mentre la correggevi", () => {
-    const CAMBIATA = "Claude ha cambiato la ricetta mentre la correggevi.";
+    const CAMBIATA = "La ricetta è cambiata mentre la correggevi.";
     const NUOVA = { ...DETAIL, version: "v2", title: "Pasta di Claude" };
 
     function conflitto(reload: RecipeDetail = NUOVA) {

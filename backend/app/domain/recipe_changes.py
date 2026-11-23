@@ -122,11 +122,16 @@ def changed_to_json(parts: ChangedParts, order: tuple[LineSnapshot, ...]) -> dic
     }
 
 
-def recipe_version(snapshot: RecipeSnapshot) -> str:
-    """L'impronta di quel che la chat può cambiare: titolo, descrizione, procedimento,
-    porzioni e righe (ordinate per ingrediente). Il costo e il reparto non entrano.
-    Due letture della stessa ricetta danno la stessa versione; non si salva da nessuna parte."""
+def recipe_version(snapshot: RecipeSnapshot, *, cost: int | None, category: str | None) -> str:
+    """L'impronta di quel che il modulo può cambiare: titolo, descrizione, procedimento,
+    porzioni, righe (ordinate per ingrediente), costo e categoria. Costo e categoria non
+    stanno nello snapshot, che la chat non tocca, ma un altro telefono sì: senza, un costo
+    cambiato a modulo aperto tornerebbe com'era al salvataggio (deciso da Mattia il
+    2026-11-23). Due letture della stessa ricetta danno la stessa versione; non si salva da
+    nessuna parte."""
     canonical = {
+        "cost": cost,
+        "category": category,
         "title": snapshot.title,
         "description": snapshot.description,
         "instructions": snapshot.instructions,

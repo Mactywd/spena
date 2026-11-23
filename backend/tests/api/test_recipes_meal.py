@@ -419,7 +419,7 @@ async def test_una_ricetta_toccata_dalla_chat_non_si_sostituisce(
     assert pasto["recipe"]["title"] == "Pasta della chat"
 
 
-CLAUDE_CHANGED = "Claude ha cambiato la ricetta mentre la correggevi."
+RECIPE_CHANGED = "La ricetta è cambiata mentre la correggevi."
 
 
 def _corpo_di(dettaglio, titolo, **extra):
@@ -463,7 +463,7 @@ async def test_il_put_con_la_versione_vecchia_e_409(logged_client, db_session, p
     )
 
     assert r.status_code == 409, r.text
-    assert r.json() == {"code": "recipe_changed", "detail": CLAUDE_CHANGED}
+    assert r.json() == {"code": "recipe_changed", "detail": RECIPE_CHANGED}
     dopo = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
     assert dopo["title"] == "Pasta della chat"
     assert dopo["instructions"] == "Cuoci di più."
@@ -497,6 +497,34 @@ async def test_il_put_con_la_versione_giusta_scrive(logged_client, db_session, p
     assert r.status_code == 200, r.text
     assert r.json()["title"] == "Pasta mia"
     assert r.json()["version"] != aperta["version"]
+
+
+async def test_un_costo_cambiato_da_un_altro_telefono_ferma_il_modulo(
+    logged_client, db_session, pasta
+):
+    """Deciso da Mattia il 2026-11-23: costo e categoria entrano nella versione. Il modulo è
+    aperto su un telefono, l'altro cambia solo il costo; il primo salva e riceve il 409, con
+    la frase che non dice chi l'ha cambiata, e il costo nuovo resta."""
+    meal = await _pasto(db_session)
+    ricetta = await _scritta_per(logged_client, pasta, meal)
+    aperta = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
+    altro = await logged_client.put(
+        f"{R}/{ricetta['id']}",
+        json=_corpo_di(aperta, aperta["title"], cost=4, expected_version=aperta["version"]),
+    )
+    assert altro.status_code == 200, altro.text
+    assert altro.json()["version"] != aperta["version"]
+
+    r = await logged_client.put(
+        f"{R}/{ricetta['id']}",
+        json=_corpo_di(aperta, "Pasta mia", expected_version=aperta["version"]),
+    )
+
+    assert r.status_code == 409, r.text
+    assert r.json() == {"code": "recipe_changed", "detail": RECIPE_CHANGED}
+    dopo = (await logged_client.get(f"{R}/{ricetta['id']}")).json()
+    assert dopo["cost"] == 4
+    assert dopo["title"] == aperta["title"]
 
 
 async def test_la_ricetta_di_claude_cambiata_a_meta_non_si_sostituisce(

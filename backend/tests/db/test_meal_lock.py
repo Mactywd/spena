@@ -604,7 +604,7 @@ async def test_il_put_aspetta_la_chat_e_poi_dice_che_e_cambiata(maker, dati, mon
     assert r.status_code == 409, r.text
     assert r.json() == {
         "code": "recipe_changed",
-        "detail": "Claude ha cambiato la ricetta mentre la correggevi.",
+        "detail": "La ricetta è cambiata mentre la correggevi.",
     }
     async with maker() as check:
         meal = await get_meal(check, meal_id)

@@ -74,9 +74,10 @@ from app.domain.recipe_changes import recipe_version  # noqa: E402
 def test_la_stessa_ricetta_ha_la_stessa_versione():
     a = recipe(line(A), line(B, "secondary", "q.b."))
     b = recipe(line(B, "secondary", "q.b."), line(A))
-    assert recipe_version(a) == recipe_version(b)
-    assert len(recipe_version(a)) == 16
-    int(recipe_version(a), 16)
+    version = recipe_version(a, cost=None, category=None)
+    assert version == recipe_version(b, cost=None, category=None)
+    assert len(version) == 16
+    int(version, 16)
 
 
 @pytest.mark.parametrize(
@@ -93,10 +94,22 @@ def test_la_stessa_ricetta_ha_la_stessa_versione():
     ids=["titolo", "descrizione", "procedimento", "porzioni", "dose", "ruolo", "nota"],
 )
 def test_ogni_campo_cambia_la_versione(changed):
-    assert recipe_version(changed) != recipe_version(BEFORE)
+    assert recipe_version(changed, cost=None, category=None) != recipe_version(
+        BEFORE, cost=None, category=None
+    )
 
 
-def test_il_costo_non_cambia_la_versione():
-    # il costo non è nello snapshot: la versione non può dipenderne
+@pytest.mark.parametrize(
+    ("cost", "category"),
+    [(3, None), (None, "Primi"), (2, "Secondi")],
+    ids=["costo", "categoria", "tutti e due"],
+)
+def test_costo_e_categoria_cambiano_la_versione(cost, category):
+    # non stanno nello snapshot (la chat non li tocca), ma un altro telefono sì
     assert "cost" not in RecipeSnapshot.__dataclass_fields__
-    assert recipe_version(BEFORE) == recipe_version(replace(BEFORE))
+    assert recipe_version(BEFORE, cost=cost, category=category) != recipe_version(
+        BEFORE, cost=None, category=None
+    )
+    assert recipe_version(BEFORE, cost=cost, category=category) == recipe_version(
+        replace(BEFORE), cost=cost, category=category
+    )

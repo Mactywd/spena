@@ -104,8 +104,13 @@ MEAL_RECIPE_KEPT = "È la ricetta di un pasto: si elimina insieme al pasto."
 # Il 409 di un `PUT` partito da una versione vecchia: il modulo lo riconosce dal codice e
 # offre le sue due strade, «Salva comunque la mia» e «Ricarica la ricetta»
 RECIPE_CHANGED_CODE = "recipe_changed"
-CLAUDE_CHANGED_RECIPE = "Claude ha cambiato la ricetta mentre la correggevi."
+# una frase sola, chiunque l'abbia cambiata: Claude o un altro telefono (2026-11-23)
 RECIPE_CHANGED = "La ricetta è cambiata mentre la correggevi."
+
+def _version_of(recipe: Recipe) -> str:
+    """La versione che il dettaglio manda al modulo e che il `PUT` confronta."""
+    return recipe_version(recipe_snapshot(recipe), cost=recipe.cost, category=recipe.category)
+
 
 # R2: le due regole dei parametri del dettaglio. Il frontend non le viola mai, quindi
 # non sono frasi a video: dicono il contratto a chi chiama la rotta a mano
@@ -235,7 +240,7 @@ async def _to_out(
             else None
         ),
         in_book=recipe.in_book,
-        version=recipe_version(recipe_snapshot(recipe)),
+        version=_version_of(recipe),
         meal=(
             None
             if meal is None
@@ -458,14 +463,14 @@ async def replace(
     # partito, e se la ricetta intanto è cambiata non si scrive niente
     if (
         payload.expected_version is not None
-        and payload.expected_version != recipe_version(recipe_snapshot(recipe))
+        and payload.expected_version != _version_of(recipe)
     ):
         await session.rollback()  # libera il pasto subito
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={
                 "code": RECIPE_CHANGED_CODE,
-                "detail": CLAUDE_CHANGED_RECIPE if meal is not None else RECIPE_CHANGED,
+                "detail": RECIPE_CHANGED,
             },
         )
     async with _writing_recipe(session):
