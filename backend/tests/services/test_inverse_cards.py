@@ -463,6 +463,42 @@ async def test_l_inversa_non_toglie_dalla_lista_cio_che_serve_a_un_altro_pasto(
     assert await inverse(db_session) == []  # era l'unica riga: l'inversa non nasce
 
 
+async def test_una_riga_smarcata_sulla_scheda_di_un_altro_pasto_non_tiene_la_voce_in_lista(
+    db_session, mondo
+):
+    pesto = mondo["ing"]["pesto"]
+    scheda_b = await propose_card(
+        db_session, meals=[mondo["B"]], pantry=[], shopping=[ListProposal(pesto.id, "Pesto")]
+    )
+    (riga_b,) = righe(scheda_b, "list")
+    assert riga_b.editable is True and riga_b.checked is True
+    await apply_card(db_session, scheda_b.id, [RowOverride(riga_b.id, checked=False)])
+    riga_b = (await db_session.execute(
+        select(ChangeCardRow).where(ChangeCardRow.id == riga_b.id)
+    )).scalar_one()
+    await db_session.refresh(riga_b)
+    assert riga_b.applied is False
+
+    await applicata(db_session, [mondo["A"]], [], [ListProposal(pesto.id, "Pesto")])
+    await delete_meal(db_session, mondo["A"])
+
+    card = await l_inversa(db_session)
+    assert [(r.kind, r.label, r.checked) for r in card.rows] == [("unlist", "Pesto", True)]
+
+
+async def test_una_riga_smarcata_su_una_scheda_ancora_proposta_tiene_la_voce(
+    db_session, mondo
+):
+    pesto = await _scheda_a_con_pesto_in_lista(db_session, mondo)
+    scheda_b = await propose_card(
+        db_session, meals=[mondo["B"]], pantry=[], shopping=[ListProposal(pesto.id, "Pesto")]
+    )
+    (riga_b,) = righe(scheda_b, "list")
+    assert riga_b.applied is None  # la scheda è ancora proposta
+    await delete_meal(db_session, mondo["A"])
+    assert await inverse(db_session) == []
+
+
 async def test_una_scheda_scartata_non_tiene_la_voce_in_lista(db_session, mondo):
     pesto = await _scheda_a_con_pesto_in_lista(db_session, mondo)
     scheda_b = await propose_card(
