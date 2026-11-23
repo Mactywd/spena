@@ -603,7 +603,22 @@ async def decide_terms(
         try:
             async with asyncio.timeout_at(at(ask_deadline_seconds)):
                 await wave(terms[:1])
-                await wave(terms[1:])
+                # Se la prima non ha dato una proposta la cache dell'anagrafica non è
+                # scritta: parte da sola anche la seconda. Non oltre, perché con l'AI
+                # davvero giù una fila di domande una alla volta allungherebbe i
+                # comandi a riga di comando, che non hanno scadenza.
+                first = tasks[0] if tasks else None
+                got_one = (
+                    first is not None
+                    and not first.cancelled()
+                    and first.exception() is None
+                    and isinstance(first.result(), TermDecisionProposal)
+                )
+                if not got_one and stopped is None:
+                    await wave(terms[1:2])
+                    await wave(terms[2:])
+                else:
+                    await wave(terms[1:])
         except TimeoutError:
             pass  # chi non ha risposto resta in coda: si conta qui sotto
         # `tasks` segue l'ordine di `terms`; i termini oltre la sua lunghezza non sono

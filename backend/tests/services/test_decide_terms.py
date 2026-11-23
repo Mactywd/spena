@@ -920,3 +920,60 @@ async def test_il_primo_termine_terminale_ferma_tutto(db_session, base):
     assert esito.stopped is not None and esito.stopped.kind is LlmFailureKind.AUTH
     assert esito.applied == 0
     assert esito.still_pending == 3
+
+
+async def test_se_la_prima_fallisce_la_seconda_parte_da_sola(db_session, base, monkeypatch):
+    """Senza una proposta la cache dell'anagrafica non è scritta: anche la seconda
+    domanda parte da sola, poi le altre insieme. Non oltre la seconda."""
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "8")
+    get_settings.cache_clear()
+    termini = await aggiungi(
+        db_session,
+        termine("Rigatoni", "k-rigatoni"),
+        termine("Speck", "k-speck"),
+        termine("Acqua", "k-acqua"),
+        termine("Sale", "k-sale"),
+    )
+    finto = EventiLlm({
+        "Rigatoni": errore_api(529, "overloaded_error"),
+        "Speck": llm_map("pasta"),
+        "Acqua": LLM_IGNORE,
+        "Sale": LLM_IGNORE,
+    })
+
+    esito = await decide_terms(db_session, termini, client=finto)
+
+    assert esito.stopped is None
+    assert finto.eventi[:4] == [
+        ("inizio", "Rigatoni"), ("fine", "Rigatoni"),
+        ("inizio", "Speck"), ("fine", "Speck"),
+    ]
+    # le ultime due si sovrappongono
+    assert [tipo for tipo, _ in finto.eventi[4:]] == ["inizio", "inizio", "fine", "fine"]
+
+
+async def test_se_la_prima_riesce_le_altre_partono_insieme(db_session, base, monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "8")
+    get_settings.cache_clear()
+    termini = await aggiungi(
+        db_session,
+        termine("Rigatoni", "k-rigatoni"),
+        termine("Speck", "k-speck"),
+        termine("Acqua", "k-acqua"),
+        termine("Sale", "k-sale"),
+    )
+    finto = EventiLlm({
+        "Rigatoni": llm_map("pasta"), "Speck": llm_map("pasta"),
+        "Acqua": LLM_IGNORE, "Sale": LLM_IGNORE,
+    })
+
+    await decide_terms(db_session, termini, client=finto)
+
+    assert finto.eventi[:2] == [("inizio", "Rigatoni"), ("fine", "Rigatoni")]
+    assert [tipo for tipo, _ in finto.eventi[2:]] == [
+        "inizio", "inizio", "inizio", "fine", "fine", "fine",
+    ]
