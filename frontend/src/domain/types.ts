@@ -166,6 +166,8 @@ export interface RecipeDetail extends RecipeSummary {
   servings: number | null;
   source_ref: string | null;
   ingredients: RecipeIngredientLine[];
+  /** Solo dopo una ricetta scritta a mano al posto di quella di Claude: la modifica da annullare. */
+  undo_change_id?: string | null;
   /** Le porzioni per cui il server ha effettivamente riscalato la risposta. */
   scaled_to: number | null;
   /** Quante righe non si sono potute riscalare e sono rimaste come sono. */

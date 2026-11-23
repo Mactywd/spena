@@ -12,6 +12,7 @@ import type { RecipeBody } from "../../domain/types";
 import { createRecipe } from "../recipes/api";
 import { RecipeForm } from "../recipe-form/RecipeForm";
 import { EMPTY_FORM } from "../recipe-form/formModel";
+import { undoRecipeChange } from "../meal-chat/api";
 import { MEALS_KEY, fetchMeal } from "./api";
 
 /** `/pasti/:id/ricetta/nuova`: il modulo di sempre per scrivere la ricetta di un pasto.
@@ -57,6 +58,25 @@ export function MealRecipeNewScreen() {
           : "Non sono riuscito a salvarla nel ricettario. Niente è andato perso: riprova.",
       );
       setKeeping(false);
+    }
+  }
+
+  // «Annulla» dopo la sostituzione: il server rimette la ricetta di Claude; se rifiuta, dice perché
+  async function undoReplacement(changeId: string, recipeId: string) {
+    try {
+      await undoRecipeChange(id, changeId);
+      void queryClient.invalidateQueries({ queryKey: MEALS_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["recipe", recipeId] });
+      notice({ text: "Rimessa la ricetta di Claude." });
+    } catch (err) {
+      const detail =
+        err instanceof ApiError ? (err.body as { detail?: unknown } | null)?.detail : null;
+      notice({
+        text:
+          typeof detail === "string"
+            ? detail
+            : "Non sono riuscito ad annullare: la ricetta di Claude non è tornata.",
+      });
     }
   }
 
@@ -112,7 +132,15 @@ export function MealRecipeNewScreen() {
         onSaved={(saved) => {
           void queryClient.invalidateQueries({ queryKey: MEALS_KEY });
           void queryClient.invalidateQueries({ queryKey: ["recipe", saved.id] });
-          notice({ text: "Salvata." });
+          const changeId = saved.undo_change_id;
+          notice(
+            changeId
+              ? {
+                  text: "Salvata al posto di quella di Claude.",
+                  action: { label: "Annulla", onClick: () => void undoReplacement(changeId, saved.id) },
+                }
+              : { text: "Salvata." },
+          );
           navigate(`/pasti/${id}`, { replace: true });
         }}
         submitLabel="Salva la ricetta"
