@@ -14,6 +14,7 @@ from app.repositories.recipes import get_recipe
 from app.services.claude.tools import SPENA_SERVER, TurnContext, dish_tools
 from app.services.meal_recipes import (
     DraftLine,
+    STALE_WRITE_MESSAGE,
     MealRecipeDraft,
     write_meal_recipe,
 )
@@ -246,3 +247,33 @@ async def test_due_letture_in_parallelo_non_si_pestano(ctx):
         tools["read_pantry"].handler({}), tools["read_shopping_list"].handler({})
     )
     assert not a.get("is_error") and not b.get("is_error")
+
+
+async def test_la_coda_non_riscrive_la_ricetta_a_mano(ctx, db_session, meal, voci):
+    # un giro della coda: solo ricette nuove, nessuna istantanea vista in partenza
+    ctx.create_only = True
+    ctx.seen = None
+    tool = by_name(ctx)["write_recipe"]
+    assert not (await tool.handler(recipe_args(voci))).get("is_error")
+    # Mattia scrive la sua a mano al posto di quella di Claude
+    await db_session.refresh(meal)
+    await write_meal_recipe(
+        db_session, meal,
+        MealRecipeDraft(
+            title="Frittata di Mattia", description=None, instructions="A mano.", servings=1,
+            lines=(
+                DraftLine(
+                    ingredient_id=voci["uova"].id, name=None, category=None,
+                    role="primary", quantity_text="3", note=None,
+                ),
+            ),
+            summary="Scritta a mano",
+        ),
+    )
+    await db_session.commit()
+    result = await tool.handler(recipe_args(voci, title="Di nuovo Claude"))
+    assert result["is_error"] is True
+    assert text_of(result) == STALE_WRITE_MESSAGE
+    await db_session.refresh(meal)
+    recipe = await get_recipe(db_session, meal.recipe_id)
+    assert recipe.title == "Frittata di Mattia"

@@ -456,7 +456,9 @@ def write_recipe_tool(ctx: TurnContext) -> SdkMcpTool:
                 # tutto il resto del giro: «Annulla» e «Scrivi la ricetta» aspetterebbero Claude.
                 await ctx.session.rollback()
                 raise
-            if ctx.seen is not None:
+            # anche il giro della coda (`create_only`, partito senza istantanea) ricorda quel che ha
+            # scritto: una ricetta a mano arrivata in mezzo fa rifiutare la seconda scrittura
+            if ctx.seen is not None or ctx.create_only:
                 ctx.seen = snapshot_from_json(change.after)
             if meal.recipe_id is not None:
                 written.add(meal.recipe_id)
