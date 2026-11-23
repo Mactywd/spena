@@ -220,8 +220,9 @@ def read_tools(ctx: TurnContext) -> list[SdkMcpTool]:
             return _error(RANGE_ERROR)
         async with ctx.lock:
             meals = await meals_between(ctx.session, start, end)
-            # rileggere il pasto di questa chat è vederlo com'è adesso
-            if ctx.seen is not None:
+            # rileggere il pasto di questa chat è vederlo com'è adesso; la coda no: non
+            # deve riarmare ciò che ha visto, o riscriverebbe una ricetta messa a mano
+            if ctx.seen is not None and not ctx.create_only:
                 mine = next((m for m in meals if m.id == ctx.meal_id), None)
                 if mine is not None:
                     ctx.seen = await meal_snapshot(ctx.session, mine)

@@ -505,3 +505,25 @@ async def test_un_avanzo_resta_rifiutato(logged_client, db_session, pasta):
     assert r.status_code == 409, r.text
     assert r.json()["code"] == "no_recipe_here"
     assert await _conta_ricette(db_session) == prima
+
+
+async def test_la_sostituzione_con_un_riferimento_sparito_risponde_404_non_500(
+    logged_client, db_session, pasta, monkeypatch
+):
+    from sqlalchemy.exc import IntegrityError
+
+    import app.api.recipes as recipes_api
+
+    class _Orig(Exception):
+        sqlstate = "23503"
+
+    async def _sparito(*args, **kwargs):
+        raise IntegrityError("INSERT", {}, _Orig())
+
+    meal = await _pasto(db_session)
+    await _della_coda(db_session, meal, pasta)
+    monkeypatch.setattr(recipes_api, "write_meal_recipe", _sparito)
+
+    r = await logged_client.post(R, json=_corpo(pasta, "Pasta a mano", meal_id=str(meal.id)))
+
+    assert r.status_code == 404, r.text

@@ -615,9 +615,10 @@ async def _replace_untouched_ai_recipe(
         sides=UNSET,
     )
     try:
-        replaced = await write_meal_recipe(
-            session, meal, draft, expected=snapshot_from_json(change.after)
-        )
+        async with _writing_recipe(session):
+            replaced = await write_meal_recipe(
+                session, meal, draft, expected=snapshot_from_json(change.after)
+            )
     except MealRefusal as exc:
         # il pasto è diventato un avanzo, un fuori casa o una bozza intanto
         response = meal_refusal_response(exc)

@@ -277,3 +277,34 @@ async def test_la_coda_non_riscrive_la_ricetta_a_mano(ctx, db_session, meal, voc
     await db_session.refresh(meal)
     recipe = await get_recipe(db_session, meal.recipe_id)
     assert recipe.title == "Frittata di Mattia"
+
+
+async def test_la_coda_non_riarma_cio_che_ha_visto_rileggendo_i_pasti(
+    ctx, db_session, meal, voci
+):
+    ctx.create_only = True
+    ctx.seen = None
+    tools = by_name(ctx)
+    assert not (await tools["write_recipe"].handler(recipe_args(voci))).get("is_error")
+    await db_session.refresh(meal)
+    await write_meal_recipe(
+        db_session, meal,
+        MealRecipeDraft(
+            title="Frittata di Mattia", description=None, instructions="A mano.", servings=1,
+            lines=(
+                DraftLine(
+                    ingredient_id=voci["uova"].id, name=None, category=None,
+                    role="primary", quantity_text="3", note=None,
+                ),
+            ),
+            summary="Scritta a mano",
+        ),
+    )
+    await db_session.commit()
+    day = meal.day.isoformat()
+    await tools["read_meals"].handler({"start": day, "end": day})
+    result = await tools["write_recipe"].handler(recipe_args(voci, title="Di nuovo Claude"))
+    assert result["is_error"] is True
+    assert text_of(result) == STALE_WRITE_MESSAGE
+    await db_session.refresh(meal)
+    assert (await get_recipe(db_session, meal.recipe_id)).title == "Frittata di Mattia"
