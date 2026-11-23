@@ -42,8 +42,11 @@ export function DirectEntry({
   door,
   onEntered,
   onClose,
+  undoneItemIds,
 }: {
   door: EntryDoor;
+  /** Le voci di questa serie che la Dispensa ha già annullato: la nota non le conta. */
+  undoneItemIds: ReadonlySet<string>;
   onEntered: (created: PantryItem, label: string) => void;
   onClose: () => void;
 }) {
@@ -57,8 +60,11 @@ export function DirectEntry({
   // il codice letto e rimasto senza prodotto (S8): sopravvive al resolver che si chiude,
   // per il catalogo aperto dopo dalla stessa scheda. Quando seguirlo lo decide il resolver
   const [rememberedCode, setRememberedCode] = useState<string | undefined>(undefined);
-  // l'ultimo prodotto entrato in questa serie: riletto subito, la scheda lo dice
-  const [lastProductId, setLastProductId] = useState<string | null>(null);
+  // l'ultima voce entrata in questa serie, col suo prodotto: riletto subito, la scheda lo
+  // dice, salvo che la voce sia stata annullata nel frattempo
+  const [lastEntered, setLastEntered] = useState<{ itemId: string; productId: string | null } | null>(
+    null
+  );
 
   const add = useMutation({
     mutationFn: ({ choice, expiresOn }: { choice: EntryChoice; expiresOn: string | null }) =>
@@ -119,12 +125,12 @@ export function DirectEntry({
     add.mutate(
       { choice, expiresOn: expiry || null },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           if (door.kind === "plus") {
             onClose();
             return;
           }
-          setLastProductId(choice.product?.id ?? null);
+          setLastEntered({ itemId: created.id, productId: choice.product?.id ?? null });
           scanAgain();
         },
       }
@@ -169,6 +175,12 @@ export function DirectEntry({
     );
   } else {
     const { choice } = stage;
+    const justEntered =
+      door.kind === "scan" &&
+      choice.product !== null &&
+      lastEntered !== null &&
+      choice.product.id === lastEntered.productId &&
+      !undoneItemIds.has(lastEntered.itemId);
     const loosePlus = door.kind === "plus" && choice.product === null;
     body = (
       <EntryCard
@@ -178,9 +190,7 @@ export function DirectEntry({
         onExpiry={setExpiry}
         busy={add.isPending}
         failed={add.isError}
-        justEntered={
-          door.kind === "scan" && choice.product !== null && choice.product.id === lastProductId
-        }
+        justEntered={justEntered}
         onCode={
           loosePlus
             ? () => setStage({ kind: "resolve", start: "scanner", base: choice, serial: next() })

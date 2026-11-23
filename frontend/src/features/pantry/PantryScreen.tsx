@@ -158,6 +158,9 @@ export function PantryScreen() {
   const [entry, setEntry] = useState<{ door: EntryDoor; serial: number } | null>(null);
   // la voce appena aggiunta, da portare in vista quando arriva nell'elenco
   const [revealId, setRevealId] = useState<string | null>(null);
+  // le voci d'ingresso il cui «Annulla» è riuscito: la serie della scansione non dice più
+  // «L'hai appena messo» per loro
+  const [undoneEntryIds, setUndoneEntryIds] = useState<ReadonlySet<string>>(new Set());
   const clearReveal = useCallback(() => setRevealId(null), []);
   // S3, Mattia 2026-11-18: finché la serie della scansione è aperta la riga nuova aspetta,
   // perché portarla in vista spinge fuori dallo schermo il pannello che sta sopra le righe;
@@ -209,7 +212,10 @@ export function PantryScreen() {
   // riprovare — la voce è in dispensa davvero, e perderla qui sarebbe il vicolo cieco
   function undoEntry(created: PantryItem, label: string) {
     patchPantryItem(created.id, { archived: true }).then(
-      () => queryClient.invalidateQueries({ queryKey: ["pantry"] }),
+      () => {
+        setUndoneEntryIds((prev) => new Set(prev).add(created.id));
+        queryClient.invalidateQueries({ queryKey: ["pantry"] });
+      },
       () =>
         notice({
           text: `Non sono riuscito a togliere ${label} dalla dispensa.`,
@@ -333,6 +339,7 @@ export function PantryScreen() {
             door={entry.door}
             onEntered={afterEntry}
             onClose={closeEntry}
+            undoneItemIds={undoneEntryIds}
           />
         )}
 
