@@ -361,12 +361,15 @@ async def test_l_elenco_intero_mette_i_quasi_doppioni_subito_dopo_i_prefissi(log
     il quasi-doppione restava fuori. «pomodori» e «pomodro» non contengono «pomodoro», ma
     gli somigliano più di ogni «sugo … di pomodoro»."""
     sughi = [f"sugo {i:02} di pomodoro" for i in range(1, 12)]
-    await _ingredienti(db_session, "pomodoro", "pomodori", "pomodro", *sughi)
+    # un prefisso esatto con somiglianza bassa (0.30): resta sopra i quasi-doppioni (0.64, 0.55)
+    await _ingredienti(
+        db_session, "pomodoro", "pomodoro ciliegino in scatola", "pomodori", "pomodro", *sughi
+    )
 
     intero = await _suggeriti(logged_client, "pomodoro", trim="false")
     assert len(intero) == 10
-    assert intero[0] == "pomodoro"
-    assert set(intero[1:3]) == {"pomodori", "pomodro"}
+    assert intero[:2] == ["pomodoro", "pomodoro ciliegino in scatola"]
+    assert set(intero[2:4]) == {"pomodori", "pomodro"}
 
     # il taglio non cambia: solo chi contiene il testo
     tagliato = await _suggeriti(logged_client, "pomodoro")

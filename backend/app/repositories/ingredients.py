@@ -119,7 +119,7 @@ async def _suggestion_candidates(
     session: AsyncSession, query: str, limit: int, kind: IngredientKind | None,
     *, hits_first: bool = True,
 ) -> list[ScoredIngredient]:
-    """I candidati dei suggerimenti, già nell'ordine in cui `trim_suggestions` li vuole.
+    """I candidati dei suggerimenti, già nell'ordine in cui `trim_suggestions` li vuole (con `hits_first=True`).
 
     Rispetto a `search_ingredients`: il prefisso si confronta senza accenti; un
     riscontro (`is_hit`, il testo all'inizio di una parola del nome o di un alias)
