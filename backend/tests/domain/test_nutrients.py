@@ -46,8 +46,8 @@ def test_fiber_has_no_normed_vnr():
 def test_vocabulary_holds_fields_not_collected_yet():
     """Il livello ingrediente generico non esiste ancora, ma il vocabolario
     già nomina campi che oggi nessuna fonte riempie (S4, fuori scopo)."""
-    assert "vitamin_a" in NUTRIENT_FIELDS
-    assert "vitamin_a" not in COLLECTED_FIELDS
+    assert "biotin" in NUTRIENT_FIELDS
+    assert "biotin" not in COLLECTED_FIELDS
 
 
 def test_main_fields_sono_l_etichetta_nutrizionale():
