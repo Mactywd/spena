@@ -1,6 +1,6 @@
 # Next steps
 
-_Ultimo aggiornamento: 2026-11-23 (fase giorno: le idee rimaste portate a piano con Mattia — nove piani nuovi, 26 voci `pronto`; chiusa senza codice la voce dei legami d'avanzo fuori finestra; aggiunta un'idea sulle confezioni uguali in Dispensa)_
+_Ultimo aggiornamento: 2026-11-23 (notte: i quasi-doppioni in Anagrafica, fatti, da revisionare; prima, fase giorno: le idee rimaste portate a piano con Mattia — nove piani nuovi, 26 voci `pronto`; chiusa senza codice la voce dei legami d'avanzo fuori finestra; aggiunta un'idea sulle confezioni uguali in Dispensa)_
 
 Questo è il backlog, ed è l'unico: cosa c'è da fare e in che stato. Il ragionamento dietro
 ogni voce (decisioni, misure, perché) resta in `docs/prossimi-passi.md`, sotto il codice
@@ -15,7 +15,6 @@ Il repo è pubblico: qui non vanno dati di produzione.
 
 ## Pronti per la notte
 
-- [in corso] P2 · Suggerimenti: in Anagrafica i quasi-doppioni («pomodori», «pomodro») si vedono subito dopo «pomodoro» anche con dieci riscontri o più: l'elenco intero (`trim=false`) va per somiglianza dopo i prefissi, e l'Anagrafica chiede 50 righe (Mattia, 2026-11-22: «50 righe e simili in alto», senza misurare prima) [T3, esito del giro] → `docs/superpowers/plans/2026-11-22-suggerimenti-anagrafica.md`, ramo `night/suggerimenti-anagrafica` da `master` → in corso su night/suggerimenti-anagrafica
 - [pronto] P2 · Pasti: la ricetta scritta a mano mentre è «in preparazione» prende il posto di quella di Claude arrivata nel frattempo, se nessuno l'ha ancora toccata, con «Annulla» che la rimette; se è già stata toccata resta l'offerta di oggi (Mattia, 2026-11-22: strada (a)) [Parte IV] → `docs/superpowers/plans/2026-11-22-ricetta-a-mano-vince.md`, ramo `night/ricetta-a-mano-vince` da `master`, indipendente dall'altro
 - [pronto] P2 · Pasti: la ricetta di un pasto col lucchetto anche nella modifica (`PUT`) e nel `PATCH`; il modulo aperto prima di una risposta di Claude dice «Claude ha cambiato la ricetta mentre la correggevi.» con «Salva comunque la mia» / «Ricarica la ricetta»; «Annulla» dopo il pasto eliminato rimette la ricetta nel ricettario (Mattia, 2026-11-22) [Parte IV] → `docs/superpowers/plans/2026-11-22-ricetta-pasto-lucchetto.md`, ramo `night/ricetta-pasto-lucchetto` da `master`; tocca `api/recipes.py` e `RecipeOut` come il piano della ricetta a mano: rami separati, il secondo merge va cucito
 - [pronto] P2 · I tempi dell'AI contro quelli di Nginx: «Riprova con l'AI» e «Sostituisci» rispondono entro 4 minuti con un profilo loro e una location di Nginx a 300 s, e quel che non arriva resta in coda con la frase che lo dice; la pianificazione dei Pasti ha 8 minuti suoi (Mattia, 2026-11-22) [Parte IV] → `docs/superpowers/plans/2026-11-22-tempi-ai.md`, ramo `night/tempi-ai` da `master`
@@ -129,6 +128,7 @@ fra le idee._
 _(niente)_
 
 ## Fatti (recenti)
+- [fatto] 2026-11-23 · Suggerimenti: in Anagrafica i quasi-doppioni («pomodori», «pomodro») si vedono subito dopo «pomodoro» anche con dieci riscontri o più: l'elenco intero (`trim=false`) va per somiglianza dopo i prefissi, e l'Anagrafica chiede 50 righe (Mattia, 2026-11-22: «50 righe e simili in alto», senza misurare prima) [T3, esito del giro] → `docs/superpowers/plans/2026-11-22-suggerimenti-anagrafica.md`, ramo `night/suggerimenti-anagrafica` da `master` → branch night/suggerimenti-anagrafica (da revisionare)
 - [fatto] 2026-11-23 · Pasti: i legami di avanzo già fuori dalla finestra di 3 giorni prima della scrittura nuova non si migrano e chiedono a ogni spostamento del pasto [Parte IV] — chiusa senza codice (Mattia, 2026-11-23): il controllo dei 3 giorni alla scrittura è in produzione dal 2026-11-22, e un legame già fuori dalla finestra non si può più creare
 - [fatto] 2026-11-21 · I suggerimenti degli ingredienti non sono più sempre dieci righe: chi contiene il testo all'inizio di una parola, nel nome o in un alias e senza accenti, e gli sfumati solo se nessuno lo contiene, sopra max(0,30; 0,8 × il primo); `%` e `_` lettere; la nota di ripiego in `IngredientPicker`; «Abbina» e l'Anagrafica ricevono l'elenco intero (`trim=false`, Mattia, 2026-11-18); il ramo è al pari di `master` [T3, esito del giro] → branch night/suggerimenti-soglia
 - [fatto] 2026-11-21 · L'hash della password in `password.env` (secondo `env_file`, forma lunga, `format: raw`, `required: false`), mai in `.env`: Compose non stampa più avvisi con i suoi pezzi; `scripts/imposta-password.sh <file compose>` lo scrive senza mostrarlo, e un test sui tre file Compose, `.env.example` e `.gitignore` impedisce di tornare indietro → branch night/hash-password
