@@ -214,6 +214,23 @@ async def test_dopo_i_troppi_passaggi_la_pianificazione_sa_dell_interruzione(
     assert prompt.index(INTERRUPTED_HISTORY_LINE) < prompt.index("Continuiamo")
 
 
+async def test_la_pianificazione_interrotta_si_continua(db_session, factory):
+    conversation = await create_planning(db_session)
+    first = await messaggio(db_session, conversation, "Pianifica la settimana")
+    events = await giro(
+        factory,
+        FakeClaude(
+            [Say("Ecco."), Fail(FailureKind.MAX_TURNS, input_tokens=1, output_tokens=1, cost_usd=0.1)]
+        ),
+        conversation, first,
+    )
+    user, reply = events[-1].data["chat"]["messages"]
+    assert (user["can_continue"], reply["can_continue"]) == (False, True)
+    second = await messaggio(db_session, conversation, "Grazie")
+    events = await giro(factory, FakeClaude([Say("Prego."), Finish()]), conversation, second)
+    assert [m["can_continue"] for m in events[-1].data["chat"]["messages"]] == [False] * 4
+
+
 async def test_il_limite_a_meta_lascia_la_proposta(db_session, factory, dal_database):
     conversation = await create_planning(db_session)
     message = await messaggio(db_session, conversation, "Pianifica la settimana")

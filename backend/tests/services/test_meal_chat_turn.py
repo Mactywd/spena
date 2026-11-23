@@ -435,6 +435,34 @@ async def test_dopo_i_troppi_passaggi_il_giro_dopo_sa_dell_interruzione(
     assert prompt.index(INTERRUPTED_HISTORY_LINE) < prompt.index("Come va?")
 
 
+async def test_continua_solo_sull_ultima_risposta_interrotta(db_session, factory, frittata):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Cambia gli spinaci")
+    interrotta = FakeClaude(
+        [Say("Ho cambiato."), Fail(FailureKind.MAX_TURNS, input_tokens=1, output_tokens=1, cost_usd=0.1)]
+    )
+    events = await giro(factory, interrotta, conversation, first)
+    user, reply = events[-1].data["chat"]["messages"]
+    assert (user["can_continue"], reply["can_continue"]) == (False, True)
+
+    _, second = await nuovo_messaggio(db_session, frittata, "Come va?")
+    events = await giro(factory, FakeClaude([Say("Bene."), Finish()]), conversation, second)
+    messages = events[-1].data["chat"]["messages"]
+    assert [m["can_continue"] for m in messages] == [False, False, False, False]
+
+
+async def test_una_risposta_normale_non_si_continua(db_session, factory, frittata):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Ciao")
+    events = await giro(factory, FakeClaude([Say("Ciao."), Finish()]), conversation, first)
+    assert [m["can_continue"] for m in events[-1].data["chat"]["messages"]] == [False, False]
+
+
+async def test_un_messaggio_fallito_non_si_continua(db_session, factory, frittata):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Ciao")
+    await giro(factory, FakeClaude([Fail(FailureKind.UNAVAILABLE)]), conversation, first)
+    view = await dish_chat_view(db_session, frittata, replying=False, now=datetime.now(UTC))
+    assert [(m.status, m.can_continue) for m in view.messages] == [("failed", False)]
+
+
 async def test_una_risposta_normale_non_porta_l_interruzione(db_session, factory, frittata):
     conversation, first = await nuovo_messaggio(db_session, frittata, "Ciao")
     await giro(factory, FakeClaude([Say("Ciao a te."), Finish()]), conversation, first)

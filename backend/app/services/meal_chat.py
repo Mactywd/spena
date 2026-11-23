@@ -265,7 +265,7 @@ async def chat_messages_out(
     card_groups = _by_message(messages, cards)
 
     out: list[ChatMessageOut] = []
-    for m in messages:
+    for i, m in enumerate(messages):
         out.append(
             ChatMessageOut(
                 id=m.id,
@@ -279,6 +279,8 @@ async def chat_messages_out(
                     await proposal_out(session, p) for p in proposal_groups.get(m.id, [])
                 ],
                 cards=[await card_out(session, c) for c in card_groups.get(m.id, [])],
+                can_continue=i == len(messages) - 1
+                and reply_interrupted(m.role, m.status, m.notice),
             )
         )
     return out

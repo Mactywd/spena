@@ -35,6 +35,9 @@ class ChatMessageOut(BaseModel):
     # se la risposta non c'è), come le modifiche
     proposals: list[MealProposalOut] = []
     cards: list[ChangeCardOut] = []
+    # vero solo sull'ultima risposta di Claude interrotta ai troppi passaggi: la chat
+    # mostra «Continua» (lo decide il server, il frontend non lo ricalcola)
+    can_continue: bool = False
 
 
 class HighlightOut(BaseModel):

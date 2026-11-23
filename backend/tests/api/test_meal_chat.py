@@ -270,6 +270,16 @@ async def test_un_secondo_messaggio_mentre_risponde_e_409(chat, frittata, db_ses
     assert risposta.json() == {"code": "claude_busy", "detail": BUSY_NOTICE}
 
 
+async def test_la_chat_dice_se_l_ultima_risposta_si_continua(chat, frittata):
+    chat.fake = FakeClaude(
+        [Say("Ho iniziato."), Fail(FailureKind.MAX_TURNS, input_tokens=1, output_tokens=1, cost_usd=0.1)]
+    )
+    await scrivi(chat, frittata)
+    messaggi = (await chat.client.get(url(frittata))).json()["messages"]
+    assert messaggi[-1]["can_continue"] is True
+    assert messaggi[0]["can_continue"] is False
+
+
 async def test_riprova_toglie_il_tentativo_fallito(chat, frittata):
     chat.fake = FakeClaude([Fail(FailureKind.UNAVAILABLE)])
     risposta = await scrivi(chat, frittata, "Quanti spinaci?")
