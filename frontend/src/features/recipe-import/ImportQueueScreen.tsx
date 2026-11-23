@@ -328,11 +328,12 @@ export function ImportQueueScreen() {
 
       {lastRun?.kind === "ai" && (
         <>
-          <p className="pt-2 text-sm font-medium text-brand">{aiRunMessage(lastRun.result)}</p>
-          {lastRun.result.stopped_notice && (
+          {lastRun.result.stopped_notice ? (
             <Alert tone="degraded" className="pt-2">
               {lastRun.result.stopped_notice}
             </Alert>
+          ) : (
+            <p className="pt-2 text-sm font-medium text-brand">{aiRunMessage(lastRun.result)}</p>
           )}
         </>
       )}

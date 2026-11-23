@@ -698,8 +698,27 @@ describe("coda di revisione dell'import", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
 
-    expect(await screen.findByText(/L'AI ha deciso 1 termine/)).toBeInTheDocument();
-    expect(screen.getByText(CREDITO)).toBeInTheDocument();
+    expect(await screen.findByText(CREDITO)).toBeInTheDocument();
+  });
+
+  it("dopo la scadenza dice solo la frase del server", async () => {
+    const SCADUTO =
+      "L'AI ci ha messo troppo: 3 termini restano in coda. Decidili a mano qui sotto, o riprova.";
+    renderQueue({
+      askAiResult: [
+        {
+          applied: 0, created: 0, ignored: 0, still_pending: 3, unlocked: 0, remaining_terms: 3,
+          stopped_notice: SCADUTO,
+        },
+        200,
+      ],
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Riprova con l'AI/i }));
+
+    expect(await screen.findByText(SCADUTO)).toBeInTheDocument();
+    expect(screen.queryByText(/non ha deciso nessuno/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/L'AI ha deciso/)).not.toBeInTheDocument();
   });
 
   it("un 503 dell'AI lo dice con parole sue, senza il nome della variabile, e la coda resta usabile a mano", async () => {
