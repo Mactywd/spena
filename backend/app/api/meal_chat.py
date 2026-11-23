@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.config import Settings, get_settings
+from app.core.config import get_settings
 from app.core.db import get_session, get_session_factory
 from app.core.security import require_session
 from app.db.models.conversation import (
@@ -124,7 +124,7 @@ async def start_turn_stream(
     conversation: Conversation,
     body: ChatMessageIn,
     run: TurnRun,
-    settings: Settings,
+    timeout_seconds: float,
 ) -> Response:
     """Il corpo comune della `POST` dei messaggi, per la chat del piatto e per quella di
     pianificazione: i controlli, il messaggio in attesa, l'avvio del giro e lo stream.
@@ -141,13 +141,13 @@ async def start_turn_stream(
 
     `run` è il giro (`run_dish_turn` o `run_planning_turn`): stessa firma, chiamato con
     `session_factory`, `client`, gli id della conversazione e del messaggio, `emit` e il
-    tempo massimo delle impostazioni."""
+    tempo massimo, che dà il chiamante: ogni conversazione ha il suo (`timeout_seconds`)."""
     now = datetime.now(UTC)
     if not claude_configured():
         return _refuse(
             503, "claude_not_configured", failure_notice(FailureKind.NOT_CONFIGURED, None, now)
         )
-    timeout = settings.claude_reply_timeout_seconds
+    timeout = timeout_seconds
     # una conversazione ancora da salvare non ha né giri né messaggi
     saved = conversation.id is not None
     busy = saved and (
@@ -237,7 +237,7 @@ async def post_message(
     )
     return await start_turn_stream(
         session, registry, client, factory, conversation=conversation, body=body,
-        run=run_dish_turn, settings=get_settings(),
+        run=run_dish_turn, timeout_seconds=get_settings().claude_reply_timeout_seconds,
     )
 
 

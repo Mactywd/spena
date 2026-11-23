@@ -5,6 +5,8 @@ della ricetta. Ogni sostituto porta la sua disponibilità e se, in dispensa, sod
 stessa regola della riga (`satisfied`, la metà della regola di R6 che R5 già calcola).
 """
 
+import asyncio
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
@@ -162,6 +164,50 @@ async def test_ask_salva_la_risposta_dell_ai(db_session, logged_client, cucina, 
     assert len(finto.bodies) == 1
     chiamate = (await db_session.execute(select(LlmCall.call_site))).scalars().all()
     assert chiamate == ["ingredient_substitutes"]
+
+
+async def test_sostituisci_usa_il_profilo_sincrono(
+    logged_client, cucina, con_chiave, monkeypatch
+):
+    """La rotta passa da Nginx: un solo ritentativo, il tempo del profilo sincrono."""
+    voci, ricette = cucina
+    finto = FakeLlm({"esito": "sostituti", "sostituti": [{"nome": "riso", "nota": ""}]})
+    monkeypatch.setattr("app.services.substitutions.open_client", lambda: finto)
+
+    risposta = await logged_client.post(_url(ricette["pasta"], voci["pasta"], "/ask"))
+
+    assert risposta.status_code == 200
+    assert finto.options == [{"timeout": 45.0, "max_retries": 1}]
+
+
+async def test_sostituisci_oltre_la_scadenza_lascia_la_strada_a_mano(
+    logged_client, cucina, con_chiave, monkeypatch
+):
+    """Un `retry-after` lungo, o un modello lento: allo scadere della rotta la risposta
+    è quella di un guasto, con la sua frase, e non un 504 di Nginx."""
+    from app.core.config import get_settings
+    from app.services.substitutions import TOO_SLOW_NOTICE
+
+    class Lento(FakeLlm):
+        async def answer(self, body: dict) -> object:
+            await asyncio.sleep(30)
+            return await super().answer(body)
+
+    voci, ricette = cucina
+    # le impostazioni rifiutano una scadenza sotto il caso peggiore di una chiamata: qui
+    # si abbassa, per provare la scadenza in un secondo e non in un minuto e mezzo
+    monkeypatch.setattr("app.services.llm.profile_worst_seconds", lambda profile, settings: 0.5)
+    monkeypatch.setenv("LLM_SYNC_DEADLINE_SECONDS", "1.0")
+    get_settings.cache_clear()
+    finto = Lento({"esito": "sostituti", "sostituti": [{"nome": "riso", "nota": ""}]})
+    monkeypatch.setattr("app.services.substitutions.open_client", lambda: finto)
+
+    risposta = await logged_client.post(_url(ricette["pasta"], voci["pasta"], "/ask"))
+
+    assert risposta.status_code == 200
+    corpo = risposta.json()
+    assert (corpo["verdict"], corpo["ai_failed"]) == (None, True)
+    assert corpo["ai_notice"] == TOO_SLOW_NOTICE
 
 
 async def test_ask_senza_ai_lascia_la_strada_a_mano(db_session, logged_client, cucina, monkeypatch):

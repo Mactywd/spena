@@ -10,14 +10,22 @@ Le rotte di `/imports` sono dietro `require_session` (vedi
 modulo.
 """
 
+import asyncio
+import json
+
 import pytest
 from sqlalchemy import select
 
 from app.db.models.ingredient import IngredientCategory
 from app.db.models.recipe_import import GIALLOZAFFERANO, ImportTerm, TermDecision
 from app.repositories.ingredients import create_ingredient
-from app.services.llm import LLM_FAILURE_NOTICES, LlmFailureKind
-from llm_fakes import FakeLlm, ScriptedLlm, errore_api, llm_map
+from app.services.llm import (
+    LLM_FAILURE_NOTICES,
+    SYNC_PROFILE,
+    LlmFailureKind,
+    profile_worst_seconds,
+)
+from llm_fakes import FakeLlm, ScriptedLlm, errore_api, llm_map, user_of
 
 
 @pytest.fixture(autouse=True)
@@ -390,3 +398,237 @@ async def test_term_ids_e_soggetto_allo_stesso_limite_del_ramo_senza(
     assert corpo["applied"] == MAX_TERMS_PER_CALL
     # i restanti non sono nemmeno arrivati a `decide_terms`: contano ancora in coda
     assert corpo["remaining_terms"] == oltre_il_limite - MAX_TERMS_PER_CALL
+
+
+class LentoLlm(ScriptedLlm):
+    """Come `ScriptedLlm`, ma i termini `lenti` rispondono dopo un'attesa lunga.
+
+    L'attesa è ben oltre la scadenza: se la scadenza non cancellasse la domanda, la
+    prova durerebbe quanto l'attesa, e lo si vedrebbe.
+    """
+
+    def __init__(self, per_term: dict[str, object], lenti: set[str]) -> None:
+        self._lenti = lenti
+        super().__init__(per_term)
+
+    async def answer(self, body: dict) -> object:
+        if json.loads(user_of(body)).get("termine") in self._lenti:
+            await asyncio.sleep(30)
+        return await super().answer(body)
+
+
+@pytest.fixture
+def scadenza_corta(monkeypatch):
+    """Alle domande resta un secondo: la scadenza della rotta meno il caso peggiore del
+    profilo sincrono, la stessa sottrazione che fa la rotta."""
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    corta = profile_worst_seconds(SYNC_PROFILE, get_settings()) + 1.0
+    monkeypatch.setenv("LLM_SYNC_DEADLINE_SECONDS", str(corta))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _termini(db_session, *nomi: str) -> list[ImportTerm]:
+    # occorrenze decrescenti: la coda li chiede in quest'ordine, il primo da solo
+    termini = [
+        ImportTerm(
+            source=GIALLOZAFFERANO, term_key=f"k-{nome.lower()}", display_name=nome,
+            occurrences=10 - n, decision=TermDecision.PENDING,
+        )
+        for n, nome in enumerate(nomi)
+    ]
+    db_session.add_all(termini)
+    return termini
+
+
+async def test_la_scadenza_lascia_in_coda_chi_non_ha_risposto(
+    logged_client, db_session, monkeypatch, scadenza_corta
+):
+    import app.services.recipe_import.decide as modulo
+
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    rigatoni, speck, guanciale = _termini(db_session, "Rigatoni", "Speck", "Guanciale")
+    await db_session.flush()
+    monkeypatch.setattr(
+        modulo, "open_client",
+        lambda: LentoLlm(
+            {"Rigatoni": llm_map("pasta"), "Speck": llm_map("pasta"),
+             "Guanciale": llm_map("pasta")},
+            lenti={"Speck", "Guanciale"},
+        ),
+    )
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    corpo = response.json()
+    assert corpo["applied"] == 1
+    assert corpo["still_pending"] == 2
+    assert corpo["stopped_notice"] == (
+        "L'AI ci ha messo troppo: 2 termini restano in coda. "
+        "Decidili a mano qui sotto, o riprova."
+    )
+    for term in (rigatoni, speck, guanciale):
+        await db_session.refresh(term)
+    assert rigatoni.decision == TermDecision.MAPPED
+    assert (speck.decision, guanciale.decision) == (TermDecision.PENDING, TermDecision.PENDING)
+    assert (speck.ingredient_id, guanciale.ingredient_id) == (None, None)
+
+
+async def test_la_frase_della_scadenza_conta_quel_che_resta_in_coda(
+    logged_client, db_session, monkeypatch, scadenza_corta
+):
+    """Uno deciso, uno tagliato dalla scadenza, uno risposto ma non applicabile: in coda
+    ne restano due, e la frase dice due (non uno, i soli scaduti)."""
+    import app.services.recipe_import.decide as modulo
+
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    rigatoni, speck, guanciale = _termini(db_session, "Rigatoni", "Speck", "Guanciale")
+    await db_session.flush()
+    monkeypatch.setattr(
+        modulo, "open_client",
+        lambda: LentoLlm(
+            {"Rigatoni": llm_map("pasta"), "Speck": llm_map("pasta"),
+             "Guanciale": llm_map("ingrediente-che-non-esiste")},
+            lenti={"Speck"},
+        ),
+    )
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    corpo = response.json()
+    assert corpo["applied"] == 1
+    assert corpo["still_pending"] == 2
+    assert corpo["stopped_notice"] == (
+        "L'AI ci ha messo troppo: 2 termini restano in coda. "
+        "Decidili a mano qui sotto, o riprova."
+    )
+
+
+async def test_la_scadenza_prima_di_ogni_risposta_non_e_un_503(
+    logged_client, db_session, monkeypatch, scadenza_corta
+):
+    import app.services.recipe_import.decide as modulo
+
+    await create_ingredient(
+        db_session, name="pasta", display_name="Pasta", category=IngredientCategory.CEREALI
+    )
+    termini = _termini(db_session, "Rigatoni", "Speck")
+    await db_session.flush()
+    monkeypatch.setattr(
+        modulo, "open_client",
+        lambda: LentoLlm(
+            {"Rigatoni": llm_map("pasta"), "Speck": llm_map("pasta")},
+            lenti={"Rigatoni", "Speck"},
+        ),
+    )
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    corpo = response.json()
+    assert corpo["applied"] == 0
+    assert corpo["still_pending"] == 2
+    assert corpo["stopped_notice"] == (
+        "L'AI ci ha messo troppo: 2 termini restano in coda. "
+        "Decidili a mano qui sotto, o riprova."
+    )
+    for term in termini:
+        await db_session.refresh(term)
+        assert term.decision == TermDecision.PENDING
+
+
+async def test_un_termine_solo_scaduto_ha_la_frase_al_singolare(
+    logged_client, db_session, monkeypatch, scadenza_corta
+):
+    import app.services.recipe_import.decide as modulo
+
+    _termini(db_session, "Speck")
+    await db_session.flush()
+    monkeypatch.setattr(
+        modulo, "open_client",
+        lambda: LentoLlm({"Speck": llm_map("pasta")}, lenti={"Speck"}),
+    )
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    assert response.json()["stopped_notice"] == (
+        "L'AI ci ha messo troppo: 1 termine resta in coda. "
+        "Decidilo a mano qui sotto, o riprova."
+    )
+
+
+async def test_la_rotta_usa_il_profilo_sincrono(logged_client, db_session, monkeypatch):
+    """Le domande e il collasso: due `create` vicini fanno partire anche la chiamata
+    del collasso, che deve stare nello stesso profilo."""
+    import app.services.recipe_import.decide as modulo
+    from llm_fakes import llm_create
+
+    _termini(db_session, "Salmone", "Salmone selvaggio")
+    await db_session.flush()
+    finto = ScriptedLlm({
+        "Salmone": llm_create("salmone", "Salmone", "pesce"),
+        "Salmone selvaggio": llm_create("salmone selvaggio", "Salmone selvaggio", "pesce"),
+    })
+    monkeypatch.setattr(modulo, "open_client", lambda: finto)
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    assert finto.calls == 3  # due domande e il collasso
+    assert finto.options == [{"timeout": 45.0, "max_retries": 1}] * 3
+
+
+async def test_la_scadenza_del_collasso_tiene_le_decisioni_separate(
+    logged_client, db_session, monkeypatch
+):
+    """Le domande rispondono in tempo, il collasso no: allo scadere della rotta le
+    proposte restano come sono arrivate, come quando il collasso fallisce, e la rotta
+    risponde 200. Il caso peggiore del profilo si abbassa a mezzo secondo, così alle
+    domande resta un secondo e al collasso il mezzo che manca a 1,5."""
+    import app.api.imports as rotta
+    import app.services.recipe_import.decide as modulo
+    from app.core.config import get_settings
+    from llm_fakes import llm_create
+
+    class CollassoLento(ScriptedLlm):
+        async def answer(self, body: dict) -> object:
+            if "nuovi" in json.loads(user_of(body)):
+                await asyncio.sleep(30)
+            return await super().answer(body)
+
+    import app.services.llm as llm_modulo
+
+    monkeypatch.setattr(rotta, "profile_worst_seconds", lambda profile, settings: 0.5)
+    # anche le impostazioni la leggono (rifiutano una scadenza sotto il caso peggiore)
+    monkeypatch.setattr(llm_modulo, "profile_worst_seconds", lambda profile, settings: 0.5)
+    monkeypatch.setenv("LLM_SYNC_DEADLINE_SECONDS", "1.5")
+    get_settings.cache_clear()
+    _termini(db_session, "Salmone", "Salmone selvaggio")
+    await db_session.flush()
+    finto = CollassoLento(
+        {
+            "Salmone": llm_create("salmone", "Salmone", "pesce"),
+            "Salmone selvaggio": llm_create("salmone selvaggio", "Salmone selvaggio", "pesce"),
+        },
+        # se il collasso rispondesse, unirebbe i due nomi
+        collapse={"groups": [{"canonical": "salmone", "merge": ["salmone selvaggio"]}]},
+    )
+    monkeypatch.setattr(modulo, "open_client", lambda: finto)
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    corpo = response.json()
+    assert (corpo["applied"], corpo["created"], corpo["still_pending"]) == (2, 2, 0)
+    assert corpo["stopped_notice"] is None
+    assert finto.calls == 3  # il collasso è partito, e si è cancellato

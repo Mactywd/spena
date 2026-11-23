@@ -62,13 +62,26 @@ function undoErrorMessage(error: unknown): string {
  * frase lo dice chiaro, e dice anche che i termini restano decidibili a mano qui
  * sotto, che è la via d'uscita che "mai un vicolo cieco" richiede.
  */
+function unlockedSentence(unlocked: number): string {
+  return unlocked === 0
+    ? "Nessuna ricetta era in attesa solo di queste decisioni."
+    : unlocked === 1
+      ? "Sbloccata 1 ricetta."
+      : `Sbloccate ${unlocked} ricette.`;
+}
+
+function decidedPart(applied: number): string {
+  return applied === 1 ? "L'AI ha deciso 1 termine" : `L'AI ha deciso ${applied} termini`;
+}
+
+/** Quel che un giro fermato ha comunque fatto: i termini decisi e le ricette sbloccate,
+ * senza dire cosa resta (lo dice la frase del server). */
+function stoppedRunDone(result: DecideResult): string {
+  return `${decidedPart(result.applied)}. ${unlockedSentence(result.unlocked)}`;
+}
+
 function aiRunMessage(result: DecideResult): string {
-  const unlockedPart =
-    result.unlocked === 0
-      ? "Nessuna ricetta era in attesa solo di queste decisioni."
-      : result.unlocked === 1
-        ? "Sbloccata 1 ricetta."
-        : `Sbloccate ${result.unlocked} ricette.`;
+  const unlockedPart = unlockedSentence(result.unlocked);
 
   if (result.applied === 0) {
     return result.still_pending === 1
@@ -80,7 +93,7 @@ function aiRunMessage(result: DecideResult): string {
     return `L'AI ha deciso tutti i termini che le hai sottoposto. ${unlockedPart}`;
   }
 
-  const decisePart = result.applied === 1 ? "L'AI ha deciso 1 termine" : `L'AI ha deciso ${result.applied} termini`;
+  const decisePart = decidedPart(result.applied);
   const pendingPart =
     result.still_pending === 1
       ? "1 resta in coda: non l'ha saputo giudicare."
@@ -328,11 +341,18 @@ export function ImportQueueScreen() {
 
       {lastRun?.kind === "ai" && (
         <>
-          <p className="pt-2 text-sm font-medium text-brand">{aiRunMessage(lastRun.result)}</p>
-          {lastRun.result.stopped_notice && (
+          {lastRun.result.stopped_notice ? (
             <Alert tone="degraded" className="pt-2">
               {lastRun.result.stopped_notice}
+              {lastRun.result.applied > 0 && (
+                <>
+                  <br />
+                  {stoppedRunDone(lastRun.result)}
+                </>
+              )}
             </Alert>
+          ) : (
+            <p className="pt-2 text-sm font-medium text-brand">{aiRunMessage(lastRun.result)}</p>
           )}
         </>
       )}

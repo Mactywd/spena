@@ -28,7 +28,7 @@ from anthropic import (
 )
 from anthropic.types import Message
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.domain.llm_pricing import cost_usd
 
 logger = logging.getLogger(__name__)
@@ -202,6 +202,22 @@ class CallProfile:
 
 # Le classificazioni: niente ragionamento, sforzo basso.
 CLASSIFY = CallProfile(thinking=False, effort="low")
+
+# Le rotte sincrone passano da Nginx: un solo ritentativo, così una chiamata sta nei
+# 90,5 s del caso peggiore (2 x 45 + 0,5, `profile_worst_seconds`).
+SYNC_PROFILE = CallProfile(thinking=False, effort="low", timeout_seconds=45.0, max_retries=1)
+
+
+def profile_worst_seconds(profile: CallProfile, settings: Settings) -> float:
+    """Il caso peggiore di una chiamata: (ritentativi + 1) x tempo, più le pause dell'SDK.
+
+    Con `None` nel profilo legge le impostazioni, come `complete_json`. Le pause sono
+    `min(0,5 x 2^n, 8)` per ogni ritentativo; un `retry-after` del server non ha tetto.
+    """
+    timeout = profile.timeout_seconds if profile.timeout_seconds is not None else settings.llm_timeout_seconds
+    retries = profile.max_retries if profile.max_retries is not None else settings.llm_max_retries
+    pauses = sum(min(0.5 * 2**n, 8.0) for n in range(retries))
+    return (retries + 1) * timeout + pauses
 
 
 def llm_configured() -> bool:

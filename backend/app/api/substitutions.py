@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient
@@ -41,6 +42,7 @@ from app.schemas.substitution import (
     SubstituteOut,
     SubstitutionIn,
 )
+from app.services.llm import SYNC_PROFILE
 from app.services.substitutions import decide_pair
 
 recipe_router = APIRouter(
@@ -150,7 +152,10 @@ async def ask_line_substitution(
     Mai un 503: l'AI che non risponde è `ai_failed`, e lo schermo offre la strada a mano.
     """
     recipe, line = await _line(session, recipe_id, ingredient_id)
-    outcome = await decide_pair(session, line.ingredient_id, recipe_context(recipe.category))
+    outcome = await decide_pair(
+        session, line.ingredient_id, recipe_context(recipe.category), profile=SYNC_PROFILE,
+        ask_deadline_seconds=get_settings().llm_sync_deadline_seconds,
+    )
     await session.commit()
     return await _line_out(session, recipe, line, ai_failed=outcome.failed, ai_notice=outcome.notice)
 

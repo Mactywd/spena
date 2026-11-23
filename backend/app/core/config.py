@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Il .env vive nella radice del repository, non in backend/. Un percorso relativo
@@ -42,12 +43,17 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 45.0
     llm_max_retries: int = 2
     llm_max_concurrency: int = 8
+    # Le due rotte sincrone dell'import e delle sostituzioni (`SYNC_PROFILE`) si fermano
+    # entro questo tempo; la loro location di Nginx sta sopra (un test lo verifica).
+    llm_sync_deadline_seconds: float = 240.0
     # La chiave API di Anthropic: per i Pasti (chat, pianificazione, ricette dei pasti) e
     # per l'LLM dell'import con Claude Haiku. Vuota o assente: la chat dice che Claude non
     # è collegato, e l'import e l'AI sulle ricette continuano a mano.
     anthropic_api_key: str | None = None
     claude_model: str = "claude-opus-5-5"
     claude_reply_timeout_seconds: float = 240.0
+    # La pianificazione della settimana pensa più a lungo della chat di un piatto.
+    claude_planning_timeout_seconds: float = 480.0
     # Una cartella vuota come `cwd` dell'SDK: nessun CLAUDE.md di progetto è vicino.
     claude_workdir: str = "/tmp/spena-claude"
     embedding_backend: str = "local"
@@ -55,6 +61,20 @@ class Settings(BaseSettings):
     embedding_endpoint: str = ""
     off_base_url: str = "https://world.openfoodfacts.org"
     off_timeout_seconds: float = 3.0
+
+    @model_validator(mode="after")
+    def _sync_deadline_covers_one_call(self) -> "Settings":
+        """La scadenza delle rotte sincrone deve contenere almeno una chiamata col profilo
+        sincrono nel suo caso peggiore: sotto, il tempo delle domande sarebbe negativo."""
+        from app.services.llm import SYNC_PROFILE, profile_worst_seconds
+
+        worst = profile_worst_seconds(SYNC_PROFILE, self)
+        if self.llm_sync_deadline_seconds < worst:
+            raise ValueError(
+                f"LLM_SYNC_DEADLINE_SECONDS ({self.llm_sync_deadline_seconds}) è sotto il "
+                f"caso peggiore di una chiamata sincrona ({worst} s)"
+            )
+        return self
 
 
 @lru_cache

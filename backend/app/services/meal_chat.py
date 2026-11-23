@@ -214,14 +214,15 @@ async def change_out(session: AsyncSession, change: RecipeChange) -> RecipeChang
     return _change_out(change, await change_is_undoable(session, change))
 
 
-def _repair_orphans(messages: list[ConversationMessage], now: datetime) -> bool:
+def _repair_orphans(
+    messages: list[ConversationMessage], now: datetime, timeout_seconds: float
+) -> bool:
     """Un messaggio rimasto in attesa oltre il tempo massimo, senza un giro vivo, conta come
     interrotto (decisione 12): il container è ripartito a metà risposta."""
-    timeout = get_settings().claude_reply_timeout_seconds
     repaired = False
     for message in messages:
         if message.status == MessageStatus.PENDING.value and pending_is_stale(
-            message.created_at, now, timeout
+            message.created_at, now, timeout_seconds
         ):
             message.status = MessageStatus.FAILED.value
             message.failure = FailureKind.INTERRUPTED.value
@@ -231,13 +232,19 @@ def _repair_orphans(messages: list[ConversationMessage], now: datetime) -> bool:
 
 
 async def repair_orphans(
-    session: AsyncSession, conversation_id: uuid.UUID, *, replying: bool, now: datetime
+    session: AsyncSession,
+    conversation_id: uuid.UUID,
+    *,
+    replying: bool,
+    now: datetime,
+    timeout_seconds: float,
 ) -> None:
     """Per le viste: senza un giro vivo, un'attesa troppo lunga si scrive interrotta, con
-    un `commit`. Con il giro vivo non si tocca niente."""
+    un `commit`. Con il giro vivo non si tocca niente. `timeout_seconds` è il tempo della
+    conversazione (la chat del piatto e la pianificazione ne hanno uno ciascuna)."""
     if replying:
         return
-    if _repair_orphans(await messages_of(session, conversation_id), now):
+    if _repair_orphans(await messages_of(session, conversation_id), now, timeout_seconds):
         await session.commit()
 
 
@@ -296,7 +303,10 @@ async def dish_chat_view(
             meal_id=meal.id, conversation_id=None, messages=[], replying=replying,
             highlight=None, claude_ready=ready, claude_notice=notice,
         )
-    await repair_orphans(session, conversation.id, replying=replying, now=now)
+    await repair_orphans(
+        session, conversation.id, replying=replying, now=now,
+        timeout_seconds=get_settings().claude_reply_timeout_seconds,
+    )
     changes = await changes_of(session, conversation.id)
     undoable = await undoable_change_ids(session, changes)
     out = await chat_messages_out(session, conversation, now=now, undoable=undoable)

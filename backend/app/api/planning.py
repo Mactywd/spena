@@ -125,7 +125,8 @@ async def post_message(
     conversation = await _conversation_or_404(session, conversation_id)
     return await start_turn_stream(
         session, registry, client, factory, conversation=conversation, body=body,
-        run=run_planning_turn, settings=get_settings(),
+        run=run_planning_turn,
+        timeout_seconds=get_settings().claude_planning_timeout_seconds,
     )
 
 
