@@ -108,8 +108,20 @@ describe("ChatThread", () => {
   });
 
   it("senza can_continue niente Continua", () => {
-    renderThread([INTERRUPTED]);
-    expect(screen.queryByRole("button", { name: "Continua" })).not.toBeInTheDocument();
+    for (const can_continue of [false, undefined]) {
+      const { unmount } = render(
+        <ChatThread
+          messages={[{ ...INTERRUPTED, can_continue }]}
+          streaming={null}
+          onUndo={vi.fn()}
+          onRetry={vi.fn()}
+          onContinue={vi.fn()}
+        />
+      );
+      expect(screen.getByText(MAX_TURNS)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Continua" })).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("Continua aspetta mentre la chat è occupata", async () => {

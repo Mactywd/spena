@@ -42,7 +42,7 @@ type Seminato = {
 type VoceDispensa = { id: string; ingredient_name: string; status: string };
 type VoceLista = { id: string; ingredient_name: string | null; raw_text: string; status: string };
 
-function aiutantePianificazione(comando: "seed" | "clean"): string {
+function aiutantePianificazione(comando: "seed" | "interrupted" | "clean"): string {
   const uscita = execFileSync(
     "docker",
     [...COMPOSE_E2E, "exec", "-T", "backend", "python", "tests/e2e_planning.py", comando],
@@ -221,6 +221,25 @@ test("una bozza resa ufficiale a mano apre la scheda vuota", async ({ page }) =>
     await expect(page.getByRole("heading", { name: BOZZA_CENA, level: 1 })).toBeVisible();
     await expect(page.getByRole("button", { name: "Chiedi la ricetta a Claude" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Scrivi la ricetta" })).toBeVisible();
+  } finally {
+    pulisci();
+  }
+});
+
+test("la risposta interrotta ha Continua", async ({ page }) => {
+  const seminato = JSON.parse(aiutantePianificazione("interrupted")) as { meal: string };
+  try {
+    await page.goto(`/pasti/${seminato.meal}`);
+    await expect(page.getByText(/troppi passaggi/)).toBeVisible();
+    const continua = page.getByRole("button", { name: "Continua", exact: true });
+    await expect(continua).toBeVisible();
+
+    await continua.click();
+
+    // senza Claude il giro è rifiutato, come ogni altro messaggio della chat
+    await expect(page.getByText(SENZA_CHIAVE).first()).toBeVisible();
+    // il messaggio non si perde: «Continua» è ancora lì per riprovare
+    await expect(page.getByRole("button", { name: "Continua", exact: true })).toBeVisible();
   } finally {
     pulisci();
   }
