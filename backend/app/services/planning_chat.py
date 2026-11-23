@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import get_settings
 from app.db.models.conversation import Conversation, ConversationKind, ConversationMessage
 from app.db.models.planning import MealProposal, ProposalStatus
 from app.domain.meal_chat import (
@@ -77,7 +78,10 @@ async def planning_view(
             concluded=False, claude_ready=ready, claude_notice=notice,
         )
     focus = _focus(conversation)
-    await repair_orphans(session, conversation.id, replying=replying, now=now)
+    await repair_orphans(
+        session, conversation.id, replying=replying, now=now,
+        timeout_seconds=get_settings().claude_planning_timeout_seconds,
+    )
     return PlanningChatOut(
         conversation_id=conversation.id,
         focus=focus,

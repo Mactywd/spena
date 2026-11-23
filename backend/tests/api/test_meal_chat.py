@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -360,3 +360,34 @@ async def test_un_testo_vuoto_e_422(chat, frittata, testo):
 async def test_senza_accesso_401(client, frittata):
     assert (await client.get(url(frittata))).status_code == 401
     assert (await client.post(url(frittata, "/messages"), json={"text": "x"})).status_code == 401
+
+
+async def test_il_giro_della_chat_del_piatto_ha_il_tempo_della_risposta(chat, frittata, monkeypatch):
+    import app.api.meal_chat as api
+
+    visto = []
+    vero = api.run_dish_turn
+
+    async def spia(*args, **kwargs):
+        visto.append(kwargs["timeout_seconds"])
+        await vero(*args, **kwargs)
+
+    monkeypatch.setattr(api, "run_dish_turn", spia)
+    risposta = await scrivi(chat, frittata)
+    assert risposta.status_code == 200
+    assert visto == [get_settings().claude_reply_timeout_seconds] == [240.0]
+
+
+async def test_un_messaggio_del_piatto_in_attesa_da_cinque_minuti_e_gia_vecchio(
+    chat, frittata, db_session
+):
+    conversation = await get_or_create_dish_conversation(db_session, frittata.id)
+    db_session.add(
+        ConversationMessage(
+            conversation_id=conversation.id, role="user", text="Prima", status="pending",
+            created_at=datetime.now(UTC) - timedelta(seconds=310),
+        )
+    )
+    await db_session.commit()
+    risposta = await scrivi(chat, frittata, "Seconda")
+    assert risposta.status_code == 200

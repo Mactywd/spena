@@ -593,3 +593,37 @@ async def test_place_di_una_proposta_passata_e_409(chat, db_session):
     )
     [aperta] = corpo["chat"]["messages"][1]["proposals"]
     assert aperta["status"] == "open"
+
+
+async def test_il_giro_della_pianificazione_ha_otto_minuti(chat, monkeypatch):
+    import app.api.planning as api
+
+    visto = []
+    vero = api.run_planning_turn
+
+    async def spia(*args, **kwargs):
+        visto.append(kwargs["timeout_seconds"])
+        await vero(*args, **kwargs)
+
+    monkeypatch.setattr(api, "run_planning_turn", spia)
+    cid = await nuova(chat)
+    assert (await scrivi(chat, cid)).status_code == 200
+    assert visto == [get_settings().claude_planning_timeout_seconds] == [480.0]
+
+
+async def test_un_messaggio_di_pianificazione_in_attesa_da_cinque_minuti_non_e_vecchio(
+    chat, db_session
+):
+    conversation = await create_planning(db_session)
+    db_session.add(
+        ConversationMessage(
+            conversation_id=conversation.id, role="user", text="Prima", status="pending",
+            created_at=datetime.now(UTC) - timedelta(seconds=310),
+        )
+    )
+    await db_session.commit()
+    risposta = await scrivi(chat, str(conversation.id), "Seconda")
+    assert risposta.status_code == 409
+    assert risposta.json()["code"] == "claude_busy"
+    vista = (await chat.client.get(f"{BASE}/conversations/{conversation.id}")).json()
+    assert [m["status"] for m in vista["messages"]] == ["pending"]
