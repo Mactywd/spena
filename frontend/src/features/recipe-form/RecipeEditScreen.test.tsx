@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createTestQueryClient } from "../../test/queryClient";
@@ -195,6 +195,73 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
       expect(await screen.findByDisplayValue("Pasta di Claude")).toBeInTheDocument();
       expect(screen.queryByDisplayValue("La mia pasta")).toBeNull();
       expect(screen.queryByText(CAMBIATA)).toBeNull();
+    });
+
+    it("«Ricarica la ricetta» rimette anche le righe tolte", async () => {
+      conflitto();
+      renderEdit();
+
+      await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.click(screen.getByRole("button", { name: "Togli basilico" }));
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Ricarica la ricetta" }));
+
+      await screen.findByDisplayValue("Pasta di Claude");
+      expect(screen.getByRole("button", { name: "Togli basilico" })).toBeInTheDocument();
+    });
+
+    it("una rilettura in sottofondo non cancella il modulo, e il salvataggio dopo trova il conflitto", async () => {
+      let reads = 0;
+      stubFetch((path, init) => {
+        if (init?.method === "PUT") {
+          const sent = JSON.parse(String(init.body)).expected_version;
+          // il server ha già la v2: la versione letta all'apertura non passa
+          return sent === "v2" ? [DETAIL, 200] : [{ code: "recipe_changed", detail: CAMBIATA }, 409];
+        }
+        if (path.endsWith("/recipes/r1")) {
+          reads += 1;
+          return [reads > 1 ? NUOVA : DETAIL, 200];
+        }
+        return undefined;
+      });
+      let client!: QueryClient;
+      renderEdit("/ricette/r1/modifica", (c) => { client = c; });
+
+      const titolo = await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.clear(titolo);
+      await userEvent.type(titolo, "La mia pasta");
+      // il fuoco torna alla finestra: la query si rilegge e porta la v2
+      await act(async () => {
+        await client.refetchQueries({ queryKey: ["recipe", "r1", null] });
+      });
+      expect(reads).toBeGreaterThan(1);
+      expect(screen.getByDisplayValue("La mia pasta")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      expect(await screen.findByText(CAMBIATA)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Salva comunque la mia" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ricarica la ricetta" })).toBeInTheDocument();
+      expect(screen.getByDisplayValue("La mia pasta")).toBeInTheDocument();
+    });
+
+    it("se «Salva comunque la mia» fallisce per altro, le due scelte restano e l'errore sta sotto", async () => {
+      let puts = 0;
+      stubFetch((_path, init) => {
+        if (init?.method !== "PUT") return undefined;
+        puts += 1;
+        if (puts === 1) return [{ code: "recipe_changed", detail: CAMBIATA }, 409];
+        return [{ detail: "boom" }, 500];
+      });
+      renderEdit();
+
+      await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Salva comunque la mia" }));
+
+      expect(await screen.findByText(/Non sono riuscito a completare l'operazione/)).toBeInTheDocument();
+      expect(screen.getByText(CAMBIATA)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Salva comunque la mia" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ricarica la ricetta" })).toBeInTheDocument();
     });
   });
 

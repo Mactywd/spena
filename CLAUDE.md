@@ -353,8 +353,9 @@ against the SDK's real message types. Spec:
   the manual save, «Annulla» — takes the meal row first (`lock_meal`,
   `SELECT … FOR UPDATE`); the edit (`PUT /recipes/{id}`) and the recipe's `PATCH` take it
   too now, and the `PUT` refuses an old version of the recipe (409 `recipe_changed`, the
-  form offers «Salva comunque la mia» / «Ricarica la ricetta»). A recipe written by hand while Claude's arrives is not lost: the form offers to
-  save it in the recipe book.
+  form offers «Salva comunque la mia» / «Ricarica la ricetta»). A recipe written by
+  hand while Claude's arrives is not lost: the form offers to save it in the recipe
+  book.
 
   A response that cannot be verified against the real registry is never applied — the
   term stays in the queue. Specs are

@@ -29,6 +29,9 @@ function EditForm({
   // Una volta sola, dalla ricetta caricata: una rilettura in background mentre si
   // scrive (il fuoco che torna alla finestra) non deve cancellare il lavoro.
   const [values, setValues] = useState(() => valuesFromRecipe(recipe));
+  // E la versione va congelata insieme ai valori: se una rilettura portasse la nuova
+  // in `recipe` e il modulo la mandasse coi valori vecchi, il controllo non scatterebbe.
+  const [version] = useState(() => recipe.version);
   // la frase del server quando la ricetta è cambiata dopo che il modulo l'ha letta
   const [changed, setChanged] = useState<string | null>(null);
   const [overwriting, setOverwriting] = useState(false);
@@ -60,6 +63,7 @@ function EditForm({
 
   async function overwrite() {
     setOverwriting(true);
+    setReloadError(false);
     try {
       // senza versione: scrive comunque, come un client che non la manda
       saved(await updateRecipe(recipe.id, recipeBody(values)));
@@ -67,7 +71,6 @@ function EditForm({
       if (isRecipeChanged(err)) {
         setChanged(((err.body as { detail?: unknown }).detail as string) ?? changed);
       } else {
-        setChanged(null);
         setReloadError(true);
       }
     } finally {
@@ -101,7 +104,7 @@ function EditForm({
           setChanged(null);
           setReloadError(false);
           try {
-            return await updateRecipe(recipe.id, body, recipe.version);
+            return await updateRecipe(recipe.id, body, version);
           } catch (err) {
             if (isRecipeChanged(err)) {
               const detail = (err.body as { detail?: unknown }).detail;
@@ -216,7 +219,7 @@ export function RecipeEditScreen() {
     <Screen title={TITLE} back={back}>
       {/* «Ricarica la ricetta» cambia la chiave: il modulo riparte da `valuesFromRecipe` */}
       <EditForm
-        key={`${current.version}-${reloads}`}
+        key={reloads}
         recipe={current}
         mealId={mealId}
         onReload={(next) => {
