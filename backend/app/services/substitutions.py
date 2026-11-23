@@ -53,7 +53,9 @@ from app.repositories.substitutions import (
     store_ai_answer,
 )
 from app.services.llm import (
+    CLASSIFY,
     LLM_FAILURE_NOTICES,
+    CallProfile,
     LlmCallSite,
     LlmFailureKind,
     LlmUnavailable,
@@ -198,6 +200,8 @@ async def _ask(
     context: SubstitutionContext,
     food: Mapping[str, uuid.UUID],
     client: AsyncAnthropic,
+    *,
+    profile: CallProfile = CLASSIFY,
 ) -> tuple[Answer | Rejected, LlmUsage]:
     """Una voce, una chiamata. `LlmUnavailable` risale: chi chiama la registra."""
     esito = await complete_json(
@@ -206,6 +210,7 @@ async def _ask(
         user=question(name, context, food),
         schema=SUBSTITUTE_SCHEMA,
         max_tokens=SUBSTITUTE_MAX_TOKENS,
+        profile=profile,
         client=client,
     )
     return verify_answer(esito.data, ingredient_id, food), esito.usage
@@ -239,6 +244,8 @@ async def decide_pair(
     ingredient_id: uuid.UUID,
     context: SubstitutionContext,
     client: AsyncAnthropic | None = None,
+    *,
+    profile: CallProfile = CLASSIFY,
 ) -> PairOutcome:
     """La voce generale di un ingrediente in un contesto, chiesta sul momento se manca.
 
@@ -259,7 +266,9 @@ async def decide_pair(
     owned = client is None
     api = client if client is not None else open_client()
     try:
-        verified, usage = await _ask(ingredient.name, ingredient.id, context, food, api)
+        verified, usage = await _ask(
+            ingredient.name, ingredient.id, context, food, api, profile=profile
+        )
     except LlmUnavailable as exc:
         await record_llm_call(
             session, call_site=LlmCallSite.INGREDIENT_SUBSTITUTES, usage=exc.usage, ok=False

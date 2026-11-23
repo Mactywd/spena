@@ -657,10 +657,10 @@ async def test_un_errore_inatteso_su_un_termine_non_perde_le_altre_decisioni(
 
     vero = modulo.decide_one
 
-    async def a_volte_scoppia(session, term, registry, client=None):
+    async def a_volte_scoppia(session, term, registry, client=None, **opzioni):
         if term.display_name == "Speck":
             raise RuntimeError("un difetto nostro, non un guasto del modello")
-        return await vero(session, term, registry, client=client)
+        return await vero(session, term, registry, client=client, **opzioni)
 
     monkeypatch.setattr(modulo, "decide_one", a_volte_scoppia)
 

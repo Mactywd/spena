@@ -32,6 +32,8 @@ from app.db.models.recipe_import import ImportTerm, TermDecision
 from app.domain.rules import IngredientKind, kind_for_category
 from app.repositories.llm_calls import record_llm_call
 from app.services.llm import (
+    CLASSIFY,
+    CallProfile,
     LlmCallSite,
     LlmUnavailable,
     LlmUsage,
@@ -181,6 +183,8 @@ async def decide_one(
     term: ImportTerm,
     registry: Registry,
     client: AsyncAnthropic | None = None,
+    *,
+    profile: CallProfile = CLASSIFY,
 ) -> TermAnswer:
     """Una decisione verificata per questo termine, o `None` se non è verificabile.
 
@@ -200,6 +204,7 @@ async def decide_one(
         user=term_question(term),
         schema=TERM_SCHEMA,
         max_tokens=TERM_MAX_TOKENS,
+        profile=profile,
         cache_system=True,
         client=client,
     )
@@ -316,6 +321,8 @@ async def collapse_creates(
     proposals: list[TermDecisionProposal],
     registry: Registry,
     client: AsyncAnthropic | None = None,
+    *,
+    profile: CallProfile = CLASSIFY,
 ) -> tuple[list[TermDecisionProposal], Spesa | None]:
     """Unisce i `create` che sono lo stesso ingrediente. Non scrive niente.
 
@@ -373,6 +380,7 @@ async def collapse_creates(
             user=question,
             schema=COLLAPSE_SCHEMA,
             max_tokens=COLLAPSE_MAX_TOKENS,
+            profile=profile,
             client=client,
         )
     except LlmUnavailable as exc:
@@ -461,10 +469,18 @@ class Decided:
     # il guasto terminale che ha fermato il giro (chiave, credito, limite di frequenza):
     # chi chiama lo mostra, perché «0 decisi» senza motivo è un vicolo cieco
     stopped: LlmUnavailable | None = None
+    # i termini rimasti senza risposta perché la scadenza delle domande è arrivata prima:
+    # cancellati in volo, o mai partiti. Restano in coda, e chi chiama lo dice
+    timed_out: int = 0
 
 
 async def decide_terms(
-    session: AsyncSession, terms: list[ImportTerm], client: AsyncAnthropic | None = None
+    session: AsyncSession,
+    terms: list[ImportTerm],
+    client: AsyncAnthropic | None = None,
+    *,
+    profile: CallProfile = CLASSIFY,
+    ask_deadline_seconds: float | None = None,
 ) -> Decided:
     """Decide i termini in attesa e applica: fan-out, collasso, fan-in.
 
@@ -478,6 +494,13 @@ async def decide_terms(
     risale solo quando **nessuna** chiamata è partita — manca la chiave — perché
     quello non è un intoppo: è una configurazione assente, e chi chiama la traduce in
     «decidi a mano».
+
+    `ask_deadline_seconds` è il tempo delle **domande**, e solo loro: allo scadere quelle
+    ancora in volo si cancellano, quelle non partite non partono, e i loro termini
+    restano in coda (`Decided.timed_out`). Le risposte arrivate si tengono, e il
+    collasso e le scritture vengono dopo, come senza scadenza. Si può cancellare a metà
+    perché le domande non scrivono: tutto quel che tocca il database sta nella passata
+    sequenziale più sotto. `None`, per i comandi, è nessuna scadenza.
     """
     from app.repositories.ingredients import create_ingredient, remember_alias
     from app.services.ingredient_match import match_name
@@ -511,7 +534,7 @@ async def decide_terms(
             if stopped is not None:
                 return None
             try:
-                answer = await decide_one(session, term, registry, client=api)
+                answer = await decide_one(session, term, registry, client=api, profile=profile)
             except LlmUnavailable as exc:
                 spese.append(Spesa(LlmCallSite.TERM_DECISION, exc.usage, ok=False))
                 if exc.terminal and stopped is None:
@@ -544,11 +567,40 @@ async def decide_terms(
         # leggono la cache che le altre stanno scrivendo (si legge solo dopo che la prima
         # risposta è cominciata), e otto scritture al primo giro costerebbero otto volte.
         # Il primo la scrive, gli altri la leggono.
-        first = await asyncio.gather(ask(terms[0], api), return_exceptions=True)
-        rest = await asyncio.gather(
-            *(ask(term, api) for term in terms[1:]), return_exceptions=True
-        )
-        raw = [*first, *rest]
+        #
+        # I task e non le coroutine, perché allo scadere servono uno per uno: la scadenza
+        # cancella il `gather` in corso, che cancella i task ancora vivi, e un `gather`
+        # cancellato non torna i risultati di quelli già finiti. Li tiene il task.
+        tasks: list[asyncio.Task[TermDecisionProposal | None]] = []
+
+        async def wave(batch: list[ImportTerm]) -> None:
+            started = [asyncio.create_task(ask(term, api)) for term in batch]
+            tasks.extend(started)
+            await asyncio.gather(*started, return_exceptions=True)
+
+        try:
+            async with asyncio.timeout(ask_deadline_seconds):
+                await wave(terms[:1])
+                await wave(terms[1:])
+        except TimeoutError:
+            pass  # chi non ha risposto resta in coda: si conta qui sotto
+        # `tasks` segue l'ordine di `terms`; i termini oltre la sua lunghezza non sono
+        # mai partiti. Un task cancellato e un termine mai chiesto sono la stessa cosa:
+        # senza risposta per il tempo, e in coda.
+        raw: list[object] = []
+        timed_out = 0
+        for n in range(len(terms)):
+            task = tasks[n] if n < len(tasks) else None
+            if task is None or not task.done() or task.cancelled():
+                timed_out += 1
+                raw.append(None)
+            else:
+                raw.append(task.exception() or task.result())
+        if timed_out:
+            logger.warning(
+                "scadenza delle domande (%s s): %d termini senza risposta restano in coda",
+                ask_deadline_seconds, timed_out,
+            )
         # Un'eccezione qui non è un guasto del modello, è un difetto nostro — il
         # solo assorbimento sopra non la copre — e senza questo log un `decide_one`
         # rotto produce lo stesso `applied=0, still_pending=N` di un modello giù,
@@ -562,7 +614,7 @@ async def decide_terms(
         proposals = [p for p in raw if isinstance(p, TermDecisionProposal)]
         if stopped is None:
             proposals, spesa_collasso = await collapse_creates(
-                session, proposals, registry, client=api
+                session, proposals, registry, client=api, profile=profile
             )
             if spesa_collasso is not None:
                 spese.append(spesa_collasso)
@@ -685,4 +737,5 @@ async def decide_terms(
         ignored=ignored,
         still_pending=still_pending,
         stopped=stopped,
+        timed_out=timed_out,
     )

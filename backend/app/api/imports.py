@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.core.db import get_session
 from app.api.llm_refusal import llm_refusal
 from app.core.security import require_session
@@ -48,7 +49,7 @@ from app.schemas.recipe_import import (
     UndoOut,
 )
 from app.services.ingredient_match import match_name
-from app.services.llm import LlmUnavailable
+from app.services.llm import SYNC_PROFILE, LlmUnavailable, profile_worst_seconds
 from app.services.recipe_import.decide import decide_terms
 from app.services.recipe_import.manual import (
     DecisionRefused,
@@ -71,6 +72,22 @@ router = APIRouter(
 # Quanti termini in un giro della rotta. Una chiamata a termine: il tetto è
 # sull'attesa di chi ha premuto il bottone, non sulla correttezza.
 MAX_TERMS_PER_CALL = 40
+
+
+def questions_deadline_seconds(settings: Settings) -> float:
+    """Il tempo delle domande di «Riprova con l'AI»: la scadenza della rotta meno il caso
+    peggiore di una chiamata col profilo sincrono, che resta al collasso dopo di loro."""
+    return settings.llm_sync_deadline_seconds - profile_worst_seconds(SYNC_PROFILE, settings)
+
+
+def deadline_notice(timed_out: int) -> str:
+    """La frase della scadenza: quanti termini l'AI non ha deciso in tempo."""
+    if timed_out == 1:
+        return "L'AI ci ha messo troppo: 1 termine resta in coda. Decidilo a mano qui sotto, o riprova."
+    return (
+        f"L'AI ci ha messo troppo: {timed_out} termini restano in coda. "
+        "Decidili a mano qui sotto, o riprova."
+    )
 
 _REFUSAL_STATUS = {
     Refusal.INVALID: status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -224,7 +241,10 @@ async def decide_with_ai(
         terms = await pending_terms(session, GIALLOZAFFERANO, limit=MAX_TERMS_PER_CALL)
 
     try:
-        outcome = await decide_terms(session, terms)
+        outcome = await decide_terms(
+            session, terms, profile=SYNC_PROFILE,
+            ask_deadline_seconds=questions_deadline_seconds(get_settings()),
+        )
     except LlmUnavailable as exc:
         return llm_refusal(exc)
 
@@ -234,6 +254,15 @@ async def decide_with_ai(
         await session.commit()
         return llm_refusal(outcome.stopped)
 
+    # La scadenza con `applied=0` non è un 503: l'AI non è giù, è il tempo che è finito,
+    # e quel che non ha deciso resta in coda. Un guasto terminale, quando c'è, è il
+    # motivo più forte, e la sua frase vince.
+    notice = None
+    if outcome.stopped is not None:
+        notice = outcome.stopped.notice
+    elif outcome.timed_out:
+        notice = deadline_notice(outcome.timed_out)
+
     materialized = await materialize_ready(session, GIALLOZAFFERANO)
     numbers = await counts(session, GIALLOZAFFERANO)
     await session.commit()
@@ -241,7 +270,7 @@ async def decide_with_ai(
         applied=outcome.applied, created=outcome.created, ignored=outcome.ignored,
         still_pending=outcome.still_pending, unlocked=materialized.created,
         remaining_terms=numbers.pending_terms,
-        stopped_notice=outcome.stopped.notice if outcome.stopped is not None else None,
+        stopped_notice=notice,
     )
 
 

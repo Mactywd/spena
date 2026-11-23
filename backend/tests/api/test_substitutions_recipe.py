@@ -164,6 +164,20 @@ async def test_ask_salva_la_risposta_dell_ai(db_session, logged_client, cucina, 
     assert chiamate == ["ingredient_substitutes"]
 
 
+async def test_sostituisci_usa_il_profilo_sincrono(
+    logged_client, cucina, con_chiave, monkeypatch
+):
+    """La rotta passa da Nginx: un solo ritentativo, il tempo del profilo sincrono."""
+    voci, ricette = cucina
+    finto = FakeLlm({"esito": "sostituti", "sostituti": [{"nome": "riso", "nota": ""}]})
+    monkeypatch.setattr("app.services.substitutions.open_client", lambda: finto)
+
+    risposta = await logged_client.post(_url(ricette["pasta"], voci["pasta"], "/ask"))
+
+    assert risposta.status_code == 200
+    assert finto.options == [{"timeout": 45.0, "max_retries": 1}]
+
+
 async def test_ask_senza_ai_lascia_la_strada_a_mano(db_session, logged_client, cucina, monkeypatch):
     from app.core.config import get_settings
 
