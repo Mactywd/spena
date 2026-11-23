@@ -291,9 +291,12 @@ def refuse_if_no_recipe_here(meal: Meal) -> None:
     raise MealRefusal(MealRefusalCode.NO_RECIPE_HERE, message)
 
 
+HAS_RECIPE_MESSAGE = "Il pasto ha già una ricetta."
+
+
 def check_can_take_recipe(meal: Meal) -> None:
     if meal.recipe_id is not None:
-        raise MealRefusal(MealRefusalCode.HAS_RECIPE, "Il pasto ha già una ricetta.")
+        raise MealRefusal(MealRefusalCode.HAS_RECIPE, HAS_RECIPE_MESSAGE)
     refuse_if_no_recipe_here(meal)
 
 

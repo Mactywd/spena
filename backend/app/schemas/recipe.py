@@ -188,6 +188,9 @@ class RecipeOut(BaseModel):
     # la ha, se c'è. Default: un backend o un test che non li dice parla del ricettario
     in_book: bool = True
     meal: MealRefOut | None = None
+    # solo quando il salvataggio a mano ha preso il posto della ricetta di Claude non ancora
+    # toccata: la modifica da annullare per rimetterla (decisione 7). `None` altrimenti
+    undo_change_id: uuid.UUID | None = None
 
 
 class RecipeSummaryOut(BaseModel):

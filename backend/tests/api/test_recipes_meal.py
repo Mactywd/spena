@@ -7,8 +7,9 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select, update
 
-from app.db.models.ingredient import IngredientCategory
+from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.recipe import Recipe
+from app.db.models.recipe_change import RecipeChange
 from app.domain.meals import MealSlot, MealStatus
 from app.repositories.ingredients import create_ingredient
 from app.services.meal_recipes import DraftLine, MealRecipeDraft, write_meal_recipe
@@ -306,28 +307,201 @@ async def test_l_avviso_vecchio_non_ricompare(logged_client, db_session, pasta):
     assert body["recipe_notice"] is None
 
 
-async def test_scrivi_la_ricetta_dopo_la_coda_non_lascia_orfane(logged_client, db_session, pasta):
-    """Review Focus 3, in fila: la coda ha già scritto la ricetta del pasto quando arriva
-    «Scrivi la ricetta». La rotta rifiuta e non lascia la ricetta a mano fuori dal ricettario
-    senza pasto (la corsa vera, a metà rotta, è in `tests/db/test_meal_lock.py`)."""
-    meal = await _pasto(db_session)
-    await write_meal_recipe(
-        db_session, meal,
+async def _della_coda(session, meal, pasta, titolo="Pasta della coda"):
+    """La ricetta che la coda scrive per il pasto, come in `recipe_jobs`."""
+    change = await write_meal_recipe(
+        session, meal,
         MealRecipeDraft(
-            title="Pasta della coda", description=None, instructions="Cuoci.", servings=2,
+            title=titolo, description=None, instructions="Cuoci.", servings=2,
             lines=(DraftLine(pasta.id, None, None, "primary", "320 g", None),),
             summary="dalla coda",
         ),
         allowed_recipe_ids=frozenset({None}),
     )
+    await session.commit()
+    return change
+
+
+async def _conta_ricette(session):
+    return (await session.execute(select(func.count()).select_from(Recipe))).scalar_one()
+
+
+async def test_scrivi_la_ricetta_dopo_la_coda_prende_il_suo_posto(
+    logged_client, db_session, pasta
+):
+    """La coda ha già scritto la ricetta del pasto quando arriva «Scrivi la ricetta», e
+    nessuno l'ha toccata: vince quella scritta a mano, al posto di quella di Claude (la
+    stessa ricetta, riscritta), con la modifica da annullare (decisioni 1 e 3)."""
+    meal = await _pasto(db_session)
+    coda = await _della_coda(db_session, meal, pasta)
+    prima = await _conta_ricette(db_session)
+
+    r = await logged_client.post(R, json=_corpo(pasta, "Pasta a mano", meal_id=str(meal.id)))
+
+    assert r.status_code == 201, r.text
+    assert r.json()["id"] == str(coda.recipe_id)
+    assert r.json()["in_book"] is False
+    assert r.json()["undo_change_id"]
+    assert await _conta_ricette(db_session) == prima
+    pasto = (await logged_client.get(f"{M}/{meal.id}")).json()
+    assert pasto["recipe"]["title"] == "Pasta a mano"
+    assert pasto["recipe"]["id"] == str(coda.recipe_id)
+
+
+async def test_annulla_rimette_la_ricetta_di_claude(logged_client, db_session, pasta):
+    meal = await _pasto(db_session)
+    await _della_coda(db_session, meal, pasta)
+    r = await logged_client.post(R, json=_corpo(pasta, "Pasta a mano", meal_id=str(meal.id)))
+    assert r.status_code == 201, r.text
+    annulla = f"{M}/{meal.id}/chat/changes/{r.json()['undo_change_id']}/undo"
+
+    r = await logged_client.post(annulla)
+
+    assert r.status_code == 200, r.text
+    pasto = (await logged_client.get(f"{M}/{meal.id}")).json()
+    assert pasto["recipe"]["title"] == "Pasta della coda"
+    r = await logged_client.post(annulla)
+    assert r.status_code == 409
+    assert r.json()["code"] == "change_undone"
+    assert r.json()["detail"] == "Questa modifica è già stata annullata."
+
+
+async def test_annulla_toglie_l_ingrediente_creato_dal_modulo(
+    logged_client, db_session, pasta
+):
+    meal = await _pasto(db_session)
+    await _della_coda(db_session, meal, pasta)
+    corpo = _corpo(pasta, "Pasta allo zafferano", meal_id=str(meal.id))
+    corpo["ingredients"].append(
+        {"name": "zafferano in pistilli", "category": "spezie", "role": "secondary",
+         "quantity_text": "1 bustina", "note": None}
+    )
+    r = await logged_client.post(R, json=corpo)
+    assert r.status_code == 201, r.text
+    nuovo = next(
+        riga["ingredient_id"] for riga in r.json()["ingredients"]
+        if riga["ingredient_id"] != str(pasta.id)
+    )
+    assert await db_session.get(Ingredient, uuid.UUID(nuovo)) is not None
+
+    r = await logged_client.post(
+        f"{M}/{meal.id}/chat/changes/{r.json()['undo_change_id']}/undo"
+    )
+
+    assert r.status_code == 200, r.text
+    db_session.expunge_all()
+    assert await db_session.get(Ingredient, uuid.UUID(nuovo)) is None
+
+
+async def test_una_ricetta_toccata_dalla_chat_non_si_sostituisce(
+    logged_client, db_session, pasta
+):
+    meal = await _pasto(db_session)
+    await _della_coda(db_session, meal, pasta)
+    await write_meal_recipe(
+        db_session, meal,
+        MealRecipeDraft(
+            title="Pasta della chat", description=None, instructions="Cuoci di più.",
+            servings=2,
+            lines=(DraftLine(pasta.id, None, None, "primary", "320 g", None),),
+            summary="dalla chat",
+        ),
+    )
     await db_session.commit()
-    prima = (await db_session.execute(select(func.count()).select_from(Recipe))).scalar_one()
+    prima = await _conta_ricette(db_session)
 
     r = await logged_client.post(R, json=_corpo(pasta, "Pasta a mano", meal_id=str(meal.id)))
 
     assert r.status_code == 409, r.text
     assert r.json()["code"] == "has_recipe"
-    dopo = (await db_session.execute(select(func.count()).select_from(Recipe))).scalar_one()
-    assert dopo == prima
+    assert await _conta_ricette(db_session) == prima
     pasto = (await logged_client.get(f"{M}/{meal.id}")).json()
-    assert pasto["recipe"]["title"] == "Pasta della coda"
+    assert pasto["recipe"]["title"] == "Pasta della chat"
+
+
+async def test_la_ricetta_di_claude_cambiata_a_meta_non_si_sostituisce(
+    logged_client, db_session, pasta, monkeypatch
+):
+    """Review Focus 3: la ricetta cambia fra la lettura di `untouched_ai_change` e la
+    scrittura (una chat che scrive in quell'istante). `expected` la ferma: 409
+    `has_recipe`, e niente di scritto."""
+    import app.api.recipes as rotta
+
+    meal = await _pasto(db_session)
+    coda = await _della_coda(db_session, meal, pasta)
+    # il rollback della rotta scade gli oggetti della sessione condivisa
+    meal_id, recipe_id = meal.id, coda.recipe_id
+    vera = rotta.untouched_ai_change
+
+    async def poi_la_chat_scrive(session, pasto):
+        change = await vera(session, pasto)
+        ricetta = await session.get(Recipe, recipe_id)
+        ricetta.title = "Pasta della chat"
+        await session.commit()
+        return change
+
+    monkeypatch.setattr(rotta, "untouched_ai_change", poi_la_chat_scrive)
+
+    r = await logged_client.post(R, json=_corpo(pasta, "Pasta a mano", meal_id=str(meal_id)))
+
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == "has_recipe"
+    pasto = (await logged_client.get(f"{M}/{meal_id}")).json()
+    assert pasto["recipe"]["title"] == "Pasta della chat"
+    modifiche = (
+        await db_session.execute(
+            select(func.count()).select_from(RecipeChange).where(
+                RecipeChange.meal_id == meal_id
+            )
+        )
+    ).scalar_one()
+    assert modifiche == 1
+
+
+async def test_il_reparto_e_il_costo_del_modulo_restano(logged_client, db_session, pasta):
+    del_ricettario = await _del_ricettario(logged_client, pasta)
+    await db_session.execute(
+        update(Recipe)
+        .where(Recipe.id == uuid.UUID(del_ricettario["id"]))
+        .values(category="Primi piatti")
+    )
+    await db_session.commit()
+    meal = await _pasto(db_session)
+    await _della_coda(db_session, meal, pasta)
+
+    r = await logged_client.post(
+        R,
+        json=_corpo(
+            pasta, "Pasta a mano", meal_id=str(meal.id), category="Primi piatti", cost=2
+        ),
+    )
+
+    assert r.status_code == 201, r.text
+    assert r.json()["category"] == "Primi piatti"
+    assert r.json()["cost"] == 2
+    dettaglio = (await logged_client.get(f"{R}/{r.json()['id']}")).json()
+    assert dettaglio["category"] == "Primi piatti"
+    assert dettaglio["cost"] == 2
+
+
+async def test_senza_sostituzione_undo_change_id_e_vuoto(logged_client, db_session, pasta):
+    meal = await _pasto(db_session)
+    prima = await _conta_ricette(db_session)
+
+    r = await logged_client.post(R, json=_corpo(pasta, "Pasta a mano", meal_id=str(meal.id)))
+
+    assert r.status_code == 201, r.text
+    assert r.json()["undo_change_id"] is None
+    assert await _conta_ricette(db_session) == prima + 1
+
+
+async def test_un_avanzo_resta_rifiutato(logged_client, db_session, pasta):
+    origine = await _pasto(db_session, 10, MealSlot.DINNER, "Origine")
+    meal = await _pasto(db_session, 11, MealSlot.LUNCH, "Avanzo", leftover_of_id=origine.id)
+    prima = await _conta_ricette(db_session)
+
+    r = await logged_client.post(R, json=_corpo(pasta, "Pasta a mano", meal_id=str(meal.id)))
+
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == "no_recipe_here"
+    assert await _conta_ricette(db_session) == prima
