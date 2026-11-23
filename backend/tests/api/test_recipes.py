@@ -567,3 +567,39 @@ async def test_il_dettaglio_ha_una_versione_che_cambia_col_procedimento(logged_c
     assert put.json()["version"] != first["version"]
     after = (await logged_client.get(f"/api/v1/recipes/{created['id']}")).json()
     assert after["version"] == put.json()["version"]
+
+
+async def test_il_put_con_la_versione_vecchia_di_una_ricetta_senza_pasto_e_409(
+    logged_client, cucina
+):
+    """Un altro dispositivo ha salvato la stessa ricetta: il secondo modulo, aperto prima,
+    si rifiuta con la frase senza Claude, e la ricetta resta quella del primo."""
+    created = await _create_recipe(logged_client, cucina)
+    aperta = (await logged_client.get(f"/api/v1/recipes/{created['id']}")).json()
+
+    def corpo(procedimento):
+        return {
+            "title": aperta["title"], "description": aperta["description"],
+            "instructions": procedimento, "servings": aperta["servings"],
+            "ingredients": [
+                {"ingredient_id": i["ingredient_id"], "role": i["role"],
+                 "quantity_text": i["quantity_text"], "note": i["note"]}
+                for i in aperta["ingredients"]
+            ],
+            "expected_version": aperta["version"],
+        }
+
+    primo = await logged_client.put(
+        f"/api/v1/recipes/{created['id']}", json=corpo("Dal telefono.")
+    )
+    assert primo.status_code == 200, primo.text
+    secondo = await logged_client.put(
+        f"/api/v1/recipes/{created['id']}", json=corpo("Dal computer.")
+    )
+
+    assert secondo.status_code == 409, secondo.text
+    assert secondo.json() == {
+        "code": "recipe_changed", "detail": "La ricetta è cambiata mentre la correggevi."
+    }
+    dopo = (await logged_client.get(f"/api/v1/recipes/{created['id']}")).json()
+    assert dopo["instructions"] == "Dal telefono."

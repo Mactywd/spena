@@ -87,6 +87,12 @@ NOT_A_MEAL_RECIPE = (
 
 MEAL_RECIPE_KEPT = "È la ricetta di un pasto: si elimina insieme al pasto."
 
+# Il 409 di un `PUT` partito da una versione vecchia: il modulo lo riconosce dal codice e
+# offre le sue due strade, «Salva comunque la mia» e «Ricarica la ricetta»
+RECIPE_CHANGED_CODE = "recipe_changed"
+CLAUDE_CHANGED_RECIPE = "Claude ha cambiato la ricetta mentre la correggevi."
+RECIPE_CHANGED = "La ricetta è cambiata mentre la correggevi."
+
 # R2: le due regole dei parametri del dettaglio. Il frontend non le viola mai, quindi
 # non sono frasi a video: dicono il contratto a chi chiama la rotta a mano
 ANCHOR_NEEDS_AMOUNT = "La dose di un ingrediente vuole `anchor` e `amount` insieme."
@@ -404,7 +410,7 @@ async def update(
 @router.put("/{recipe_id}", response_model=RecipeOut)
 async def replace(
     recipe_id: uuid.UUID, payload: RecipeReplace, session: AsyncSession = Depends(get_session)
-) -> RecipeOut:
+) -> RecipeOut | JSONResponse:
     """La ricetta intera, righe comprese (R10 §5).
 
     Le righe passano dalla stessa strada della creazione: stessi nomi risolti
@@ -412,31 +418,55 @@ async def replace(
     stessi errori (`_writing_recipe`). Se la ricetta viene dall'import e la sua pagina è
     ancora `imported`, passa ad `adopted` in questa transazione: da qui l'import non la
     rifà più.
+
+    Con `expected_version` scrive solo se la ricetta, letta col pasto bloccato, ha ancora
+    quella versione; altrimenti 409 `recipe_changed`, senza scrivere niente.
     """
     recipe = await get_recipe(session, recipe_id)
     if recipe is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ricetta inesistente")
-    if recipe.archived_at is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
     await _check_category(session, payload.category, current=recipe.category)
     # il vettore nasce da titolo e descrizione: solo se cambiano va rifatto, e senza
-    # modello va a NULL — un vettore del testo vecchio mentirebbe sulla ricetta nuova
+    # modello va a NULL — un vettore del testo vecchio mentirebbe sulla ricetta nuova.
+    # Si calcola qui, prima del lucchetto: nessuna chiamata di rete col pasto bloccato.
+    # Se il testo non cambia, il vettore di adesso è già quello del testo del modulo, e
+    # si tiene da parte: la chat può riscrivere il titolo mentre si aspetta il pasto
     new_text = (payload.title, payload.description) != (recipe.title, recipe.description)
     embedding = await embedding_for(
         payload.title, payload.description, provider=get_embedding_provider()
-    ) if new_text else None
+    ) if new_text else recipe.embedding
+    # Il pasto per primo, come `delete_meal` e la chat (F-R6): chi scrive col pasto bloccato
+    # si mette in fila, e i controlli sotto leggono la ricetta com'è dopo l'attesa
+    meal = await lock_meal_of_recipe(session, recipe)
+    if recipe.archived_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, RECIPE_ARCHIVED)
+    # La versione la decide il server: il modulo rimanda quella del dettaglio da cui è
+    # partito, e se la ricetta intanto è cambiata non si scrive niente
+    if (
+        payload.expected_version is not None
+        and payload.expected_version != recipe_version(recipe_snapshot(recipe))
+    ):
+        await session.rollback()  # libera il pasto subito
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "code": RECIPE_CHANGED_CODE,
+                "detail": CLAUDE_CHANGED_RECIPE if meal is not None else RECIPE_CHANGED,
+            },
+        )
     async with _writing_recipe(session):
         await write_recipe_ingredients(
             session, recipe, await resolve_lines(session, payload.ingredients)
         )
+        # il confronto si rifà sulla ricetta riletta: è col suo testo che il vettore va d'accordo
+        if (payload.title, payload.description) != (recipe.title, recipe.description):
+            recipe.embedding = embedding
         recipe.title = payload.title
         recipe.description = payload.description
         recipe.category = payload.category
         recipe.instructions = payload.instructions
         recipe.servings = payload.servings
         recipe.cost = payload.cost
-        if new_text:
-            recipe.embedding = embedding
         await adopt_import_page(session, recipe.id)
         await session.commit()
     # Le righe appena scritte non hanno l'ingrediente caricato: si rilegge la ricetta

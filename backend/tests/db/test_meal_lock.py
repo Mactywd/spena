@@ -561,3 +561,103 @@ async def test_salva_nel_ricettario_mentre_si_elimina_il_pasto(maker, dati, monk
         ).scalar_one()
         assert eliminate_nel_ricettario == 0
         assert await _orfane(check) == 0
+
+
+def _corpo_put(dettaglio, titolo, **extra):
+    """Il modulo com'era quando si è aperto (dal dettaglio), con un titolo nuovo."""
+    return {
+        "title": titolo, "description": dettaglio["description"],
+        "category": dettaglio["category"], "instructions": dettaglio["instructions"],
+        "servings": dettaglio["servings"], "cost": dettaglio["cost"],
+        "ingredients": [
+            {"ingredient_id": i["ingredient_id"], "role": i["role"],
+             "quantity_text": i["quantity_text"], "note": i["note"]}
+            for i in dettaglio["ingredients"]
+        ],
+        **extra,
+    }
+
+
+async def test_il_put_aspetta_la_chat_e_poi_dice_che_e_cambiata(maker, dati, monkeypatch):
+    """Review Focus 3, la chat prima: A scrive la ricetta col pasto bloccato e non ha ancora
+    committato; il `PUT` del modulo aperto prima aspetta il pasto, rilegge la ricetta dopo il
+    `commit` di A e risponde 409 `recipe_changed`. La scrittura della chat resta."""
+    meal_id, uova_id = dati
+    recipe_id = await _ricetta_del_pasto(maker, meal_id, uova_id, in_book=False)
+
+    async with _client(maker, monkeypatch) as c, maker() as a:
+        aperta = (await c.get(f"/api/v1/recipes/{recipe_id}")).json()
+        meal_a = await get_meal(a, meal_id)
+        await write_meal_recipe(a, meal_a, _draft(uova_id, title="Frittata della chat"))
+        put = asyncio.create_task(
+            c.put(
+                f"/api/v1/recipes/{recipe_id}",
+                json=_corpo_put(aperta, "Frittata mia", expected_version=aperta["version"]),
+            )
+        )
+        await _aspetta(put)
+        await a.commit()
+        r = await asyncio.wait_for(put, 5)
+
+    assert r.status_code == 409, r.text
+    assert r.json() == {
+        "code": "recipe_changed",
+        "detail": "Claude ha cambiato la ricetta mentre la correggevi.",
+    }
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert meal.recipe_id == recipe_id
+        assert meal.recipe.title == "Frittata della chat"
+        assert await _orfane(check) == 0
+
+
+async def test_la_chat_aspetta_il_put_e_poi_si_ferma(maker, dati, monkeypatch):
+    """Review Focus 3, il `PUT` prima: tiene il pasto (fermo appena prima del `commit`), la
+    chat con l'istantanea di prima aspetta, e dopo il `commit` si ferma con
+    `STALE_WRITE_MESSAGE`. La scrittura del modulo resta."""
+    from app.api import recipes as recipes_api
+    from app.services.meal_recipes import STALE_WRITE_MESSAGE, meal_snapshot
+
+    meal_id, uova_id = dati
+    recipe_id = await _ricetta_del_pasto(maker, meal_id, uova_id, in_book=False)
+    original = recipes_api.adopt_import_page
+    dentro, via = asyncio.Event(), asyncio.Event()
+
+    async def adozione_ferma(*args, **kwargs):
+        dentro.set()
+        await via.wait()
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(recipes_api, "adopt_import_page", adozione_ferma)
+    try:
+        async with _client(maker, monkeypatch) as c, maker() as b:
+            aperta = (await c.get(f"/api/v1/recipes/{recipe_id}")).json()
+            meal_b = await get_meal(b, meal_id)
+            visto = await meal_snapshot(b, meal_b)  # quel che Claude ha letto
+            put = asyncio.create_task(
+                c.put(
+                    f"/api/v1/recipes/{recipe_id}",
+                    json=_corpo_put(aperta, "Frittata mia", expected_version=aperta["version"]),
+                )
+            )
+            await asyncio.wait_for(dentro.wait(), 5)
+            chat = asyncio.create_task(
+                write_meal_recipe(
+                    b, meal_b, _draft(uova_id, title="Frittata della chat"), expected=visto
+                )
+            )
+            await _aspetta(chat)
+            via.set()
+            r = await asyncio.wait_for(put, 5)
+            with pytest.raises(RecipeWriteRefused) as refused:
+                await asyncio.wait_for(chat, 5)
+            await b.rollback()
+    finally:
+        via.set()
+
+    assert r.status_code == 200, r.text
+    assert refused.value.message == STALE_WRITE_MESSAGE
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert meal.recipe.title == "Frittata mia"
+        assert await _orfane(check) == 0

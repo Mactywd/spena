@@ -80,6 +80,11 @@ class RecipeReplace(RecipeFields):
     `source` mandato comunque si ignora, come ogni campo che il modello non dichiara.
     """
 
+    # la `version` del dettaglio da cui il modulo è partito: se la ricetta intanto è cambiata
+    # il `PUT` risponde 409 `recipe_changed` e non scrive. Assente, scrive come sempre (un
+    # client vecchio, o «Salva comunque la mia»)
+    expected_version: str | None = None
+
 
 class RecipeUpdate(BaseModel):
     """Quel che si cambia di una ricetta con un tocco: il costo, e l'eliminazione.
