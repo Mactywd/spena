@@ -63,6 +63,11 @@ describe("IngredientPicker", () => {
     expect(trims).toHaveLength(2);
     expect(trims).toContain("false");
     expect(trims).toContain(null);
+    const limits = spy.mock.calls
+      .map(([url]) => new URL(String(url), "http://localhost"))
+      .filter((u) => u.pathname.endsWith("/ingredients/search"))
+      .map((u) => u.searchParams.get("limit"));
+    expect(limits).toEqual([null, null]);
   });
 
   it("chiede al server solo il cibo quando glielo si dice, e lo mette nella chiave", async () => {

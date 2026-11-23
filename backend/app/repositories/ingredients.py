@@ -117,8 +117,9 @@ def _folded(column):
 
 async def _suggestion_candidates(
     session: AsyncSession, query: str, limit: int, kind: IngredientKind | None,
+    *, hits_first: bool = True,
 ) -> list[ScoredIngredient]:
-    """I candidati dei suggerimenti, già nell'ordine in cui `trim_suggestions` li vuole.
+    """I candidati dei suggerimenti, già nell'ordine in cui `trim_suggestions` li vuole (con `hits_first=True`).
 
     Rispetto a `search_ingredients`: il prefisso si confronta senza accenti; un
     riscontro (`is_hit`, il testo all'inizio di una parola del nome o di un alias)
@@ -126,6 +127,10 @@ async def _suggestion_candidates(
     rende sicuro il `LIMIT`: i riscontri arrivano prima di ogni sfumato, e senza
     riscontri gli sfumati arrivano dal più simile in giù, quindi le righe che il taglio
     tiene sono sempre in testa (sesta lezione di CLAUDE.md).
+
+    Con `hits_first=False` (l'elenco intero) i riscontri non hanno più un posto loro: dopo
+    i prefissi si va per somiglianza, così un quasi-doppione sale sopra i riscontri lontani.
+    Il `LIMIT` resta sicuro anche così, perché nell'elenco intero nessun taglio viene dopo.
     """
     cleaned = query.strip().lower()
     folded = fold_for_match(cleaned)
@@ -159,18 +164,29 @@ async def _suggestion_candidates(
     )
     if kind is not None:
         statement = statement.where(Ingredient.kind == kind)
-    statement = (
-        statement
-        .having((best_similarity >= SIMILARITY_FLOOR) | is_prefix_match | is_hit)
-        .order_by(
-            # l'ordine di `search_ingredients`, con i riscontri subito dopo i prefissi
+    if hits_first:
+        # l'ordine di `search_ingredients`, con i riscontri subito dopo i prefissi
+        ordering = [
             is_prefix_match.desc(),
             is_hit.desc(),
             case((is_prefix_match, purchase_count), else_=0).desc(),
             best_similarity.desc(),
             purchase_count.desc(),
             Ingredient.name.asc(),
-        )
+        ]
+    else:
+        # l'elenco intero: i prefissi, poi chi somiglia di più; `is_hit` non ordina
+        ordering = [
+            is_prefix_match.desc(),
+            case((is_prefix_match, purchase_count), else_=0).desc(),
+            best_similarity.desc(),
+            purchase_count.desc(),
+            Ingredient.name.asc(),
+        ]
+    statement = (
+        statement
+        .having((best_similarity >= SIMILARITY_FLOOR) | is_prefix_match | is_hit)
+        .order_by(*ordering)
         .limit(limit)
     )
     rows = (await session.execute(statement)).all()
@@ -190,14 +206,16 @@ async def suggest_ingredients(
 
     `trim=False` dà l'elenco intero, i candidati così come arrivano: lo chiedono «Abbina»
     (il testo lungo della voce) e l'Anagrafica (i quasi-doppioni), decisi da Mattia il
-    2026-11-18. Il taglio non riordina mai e i riscontri vengono prima di ogni sfumato,
-    quindi l'elenco tagliato è sempre l'inizio di quello intero (decisione 4 del piano).
+    2026-11-18. Ha un ordine suo: i prefissi, poi la somiglianza (piano del 2026-11-22),
+    così i quasi-doppioni non restano fuori. Quindi l'elenco tagliato non ne è più l'inizio
+    (cade la decisione 4 del piano del 2026-11-18): resta che, con un `limit` che li contiene
+    tutti, ogni riga tagliata è anche in quello intero, perché il filtro è lo stesso.
 
     La chiamano l'endpoint e il comando che misura (`app.cli.measure_suggestions`), e
     nessun altro: `match_name` e i vicini per l'AI restano su `search_ingredients`
     (decisione 3).
     """
-    candidates = await _suggestion_candidates(session, query, limit, kind)
+    candidates = await _suggestion_candidates(session, query, limit, kind, hits_first=trim)
     if not trim:
         return [candidate.ingredient for candidate in candidates]
     return [candidate.ingredient for candidate in trim_suggestions(candidates, limit)]

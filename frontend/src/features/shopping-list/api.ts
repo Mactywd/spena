@@ -28,9 +28,15 @@ export function patchShoppingItem(
 /** La chiave della cache di `searchIngredients`: una sola, perché chi cerca la
  * stessa parola in modi diversi non deve leggere la risposta dell'altro. Il `kind`
  * e l'elenco intero stanno nella chiave: senza, le risposte si sovrascriverebbero. */
-export function ingredientSearchKey(term: string, kind?: "food", trim = true) {
+export function ingredientSearchKey(
+  term: string,
+  kind?: "food",
+  trim = true,
+  limit?: number
+) {
   const base = ["ingredients", term, kind ?? "tutti"];
-  return trim ? base : [...base, "intero"];
+  const key = trim ? base : [...base, "intero"];
+  return limit === undefined ? key : [...key, limit];
 }
 
 /** `trim=false` è l'elenco intero, senza il taglio dei suggerimenti: lo chiedono
@@ -38,13 +44,14 @@ export function ingredientSearchKey(term: string, kind?: "food", trim = true) {
 export function searchIngredients(
   query: string,
   kind?: "food",
-  { trim = true }: { trim?: boolean } = {}
+  { trim = true, limit }: { trim?: boolean; limit?: number } = {}
 ) {
   const params = new URLSearchParams({ q: query });
   // solo chi vuole il filtro lo manda: senza parametro il server risponde tutto,
   // che è quel che vogliono la lista, la sistemazione e la dispensa
   if (kind) params.set("kind", kind);
   if (!trim) params.set("trim", "false");
+  if (limit !== undefined) params.set("limit", String(limit));
   return apiFetch<Ingredient[]>(`/ingredients/search?${params}`);
 }
 
