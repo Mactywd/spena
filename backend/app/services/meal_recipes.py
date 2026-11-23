@@ -244,9 +244,23 @@ async def write_meal_recipe(
     scritto) scrive solo se la ricetta del pasto è fra quelle: una ricetta che c'è già, scritta
     a mano o scelta dal ricettario nel frattempo, non si riscrive.
     """
-    # Il lucchetto, per primo (idea 52): due ricette nello stesso istante, l'ultima vince e
-    # l'altra resta orfana. Chi arriva secondo aspetta il commit del primo e rilegge il pasto
-    # com'è, poi i controlli qui sotto lo trovano con la ricetta già legata.
+    title = draft.title.strip()
+    description = draft.description
+    # Il vettore prima del lucchetto (decisione 7 del quarto giro): `embedding_for` può andare
+    # in rete, e col pasto bloccato fermerebbe la coda, la chat e «Annulla». Si decide su una
+    # lettura senza lucchetto se serve (il vettore nasce da titolo e descrizione: si rifà solo
+    # se cambiano, come in `replace`), e la decisione si rifà sotto il lucchetto, qui sotto.
+    seen: Recipe | None = None
+    if meal.recipe_id is not None:
+        seen = await get_recipe(session, meal.recipe_id)
+    new_text_seen = seen is None or (title, description) != (seen.title, seen.description)
+    embedding: list[float] | None = None
+    if new_text_seen:
+        embedding = await embedding_for(title, description)
+
+    # Il lucchetto, prima di ogni controllo (idea 52): due ricette nello stesso istante,
+    # l'ultima vince e l'altra resta orfana. Chi arriva secondo aspetta il commit del primo e
+    # rilegge il pasto com'è, poi i controlli qui sotto lo trovano con la ricetta già legata.
     locked = await lock_meal(session, meal.id)
     if locked is None:
         raise RecipeWriteRefused(MEAL_GONE_MESSAGE)
@@ -267,12 +281,12 @@ async def write_meal_recipe(
             raise RecipeWriteRefused(RECIPE_DELETED_MESSAGE)
     created = recipe is None
     new_ingredients: list[uuid.UUID] = []
-    title = draft.title.strip()
-    description = draft.description
-    # il vettore nasce da titolo e descrizione: si rifà solo se cambiano, come in `replace`
-    embedding: list[float] | None = None
     new_text = recipe is None or (title, description) != (recipe.title, recipe.description)
-    if new_text:
+    if new_text and not new_text_seen:
+        # La corsa rara: fra la lettura e il lucchetto qualcuno ha cambiato titolo o
+        # descrizione della ricetta. Solo qui il vettore si calcola col pasto bloccato. Nel
+        # caso opposto il vettore già calcolato non serve e la ricetta tiene il suo; quando
+        # le due decisioni lo chiedono, vale lo stesso, perché nasce solo dalla bozza.
         embedding = await embedding_for(title, description)
 
     try:
@@ -391,9 +405,22 @@ async def change_is_undoable(session: AsyncSession, change: RecipeChange) -> boo
 async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> None:
     """Rimette la versione di prima, solo se la ricetta e il piatto sono ancora come li ha
     lasciati questa modifica: non sovrascrive mai un lavoro più nuovo (decisione 16)."""
-    # Il lucchetto, per primo (idea 52): un «Annulla» nello stesso istante di una scrittura (o
-    # di un altro «Annulla») riscriverebbe sopra l'altra. Preso il pasto, la modifica si
-    # rilegge: chi l'ha annullata o superata intanto ha già committato.
+    # Il vettore prima del lucchetto (decisione 7 del quarto giro): se serve lo dice la
+    # modifica stessa, perché una modifica annullabile ha la ricetta com'era dopo di lei, e
+    # titolo e descrizione si rimettono a quelli di prima. Così `embedding_for`, che può andare
+    # in rete, non gira col pasto bloccato.
+    before = snapshot_from_json(change.before)
+    recompute = not change.created_recipe and bool(
+        change.changed["title"] or change.changed["description"]
+    )
+    restored_embedding: list[float] | None = None
+    if recompute:
+        assert before.recipe is not None
+        restored_embedding = await embedding_for(before.recipe.title, before.recipe.description)
+
+    # Il lucchetto, prima di ogni controllo (idea 52): un «Annulla» nello stesso istante di una
+    # scrittura (o di un altro «Annulla») riscriverebbe sopra l'altra. Preso il pasto, la
+    # modifica si rilegge: chi l'ha annullata o superata intanto ha già committato.
     if await lock_meal(session, change.meal_id) is None:
         raise ChangeRefusal(ChangeRefusalCode.STALE, MEAL_GONE_MESSAGE)
     await session.refresh(change)
@@ -403,7 +430,6 @@ async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> Non
         raise ChangeRefusal(ChangeRefusalCode.STALE, STALE_MESSAGE)
     meal = await get_meal(session, change.meal_id)
     assert meal is not None
-    before = snapshot_from_json(change.before)
 
     if before.recipe is not None:
         wanted = {line.ingredient_id for line in before.recipe.lines}
@@ -414,19 +440,6 @@ async def undo_recipe_change(session: AsyncSession, change: RecipeChange) -> Non
                 raise ChangeRefusal(ChangeRefusalCode.STALE, INGREDIENT_GONE_MESSAGE)
 
     meal_id = meal.id
-    restored_embedding: list[float] | None = None
-    recompute = False
-    if not change.created_recipe:
-        assert before.recipe is not None
-        current = await get_recipe(session, change.recipe_id)
-        assert current is not None
-        recompute = (before.recipe.title, before.recipe.description) != (
-            current.title, current.description
-        )
-        if recompute:
-            restored_embedding = await embedding_for(
-                before.recipe.title, before.recipe.description
-            )
     async with session.begin_nested():
         if change.created_recipe:
             await release_recipe(session, meal)

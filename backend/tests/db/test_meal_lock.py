@@ -8,6 +8,7 @@ vede solo fra due transazioni vere. «Aspetta» è un `wait_for` di 0,3 secondi 
 """
 
 import asyncio
+import dataclasses
 import os
 import uuid
 import subprocess
@@ -17,11 +18,12 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import exists, func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.meal import Meal
-from app.db.models.recipe import Recipe, RecipeSource
+from app.db.models.recipe import EMBEDDING_DIM, Recipe, RecipeSource
 from app.db.models.recipe_change import RecipeChange
 from app.domain.meals import MealSlot
 from app.domain.rules import IngredientRole
@@ -432,3 +434,155 @@ async def test_annulla_prende_il_lucchetto_prima_di_guardare_se_claude_risponde(
     async with maker() as check:
         meal = await get_meal(check, meal_id)
         assert meal.recipe is not None and meal.recipe.title == "Frittata della coda"
+
+
+# Il vettore fuori dal lucchetto (Task 5 del quarto giro): `embedding_for` va in rete, e
+# col pasto bloccato fermerebbe per tutto quel tempo la coda, la chat e «Annulla».
+VETTORE = [0.5] * EMBEDDING_DIM
+VETTORE_DI_PRIMA = [0.25] * EMBEDDING_DIM
+
+
+def _finto_vettore(maker, meal_id, chiamate: list, vettore=VETTORE):
+    """Un `embedding_for` finto che annota il titolo e se il pasto, in quel momento, è libero:
+    da un'altra sessione prova a prenderlo con `NOWAIT`, e lo rilascia subito."""
+
+    async def finto(title, description, **kwargs):
+        async with maker() as altra:
+            try:
+                await altra.execute(
+                    text("SELECT id FROM meals WHERE id = :id FOR UPDATE NOWAIT"),
+                    {"id": meal_id},
+                )
+                libero = True
+            except DBAPIError:
+                libero = False
+            await altra.rollback()
+        chiamate.append((title, libero))
+        return vettore
+
+    return finto
+
+
+def _vettore(recipe: Recipe) -> list[float]:
+    return [float(x) for x in recipe.embedding]
+
+
+async def test_scrivere_la_ricetta_calcola_il_vettore_col_pasto_libero(
+    maker, dati, monkeypatch
+):
+    from app.services import meal_recipes
+
+    meal_id, uova_id = dati
+    chiamate: list = []
+    monkeypatch.setattr(
+        meal_recipes, "embedding_for", _finto_vettore(maker, meal_id, chiamate)
+    )
+    await _scrivi_e_committa(maker, meal_id, uova_id)
+
+    assert chiamate == [("Frittata della coda", True)]
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert _vettore(meal.recipe) == VETTORE
+
+
+async def test_annulla_calcola_il_vettore_col_pasto_libero(maker, dati, monkeypatch):
+    from app.services import meal_recipes
+
+    meal_id, uova_id = dati
+    chiamate: list = []
+    monkeypatch.setattr(
+        meal_recipes, "embedding_for", _finto_vettore(maker, meal_id, chiamate)
+    )
+    await _scrivi_e_committa(maker, meal_id, uova_id)
+    async with maker() as session:
+        meal = await get_meal(session, meal_id)
+        change = await write_meal_recipe(
+            session, meal, _draft(uova_id, title="Frittata riscritta")
+        )
+        await session.commit()
+        change_id = change.id
+    chiamate.clear()
+
+    async with maker() as session:
+        change = await session.get(RecipeChange, change_id)
+        await undo_recipe_change(session, change)
+        await session.commit()
+
+    assert chiamate == [("Frittata della coda", True)]
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert meal.recipe.title == "Frittata della coda"
+        assert _vettore(meal.recipe) == VETTORE
+
+
+async def test_annulla_senza_titolo_cambiato_non_calcola_il_vettore(
+    maker, dati, monkeypatch
+):
+    from app.services import meal_recipes
+
+    meal_id, uova_id = dati
+    chiamate: list = []
+    monkeypatch.setattr(
+        meal_recipes, "embedding_for", _finto_vettore(maker, meal_id, chiamate)
+    )
+    await _scrivi_e_committa(maker, meal_id, uova_id)
+    async with maker() as session:
+        meal = await get_meal(session, meal_id)
+        change = await write_meal_recipe(
+            session, meal, dataclasses.replace(_draft(uova_id), instructions="Sbatti piano.")
+        )
+        await session.commit()
+        change_id = change.id
+    chiamate.clear()
+
+    async with maker() as session:
+        change = await session.get(RecipeChange, change_id)
+        await undo_recipe_change(session, change)
+        await session.commit()
+
+    assert chiamate == []
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert meal.recipe.instructions == "Sbatti. Cuoci."
+
+
+async def test_la_ricetta_cambiata_fra_la_lettura_e_il_lucchetto_ha_il_vettore_giusto(
+    maker, dati, monkeypatch
+):
+    """La corsa rara (decisione 7): la lettura senza lucchetto trova già titolo e
+    descrizione della bozza, quindi il vettore non serve; prima del lucchetto un'altra
+    sessione cambia il titolo. La decisione rifatta sotto il lucchetto lo vede."""
+    from app.services import meal_recipes
+
+    meal_id, uova_id = dati
+    chiamate_prima: list = []
+    monkeypatch.setattr(
+        meal_recipes, "embedding_for",
+        _finto_vettore(maker, meal_id, chiamate_prima, VETTORE_DI_PRIMA),
+    )
+    await _scrivi_e_committa(maker, meal_id, uova_id)  # titolo e descrizione della bozza
+
+    chiamate: list = []
+    monkeypatch.setattr(
+        meal_recipes, "embedding_for", _finto_vettore(maker, meal_id, chiamate)
+    )
+    vero = meal_recipes.lock_meal
+
+    async def lucchetto_dopo_un_altro_titolo(session, wanted_id):
+        async with maker() as altra:
+            meal = await get_meal(altra, wanted_id)
+            meal.recipe.title = "Frittata cambiata intanto"
+            await altra.commit()
+        return await vero(session, wanted_id)
+
+    monkeypatch.setattr(meal_recipes, "lock_meal", lucchetto_dopo_un_altro_titolo)
+    async with maker() as session:
+        meal = await get_meal(session, meal_id)
+        await write_meal_recipe(session, meal, _draft(uova_id))
+        await session.commit()
+
+    assert [title for title, _ in chiamate] == ["Frittata della coda"]
+    async with maker() as check:
+        meal = await get_meal(check, meal_id)
+        assert meal.recipe.title == "Frittata della coda"
+        assert _vettore(meal.recipe) == VETTORE
