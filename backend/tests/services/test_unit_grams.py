@@ -16,7 +16,7 @@ from app.db.models.nutrition import IngredientUnitGrams
 from app.db.models.recipe import RecipeSource
 from app.db.models.unit import Unit
 from app.repositories.recipes import create_recipe
-from app.repositories.units import ensure_unit, set_unit_forms
+from app.repositories.units import apply_forms, ensure_unit, set_unit_forms
 from app.services import registry
 from app.services.ingredient_nutrition import NutritionRefusal
 from app.services.unit_grams import (
@@ -25,6 +25,7 @@ from app.services.unit_grams import (
     clear_grams,
     count_pending_pairs,
     pending_pairs,
+    realign_weights,
     set_grams,
     used_pairs,
     weights_of,
@@ -196,3 +197,98 @@ async def test_la_fusione_perde_i_pesi_del_perdente(db_session):
         await db_session.execute(select(IngredientUnitGrams.ingredient_id, IngredientUnitGrams.grams))
     ).all()
     assert [tuple(riga) for riga in righe] == [(voci["uova"].id, Decimal("50.00"))]
+
+
+async def _forma_su(db_session, canonica: str, sing: str | None = None):
+    """«cucchiai» riceve la canonica `canonica`, dopo che l'olio ha già un peso su «cucchiai»."""
+    voci = await _mondo(db_session)
+    cucchiai = await ensure_unit(db_session, "cucchiai")
+    canon = await ensure_unit(db_session, canonica)
+    return voci, cucchiai, canon
+
+
+async def _riga(db_session, ingrediente, unit_id, grammi, chi):
+    db_session.add(IngredientUnitGrams(
+        ingredient_id=ingrediente.id, unit_id=unit_id, grams=Decimal(grammi), decided_by=chi,
+    ))
+    await db_session.flush()
+
+
+async def _righe(db_session, ingrediente):
+    return list((await db_session.execute(
+        select(IngredientUnitGrams).where(IngredientUnitGrams.ingredient_id == ingrediente.id)
+    )).scalars())
+
+
+async def test_il_peso_passa_alla_canonica_quando_l_unita_la_riceve(db_session):
+    voci, cucchiai, cucchiaio = await _forma_su(db_session, "cucchiaio")
+    olio = voci["olio di oliva"]
+    await _riga(db_session, olio, cucchiai.id, "12", "ai")
+    prima = (await _righe(db_session, olio))[0]
+    decisa = prima.decided_at
+    await apply_forms(db_session, cucchiai, "cucchiaio", "cucchiai")
+
+    esito = await realign_weights(db_session, [cucchiai.id])
+
+    righe = await _righe(db_session, olio)
+    assert [(r.unit_id, r.grams, r.decided_by, r.decided_at) for r in righe] == [
+        (cucchiaio.id, Decimal("12.00"), "ai", decisa)
+    ]
+    assert (esito.moved, esito.merged, esito.dropped, esito.total) == (1, 0, 0, 1)
+    assert [(p.ingredient_name, p.unit_label) for p in await pending_pairs(db_session)
+            if p.ingredient_name == "olio di oliva"] == []
+
+
+@pytest.mark.parametrize(
+    ("sulla_forma", "sulla_canonica", "resta"),
+    [("human", "ai", "forma"), ("ai", "human", "canonica"), ("ai", "ai", "canonica"),
+     ("human", "human", "canonica")],
+)
+async def test_fondendo_vince_il_peso_a_mano(db_session, sulla_forma, sulla_canonica, resta):
+    voci, cucchiai, cucchiaio = await _forma_su(db_session, "cucchiaio")
+    olio = voci["olio di oliva"]
+    await _riga(db_session, olio, cucchiai.id, "10", sulla_forma)
+    await _riga(db_session, olio, cucchiaio.id, "20", sulla_canonica)
+    await apply_forms(db_session, cucchiai, "cucchiaio", "cucchiai")
+
+    esito = await realign_weights(db_session, [cucchiai.id])
+
+    righe = await _righe(db_session, olio)
+    atteso = (Decimal("10.00"), sulla_forma) if resta == "forma" else (Decimal("20.00"), sulla_canonica)
+    assert [(r.unit_id, r.grams, r.decided_by) for r in righe] == [(cucchiaio.id, *atteso)]
+    assert esito.merged == 1 and esito.moved == 0
+
+
+async def test_un_peso_su_un_unita_diventata_di_massa_si_toglie(db_session):
+    voci, cucchiai, _ = await _forma_su(db_session, "grammo")
+    olio = voci["olio di oliva"]
+    await _riga(db_session, olio, cucchiai.id, "10", "ai")
+    await apply_forms(db_session, cucchiai, "grammo", "cucchiai")
+
+    esito = await realign_weights(db_session, [cucchiai.id])
+
+    assert await _righe(db_session, olio) == []
+    assert esito.dropped == 1
+
+
+async def test_un_peso_su_un_unita_diventata_pezzo_va_sul_pezzo(db_session):
+    voci, cucchiai, _ = await _forma_su(db_session, "pezzo")
+    olio = voci["olio di oliva"]
+    await _riga(db_session, olio, cucchiai.id, "10", "human")
+    await apply_forms(db_session, cucchiai, "pezzo", "cucchiai")
+
+    esito = await realign_weights(db_session, [cucchiai.id])
+
+    assert [(r.unit_id, r.grams, r.decided_by) for r in await _righe(db_session, olio)] == [
+        (None, Decimal("10.00"), "human")
+    ]
+    assert esito.moved == 1
+
+
+async def test_senza_unita_ricontrolla_tutto_e_non_tocca_le_righe_a_posto(db_session):
+    voci, cucchiai, cucchiaio = await _forma_su(db_session, "cucchiaio")
+    olio = voci["olio di oliva"]
+    await _riga(db_session, olio, cucchiaio.id, "20", "ai")
+    await _riga(db_session, voci["uova"], None, "50", "ai")
+
+    assert (await realign_weights(db_session)).total == 0

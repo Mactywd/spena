@@ -352,3 +352,22 @@ async def test_a_lotti_di_una_coppia_quella_rotta_si_salta_e_le_altre_si_pesano(
     assert esito.skipped == ("aglio × spicchio",)
     assert esito.unavailable is None
     assert (esito.weighed, esito.pending) == (2, 1)
+
+
+async def test_decide_grams_riallinea_prima_di_chiedere(db_session):
+    from app.repositories.units import apply_forms, ensure_unit
+
+    voci = await _mondo(db_session)
+    cucchiai = await ensure_unit(db_session, "cucchiai")
+    await ensure_unit(db_session, "cucchiaio")
+    await set_grams(db_session, voci["olio di oliva"].id, cucchiai.id, Decimal("12"))
+    await apply_forms(db_session, cucchiai, "cucchiaio", "cucchiai")
+    # le forme sono scritte e il peso è ancora sulla forma: l'orfano di prima del deploy
+    finto = FakeLlm(_pesi((1, "aglio", "spicchio", 5), (2, "uova", "pezzo", 50)))
+
+    esito = await decide_grams(db_session, client=finto)
+
+    assert esito.realigned == 1
+    # l'AI non ha chiesto la coppia (olio, cucchiaio)
+    domande = [d["ingrediente"] for corpo in finto.bodies for d in json.loads(user_of(corpo))["coppie"]]
+    assert "olio di oliva" not in domande

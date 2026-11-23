@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.unit import UNIT_MAX_LENGTH, Unit
 from app.repositories.llm_calls import record_llm_call
 from app.repositories.units import apply_forms, undecided_units
+from app.services.unit_grams import realign_weights
 from app.services.llm import (
     LlmCallSite,
     LlmUnavailable,
@@ -115,6 +116,7 @@ async def decide_unit_forms(
     )
 
     applied = refused = 0
+    applied_ids = []
     for answer in esito.data.get("units") or []:
         unit = asked.get(answer.get("key"))
         singular = (answer.get("singular") or "").strip()
@@ -129,5 +131,8 @@ async def decide_unit_forms(
             continue
         await apply_forms(session, unit, singular, plural)
         applied += 1
+        applied_ids.append(unit.id)
     await session.flush()
+    # le unità che hanno ricevuto la canonica portano con sé i pesi già scritti
+    await realign_weights(session, applied_ids)
     return Decided(applied=applied, refused=refused, pending=len(undecided) - applied)

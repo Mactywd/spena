@@ -14,10 +14,13 @@ tornato «cchiaio» — azzerare e rilanciare non porta da nessuna parte, e senz
 import asyncio
 import sys
 
+from sqlalchemy import select
+
 from app.core.db import SessionLocal
-from app.db.models.unit import UNIT_MAX_LENGTH
+from app.db.models.unit import UNIT_MAX_LENGTH, Unit
 from app.repositories.units import reset_unit, set_unit_forms
 from app.services.unit_forms import decide_unit_forms
+from app.services.unit_grams import realign_weights
 
 FLAG_AZZERA = "--azzera"
 FLAG_IMPOSTA = "--imposta"
@@ -55,6 +58,9 @@ async def main(argv: list[str]) -> int:
             return 2
         async with SessionLocal() as session:
             done = await set_unit_forms(session, chiave, singolare, plurale)
+            if done:
+                unit_id = (await session.execute(select(Unit.id).where(Unit.key == chiave))).scalar_one()
+                await realign_weights(session, [unit_id])
             await session.commit()
         if not done:
             print(f"nessuna unità con chiave «{chiave}»")
