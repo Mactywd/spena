@@ -203,8 +203,8 @@ class CallProfile:
 # Le classificazioni: niente ragionamento, sforzo basso.
 CLASSIFY = CallProfile(thinking=False, effort="low")
 
-# Le rotte sincrone passano da Nginx: un solo ritentativo, così una chiamata sta sotto i
-# 92 s nel caso peggiore (`profile_worst_seconds`).
+# Le rotte sincrone passano da Nginx: un solo ritentativo, così una chiamata sta nei
+# 90,5 s del caso peggiore (2 x 45 + 0,5, `profile_worst_seconds`).
 SYNC_PROFILE = CallProfile(thinking=False, effort="low", timeout_seconds=45.0, max_retries=1)
 
 

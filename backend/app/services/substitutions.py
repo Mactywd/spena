@@ -72,6 +72,9 @@ SUBSTITUTE_BATCH = 20
 # per divagare, che lo schema non lascia usare.
 SUBSTITUTE_MAX_TOKENS = 400
 
+# «Sostituisci» oltre la scadenza della rotta: non è l'AI giù, è il tempo finito
+TOO_SLOW_NOTICE = "L'AI ci ha messo troppo: riprova."
+
 # Le parole dell'esito nella risposta del modello, in italiano come il prompt, verso il
 # vocabolario del dominio
 AI_VERDICTS: dict[str, SubstitutionVerdict] = {
@@ -246,11 +249,17 @@ async def decide_pair(
     client: AsyncAnthropic | None = None,
     *,
     profile: CallProfile = CLASSIFY,
+    ask_deadline_seconds: float | None = None,
 ) -> PairOutcome:
     """La voce generale di un ingrediente in un contesto, chiesta sul momento se manca.
 
     Non chiama nessuno se la voce ha già una risposta, né senza chiave: una chiave che
     manca è la configurazione, non un guasto, e non si registra come spesa.
+
+    `ask_deadline_seconds` limita la sola chiamata, non le letture e le scritture
+    intorno: cancellare una scrittura a metà sulla sessione la lascerebbe rotta. Allo
+    scadere è un guasto come gli altri (`failed`, con la sua frase), e resta la strada
+    a mano.
     """
     existing = await general_row(session, ingredient_id, context)
     if existing is not None and is_answered(existing):
@@ -266,9 +275,12 @@ async def decide_pair(
     owned = client is None
     api = client if client is not None else open_client()
     try:
-        verified, usage = await _ask(
-            ingredient.name, ingredient.id, context, food, api, profile=profile
-        )
+        async with asyncio.timeout(ask_deadline_seconds):
+            verified, usage = await _ask(
+                ingredient.name, ingredient.id, context, food, api, profile=profile
+            )
+    except TimeoutError:
+        return PairOutcome(failed=True, notice=TOO_SLOW_NOTICE)
     except LlmUnavailable as exc:
         await record_llm_call(
             session, call_site=LlmCallSite.INGREDIENT_SUBSTITUTES, usage=exc.usage, ok=False

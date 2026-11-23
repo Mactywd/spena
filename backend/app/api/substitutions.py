@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import require_session
 from app.db.models.ingredient import Ingredient
@@ -152,7 +153,8 @@ async def ask_line_substitution(
     """
     recipe, line = await _line(session, recipe_id, ingredient_id)
     outcome = await decide_pair(
-        session, line.ingredient_id, recipe_context(recipe.category), profile=SYNC_PROFILE
+        session, line.ingredient_id, recipe_context(recipe.category), profile=SYNC_PROFILE,
+        ask_deadline_seconds=get_settings().llm_sync_deadline_seconds,
     )
     await session.commit()
     return await _line_out(session, recipe, line, ai_failed=outcome.failed, ai_notice=outcome.notice)

@@ -323,6 +323,7 @@ async def collapse_creates(
     client: AsyncAnthropic | None = None,
     *,
     profile: CallProfile = CLASSIFY,
+    deadline_at: float | None = None,
 ) -> tuple[list[TermDecisionProposal], Spesa | None]:
     """Unisce i `create` che sono lo stesso ingrediente. Non scrive niente.
 
@@ -348,6 +349,11 @@ async def collapse_creates(
     Un guasto del modello non perde il lotto: si tornano le proposte come sono
     arrivate. Il collasso è una rifinitura, e far cadere N decisioni buone per una
     chiamata andata male sarebbe il contrario di quel che serve.
+
+    `deadline_at` (l'ora del ciclo di eventi) limita la sola chiamata, non la ricerca dei
+    vicini: una lettura cancellata a metà lascerebbe la sessione rotta. Allo scadere è
+    come il guasto: le proposte tornano come sono arrivate, e senza spesa, perché di
+    una chiamata interrotta non si sa l'uso.
     """
     from app.repositories.ingredients import search_ingredients
 
@@ -374,15 +380,19 @@ async def collapse_creates(
     )
 
     try:
-        esito = await complete_json(
-            call_site=LlmCallSite.TERM_COLLAPSE,
-            system=COLLAPSE_SYSTEM_PROMPT,
-            user=question,
-            schema=COLLAPSE_SCHEMA,
-            max_tokens=COLLAPSE_MAX_TOKENS,
-            profile=profile,
-            client=client,
-        )
+        async with asyncio.timeout_at(deadline_at):
+            esito = await complete_json(
+                call_site=LlmCallSite.TERM_COLLAPSE,
+                system=COLLAPSE_SYSTEM_PROMPT,
+                user=question,
+                schema=COLLAPSE_SCHEMA,
+                max_tokens=COLLAPSE_MAX_TOKENS,
+                profile=profile,
+                client=client,
+            )
+    except TimeoutError:
+        logger.warning("scadenza del collasso: le proposte restano separate")
+        return list(proposals), None
     except LlmUnavailable as exc:
         return list(proposals), Spesa(LlmCallSite.TERM_COLLAPSE, exc.usage, ok=False)
 
@@ -481,6 +491,7 @@ async def decide_terms(
     *,
     profile: CallProfile = CLASSIFY,
     ask_deadline_seconds: float | None = None,
+    deadline_seconds: float | None = None,
 ) -> Decided:
     """Decide i termini in attesa e applica: fan-out, collasso, fan-in.
 
@@ -501,12 +512,23 @@ async def decide_terms(
     collasso e le scritture vengono dopo, come senza scadenza. Si può cancellare a metà
     perché le domande non scrivono: tutto quel che tocca il database sta nella passata
     sequenziale più sotto. `None`, per i comandi, è nessuna scadenza.
+
+    `deadline_seconds` è il tempo di domande e collasso insieme, contato dallo stesso
+    istante: il collasso ha quel che resta. Un `retry-after` del server l'SDK lo
+    rispetta senza tetto, e solo questa scadenza lo copre. Allo scadere le proposte
+    restano come sono arrivate, come quando il collasso fallisce.
     """
     from app.repositories.ingredients import create_ingredient, remember_alias
     from app.services.ingredient_match import match_name
 
     if not terms:
         return Decided(applied=0, created=0, ignored=0, still_pending=0)
+
+    # le due scadenze contano dallo stesso istante, l'ingresso qui
+    started_at = asyncio.get_running_loop().time()
+
+    def at(seconds: float | None) -> float | None:
+        return started_at + seconds if seconds is not None else None
 
     # senza chiave si esce prima di aprire qualunque cosa: è la configurazione, non
     # un intoppo, e N fallimenti identici non sono più informativi di uno
@@ -579,7 +601,7 @@ async def decide_terms(
             await asyncio.gather(*started, return_exceptions=True)
 
         try:
-            async with asyncio.timeout(ask_deadline_seconds):
+            async with asyncio.timeout_at(at(ask_deadline_seconds)):
                 await wave(terms[:1])
                 await wave(terms[1:])
         except TimeoutError:
@@ -591,7 +613,12 @@ async def decide_terms(
         timed_out = 0
         for n in range(len(terms)):
             task = tasks[n] if n < len(tasks) else None
-            if task is None or not task.done() or task.cancelled():
+            if task is not None and not task.done():
+                # difensivo: dopo la `gather` ogni task è concluso. Uno vivo non si lascia
+                # girare dietro le scritture: si cancella e si aspetta che lo sia
+                task.cancel()
+                await asyncio.wait([task])
+            if task is None or task.cancelled():
                 timed_out += 1
                 raw.append(None)
             else:
@@ -614,7 +641,8 @@ async def decide_terms(
         proposals = [p for p in raw if isinstance(p, TermDecisionProposal)]
         if stopped is None:
             proposals, spesa_collasso = await collapse_creates(
-                session, proposals, registry, client=api, profile=profile
+                session, proposals, registry, client=api, profile=profile,
+                deadline_at=at(deadline_seconds),
             )
             if spesa_collasso is not None:
                 spese.append(spesa_collasso)

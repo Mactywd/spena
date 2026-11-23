@@ -240,10 +240,12 @@ async def decide_with_ai(
     else:
         terms = await pending_terms(session, GIALLOZAFFERANO, limit=MAX_TERMS_PER_CALL)
 
+    settings = get_settings()
     try:
         outcome = await decide_terms(
             session, terms, profile=SYNC_PROFILE,
-            ask_deadline_seconds=questions_deadline_seconds(get_settings()),
+            ask_deadline_seconds=questions_deadline_seconds(settings),
+            deadline_seconds=settings.llm_sync_deadline_seconds,
         )
     except LlmUnavailable as exc:
         return llm_refusal(exc)

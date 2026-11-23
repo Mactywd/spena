@@ -553,3 +553,45 @@ async def test_la_rotta_usa_il_profilo_sincrono(logged_client, db_session, monke
     assert response.status_code == 200
     assert finto.calls == 3  # due domande e il collasso
     assert finto.options == [{"timeout": 45.0, "max_retries": 1}] * 3
+
+
+async def test_la_scadenza_del_collasso_tiene_le_decisioni_separate(
+    logged_client, db_session, monkeypatch
+):
+    """Le domande rispondono in tempo, il collasso no: allo scadere della rotta le
+    proposte restano come sono arrivate, come quando il collasso fallisce, e la rotta
+    risponde 200. Il caso peggiore del profilo si abbassa a mezzo secondo, così alle
+    domande resta un secondo e al collasso il mezzo che manca a 1,5."""
+    import app.api.imports as rotta
+    import app.services.recipe_import.decide as modulo
+    from app.core.config import get_settings
+    from llm_fakes import llm_create
+
+    class CollassoLento(ScriptedLlm):
+        async def answer(self, body: dict) -> object:
+            if "nuovi" in json.loads(user_of(body)):
+                await asyncio.sleep(30)
+            return await super().answer(body)
+
+    monkeypatch.setattr(rotta, "profile_worst_seconds", lambda profile, settings: 0.5)
+    monkeypatch.setenv("LLM_SYNC_DEADLINE_SECONDS", "1.5")
+    get_settings.cache_clear()
+    _termini(db_session, "Salmone", "Salmone selvaggio")
+    await db_session.flush()
+    finto = CollassoLento(
+        {
+            "Salmone": llm_create("salmone", "Salmone", "pesce"),
+            "Salmone selvaggio": llm_create("salmone selvaggio", "Salmone selvaggio", "pesce"),
+        },
+        # se il collasso rispondesse, unirebbe i due nomi
+        collapse={"groups": [{"canonical": "salmone", "merge": ["salmone selvaggio"]}]},
+    )
+    monkeypatch.setattr(modulo, "open_client", lambda: finto)
+
+    response = await logged_client.post("/api/v1/imports/terms/decide", json={})
+
+    assert response.status_code == 200
+    corpo = response.json()
+    assert (corpo["applied"], corpo["created"], corpo["still_pending"]) == (2, 2, 0)
+    assert corpo["stopped_notice"] is None
+    assert finto.calls == 3  # il collasso è partito, e si è cancellato
