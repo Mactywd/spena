@@ -15,7 +15,7 @@ from app.db.models.llm_call import LlmCall
 from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe, RecipeSource
 from app.db.models.recipe_change import RecipeChange
-from app.domain.meal_chat import FailureKind, failure_notice
+from app.domain.meal_chat import INTERRUPTED_HISTORY_LINE, FailureKind, failure_notice
 from app.domain.meals import MealSlot
 from app.domain.rules import PANTRY_TZ
 from app.repositories.conversations import get_or_create_dish_conversation
@@ -405,6 +405,45 @@ async def test_la_cronologia_torna_nel_prompt(db_session, factory, frittata, voc
     assert prompt.index("Ricetta aggiornata") < prompt.index("E il parmigiano?")
     # il messaggio di questo giro è in fondo, una volta sola
     assert prompt.count("E il parmigiano?") == 1
+
+
+async def test_dopo_i_troppi_passaggi_il_giro_dopo_sa_dell_interruzione(
+    db_session, factory, frittata
+):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Cambia gli spinaci")
+    await giro(
+        factory,
+        FakeClaude(
+            [
+                Say("Ho cambiato gli spinaci. "),
+                Fail(FailureKind.MAX_TURNS, input_tokens=10, output_tokens=10, cost_usd=0.1),
+            ]
+        ),
+        conversation, first,
+    )
+    _, second = await nuovo_messaggio(db_session, frittata, "Come va?")
+    fake = FakeClaude([Say("Bene."), Finish()])
+
+    await giro(factory, fake, conversation, second)
+
+    prompt = fake.calls[0]["prompt"]
+    assert "Claude: Ho cambiato gli spinaci." in prompt
+    assert INTERRUPTED_HISTORY_LINE in prompt
+    assert prompt.index("Claude: Ho cambiato gli spinaci.") < prompt.index(
+        INTERRUPTED_HISTORY_LINE
+    )
+    assert prompt.index(INTERRUPTED_HISTORY_LINE) < prompt.index("Come va?")
+
+
+async def test_una_risposta_normale_non_porta_l_interruzione(db_session, factory, frittata):
+    conversation, first = await nuovo_messaggio(db_session, frittata, "Ciao")
+    await giro(factory, FakeClaude([Say("Ciao a te."), Finish()]), conversation, first)
+    _, second = await nuovo_messaggio(db_session, frittata, "Come va?")
+    fake = FakeClaude([Say("Bene."), Finish()])
+
+    await giro(factory, fake, conversation, second)
+
+    assert INTERRUPTED_HISTORY_LINE not in fake.calls[0]["prompt"]
 
 
 async def test_la_cronologia_non_porta_i_messaggi_falliti(db_session, factory, frittata):

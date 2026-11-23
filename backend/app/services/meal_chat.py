@@ -58,6 +58,7 @@ from app.domain.meal_chat import (
     can_chat,
     failure_notice,
     pending_is_stale,
+    reply_interrupted,
 )
 from app.domain.meals import MealSlot
 from app.domain.rules import today_in_pantry
@@ -350,6 +351,7 @@ async def chat_history(
                 _product_line(p)
                 for p in sorted(groups.get(m.id, []), key=lambda p: p.created_at)
             ),
+            interrupted=reply_interrupted(m.role, m.status, m.notice),
         )
         for m in sent[-HISTORY_MESSAGES:]
     ]
@@ -426,7 +428,8 @@ async def _reply(
     emit: Emit,
 ) -> None:
     """Il giro ha una risposta di Claude: il successo, o i troppi passaggi (`ok` falso e
-    `notice`). Il messaggio di Mattia passa a `sent`, la risposta si scrive, e la chiamata
+    `notice`). Solo qui una risposta di Claude prende un `notice`: su questo si regge
+    `reply_interrupted`. Il messaggio di Mattia passa a `sent`, la risposta si scrive, e la chiamata
     va nelle spese con l'uso che l'SDK ha dichiarato."""
     async with lock:
         message = await session.get(ConversationMessage, message_id)

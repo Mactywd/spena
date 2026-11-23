@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from app.db.models.ingredient import Ingredient, IngredientCategory
 from app.db.models.planning import MealProposal
 from app.db.models.recipe import Recipe, RecipeIngredient
+from app.domain.meal_chat import INTERRUPTED_HISTORY_LINE
 from app.domain.meals import MealSlot
 from app.services.claude.prompts import (
     COMMON_PROMPT,
@@ -187,6 +188,37 @@ def test_render_recipe_prompt():
     text = render_recipe_prompt(ctx, history)
     assert "sabato 14 novembre, pranzo" in text and "Pasta al pesto" in text
     assert "Pesto di basilico" in text
+
+
+def test_la_cronologia_dice_la_risposta_interrotta():
+    ctx = DishContext(
+        today=date(2026, 11, 12), day=date(2026, 11, 14), slot=MealSlot.LUNCH,
+        dish="Pasta al pesto", sides=None, recipe=None,
+    )
+    planning = PlanningContext(
+        now=datetime(2026, 11, 12, 17, 40, tzinfo=UTC), focus=None, open_proposal=None
+    )
+
+    def history(interrupted):
+        return [
+            HistoryItem("user", "Cambia gli spinaci"),
+            HistoryItem(
+                "assistant", "Ho cambiato", ("Ricetta aggiornata: spinaci",),
+                interrupted=interrupted,
+            ),
+        ]
+
+    for render in (
+        lambda h: render_turn_prompt(ctx, h, "ok"),
+        lambda h: render_planning_prompt(planning, h, "ok"),
+        lambda h: render_recipe_prompt(ctx, h),
+    ):
+        text = render(history(True))
+        expected = "\n".join(
+            ["Claude: Ho cambiato", "Ricetta aggiornata: spinaci", INTERRUPTED_HISTORY_LINE]
+        )
+        assert expected in text
+        assert INTERRUPTED_HISTORY_LINE not in render(history(False))
 
 
 def test_la_regola_dice_dove_dirlo():

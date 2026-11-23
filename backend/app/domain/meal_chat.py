@@ -23,6 +23,11 @@ RECIPE_EFFORT = "medium"
 RECIPE_MAX_TURNS = 12
 
 BUSY_NOTICE = "Claude sta ancora rispondendo al messaggio di prima."
+# Nella cronologia, dopo una risposta che si è fermata ai troppi passaggi
+INTERRUPTED_HISTORY_LINE = (
+    "(Qui la risposta si è interrotta: erano finiti i passaggi. "
+    "Mattia ha letto solo il testo sopra.)"
+)
 
 _MESI = [
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
@@ -54,6 +59,12 @@ def can_chat(meal: _ChatMeal) -> bool:
         and not meal.away
         and meal.leftover_of_id is None
     )
+
+
+def reply_interrupted(role: str, status: str, notice: str | None) -> bool:
+    """Una risposta di Claude inviata con un avviso è una risposta interrotta ai troppi
+    passaggi (solo `_reply` dà un avviso a una risposta di Claude)."""
+    return role == "assistant" and status == "sent" and bool(notice)
 
 
 def pending_is_stale(created_at: datetime, now: datetime, timeout_seconds: float) -> bool:

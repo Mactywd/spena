@@ -12,6 +12,7 @@ from app.domain.meal_chat import (
     can_chat,
     failure_notice,
     pending_is_stale,
+    reply_interrupted,
 )
 from app.domain.meals import MealStatus
 
@@ -69,3 +70,16 @@ def test_pending_is_stale():
     creato = datetime(2026, 11, 12, 15, 0, tzinfo=UTC)
     assert not pending_is_stale(creato, datetime(2026, 11, 12, 15, 4, 59, tzinfo=UTC), 240)
     assert pending_is_stale(creato, datetime(2026, 11, 12, 15, 5, 1, tzinfo=UTC), 240)
+
+
+@pytest.mark.parametrize(
+    ("role", "status", "notice", "expected"),
+    [
+        ("assistant", "sent", "Claude si è fermato.", True),
+        ("assistant", "sent", None, False),
+        ("user", "failed", "Claude si è fermato.", False),
+        ("user", "sent", "Claude si è fermato.", False),
+    ],
+)
+def test_reply_interrupted(role, status, notice, expected):
+    assert reply_interrupted(role, status, notice) is expected
