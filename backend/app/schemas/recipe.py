@@ -196,6 +196,9 @@ class RecipeOut(BaseModel):
     # l'impronta di quel che la chat può cambiare (`recipe_version`): il modulo la rimanda
     # al salvataggio, e il server dice se la ricetta è cambiata nel frattempo
     version: str
+    # solo quando il salvataggio a mano ha preso il posto della ricetta di Claude non ancora
+    # toccata: la modifica da annullare per rimetterla (decisione 7). `None` altrimenti
+    undo_change_id: uuid.UUID | None = None
 
 
 class RecipeSummaryOut(BaseModel):

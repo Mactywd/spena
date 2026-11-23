@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session, is_missing_reference, is_unique_violation
 from app.core.security import require_session
+from app.db.models.meal import Meal
 from app.db.models.recipe import Recipe
 from app.domain.meals import MealSlot
+from app.domain.recipe_changes import snapshot_from_json
 from app.domain.quantities import (
     ANCHOR_AMOUNT_CEILING,
     decimal_text,
@@ -59,12 +61,24 @@ from app.services.ai_recipes import RecipeDraft, draft_recipe, draft_variant
 from app.services.embeddings import get_embedding_provider
 from app.services.llm import LlmUnavailable
 from app.domain.recipe_changes import recipe_version
-from app.services.meal_recipes import recipe_snapshot
+from app.services.meal_recipes import (
+    STALE_WRITE_MESSAGE,
+    UNSET,
+    DraftLine,
+    MealRecipeDraft,
+    RecipeWriteRefused,
+    recipe_snapshot,
+    untouched_ai_change,
+    write_meal_recipe,
+)
 from app.services.meals import (
+    HAS_RECIPE_MESSAGE,
     MealRefusal,
+    MealRefusalCode,
     check_can_take_recipe,
     link_recipe,
     lock_meal_of_recipe,
+    refuse_if_no_recipe_here,
 )
 from app.services.recipe_writing import RepeatedIngredient, embedding_for, resolve_lines
 from app.services.recipe_search import search_recipes, semantic_search_usable
@@ -544,6 +558,8 @@ async def create(
         meal = await get_meal(session, payload.meal_id)
         if meal is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "pasto inesistente")
+        if meal.recipe_id is not None:
+            return await _replace_untouched_ai_recipe(session, meal, payload)
         try:
             check_can_take_recipe(meal)
         except MealRefusal as exc:
@@ -590,6 +606,79 @@ async def create(
         await session.commit()
     stored = await get_recipe(session, recipe.id)
     return await _to_out(session, stored)
+
+
+REPLACED_SUMMARY = "Scritta a mano al posto di quella di Claude"
+
+
+def _has_recipe() -> JSONResponse:
+    return meal_refusal_response(MealRefusal(MealRefusalCode.HAS_RECIPE, HAS_RECIPE_MESSAGE))
+
+
+async def _replace_untouched_ai_recipe(
+    session: AsyncSession, meal: Meal, payload: RecipeCreate
+) -> RecipeOut | JSONResponse:
+    """«Scrivi la ricetta» su un pasto che ha già quella di Claude (decisione 1 di Mattia,
+    2026-11-22): vince la ricetta a mano, se quella di Claude non è stata toccata.
+
+    Si riscrive la ricetta di Claude al suo posto, da `write_meal_recipe` (decisione 3): il
+    lucchetto, il SAVEPOINT, l'imbuto delle righe e il `RecipeChange` per «Annulla» sono i
+    suoi. Una ricetta toccata, o che cambia fra la lettura e la scrittura (`expected`),
+    resta il 409 `has_recipe` di oggi, e il modulo offre le sue due strade.
+    """
+    # il rifiuto di oggi, prima di ogni sostituzione: un avanzo, un fuori casa, una bozza
+    try:
+        refuse_if_no_recipe_here(meal)
+    except MealRefusal as exc:
+        return meal_refusal_response(exc)
+    change = await untouched_ai_change(session, meal)
+    if change is None:
+        return _has_recipe()
+    await _check_category(session, payload.category)
+    draft = MealRecipeDraft(
+        title=payload.title,
+        description=payload.description,
+        instructions=payload.instructions,
+        servings=payload.servings,
+        lines=tuple(
+            DraftLine(
+                ingredient_id=line.ingredient_id, name=line.name, category=line.category,
+                role=line.role, quantity_text=line.quantity_text, note=line.note,
+            )
+            for line in payload.ingredients
+        ),
+        summary=REPLACED_SUMMARY,
+        dish=None,
+        sides=UNSET,
+    )
+    try:
+        async with _writing_recipe(session):
+            replaced = await write_meal_recipe(
+                session, meal, draft, expected=snapshot_from_json(change.after)
+            )
+    except MealRefusal as exc:
+        # il pasto è diventato un avanzo, un fuori casa o una bozza intanto
+        response = meal_refusal_response(exc)
+        await session.rollback()
+        return response
+    except RecipeWriteRefused as exc:
+        await session.rollback()
+        if exc.message == STALE_WRITE_MESSAGE:
+            # la ricetta di Claude è cambiata a metà: non è più quella intatta
+            return _has_recipe()
+        raise HTTPException(status.HTTP_409_CONFLICT, exc.message) from exc
+    undo_change_id, recipe_id = replaced.id, replaced.recipe_id
+    # decisione 4: reparto e costo stanno fuori dall'istantanea di «Annulla», che li lascia
+    recipe = await get_recipe(session, recipe_id)
+    assert recipe is not None
+    recipe.category = payload.category
+    recipe.cost = payload.cost
+    await session.commit()
+    session.expire(recipe)
+    stored = await get_recipe(session, recipe_id)
+    out = await _to_out(session, stored)
+    out.undo_change_id = undo_change_id
+    return out
 
 
 def _draft_out(draft: RecipeDraft) -> DraftOut:

@@ -116,4 +116,60 @@ describe("la ricetta scritta per un pasto", () => {
     expect(screen.queryByText(/Nel frattempo è arrivata/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Salva nel ricettario" })).not.toBeInTheDocument();
   });
+
+  function stubReplace(undo: Response | null) {
+    const spy = vi.fn((url: unknown, init?: RequestInit) => {
+      const path = String(url);
+      if (init?.method === "POST" && path.endsWith("/undo")) {
+        return Promise.resolve(undo ?? new Response("{}", { status: 200 }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ id: "r5", undo_change_id: "c7" }), { status: 201 }));
+      }
+      if (path.includes("/meals/m1")) return Promise.resolve(new Response(JSON.stringify(MEAL), { status: 200 }));
+      return Promise.resolve(new Response("[]", { status: 200 }));
+    });
+    vi.stubGlobal("fetch", spy);
+    return spy;
+  }
+
+  async function saveReplacing() {
+    renderNew();
+    await screen.findByDisplayValue("Frittata");
+    await userEvent.type(screen.getByLabelText(/Procedimento/), "Sbatti le uova.");
+    await userEvent.click(screen.getByRole("button", { name: "Salva la ricetta" }));
+    expect(await screen.findByText("il pasto")).toBeInTheDocument();
+  }
+
+  it("salvata al posto di quella di Claude, con Annulla", async () => {
+    stubReplace(null);
+    await saveReplacing();
+    expect(screen.getByText("Salvata al posto di quella di Claude.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Annulla" })).toBeInTheDocument();
+  });
+
+  it("Annulla rimette quella di Claude", async () => {
+    const spy = stubReplace(null);
+    await saveReplacing();
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(await screen.findByText("Rimessa la ricetta di Claude.")).toBeInTheDocument();
+    const undo = spy.mock.calls.find(([u]) => String(u) === "/api/v1/meals/m1/chat/changes/c7/undo")!;
+    expect(undo[1]?.method).toBe("POST");
+  });
+
+  it("un Annulla rifiutato dice perché", async () => {
+    stubReplace(
+      new Response(JSON.stringify({ code: "change_stale", detail: "La ricetta è cambiata dopo." }), { status: 409 })
+    );
+    await saveReplacing();
+    await userEvent.click(screen.getByRole("button", { name: "Annulla" }));
+    expect(await screen.findByText("La ricetta è cambiata dopo.")).toBeInTheDocument();
+  });
+
+  it("senza sostituzione resta Salvata.", async () => {
+    stubFetch();
+    await saveReplacing();
+    expect(screen.getByText("Salvata.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Annulla" })).not.toBeInTheDocument();
+  });
 });

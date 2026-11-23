@@ -24,9 +24,10 @@ from app.services.meal_recipes import (
     meal_snapshot,
     undo_recipe_change,
     undoable_change_ids,
+    untouched_ai_change,
     write_meal_recipe,
 )
-from app.services.meals import MealRefusal, MealRefusalCode, create_meal
+from app.services.meals import MealRefusal, MealRefusalCode, copy_recipe_to_meal, create_meal
 from app.services.registry import merge_ingredients
 
 DAY = date(2026, 11, 11)
@@ -615,3 +616,68 @@ async def test_il_pasto_sparito_non_si_scrive(db_session, voci, meal):
         await write_meal_recipe(db_session, meal, draft(line(voci["uova"])))
     assert caught.value.message == MEAL_GONE_MESSAGE == "Il pasto non esiste più."
     assert (await db_session.execute(select(Recipe))).scalars().all() == recipes
+
+
+async def _claude_wrote(db_session, voci, meal):
+    return await write_meal_recipe(
+        db_session, meal, draft(line(voci["uova"], text="2")),
+        allowed_recipe_ids=frozenset({None}),
+    )
+
+
+async def test_la_ricetta_appena_scritta_da_claude_e_intatta(db_session, voci, meal):
+    change = await _claude_wrote(db_session, voci, meal)
+    await db_session.flush()
+    found = await untouched_ai_change(db_session, meal)
+    assert found is not None and found.id == change.id
+    assert found.created_recipe is True
+
+
+async def test_senza_ricetta_niente(db_session, voci, meal):
+    assert await untouched_ai_change(db_session, meal) is None
+
+
+async def test_toccata_dalla_chat_non_e_intatta(db_session, voci, meal):
+    await _claude_wrote(db_session, voci, meal)
+    await write_meal_recipe(
+        db_session, meal, draft(line(voci["uova"], text="3"), line(voci["spinaci"], text="100 g"))
+    )
+    await db_session.flush()
+    assert await untouched_ai_change(db_session, meal) is None
+
+
+async def test_annullata_non_e_intatta(db_session, voci, meal):
+    change = await _claude_wrote(db_session, voci, meal)
+    await db_session.flush()
+    await undo_recipe_change(db_session, change)
+    await db_session.flush()
+    assert await untouched_ai_change(db_session, meal) is None
+
+
+async def test_corretta_a_mano_non_e_intatta(db_session, voci, meal):
+    change = await _claude_wrote(db_session, voci, meal)
+    await db_session.flush()
+    recipe = await get_recipe(db_session, change.recipe_id)
+    recipe.title = "Titolo corretto"
+    await db_session.flush()
+    assert await untouched_ai_change(db_session, meal) is None
+
+
+async def test_nel_ricettario_non_e_intatta(db_session, voci, meal):
+    change = await _claude_wrote(db_session, voci, meal)
+    await db_session.flush()
+    recipe = await get_recipe(db_session, change.recipe_id)
+    recipe.in_book = True
+    await db_session.flush()
+    assert await untouched_ai_change(db_session, meal) is None
+
+
+async def test_scelta_dal_ricettario_non_e_di_claude(db_session, voci, meal):
+    source = Recipe(
+        title="Dal libro", instructions="Cuoci.", servings=2, source="manual", in_book=True
+    )
+    db_session.add(source)
+    await db_session.flush()
+    await copy_recipe_to_meal(db_session, meal, source)
+    await db_session.flush()
+    assert await untouched_ai_change(db_session, meal) is None
