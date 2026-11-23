@@ -117,6 +117,87 @@ describe("la modifica di una ricetta (R10 §6.2)", () => {
     expect(corpo.source).toBeUndefined();
   });
 
+  it("salvando manda la versione letta", async () => {
+    const spy = stubFetch((_path, init) => (init?.method === "PUT" ? [DETAIL, 200] : undefined));
+    renderEdit();
+
+    await screen.findByDisplayValue("Pasta al pomodoro");
+    await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+    await screen.findByText("Salvata.");
+
+    const put = spy.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    expect(JSON.parse(String(put[1]!.body)).expected_version).toBe("v1");
+  });
+
+  describe("se la ricetta è cambiata mentre la correggevi", () => {
+    const CAMBIATA = "Claude ha cambiato la ricetta mentre la correggevi.";
+    const NUOVA = { ...DETAIL, version: "v2", title: "Pasta di Claude" };
+
+    function conflitto(reload: RecipeDetail = NUOVA) {
+      let puts = 0;
+      let reads = 0;
+      const spy = stubFetch((path, init) => {
+        if (init?.method === "PUT") {
+          puts += 1;
+          if (puts === 1) return [{ code: "recipe_changed", detail: CAMBIATA }, 409];
+          return [DETAIL, 200];
+        }
+        if (path.endsWith("/recipes/r1")) {
+          reads += 1;
+          return [reads > 1 ? reload : DETAIL, 200];
+        }
+        return undefined;
+      });
+      return spy;
+    }
+
+    it("lo dice e lascia scegliere, tenendo quel che si è scritto", async () => {
+      conflitto();
+      renderEdit();
+
+      const titolo = await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.clear(titolo);
+      await userEvent.type(titolo, "La mia pasta");
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+
+      expect(await screen.findByText(CAMBIATA)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Salva comunque la mia" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ricarica la ricetta" })).toBeInTheDocument();
+      expect(screen.getByDisplayValue("La mia pasta")).toBeInTheDocument();
+      // niente frase generica accanto al pulsante
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+    });
+
+    it("«Salva comunque la mia» manda la PUT senza versione", async () => {
+      const spy = conflitto();
+      renderEdit();
+
+      await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Salva comunque la mia" }));
+
+      expect(await screen.findByText("Salvata.")).toBeInTheDocument();
+      const puts = spy.mock.calls.filter(([, init]) => init?.method === "PUT");
+      expect(puts).toHaveLength(2);
+      expect(JSON.parse(String(puts[1][1]!.body)).expected_version).toBeUndefined();
+    });
+
+    it("«Ricarica la ricetta» rifà il modulo dalla ricetta nuova", async () => {
+      conflitto();
+      renderEdit();
+
+      const titolo = await screen.findByDisplayValue("Pasta al pomodoro");
+      await userEvent.clear(titolo);
+      await userEvent.type(titolo, "La mia pasta");
+      await userEvent.click(screen.getByRole("button", { name: "Salva le modifiche" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Ricarica la ricetta" }));
+
+      expect(await screen.findByDisplayValue("Pasta di Claude")).toBeInTheDocument();
+      expect(screen.queryByDisplayValue("La mia pasta")).toBeNull();
+      expect(screen.queryByText(CAMBIATA)).toBeNull();
+    });
+  });
+
   it("dopo il salvataggio, «indietro» non riporta al modulo", async () => {
     stubFetch();
     const client = createTestQueryClient();

@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchWithHeaders } from "../../api/client";
+import { ApiError, apiFetch, apiFetchWithHeaders } from "../../api/client";
 import type {
   CookResult,
   RecipeBody,
@@ -131,8 +131,13 @@ export function createRecipe(
 }
 
 /** La ricetta intera, righe comprese (R10). La provenienza non si manda: non si cambia. */
-export function updateRecipe(id: string, body: RecipeBody) {
-  return apiFetch<RecipeDetail>(`/recipes/${id}`, { method: "PUT", body: JSON.stringify(body) });
+export function updateRecipe(id: string, body: RecipeBody, expectedVersion?: string) {
+  return apiFetch<RecipeDetail>(`/recipes/${id}`, {
+    method: "PUT",
+    // senza versione la PUT scrive comunque («Salva comunque la mia»): è il server a
+    // confrontare, il modulo non decide
+    body: JSON.stringify(expectedVersion ? { ...body, expected_version: expectedVersion } : body),
+  });
 }
 
 /** Elimina (`true`) o ripristina (`false`): non c'è una `DELETE`, come in dispensa. */
@@ -183,4 +188,13 @@ export function cookRecipe(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/** Il 409 della PUT della modifica: la ricetta è cambiata dopo che il modulo l'ha letta. */
+export function isRecipeChanged(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    (error.body as { code?: unknown } | null)?.code === "recipe_changed"
+  );
 }

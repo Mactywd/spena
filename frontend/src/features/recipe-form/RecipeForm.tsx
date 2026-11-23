@@ -1,6 +1,7 @@
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { flushSync } from "react-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { isRecipeChanged } from "../recipes/api";
 import { ApiError } from "../../api/client";
 import { CategorySelect } from "../../components/CategorySelect";
 import { IngredientPicker } from "../../components/IngredientPicker";
@@ -434,7 +435,8 @@ export function RecipeForm({
 
       {/* l'errore sta accanto al pulsante che ha fallito: tutti i campi restano qui,
           pronti per un altro tentativo */}
-      {submit.isError && (
+      {/* un `recipe_changed` ha il suo avviso con le due strade, in chi usa il modulo */}
+      {submit.isError && !isRecipeChanged(submit.error) && (
         <p role="alert" className="text-sm text-danger">
           {saveProblem(submit.error)}
         </p>
