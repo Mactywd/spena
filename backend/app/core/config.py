@@ -42,12 +42,17 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 45.0
     llm_max_retries: int = 2
     llm_max_concurrency: int = 8
+    # Le due rotte sincrone dell'import e delle sostituzioni (`SYNC_PROFILE`) si fermano
+    # entro questo tempo; la loro location di Nginx sta sopra (un test lo verifica).
+    llm_sync_deadline_seconds: float = 240.0
     # La chiave API di Anthropic: per i Pasti (chat, pianificazione, ricette dei pasti) e
     # per l'LLM dell'import con Claude Haiku. Vuota o assente: la chat dice che Claude non
     # è collegato, e l'import e l'AI sulle ricette continuano a mano.
     anthropic_api_key: str | None = None
     claude_model: str = "claude-opus-5-5"
     claude_reply_timeout_seconds: float = 240.0
+    # La pianificazione della settimana pensa più a lungo della chat di un piatto.
+    claude_planning_timeout_seconds: float = 480.0
     # Una cartella vuota come `cwd` dell'SDK: nessun CLAUDE.md di progetto è vicino.
     claude_workdir: str = "/tmp/spena-claude"
     embedding_backend: str = "local"

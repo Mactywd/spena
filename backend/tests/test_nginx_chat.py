@@ -23,7 +23,10 @@ def test_nginx_non_trattiene_la_risposta_di_claude():
     assert "proxy_pass http://spena-backend:8000;" in corpo
     attesa = re.search(r"proxy_read_timeout (\d+)s;", corpo)
     assert attesa, "la location non alza proxy_read_timeout"
-    assert int(attesa[1]) > Settings(_env_file=None).claude_reply_timeout_seconds
+    impostazioni = Settings(_env_file=None)
+    assert int(attesa[1]) > max(
+        impostazioni.claude_reply_timeout_seconds, impostazioni.claude_planning_timeout_seconds
+    )
 
 
 def test_nginx_non_trattiene_la_pianificazione():
