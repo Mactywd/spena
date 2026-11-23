@@ -370,3 +370,54 @@ async def test_un_testo_vuoto_e_422(chat, frittata, testo):
 async def test_senza_accesso_401(client, frittata):
     assert (await client.get(url(frittata))).status_code == 401
     assert (await client.post(url(frittata, "/messages"), json={"text": "x"})).status_code == 401
+
+
+def _scrivi_con_novelli(voci):
+    args = spinaci_args(voci)
+    args["ingredients"].append(
+        {"name": "Spinaci novelli", "department": "verdura", "role": "secondary"}
+    )
+    return args
+
+
+async def test_annullare_una_ricetta_scritta_dice_gli_ingredienti_che_restano(
+    chat, db_session, voci
+):
+    senza_ricetta = await create_meal(
+        db_session, day=DAY, slot=MealSlot.LUNCH, dish="Frittata di spinaci"
+    )
+    await db_session.commit()
+    chat.fake = FakeClaude(
+        [UseTool("write_recipe", _scrivi_con_novelli(voci)), Say("Fatto."), Finish()]
+    )
+    await scrivi(chat, senza_ricetta, "Scrivila.")
+    corpo = (await chat.client.get(url(senza_ricetta))).json()
+    change = corpo["messages"][-1]["changes"][0]
+    assert change["created_recipe"] is True and change["kept_note"] is None
+    risposta = await chat.client.post(url(senza_ricetta, f"/changes/{change['id']}/undo"))
+    annullata = risposta.json()["messages"][-1]["changes"][0]
+    assert annullata["undone"] is True
+    assert annullata["kept_note"] == "Resta in Anagrafica: Spinaci novelli."
+
+
+async def test_annullare_una_modifica_che_toglie_l_ingrediente_non_dice_niente(
+    chat, frittata, voci
+):
+    chat.fake = FakeClaude(
+        [UseTool("write_recipe", _scrivi_con_novelli(voci)), Say("Fatto."), Finish()]
+    )
+    await scrivi(chat, frittata, "Aggiungi qualcosa.")
+    corpo = (await chat.client.get(url(frittata))).json()
+    change_id = corpo["messages"][-1]["changes"][0]["id"]
+    risposta = await chat.client.post(url(frittata, f"/changes/{change_id}/undo"))
+    annullata = risposta.json()["messages"][-1]["changes"][0]
+    assert annullata["undone"] is True
+    assert annullata["kept_note"] is None
+
+
+async def test_una_modifica_annullata_senza_ingredienti_creati_non_dice_niente(
+    chat, frittata, voci
+):
+    change_id = await modifica(chat, frittata, voci)
+    risposta = await chat.client.post(url(frittata, f"/changes/{change_id}/undo"))
+    assert risposta.json()["messages"][-1]["changes"][0]["kept_note"] is None

@@ -28,6 +28,14 @@ from app.services.meal_recipes import (
 )
 from app.services.meals import MealRefusal, MealRefusalCode, create_meal
 from app.services.registry import merge_ingredients
+from app.services.change_cards import (
+    ListProposal,
+    RowOverride,
+    apply_card,
+    discard_card,
+    get_card,
+    propose_card,
+)
 
 DAY = date(2026, 11, 11)
 
@@ -615,3 +623,41 @@ async def test_il_pasto_sparito_non_si_scrive(db_session, voci, meal):
         await write_meal_recipe(db_session, meal, draft(line(voci["uova"])))
     assert caught.value.message == MEAL_GONE_MESSAGE == "Il pasto non esiste più."
     assert (await db_session.execute(select(Recipe))).scalars().all() == recipes
+
+
+async def test_annulla_non_toglie_un_ingrediente_di_una_scheda_proposta(db_session, voci, meal):
+    _, second, novelli = await _with_new_ingredient(db_session, voci, meal)
+    novelli_id = novelli.id
+    card = await propose_card(
+        db_session, meals=[meal], pantry=[],
+        shopping=[ListProposal(novelli_id, "Spinaci novelli")],
+    )
+    await db_session.flush()
+    await undo_recipe_change(db_session, second)
+    assert await _exists(db_session, novelli_id)
+    card = await get_card(db_session, card.id)
+    assert [r.ingredient_id for r in card.rows] == [novelli_id]
+
+
+@pytest.mark.parametrize("chiusa", ["applicata", "scartata", "superata"])
+async def test_una_scheda_chiusa_non_tiene_l_ingrediente(db_session, voci, meal, chiusa):
+    _, second, novelli = await _with_new_ingredient(db_session, voci, meal)
+    novelli_id = novelli.id
+    card = await propose_card(
+        db_session, meals=[meal], pantry=[],
+        shopping=[ListProposal(novelli_id, "Spinaci novelli")],
+    )
+    await db_session.flush()
+    if chiusa == "applicata":
+        riga = (await get_card(db_session, card.id)).rows[0]
+        await apply_card(db_session, card.id, [RowOverride(riga.id, checked=False)])
+    elif chiusa == "scartata":
+        await discard_card(db_session, card.id)
+    else:
+        await propose_card(
+            db_session, meals=[meal], pantry=[],
+            shopping=[ListProposal(None, "Altro")],
+        )
+    await db_session.flush()
+    await undo_recipe_change(db_session, second)
+    assert not await _exists(db_session, novelli_id)

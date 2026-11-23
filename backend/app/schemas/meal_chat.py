@@ -21,6 +21,9 @@ class RecipeChangeOut(BaseModel):
     created_recipe: bool
     undone: bool
     undoable: bool
+    # su una modifica annullata: gli ingredienti che aveva creato e che restano in
+    # Anagrafica (lo scrive il server, il frontend mostra soltanto)
+    kept_note: str | None = None
 
 
 class ChatMessageOut(BaseModel):

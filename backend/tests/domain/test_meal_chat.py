@@ -11,6 +11,7 @@ from app.domain.meal_chat import (
     FailureKind,
     can_chat,
     failure_notice,
+    kept_ingredients_note,
     pending_is_stale,
     reply_interrupted,
 )
@@ -83,3 +84,19 @@ def test_pending_is_stale():
 )
 def test_reply_interrupted(role, status, notice, expected):
     assert reply_interrupted(role, status, notice) is expected
+
+
+@pytest.mark.parametrize(
+    ("names", "expected"),
+    [
+        ([], None),
+        (["Spinaci novelli"], "Resta in Anagrafica: Spinaci novelli."),
+        (["Spinaci novelli", "Bietole"], "Restano in Anagrafica: Spinaci novelli e Bietole."),
+        (
+            ["Spinaci novelli", "Bietole", "Cavolo nero"],
+            "Restano in Anagrafica: Spinaci novelli, Bietole e Cavolo nero.",
+        ),
+    ],
+)
+def test_kept_ingredients_note(names, expected):
+    assert kept_ingredients_note(names) == expected

@@ -851,3 +851,33 @@ async def test_la_vista_della_chat_non_rilegge_il_pasto_per_ogni_modifica(
     con_otto = await _statements_of_the_view(db_session, otto)
 
     assert con_una == con_otto
+
+
+async def test_la_vista_legge_gli_ingredienti_rimasti_con_una_query_sola(db_session, voci):
+    uno = await create_meal(db_session, day=DAY, slot=MealSlot.LUNCH, dish="Uno")
+    otto = await create_meal(db_session, day=DAY, slot=MealSlot.DINNER, dish="Otto")
+    await _turni_con_modifiche(db_session, uno, voci, 1)
+    await _turni_con_modifiche(db_session, otto, voci, 8)
+    # ogni modifica annullata ha un ingrediente rimasto (diverso per ognuna)
+    for meal in (uno, otto):
+        conversation = await get_or_create_dish_conversation(db_session, meal.id)
+        changes = (
+            await db_session.execute(
+                select(RecipeChange).where(RecipeChange.conversation_id == conversation.id)
+            )
+        ).scalars().all()
+        for i, change in enumerate(changes):
+            kept = Ingredient(
+                name=f"rimasto {meal.dish} {i}", display_name=f"Rimasto {i}",
+                category=IngredientCategory.VERDURA,
+            )
+            db_session.add(kept)
+            await db_session.flush()
+            change.created_ingredient_ids = [str(kept.id)]
+            change.undone_at = datetime.now(UTC)
+    await db_session.flush()
+
+    con_una = await _statements_of_the_view(db_session, uno)
+    con_otto = await _statements_of_the_view(db_session, otto)
+
+    assert con_una == con_otto
